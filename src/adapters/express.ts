@@ -31,15 +31,16 @@ export function createExpressApp(): express.Application {
       next: NextFunction,
     ) => {
       try {
+      
         // We use parseAsync to support both synchronous and asynchronous Zod refinements
         const parsedParams = request?.params
-          ? await request.params.parseAsync(req.params)
+          ? await request.params.parseAsync(request.params)
           : req.params;
         const parsedQuery = request?.query
-          ? await request.query.parseAsync(req.query)
+          ? await request.query.parseAsync(request.query)
           : req.query;
         const parsedBody = request?.body
-          ? await request.body.parseAsync(req.body)
+          ? await request.body.parseAsync(request.body)
           : req.body;
 
         // Overwrite the Express request objects with the strongly-typed, stripped data
@@ -69,8 +70,8 @@ export function createExpressApp(): express.Application {
         let injectedContext = {};
 
         // 1. Sequentially execute plugins and merge their returned data
-        if (route.config.plugins && route.config.plugins.length > 0) {
-          for (const plugin of route.config.plugins) {
+        if (plugins && plugins.length > 0) {
+          for (const plugin of plugins) {
             // Pass the raw request to the plugin
             const result = await plugin(req);
             if (result && typeof result === "object") {

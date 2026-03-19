@@ -63,8 +63,8 @@ export async function createFastifyApp(): Promise<FastifyInstance> {
           let injectedContext = {};
 
           // 1. Sequentially execute plugins and merge their returned data
-          if (route.config.plugins && route.config.plugins.length > 0) {
-            for (const plugin of route.config.plugins) {
+          if (plugins && plugins.length > 0) {
+            for (const plugin of plugins) {
               const result = await plugin(req);
               if (result && typeof result === "object") {
                 injectedContext = { ...injectedContext, ...result };

@@ -22,32 +22,23 @@ export type RouteContext<P, Q, B, Injected = {}> = {
 } & Injected;
 
 export interface RouteDefinition<
-  Params extends z.ZodTypeAny,
-  Query extends z.ZodTypeAny,
-  Body extends z.ZodTypeAny,
-  Response extends z.ZodTypeAny,
-  Plugins extends Plugin<any>[] = [],
+  P extends z.ZodTypeAny = z.ZodAny,
+  Q extends z.ZodTypeAny = z.ZodAny, 
+  B extends z.ZodTypeAny = z.ZodAny,
+  R extends z.ZodTypeAny = z.ZodAny,
+  Plugins extends Plugin<any>[] = Plugin<any>[],
 > {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   request?: {
-    params?: Params;
-    query?: Query;
-    body?: Body;
+    params?: P;
+    query?: Q;
+    body?: B;
     headers?: z.ZodTypeAny;
   };
-  response: Response;
-
-  // 🔌 Developers pass their plugins here
+  response: R;
   plugins?: [...Plugins];
-
-  // 🎯 The handler automatically receives the merged plugin context!
   handler: (
-    ctx: RouteContext<
-      z.infer<Params>,
-      z.infer<Query>,
-      z.infer<Body>,
-      InferInjectedContext<Plugins>
-    >,
-  ) => Promise<z.infer<Response>> | z.infer<Response>;
+    ctx: RouteContext<z.infer<P>, z.infer<Q>, z.infer<B>, InferInjectedContext<Plugins>>
+  ) => Promise<z.infer<R>> | z.infer<R>;
 }

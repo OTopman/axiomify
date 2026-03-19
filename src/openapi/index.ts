@@ -31,9 +31,9 @@ export function generateOpenApiDocument(): OpenAPIObject {
       summary: `${method} ${path}`,
       request: request
         ? {
-            params: request.params,
-            query: request.query,
-            headers: request.headers,
+            params: request.params as any,
+            query: request.query as any,
+            headers: request.headers as any,
             body: request.body
               ? {
                   content: {
