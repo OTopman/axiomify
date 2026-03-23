@@ -34,13 +34,13 @@ export function createExpressApp(): express.Application {
       
         // We use parseAsync to support both synchronous and asynchronous Zod refinements
         const parsedParams = request?.params
-          ? await request.params.parseAsync(request.params)
+          ? await request.params!.parseAsync(request.params)
           : req.params;
         const parsedQuery = request?.query
-          ? await request.query.parseAsync(request.query)
+          ? await request.query!.parseAsync(request.query)
           : req.query;
         const parsedBody = request?.body
-          ? await request.body.parseAsync(request.body)
+          ? await request.body!.parseAsync(request.body)
           : req.body;
 
         // Overwrite the Express request objects with the strongly-typed, stripped data

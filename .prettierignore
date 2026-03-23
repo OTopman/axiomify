@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+axiomify-client.js
+axiomify-env.d.ts
+*.min.js
