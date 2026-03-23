@@ -1,7 +1,7 @@
-import fg from "fast-glob";
-import path from "path";
-import { registry } from "../core/registry";
-import { RouteDefinition } from "../core/types";
+import fg from 'fast-glob';
+import path from 'path';
+import { registry } from '../core/registry';
+import { RouteDefinition } from '../core/types';
 
 /**
  * Options for the route scanner.
@@ -22,7 +22,7 @@ export async function scanAndRegisterRoutes({
   // 1. Normalize the path to ensure cross-platform compatibility (Windows uses \, Unix uses /)
   // fast-glob requires posix-style paths.
   const normalizedPath = routesDir.split(path.sep).join(path.posix.sep);
-  const pattern = path.posix.join(normalizedPath, "**/*.ts");
+  const pattern = path.posix.join(normalizedPath, '**/*.ts');
 
   // 2. Execute the glob search
   const files = await fg(pattern, { absolute: true });
@@ -32,11 +32,17 @@ export async function scanAndRegisterRoutes({
   for (const file of files) {
     try {
       // 3. Dynamically import the module.
-      // In a Node environment, this evaluates the code and retrieves the exported members.
       const mod = await import(file);
 
       // 4. Validate that the file actually exports a valid route configuration
-      const config = mod.default as RouteDefinition<any, any, any, any>;
+      // FIX: Safely unwrap the export to handle both ESM and CJS interop environments
+      const rawExport = mod.default || mod;
+      const config = (rawExport.default || rawExport) as RouteDefinition<
+        any,
+        any,
+        any,
+        any
+      >;
 
       if (!config || !config.method || !config.path || !config.handler) {
         console.warn(
@@ -50,8 +56,8 @@ export async function scanAndRegisterRoutes({
       // If it's directly in the routes root, tag it as 'default'.
       const relativeDir = path.dirname(path.relative(routesDir, file));
       const tag =
-        relativeDir === "." || relativeDir === ""
-          ? "default"
+        relativeDir === '.' || relativeDir === ''
+          ? 'default'
           : relativeDir.split(path.sep)[0];
 
       // 6. Push the validated route into our global singleton registry

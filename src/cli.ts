@@ -10,7 +10,7 @@ const program = new Command();
 
 program
   .name("axiomify")
-  .description("Zero-boilerplate, code-first API contract system")
+  .description(pkg.description)
   .version(pkg.version);
 
 program

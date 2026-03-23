@@ -35,12 +35,12 @@ export async function runBuildCommand() {
 
     // 3. Create a temporary production entry point
     // This file acts as the bridge to start the server in production without the CLI
-    const prodEntryPath = path.join(srcDir, ".axiomify-entry.ts");
-    const entryCode = `
-      import { bootstrap } from 'axiomify/server/bootstrap';
-      bootstrap({ mode: 'production' });
+   const prodEntryPath = path.join(srcDir, '.axiomify-entry.ts');
+   const entryCode = `
+      import { _internal_bootstrap } from 'axiomify';
+      _internal_bootstrap();
     `;
-    fs.writeFileSync(prodEntryPath, entryCode);
+   fs.writeFileSync(prodEntryPath, entryCode);
 
     // 4. Execute the high-speed esbuild compilation
     await build({
