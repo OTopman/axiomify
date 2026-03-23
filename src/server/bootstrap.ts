@@ -6,6 +6,7 @@ import { createFastifyApp } from '../adapters/fastify';
 import { registry } from '../core/registry';
 import { generateOpenApiDocument } from '../openapi';
 import { scanAndRegisterRoutes } from '../scanner';
+import { AxiomifyConfig } from '../core/types';
 
 /**
  * Initializes and starts the Axiomify server.
@@ -17,7 +18,7 @@ export async function bootstrap(
   const configPath = path.join(process.cwd(), 'axiomify.config.ts');
 
   // 1. Set intelligent defaults
-  let config = { server: 'express', port: 3000, routesDir: 'src/routes' };
+  let config: Partial<AxiomifyConfig> = { server: 'express', port: 3000, routesDir: 'src/routes' };
 
   // 2. Override defaults with user config
   if (fs.existsSync(configPath)) {
@@ -29,7 +30,7 @@ export async function bootstrap(
 
   // 3. Resolve the custom routes directory
   const resolvedRoutesDir =
-    options.routesDir || path.join(process.cwd(), config.routesDir);
+    options.routesDir || path.join(process.cwd(), config.routesDir!);
 
   console.log('🚀 Starting Axiomify engine...');
   console.log(`📂 Scanning for routes in: ${resolvedRoutesDir}`);
@@ -47,15 +48,27 @@ export async function bootstrap(
   }
 
   // 4. Initialize Adapter and Documentation
-  const openApiDoc = generateOpenApiDocument();
+  const openApiDoc = generateOpenApiDocument(config);
 
   if (config.server === 'fastify') {
-    // Fastify-specific initialization
     const app = await createFastifyApp();
 
-    // Use the @fastify/express bridge to support swagger-ui-express
-    await app.register(require('@fastify/express'));
-    (app as any).use('/docs', swaggerUi.serve, swaggerUi.setup(openApiDoc));
+    const fastifyExpress = await import('@fastify/express');
+    await app.register(fastifyExpress.default || fastifyExpress);
+   const swaggerMiddlewares = ([] as any[]).concat(
+     (req: any, res: any, next: any) => {
+       if (req.url === '/' || req.url === '/index.html' || req.url === '') {
+         res.setHeader('Content-Type', 'text/html');
+       }
+       next();
+     },
+     swaggerUi.serve,
+     swaggerUi.setup(openApiDoc),
+   );
+
+   swaggerMiddlewares.forEach((mw) => {
+     app.use('/docs', mw);
+   });
 
     // Fastify .listen() expects a configuration object
     await app.listen({ port: PORT, host: '0.0.0.0' });

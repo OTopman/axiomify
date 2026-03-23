@@ -1,23 +1,20 @@
 import {
   OpenAPIRegistry,
   OpenApiGeneratorV3,
-} from "@asteasolutions/zod-to-openapi";
-import pkg from "../../package.json";
-import { registry } from "../core/registry";
-import type { OpenAPIObject } from "openapi3-ts/oas30";
+} from '@asteasolutions/zod-to-openapi';
+import type { OpenAPIObject } from 'openapi3-ts/oas30';
+import pkg from '../../package.json';
+import { registry } from '../core/registry';
+import type { AxiomifyConfig } from '../core/types';
 
-/**
- * Converts Express-style path parameters to OpenAPI-style.
- * Example: '/users/:id' -> '/users/{id}'
- */
 function convertToOpenApiPath(expressPath: string): string {
-  return expressPath.replace(/:([a-zA-Z0-9_]+)/g, "{$1}");
+  return expressPath.replace(/:([a-zA-Z0-9_]+)/g, '{$1}');
 }
 
-/**
- * Generates the complete OpenAPI 3.0 document from the registered routes.
- */
-export function generateOpenApiDocument(): OpenAPIObject {
+// Accept the config as an optional parameter
+export function generateOpenApiDocument(
+  config?: AxiomifyConfig,
+): OpenAPIObject {
   const openApiRegistry = new OpenAPIRegistry();
   const routes = registry.getAllRoutes();
 
@@ -37,7 +34,7 @@ export function generateOpenApiDocument(): OpenAPIObject {
             body: request.body
               ? {
                   content: {
-                    "application/json": { schema: request.body },
+                    'application/json': { schema: request.body },
                   },
                 }
               : undefined,
@@ -45,9 +42,9 @@ export function generateOpenApiDocument(): OpenAPIObject {
         : undefined,
       responses: {
         200: {
-          description: "Successful response",
+          description: 'Successful response',
           content: {
-            "application/json": { schema: response },
+            'application/json': { schema: response },
           },
         },
       },
@@ -57,11 +54,12 @@ export function generateOpenApiDocument(): OpenAPIObject {
   const generator = new OpenApiGeneratorV3(openApiRegistry.definitions);
 
   return generator.generateDocument({
-    openapi: "3.0.0",
+    openapi: '3.0.0',
     info: {
-      version: pkg.version,
-      title: "Axiomify API",
-      description: "Auto-generated API documentation",
+      version: config?.openapi?.version || pkg.version,
+      title: config?.openapi?.title || 'Axiomify API',
+      description:
+        config?.openapi?.description || 'Auto-generated API documentation',
     },
   });
 }

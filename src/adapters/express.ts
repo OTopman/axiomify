@@ -1,6 +1,7 @@
 import express, { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { registry } from "../core/registry";
+import { AxiomifyPlugin } from "../core/types";
 
 /**
  * Creates and configures an Express application using the registered Axiomify routes.
@@ -12,17 +13,15 @@ export function createExpressApp(): express.Application {
   app.use(express.json());
 
   const routes = registry.getAllRoutes();
-
   for (const route of routes) {
     const {
       method,
       path,
       request,
-      response,
       handler,
-      plugins = [],
     } = route.config;
     const expressMethod = method.toLowerCase() as keyof express.Application;
+    const plugins: AxiomifyPlugin<any>[] = route.config.plugins || [];
 
     // Phase 1: Input Validation
     const validateRequest = async (
@@ -61,69 +60,96 @@ export function createExpressApp(): express.Application {
       }
     };
 
-    // Phase 2: Execution & Output Validation
-    const executeHandler = async (
-      req: Request,
-      res: Response,
-      next: NextFunction,
-    ) => {
-      try {
-        let injectedContext = {};
+   const executeHandler = async (
+     req: Request,
+     res: Response,
+     next: NextFunction,
+   ) => {
+     // Extract and type the plugins array
+     const plugins: any[] = route.config.plugins || [];
 
-        // 1. Sequentially execute plugins and merge their returned data
-        if (plugins && plugins.length > 0) {
-          for (const plugin of plugins) {
-            const result = await plugin(req);
-            if (result && typeof result === 'object') {
-              injectedContext = { ...injectedContext, ...result };
-            }
-          }
-        }
+     try {
+       let injectedContext = {};
 
-        // 2. Build the final context object for the handler using our validated res.locals
-        const validatedData = res.locals.axiomify || {
-          params: req.params,
-          query: req.query,
-          body: req.body,
-        };
+       // --- 1. LIFECYCLE: onRequest ---
+       if (plugins.length > 0) {
+         for (const plugin of plugins) {
+           if (plugin.onRequest) {
+             const result = await plugin.onRequest(req);
+             if (result && typeof result === 'object') {
+               injectedContext = { ...injectedContext, ...result };
+             }
+           }
+         }
+       }
 
-        const context = {
-          params: validatedData.params,
-          query: validatedData.query,
-          body: validatedData.body,
-          headers: req.headers as Record<string, string | string[] | undefined>,
-          ...injectedContext,
-        };
+       // 2. Build the final context object for the handler
+       const validatedData = res.locals.axiomify || {
+         params: req.params,
+         query: req.query,
+         body: req.body,
+       };
 
-        // 3. Execute the developer's business logic
-        const handlerResult = await handler(context);
+       const context = {
+         params: validatedData.params,
+         query: validatedData.query,
+         body: validatedData.body,
+         headers: req.headers as Record<string, string | string[] | undefined>,
+         ...injectedContext,
+       };
 
-        // 4. Validate outgoing data
-        const validatedResponse = await response.parseAsync(handlerResult);
-        res.json(validatedResponse);
-      } catch (error) {
-        if (error instanceof Error && error.message === 'Unauthorized') {
-          res.status(401).json({ error: 'Unauthorized' });
-          return;
-        }
+       // 3. Execute the developer's business logic
+       const handlerResult = await handler(context);
 
-        if (error instanceof z.ZodError) {
-          console.error(
-            `[axiomify] Response breached API contract for ${method} ${path}:`,
-            error.errors,
-          );
-          res.status(500).json({
-            error: 'Internal Server Error: Response validation failed.',
-          });
-          return;
-        }
-        next(error);
-      }
-    };
+       // 4. Validate outgoing data
+       let finalResponse = route.config.response
+         ? await route.config.response.parseAsync(handlerResult)
+         : handlerResult;
+
+       // --- 5. LIFECYCLE: onResponse ---
+       if (plugins.length > 0) {
+         // Run onResponse hooks in reverse order (onion model)
+         for (const plugin of [...plugins].reverse()) {
+           if (plugin.onResponse) {
+             finalResponse =
+               (await plugin.onResponse(finalResponse, req)) || finalResponse;
+           }
+         }
+       }
+
+       res.json(finalResponse);
+     } catch (error) {
+       // --- 6. LIFECYCLE: onError ---
+       if (plugins.length > 0) {
+         for (const plugin of plugins) {
+           if (plugin.onError) {
+             await plugin.onError(error as Error, req);
+           }
+         }
+       }
+
+       if (error instanceof Error && error.message === 'Unauthorized') {
+         res.status(401).json({ error: 'Unauthorized' });
+         return;
+       }
+
+       if (error instanceof z.ZodError) {
+         console.error(
+           `[axiomify] Response breached API contract for ${method} ${path}:`,
+           error.errors,
+         );
+         res.status(500).json({
+           error: 'Internal Server Error: Response validation failed.',
+         });
+         return;
+       }
+       next(error);
+     }
+   };
 
     // Phase 3: Mount the route
     // The spread operator allows us to inject per-route plugins (like auth) before the core logic
-    app[expressMethod](path, ...plugins, validateRequest, executeHandler);
+   app[expressMethod](path, validateRequest, executeHandler);
   }
 
   // Global Error Catcher
