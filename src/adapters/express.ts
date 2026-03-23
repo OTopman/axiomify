@@ -31,29 +31,30 @@ export function createExpressApp(): express.Application {
       next: NextFunction,
     ) => {
       try {
-      
-        // We use parseAsync to support both synchronous and asynchronous Zod refinements
         const parsedParams = request?.params
-          ? await request.params!.parseAsync(req.params)
+          ? await request.params.parseAsync(req.params)
           : req.params;
         const parsedQuery = request?.query
-          ? await request.query!.parseAsync(req.query)
+          ? await request.query.parseAsync(req.query)
           : req.query;
         const parsedBody = request?.body
-          ? await request.body!.parseAsync(req.body)
+          ? await request.body.parseAsync(req.body)
           : req.body;
 
-        // Overwrite the Express request objects with the strongly-typed, stripped data
-        req.params = parsedParams;
-        req.query = parsedQuery;
-        req.body = parsedBody;
+        // Express 5 prevents mutating req.query directly.
+        // We safely pass the validated data downstream via res.locals.
+        res.locals.axiomify = {
+          params: parsedParams,
+          query: parsedQuery,
+          body: parsedBody,
+        };
 
         next();
       } catch (error) {
         if (error instanceof z.ZodError) {
           res
             .status(400)
-            .json({ error: "Validation Error", details: error.errors });
+            .json({ error: 'Validation Error', details: error.errors });
           return;
         }
         next(error);
@@ -72,21 +73,26 @@ export function createExpressApp(): express.Application {
         // 1. Sequentially execute plugins and merge their returned data
         if (plugins && plugins.length > 0) {
           for (const plugin of plugins) {
-            // Pass the raw request to the plugin
             const result = await plugin(req);
-            if (result && typeof result === "object") {
+            if (result && typeof result === 'object') {
               injectedContext = { ...injectedContext, ...result };
             }
           }
         }
 
-        // 2. Build the final context object for the handler
-        const context = {
+        // 2. Build the final context object for the handler using our validated res.locals
+        const validatedData = res.locals.axiomify || {
           params: req.params,
           query: req.query,
           body: req.body,
+        };
+
+        const context = {
+          params: validatedData.params,
+          query: validatedData.query,
+          body: validatedData.body,
           headers: req.headers as Record<string, string | string[] | undefined>,
-          ...injectedContext, // Spread the accumulated plugin data here
+          ...injectedContext,
         };
 
         // 3. Execute the developer's business logic
@@ -96,9 +102,8 @@ export function createExpressApp(): express.Application {
         const validatedResponse = await response.parseAsync(handlerResult);
         res.json(validatedResponse);
       } catch (error) {
-        // If a plugin throws (e.g., "Unauthorized"), catch it here and format the error
-        if (error instanceof Error && error.message === "Unauthorized") {
-          res.status(401).json({ error: "Unauthorized" });
+        if (error instanceof Error && error.message === 'Unauthorized') {
+          res.status(401).json({ error: 'Unauthorized' });
           return;
         }
 
@@ -107,9 +112,8 @@ export function createExpressApp(): express.Application {
             `[axiomify] Response breached API contract for ${method} ${path}:`,
             error.errors,
           );
-          // We return a 500 here because the client did nothing wrong; the backend returned bad data.
           res.status(500).json({
-            error: "Internal Server Error: Response validation failed.",
+            error: 'Internal Server Error: Response validation failed.',
           });
           return;
         }
