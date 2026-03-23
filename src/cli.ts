@@ -2,7 +2,6 @@
 import { Command } from 'commander';
 import pkg from '../package.json';
 import { runBuildCommand } from './cli/build';
-import { runCreateCommand } from './cli/create';
 import { runDevCommand } from './cli/dev';
 import { runGenerateCommand } from './cli/generate';
 import { runInitCommand } from './cli/init';
@@ -22,37 +21,29 @@ program
 program
   .command('init')
   .description('Scaffold a new Axiomify project')
-  .action(async () => {
-    await runInitCommand();
+  .action(() => {
+    runInitCommand();
   });
 
 program
   .command('build')
   .description('Compile the project for production')
-  .action(async () => {
-    await runBuildCommand();
+  .action(() => {
+    runBuildCommand();
   });
 
 program
   .command('generate')
   .description('Generate frontend client types and AST map')
-  .action(async () => {
-    await runGenerateCommand();
+  .action(() => {
+    runGenerateCommand();
   });
 
 program
   .command('routes')
   .description('Print a visually structured table of all registered routes')
-  .action(async () => {
-    await runRoutesCommand();
-  });
-
-program
-  .command('create')
-  .alias('add') // Allow users to type `axiomify add` as well
-  .description('Interactively scaffold a new route or plugin')
-  .action(async () => {
-    await runCreateCommand();
+  .action(() => {
+    runRoutesCommand();
   });
 
 program.parse(process.argv);

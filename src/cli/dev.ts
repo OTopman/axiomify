@@ -1,60 +1,62 @@
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
 
 export async function runDevCommand() {
   console.log('🔄 Starting Axiomify in Watch Mode...');
 
   const cwd = process.cwd();
-
-  // 1. Read the user's config to find the custom route directory
-  const configPath = path.join(cwd, 'axiomify.config.ts');
-  let routesDir = 'src/routes'; // Default
-  if (fs.existsSync(configPath)) {
-    // We use dynamic import to read the config
-    const importedConfig = await import(path.join('file://', configPath));
-    if (importedConfig.default?.routesDir) {
-      routesDir = importedConfig.default.routesDir;
-    }
-  }
-
-  // 2. Format the watch glob based on the user's config
-  // e.g., "src/routes/**/*.ts" or "app/api/**/*.ts"
-  const watchGlob = path.posix.join(routesDir, '**/*.ts');
-
   const tempEntryPath = path.join(cwd, '.axiomify-dev.ts');
+
   const entryCode = `
     import { _internal_bootstrap } from 'axiomify';
     _internal_bootstrap();
   `;
   fs.writeFileSync(tempEntryPath, entryCode);
 
+  // 1. Locate the absolute path of the tsx loader
+  // This ensures it works even if the user hasn't installed tsx locally
+  let tsxPath: string;
+  try {
+    tsxPath = require.resolve('tsx/dist/loader.mjs');
+  } catch (e) {
+    // Fallback if the loader path structure changes in future versions
+    tsxPath = 'tsx';
+  }
+
   const child = spawn(
-    'npx',
+    'node',
     [
-      'tsx',
-      'watch',
-      '--clear-screen=false',
-      '--include',
-      watchGlob, // <-- Now watches their custom folder!
+      '--import',
+      tsxPath, // Use the absolute path to the loader
+      '--no-warnings',
+      '--watch', // Native Node 23 watcher
       '.axiomify-dev.ts',
     ],
-    { stdio: 'inherit', shell: true, cwd },
+    {
+      stdio: 'inherit',
+      shell: true,
+      cwd,
+      env: {
+        ...process.env,
+        NODE_NO_SOURCE_MAPS: '1',
+      },
+    },
   );
 
-  // Clean up the temporary file when the server stops
   const cleanup = () => {
-    if (fs.existsSync(tempEntryPath)) fs.unlinkSync(tempEntryPath);
+    if (fs.existsSync(tempEntryPath)) {
+      try {
+        fs.unlinkSync(tempEntryPath);
+      } catch {}
+    }
+    process.exit(0);
   };
 
   child.on('close', cleanup);
-  process.on('SIGINT', () => {
-    cleanup();
-    process.exit(0);
-  });
-
-  child.on('error', (err) => {
-    console.error('❌ Failed to start dev server:', err);
-    cleanup();
-  });
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
 }
