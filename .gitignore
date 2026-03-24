@@ -4,4 +4,3 @@ pnpm-lock.yaml
 pnpm-workspace.yaml
 .github
 dist
-example

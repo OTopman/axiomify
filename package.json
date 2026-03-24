@@ -42,6 +42,7 @@
     "openapi3-ts": "^4.5.0",
     "swagger-ui-express": "^5.0.1",
     "ts-morph": "^27.0.2",
+    "tsx": "^4.21.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {

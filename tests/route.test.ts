@@ -1,13 +1,13 @@
-import { describe, it, expectTypeOf } from "vitest";
-import { z } from "zod";
-import { route } from "../src/core/route";
-import { AxiomifyPlugin, Plugin } from "../src/core/types";
+import { describe, expectTypeOf, it } from 'vitest';
+import { z } from 'zod';
+import { route } from '../src/core/route';
+import { AxiomifyPlugin } from '../src/core/types';
 
-describe("Axiomify Core: Route Inference", () => {
-  it("infers standard request and response schemas accurately", () => {
+describe('Axiomify Core: Route Inference', () => {
+  it('infers standard request and response schemas accurately', () => {
     const definedRoute = route({
-      method: "POST",
-      path: "/test",
+      method: 'POST',
+      path: '/test',
       request: {
         body: z.object({ email: z.string() }),
       },

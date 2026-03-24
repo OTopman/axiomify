@@ -1,9 +1,10 @@
 import { build } from 'esbuild';
 import fs from 'fs';
+import { createJiti } from 'jiti';
 import path from 'path';
-import { scanAndRegisterRoutes } from '../scanner';
-import { generateOpenApiDocument } from '../openapi';
 import type { AxiomifyConfig } from '../core/types';
+import { generateOpenApiDocument } from '../openapi';
+import { scanAndRegisterRoutes } from '../scanner';
 
 export async function runBuildCommand() {
   const cwd = process.cwd();
@@ -11,6 +12,7 @@ export async function runBuildCommand() {
   const outDir = path.join(cwd, 'dist');
   const routesDir = path.join(srcDir, 'routes');
   const configPath = path.join(cwd, 'axiomify.config.ts');
+  const jiti = createJiti(path.join(cwd, 'index.js')); // 👈 Initialize Jiti
 
   console.log('🏗️  Building Axiomify project for production...');
 
@@ -19,11 +21,12 @@ export async function runBuildCommand() {
   }
 
   try {
-    // 1. Load User Config (if exists)
+    // 1. Load User Config securely via jiti
     let config: AxiomifyConfig = {};
     if (fs.existsSync(configPath)) {
-      const importedConfig = await import(path.join('file://', configPath));
-      config = importedConfig.default || {};
+      const importedConfig = await jiti.import(configPath, { default: true });
+      const rawConfig: any = importedConfig || {};
+      config = rawConfig.default || rawConfig;
     }
 
     // 2. Pre-load routes

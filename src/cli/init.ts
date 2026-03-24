@@ -39,8 +39,8 @@ export function runInitCommand() {
       routesDir: 'src/routes'
     });
     `;
-        fs.writeFileSync(configFile, configTemplate);
-      }
+    fs.writeFileSync(configFile, configTemplate);
+  }
 
   console.log('\n🎉 Initialization complete! Run `npx axiomify dev` to start.');
 }

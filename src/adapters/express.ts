@@ -60,92 +60,90 @@ export function createExpressApp(): express.Application {
       }
     };
 
-   const executeHandler = async (
-     req: Request,
-     res: Response,
-     next: NextFunction,
-   ) => {
-     // Extract and type the plugins array
-     const plugins: any[] = route.config.plugins || [];
+  const executeHandler = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
 
-     try {
-       let injectedContext = {};
+    try {
+      let injectedContext = {};
 
-       // --- 1. LIFECYCLE: onRequest ---
-       if (plugins.length > 0) {
-         for (const plugin of plugins) {
-           if (plugin.onRequest) {
-             const result = await plugin.onRequest(req);
-             if (result && typeof result === 'object') {
-               injectedContext = { ...injectedContext, ...result };
-             }
-           }
-         }
-       }
+      // --- 1. LIFECYCLE: onRequest ---
+      if (plugins.length > 0) {
+        for (const plugin of plugins) {
+          if (plugin.onRequest) {
+            const result = await plugin.onRequest(req);
+            if (result && typeof result === 'object') {
+              injectedContext = { ...injectedContext, ...result };
+            }
+          }
+        }
+      }
 
-       // 2. Build the final context object for the handler
-       const validatedData = res.locals.axiomify || {
-         params: req.params,
-         query: req.query,
-         body: req.body,
-       };
+      // 2. Build the final context object for the handler
+      const validatedData = res.locals.axiomify || {
+        params: req.params,
+        query: req.query,
+        body: req.body,
+      };
 
-       const context = {
-         params: validatedData.params,
-         query: validatedData.query,
-         body: validatedData.body,
-         headers: req.headers as Record<string, string | string[] | undefined>,
-         ...injectedContext,
-       };
+      const context = {
+        params: validatedData.params,
+        query: validatedData.query,
+        body: validatedData.body,
+        headers: req.headers as Record<string, string | string[] | undefined>,
+        ...injectedContext,
+      };
 
-       // 3. Execute the developer's business logic
-       const handlerResult = await handler(context);
+      // 3. Execute the developer's business logic
+      const handlerResult = await handler(context);
 
-       // 4. Validate outgoing data
-       let finalResponse = route.config.response
-         ? await route.config.response.parseAsync(handlerResult)
-         : handlerResult;
+      // 4. Validate outgoing data
+      let finalResponse = route.config.response
+        ? await route.config.response.parseAsync(handlerResult)
+        : handlerResult;
 
-       // --- 5. LIFECYCLE: onResponse ---
-       if (plugins.length > 0) {
-         // Run onResponse hooks in reverse order (onion model)
-         for (const plugin of [...plugins].reverse()) {
-           if (plugin.onResponse) {
-             finalResponse =
-               (await plugin.onResponse(finalResponse, req)) || finalResponse;
-           }
-         }
-       }
+      // --- 5. LIFECYCLE: onResponse ---
+      if (plugins.length > 0) {
+        // Run onResponse hooks in reverse order (onion model)
+        for (const plugin of [...plugins].reverse()) {
+          if (plugin.onResponse) {
+            finalResponse =
+              (await plugin.onResponse(finalResponse, req)) || finalResponse;
+          }
+        }
+      }
 
-       res.json(finalResponse);
-     } catch (error) {
-       // --- 6. LIFECYCLE: onError ---
-       if (plugins.length > 0) {
-         for (const plugin of plugins) {
-           if (plugin.onError) {
-             await plugin.onError(error as Error, req);
-           }
-         }
-       }
+      res.json(finalResponse);
+    } catch (error) {
+      // --- 6. LIFECYCLE: onError ---
+      if (plugins.length > 0) {
+        for (const plugin of plugins) {
+          if (plugin.onError) {
+            await plugin.onError(error as Error, req);
+          }
+        }
+      }
 
-       if (error instanceof Error && error.message === 'Unauthorized') {
-         res.status(401).json({ error: 'Unauthorized' });
-         return;
-       }
+      if (error instanceof Error && error.message === 'Unauthorized') {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
 
-       if (error instanceof z.ZodError) {
-         console.error(
-           `[axiomify] Response breached API contract for ${method} ${path}:`,
-           error.errors,
-         );
-         res.status(500).json({
-           error: 'Internal Server Error: Response validation failed.',
-         });
-         return;
-       }
-       next(error);
-     }
-   };
+      if (error instanceof z.ZodError) {
+        console.error(
+          `[axiomify] Response breached API contract for ${method} ${path}:`,
+          error.errors,
+        );
+        res.status(500).json({
+          error: 'Internal Server Error: Response validation failed.',
+        });
+        return;
+      }
+      next(error);
+    }
+  };
 
     // Phase 3: Mount the route
     // The spread operator allows us to inject per-route plugins (like auth) before the core logic
