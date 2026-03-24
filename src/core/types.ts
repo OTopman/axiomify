@@ -1,3 +1,12 @@
+export interface AxiomifyRequest {
+  method: string;
+  url: string;
+  headers: Record<string, string | string[] | undefined>;
+  rawBody: any;
+  engine: 'express' | 'fastify';
+  originalRequest: any; // Escape hatch if they absolutely need native APIs
+}
+
 // 1. The Agnostic Schema Interface
 export interface Schema<T = any> {
   parseAsync: (data: unknown) => Promise<T>;
@@ -52,11 +61,11 @@ export interface AxiomifyPlugin<
 > {
   name: string;
   /** Executes before validation. Used to inject typed context (e.g., Auth, DB). */
-  onRequest?: (req: any) => Promise<InjectedData> | InjectedData;
+  onRequest?: (req: AxiomifyRequest) => Promise<InjectedData> | InjectedData;
   /** Executes before sending the response. Used for mutation, caching, or telemetry. */
-  onResponse?: (payload: any, req: any) => Promise<any> | any;
+  onResponse?: (payload: any, req: AxiomifyRequest) => Promise<any> | any;
   /** Executes when an error is thrown. Used for custom logging or telemetry. */
-  onError?: (error: Error, req: any) => Promise<void> | void;
+  onError?: (error: Error, req: AxiomifyRequest) => Promise<void> | void;
 }
 
 // Update the Inference helper to look at the onRequest return type

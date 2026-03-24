@@ -12,7 +12,7 @@ export async function scanAndRegisterRoutes({
   routesDir,
 }: ScannerOptions): Promise<number> {
   const normalizedPath = routesDir.split(path.sep).join(path.posix.sep);
-  const pattern = path.posix.join(normalizedPath, '**/*.ts');
+  const pattern = path.posix.join(normalizedPath, '**/*.{ts,js,mjs,cjs}');
 
   const files = await fg(pattern, { absolute: true });
 

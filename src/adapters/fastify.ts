@@ -5,13 +5,13 @@ import Fastify, {
 } from "fastify";
 import { z } from "zod";
 import { registry } from "../core/registry";
-import { AxiomifyPlugin } from "../core/types";
+import { AxiomifyPlugin, AxiomifyRequest } from "../core/types";
 
 /**
  * Creates and configures a Fastify instance using the registered Axiomify routes.
  */
 export async function createFastifyApp(): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false }); // Developer can override logger in config later
+  const app = Fastify({ logger: false }); 
 
   const routes = registry.getAllRoutes();
 
@@ -62,11 +62,20 @@ export async function createFastifyApp(): Promise<FastifyInstance> {
         try {
           let injectedContext = {};
 
+          const agnosticReq: AxiomifyRequest = {
+            method: req.method,
+            url: req.url,
+            headers: req.headers,
+            rawBody: req.body,
+            engine: 'fastify',
+            originalRequest: req,
+          };
+
           // --- 1. LIFECYCLE: onRequest ---
           if (plugins && plugins.length > 0) {
             for (const plugin of plugins) {
               if (plugin.onRequest) {
-                const result = await plugin.onRequest(req);
+                const result = await plugin.onRequest(agnosticReq);
                 if (result && typeof result === 'object') {
                   injectedContext = { ...injectedContext, ...result };
                 }
@@ -96,7 +105,7 @@ export async function createFastifyApp(): Promise<FastifyInstance> {
             for (const plugin of [...plugins].reverse()) {
               if (plugin.onResponse) {
                 finalResponse =
-                  (await plugin.onResponse(finalResponse, req)) ||
+                  (await plugin.onResponse(finalResponse, agnosticReq)) ||
                   finalResponse;
               }
             }
@@ -108,7 +117,7 @@ export async function createFastifyApp(): Promise<FastifyInstance> {
           if (plugins && plugins.length > 0) {
             for (const plugin of plugins) {
               if (plugin.onError) {
-                await plugin.onError(error as Error, req);
+                await plugin.onError(error as Error, req as any);
               }
             }
           }

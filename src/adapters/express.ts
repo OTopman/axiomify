@@ -1,7 +1,7 @@
 import express, { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 import { registry } from "../core/registry";
-import { AxiomifyPlugin } from "../core/types";
+import { AxiomifyPlugin, AxiomifyRequest } from "../core/types";
 
 /**
  * Creates and configures an Express application using the registered Axiomify routes.
@@ -69,11 +69,20 @@ export function createExpressApp(): express.Application {
     try {
       let injectedContext = {};
 
+      const agnosticReq: AxiomifyRequest = {
+        method: req.method,
+        url: req.originalUrl,
+        headers: req.headers,
+        rawBody: req.body,
+        engine: 'express',
+        originalRequest: req,
+      };
+
       // --- 1. LIFECYCLE: onRequest ---
       if (plugins.length > 0) {
         for (const plugin of plugins) {
           if (plugin.onRequest) {
-            const result = await plugin.onRequest(req);
+            const result = await plugin.onRequest(agnosticReq);
             if (result && typeof result === 'object') {
               injectedContext = { ...injectedContext, ...result };
             }
@@ -110,7 +119,8 @@ export function createExpressApp(): express.Application {
         for (const plugin of [...plugins].reverse()) {
           if (plugin.onResponse) {
             finalResponse =
-              (await plugin.onResponse(finalResponse, req)) || finalResponse;
+              (await plugin.onResponse(finalResponse, agnosticReq)) ||
+              finalResponse;
           }
         }
       }
@@ -121,7 +131,7 @@ export function createExpressApp(): express.Application {
       if (plugins.length > 0) {
         for (const plugin of plugins) {
           if (plugin.onError) {
-            await plugin.onError(error as Error, req);
+            await plugin.onError(error as Error, req as any);
           }
         }
       }
