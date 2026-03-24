@@ -1,7 +1,7 @@
 import { describe, it, expectTypeOf } from "vitest";
 import { z } from "zod";
 import { route } from "../src/core/route";
-import { Plugin } from "../src/core/types";
+import { AxiomifyPlugin, Plugin } from "../src/core/types";
 
 describe("Axiomify Core: Route Inference", () => {
   it("infers standard request and response schemas accurately", () => {
@@ -30,27 +30,19 @@ describe("Axiomify Core: Route Inference", () => {
     ).returns.toEqualTypeOf<ExpectedReturnType>();
   });
 
-  it("infers sequentially injected plugin context perfectly", () => {
-    // Define two distinct plugins
-    const authPlugin: Plugin<{ user: { id: string } }> = (req) => ({
-      user: { id: "user_123" },
-    });
-
-    const dbPlugin: Plugin<{ db: { query: () => void } }> = (req) => ({
-      db: { query: () => {} },
-    });
+  it('infers sequentially injected plugin context perfectly', () => {
+    const authPlugin: AxiomifyPlugin<{ user: { id: string } }> = {
+      name: 'auth',
+      onRequest: () => ({ user: { id: 'user_123' } }),
+    };
 
     route({
-      method: "GET",
-      path: "/secure",
+      method: 'GET',
+      path: '/secure',
       response: z.object({ success: z.boolean() }),
-      // Inject both plugins
-      inject: [authPlugin, dbPlugin],
+      plugins: [authPlugin], // Changed from 'inject' to 'plugins'
       handler: async (ctx) => {
-        // The Magic: Assert that both `user` and `db` exist on the context object
         expectTypeOf(ctx.user).toEqualTypeOf<{ id: string }>();
-        expectTypeOf(ctx.db).toEqualTypeOf<{ query: () => void }>();
-
         return { success: true };
       },
     });

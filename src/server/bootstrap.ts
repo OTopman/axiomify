@@ -1,12 +1,13 @@
 import fs from 'fs';
+import { createJiti } from 'jiti';
 import path from 'path';
 import swaggerUi from 'swagger-ui-express';
 import { createExpressApp } from '../adapters/express';
 import { createFastifyApp } from '../adapters/fastify';
 import { registry } from '../core/registry';
+import { AxiomifyConfig } from '../core/types';
 import { generateOpenApiDocument } from '../openapi';
 import { scanAndRegisterRoutes } from '../scanner';
-import { AxiomifyConfig } from '../core/types';
 
 /**
  * Initializes and starts the Axiomify server.
@@ -15,15 +16,21 @@ import { AxiomifyConfig } from '../core/types';
 export async function bootstrap(
   options: { port?: number; routesDir?: string } = {},
 ) {
-  const configPath = path.join(process.cwd(), 'axiomify.config.ts');
+  const cwd = process.cwd();
+  const configPath = path.join(cwd, 'axiomify.config.ts');
+  const jiti = createJiti(path.join(cwd, 'index.js'));
 
-  // 1. Set intelligent defaults
-  let config: Partial<AxiomifyConfig> = { server: 'express', port: 3000, routesDir: 'src/routes' };
+  let config: Partial<AxiomifyConfig> = {
+    server: 'express',
+    port: 3000,
+    routesDir: 'src/routes',
+  };
 
-  // 2. Override defaults with user config
   if (fs.existsSync(configPath)) {
-    const importedConfig = await import(configPath);
-    config = { ...config, ...importedConfig.default };
+    // Use jiti to safely import the TS config file
+    const imported = await jiti.import(configPath, { default: true });
+    const rawConfig: any = imported || {};
+    config = { ...config, ...(rawConfig.default || rawConfig) };
   }
 
   const PORT = Number(options.port || process.env.PORT || config.port);
@@ -55,20 +62,20 @@ export async function bootstrap(
 
     const fastifyExpress = await import('@fastify/express');
     await app.register(fastifyExpress.default || fastifyExpress);
-   const swaggerMiddlewares = ([] as any[]).concat(
-     (req: any, res: any, next: any) => {
-       if (req.url === '/' || req.url === '/index.html' || req.url === '') {
-         res.setHeader('Content-Type', 'text/html');
-       }
-       next();
-     },
-     swaggerUi.serve,
-     swaggerUi.setup(openApiDoc),
-   );
+    const swaggerMiddlewares = ([] as any[]).concat(
+      (req: any, res: any, next: any) => {
+        if (req.url === '/' || req.url === '/index.html' || req.url === '') {
+          res.setHeader('Content-Type', 'text/html');
+        }
+        next();
+      },
+      swaggerUi.serve,
+      swaggerUi.setup(openApiDoc),
+    );
 
-   swaggerMiddlewares.forEach((mw) => {
-     app.use('/docs', mw);
-   });
+    swaggerMiddlewares.forEach((mw) => {
+      app.use('/docs', mw);
+    });
 
     // Fastify .listen() expects a configuration object
     await app.listen({ port: PORT, host: '0.0.0.0' });

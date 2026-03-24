@@ -43,9 +43,9 @@ export function createExpressApp(): express.Application {
         // Express 5 prevents mutating req.query directly.
         // We safely pass the validated data downstream via res.locals.
         res.locals.axiomify = {
-          params: parsedParams,
-          query: parsedQuery,
-          body: parsedBody,
+          params: parsedParams || {},
+          query: parsedQuery || {},
+          body: parsedBody || {},
         };
 
         next();
