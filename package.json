@@ -5,6 +5,9 @@
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -21,14 +24,15 @@
     "axiomify": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsup src/index.ts src/cli.ts --format cjs,esm --dts --clean",
-    "dev": "tsup src/index.ts src/cli.ts --format cjs,esm --watch",
+    "build": "tsup src/index.ts src/cli.ts src/client.ts src/testing/index.ts --format cjs,esm --dts --clean",
+    "dev": "tsup src/index.ts src/cli.ts src/client.ts src/testing/index.ts --format cjs,esm --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint \"{src,tests}/**/*.ts\"",
     "lint:fix": "eslint \"{src,tests}/**/*.ts\" --fix",
     "format": "prettier --write \"**/*.{ts,js,json,md}\"",
-    "format:check": "prettier --check \"**/*.{ts,js,json,md}\""
+    "format:check": "prettier --check \"**/*.{ts,js,json,md}\"",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^7.0.0",
