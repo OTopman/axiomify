@@ -1,8 +1,9 @@
 import { spawn } from 'child_process';
-import path from 'path';
 import fs from 'fs';
 import { createRequire } from 'module';
+import path from 'path';
 
+// @ts-expect-error - TS complains about import.meta in CJS, but tsup shims it automatically at build time
 const require = createRequire(import.meta.url);
 
 export async function runDevCommand() {

@@ -5,7 +5,7 @@ export default defineConfig({
   port: 4000,
   routesDir: 'src/routes',
   openapi: {
-    title: 'Axiomify Example Documentation',
-    version: '1.2',
+    title: 'Axiomify Example',
+    version: '1.0.0',
   },
 });

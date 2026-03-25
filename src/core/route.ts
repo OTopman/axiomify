@@ -1,12 +1,12 @@
-import { z } from 'zod';
-import { AxiomifyPlugin, RouteDefinition } from './types';
+import { AxiomifyPlugin, RouteDefinition, Schema } from './types';
 
+// The route function acts purely as a generic identity function for perfect IDE inference
 export function route<
-  P extends z.ZodTypeAny = z.ZodVoid,
-  Q extends z.ZodTypeAny = z.ZodVoid,
-  B extends z.ZodTypeAny = z.ZodVoid,
-  R extends z.ZodTypeAny = z.ZodVoid,
-  Plugins extends AxiomifyPlugin<any>[] = AxiomifyPlugin<any>[], // Updated default
+  P extends Schema | void = void,
+  Q extends Schema | void = void,
+  B extends Schema | void = void,
+  R extends Schema | void = void,
+  Plugins extends readonly AxiomifyPlugin<unknown>[] = [],
 >(
   config: RouteDefinition<P, Q, B, R, Plugins>,
 ): RouteDefinition<P, Q, B, R, Plugins> {

@@ -5,7 +5,8 @@ import {
 import type { OpenAPIObject } from 'openapi3-ts/oas30';
 import pkg from '../../package.json';
 import { registry } from '../core/registry';
-import type { AxiomifyConfig } from '../core/types';
+import type { AxiomifyConfig, Schema } from '../core/types';
+import z from 'zod';
 
 function convertToOpenApiPath(expressPath: string): string {
   return expressPath.replace(/:([a-zA-Z0-9_]+)/g, '{$1}');
@@ -22,19 +23,26 @@ export function generateOpenApiDocument(
     const { method, path, request, response } = route.config;
 
     openApiRegistry.registerPath({
-      method: method.toLowerCase() as any,
+      method: method.toLowerCase() as
+        | 'get'
+        | 'post'
+        | 'put'
+        | 'delete'
+        | 'patch',
       path: convertToOpenApiPath(path),
       tags: [route.tag],
       summary: `${method} ${path}`,
       request: request
         ? {
-            params: request.params as any,
-            query: request.query as any,
-            headers: request.headers as any,
+            params: request.params as z.ZodType<unknown> | undefined,
+            query: request.query as z.ZodType<unknown> | undefined,
+            headers: request.headers as Schema<unknown> | undefined,
             body: request.body
               ? {
                   content: {
-                    'application/json': { schema: request.body },
+                    'application/json': {
+                      schema: request.body as z.ZodType<unknown>,
+                    },
                   },
                 }
               : undefined,

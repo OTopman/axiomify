@@ -1,19 +1,36 @@
-export function createClient<T>(baseUrl: string, routeMap: any) {
+export interface RequestPayload<P, Q, B> {
+  params?: P;
+  query?: Q;
+  body?: B;
+  headers?: Record<string, string>;
+}
+
+export interface RouteRuntimeMeta {
+  method: string;
+  path: string;
+}
+
+// 🧠 This generic casting bridges the runtime Proxy with the build-time AST map
+export function createClient<Router extends Record<string, any>>(
+  baseUrl: string,
+  routeMap: Record<string, RouteRuntimeMeta>,
+) {
   return new Proxy(
     {},
     {
-      get(_, key: string) {
+      get(_, domainKey: string) {
         return new Proxy(
           {},
           {
-            get(_, subKey: string) {
-              const fullKey = `${key}.${subKey}`;
+            get(_, routeKey: string) {
+              const fullKey = `${domainKey}.${routeKey}`;
               const meta = routeMap[fullKey];
 
-              return async (payload: any = {}) => {
+              return async (
+                payload: RequestPayload<unknown, unknown, unknown> = {},
+              ) => {
                 let finalPath = meta.path;
 
-                // 1. Inject path parameters (e.g., /users/:id -> /users/123)
                 if (payload.params) {
                   Object.entries(payload.params).forEach(([k, v]) => {
                     finalPath = finalPath.replace(
@@ -23,7 +40,6 @@ export function createClient<T>(baseUrl: string, routeMap: any) {
                   });
                 }
 
-                // 2. Inject query parameters (e.g., ?search=term)
                 if (payload.query) {
                   const searchParams = new URLSearchParams();
                   Object.entries(payload.query).forEach(([k, v]) => {
@@ -43,7 +59,6 @@ export function createClient<T>(baseUrl: string, routeMap: any) {
                       'Content-Type': 'application/json',
                       ...payload.headers,
                     },
-                    // Prevent body inclusion on GET/HEAD requests
                     body:
                       meta.method !== 'GET' &&
                       meta.method !== 'HEAD' &&
@@ -53,10 +68,19 @@ export function createClient<T>(baseUrl: string, routeMap: any) {
                   },
                 );
 
-                if (!response.ok)
+                if (!response.ok) {
+                  // Safely cast the unknown JSON payload to an expected error interface
+                  const errBody = (await response.json().catch(() => ({}))) as {
+                    message?: string;
+                    error?: string;
+                  };
+
+                  const errorMessage =
+                    errBody.message || errBody.error || response.statusText;
                   throw new Error(
-                    `Axiomify Request Failed: ${response.statusText}`,
+                    `Axiomify Error [${response.status}]: ${errorMessage}`,
                   );
+                }
                 return response.json();
               };
             },
@@ -64,5 +88,16 @@ export function createClient<T>(baseUrl: string, routeMap: any) {
         );
       },
     },
-  );
+  ) as unknown as {
+    // This creates perfect IDE autocomplete for frontend developers
+    [Domain in keyof Router]: {
+      [Route in keyof Router[Domain]]: (
+        payload: RequestPayload<
+          Router[Domain][Route]['params'],
+          Router[Domain][Route]['query'],
+          Router[Domain][Route]['body']
+        >,
+      ) => Promise<Router[Domain][Route]['response']>;
+    };
+  };
 }

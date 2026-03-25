@@ -1,6 +1,6 @@
 {
   "name": "axiomify",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Zero-boilerplate, code-first API contract system",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -58,5 +58,27 @@
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.0"
+  },
+  "release": {
+    "branches": [
+      "main"
+    ],
+    "plugins": [
+      "@semantic-release/commit-analyzer",
+      "@semantic-release/release-notes-generator",
+      "@semantic-release/changelog",
+      "@semantic-release/npm",
+      "@semantic-release/github",
+      [
+        "@semantic-release/git",
+        {
+          "assets": [
+            "CHANGELOG.md",
+            "package.json"
+          ],
+          "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+        }
+      ]
+    ]
   }
 }

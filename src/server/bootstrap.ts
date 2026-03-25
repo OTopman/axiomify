@@ -8,6 +8,7 @@ import { registry } from '../core/registry';
 import { AxiomifyConfig } from '../core/types';
 import { generateOpenApiDocument } from '../openapi';
 import { scanAndRegisterRoutes } from '../scanner';
+import type { RequestHandler, Request, Response, NextFunction } from 'express';
 
 /**
  * Initializes and starts the Axiomify server.
@@ -29,8 +30,11 @@ export async function bootstrap(
   if (fs.existsSync(configPath)) {
     // Use jiti to safely import the TS config file
     const imported = await jiti.import(configPath, { default: true });
-    const rawConfig: any = imported || {};
-    config = { ...config, ...(rawConfig.default || rawConfig) };
+    const rawConfig = (imported || {}) as Record<string, unknown>;
+    config = {
+      ...config,
+      ...((rawConfig.default || rawConfig) as Partial<AxiomifyConfig>),
+    };
   }
 
   const PORT = Number(options.port || process.env.PORT || config.port);
@@ -62,7 +66,7 @@ export async function bootstrap(
 
     const fastifyExpress = await import('@fastify/express');
     await app.register(fastifyExpress.default || fastifyExpress);
-    const swaggerMiddlewares = ([] as any[]).concat(
+    /* const swaggerMiddlewares = ([] as any[]).concat(
       (req: any, res: any, next: any) => {
         if (req.url === '/' || req.url === '/index.html' || req.url === '') {
           res.setHeader('Content-Type', 'text/html');
@@ -71,7 +75,18 @@ export async function bootstrap(
       },
       swaggerUi.serve,
       swaggerUi.setup(openApiDoc),
-    );
+    ); */
+
+   const swaggerMiddlewares: RequestHandler[] = [
+     (req: Request, res: Response, next: NextFunction) => {
+       if (req.url === '/' || req.url === '/index.html' || req.url === '') {
+         res.setHeader('Content-Type', 'text/html');
+       }
+       next();
+     },
+     ...swaggerUi.serve,
+     swaggerUi.setup(openApiDoc) as RequestHandler,
+   ];
 
     swaggerMiddlewares.forEach((mw) => {
       app.use('/docs', mw);

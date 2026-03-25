@@ -1,38 +1,61 @@
-export interface AxiomifyRequest {
+export interface AxiomifyRequest<RawEngine = unknown> {
   method: string;
   url: string;
+  path: string;
+  query: Record<string, unknown>;
+  params: Record<string, unknown>;
   headers: Record<string, string | string[] | undefined>;
-  rawBody: any;
+  rawBody: unknown; 
   engine: 'express' | 'fastify';
-  originalRequest: any; // Escape hatch if they absolutely need native APIs
+  originalRequest: RawEngine; // Strongly typed escape hatch
 }
 
-// 1. The Agnostic Schema Interface
-export interface Schema<T = any> {
+// 1. Strict Schema Interface
+export interface Schema<T = unknown> {
   parseAsync: (data: unknown) => Promise<T>;
-  // Virtual property for TypeScript to infer the resulting type
   _output?: T;
 }
 
-// 2. Type Inference Helper
+// 2. Strict Type Inference Helper
 export type Infer<T> = T extends Schema<infer U> ? U : never;
 
-// 3. Update RouteContext to use the generic Inference
-export type RouteContext<P, Q, B, Injected = {}> = {
+// 3. The Plugin Abstraction (Zero Any)
+export interface AxiomifyPlugin<InjectedData = void> {
+  name: string;
+  onRequest?: (req: AxiomifyRequest) => Promise<InjectedData> | InjectedData;
+  onResponse?: (
+    payload: unknown,
+    req: AxiomifyRequest,
+  ) => Promise<unknown> | unknown;
+  onError?: (error: Error, req: AxiomifyRequest) => Promise<void> | void;
+}
+
+// 4. Recursive Tuple Inference for Plugins
+export type InferInjectedContext<T extends readonly AxiomifyPlugin<unknown>[]> =
+  T extends readonly []
+    ? {}
+    : T extends readonly [
+          AxiomifyPlugin<infer First>,
+          ...infer Rest extends readonly AxiomifyPlugin<unknown>[],
+        ]
+      ? (First extends void ? {} : First) & InferInjectedContext<Rest>
+      : {};
+
+// 5. Route Context
+export type RouteContext<P, Q, B, Injected> = {
   params: P;
   query: Q;
   body: B;
   headers: Record<string, string | string[] | undefined>;
 } & Injected;
 
-// 4. Update RouteDefinition to accept ANY Schema, not just Zod
+// 6. The Route Definition
 export interface RouteDefinition<
   P extends Schema | void = void,
   Q extends Schema | void = void,
   B extends Schema | void = void,
   R extends Schema | void = void,
-  // 👇 FIX: Default to the generic array, not an empty tuple []
-  Plugins extends AxiomifyPlugin<any>[] = AxiomifyPlugin<any>[],
+  Plugins extends readonly AxiomifyPlugin<unknown>[] = [], // Default to empty tuple
 > {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
@@ -43,7 +66,7 @@ export interface RouteDefinition<
     headers?: Schema;
   };
   response: R;
-  plugins?: [...Plugins];
+  plugins?: Plugins;
   handler: (
     ctx: RouteContext<
       P extends Schema ? Infer<P> : void,
@@ -56,37 +79,10 @@ export interface RouteDefinition<
     | (R extends Schema ? Infer<R> : void);
 }
 
-export interface AxiomifyPlugin<
-  InjectedData extends Record<string, any> | void = void,
-> {
-  name: string;
-  /** Executes before validation. Used to inject typed context (e.g., Auth, DB). */
-  onRequest?: (req: AxiomifyRequest) => Promise<InjectedData> | InjectedData;
-  /** Executes before sending the response. Used for mutation, caching, or telemetry. */
-  onResponse?: (payload: any, req: AxiomifyRequest) => Promise<any> | any;
-  /** Executes when an error is thrown. Used for custom logging or telemetry. */
-  onError?: (error: Error, req: AxiomifyRequest) => Promise<void> | void;
-}
-
-// Update the Inference helper to look at the onRequest return type
-export type InferInjectedContext<T extends AxiomifyPlugin<any>[]> = T extends []
-  ? {}
-  : T extends [
-        AxiomifyPlugin<infer First>,
-        ...infer Rest extends AxiomifyPlugin<any>[],
-      ]
-    ? (First extends void ? {} : First) & InferInjectedContext<Rest>
-    : {};
-
 export interface AxiomifyConfig {
-  /** The underlying HTTP server adapter to use. */
   server?: 'express' | 'fastify';
-  /** The port the server will listen on. */
   port?: number;
-  /** The directory where Axiomify should scan for route files. */
   routesDir?: string;
-
-  /** Custom metadata for the auto-generated OpenAPI documentation */
   openapi?: {
     title?: string;
     description?: string;

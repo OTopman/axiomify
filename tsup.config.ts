@@ -13,6 +13,7 @@ export default defineConfig({
   dts: true,
   clean: true,
   treeshake: true,
+  shims: true,
   sourcemap: false, // Set to false to prevent Node 23 .map crashes
   splitting: true, // Ensure splitting is enabled for clean chunks
   // Exclude heavy peer dependencies from the final bundle

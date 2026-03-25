@@ -25,13 +25,8 @@ export async function scanAndRegisterRoutes({
     try {
       const mod = await jiti.import(file, { default: true });
 
-      const rawExport: any = mod || {};
-      const config = (rawExport.default || rawExport) as RouteDefinition<
-        any,
-        any,
-        any,
-        any
-      >;
+      const rawExport = (mod || {}) as Record<string, unknown>;
+      const config = (rawExport.default || rawExport) as RouteDefinition;
 
       if (!config || !config.method || !config.path || !config.handler) {
         console.warn(
