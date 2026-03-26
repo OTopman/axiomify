@@ -1,7 +1,7 @@
 {
   "name": "axiomify",
-  "version": "1.0.0",
-  "description": "Zero-boilerplate, code-first API contract system",
+  "version": "1.0.1",
+  "description": "Zero-boilerplate, code-first API contract system and universal engine optimized for both Express and Fastify",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
