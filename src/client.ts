@@ -10,94 +10,68 @@ export interface RouteRuntimeMeta {
   path: string;
 }
 
-// 🧠 This generic casting bridges the runtime Proxy with the build-time AST map
-export function createClient<Router extends Record<string, any>>(
+export function createClient<Router>(
   baseUrl: string,
   routeMap: Record<string, RouteRuntimeMeta>,
-) {
-  return new Proxy(
-    {},
-    {
-      get(_, domainKey: string) {
-        return new Proxy(
-          {},
-          {
-            get(_, routeKey: string) {
-              const fullKey = `${domainKey}.${routeKey}`;
-              const meta = routeMap[fullKey];
+): Router {
+  // A recursive proxy that builds the path as you chain properties
+  function createProxy(path: string[]): any {
+    const callable = async (payload: RequestPayload<any, any, any> = {}) => {
+      const fullKey = path.join('.');
+      const meta = routeMap[fullKey];
 
-              return async (
-                payload: RequestPayload<unknown, unknown, unknown> = {},
-              ) => {
-                let finalPath = meta.path;
+      if (!meta) {
+        throw new Error(`Route not found: ${fullKey}`);
+      }
 
-                if (payload.params) {
-                  Object.entries(payload.params).forEach(([k, v]) => {
-                    finalPath = finalPath.replace(
-                      `:${k}`,
-                      encodeURIComponent(String(v)),
-                    );
-                  });
-                }
+      let finalPath = meta.path;
 
-                if (payload.query) {
-                  const searchParams = new URLSearchParams();
-                  Object.entries(payload.query).forEach(([k, v]) => {
-                    if (v !== undefined && v !== null) {
-                      searchParams.append(k, String(v));
-                    }
-                  });
-                  const qs = searchParams.toString();
-                  if (qs) finalPath += `?${qs}`;
-                }
+      if (payload.params) {
+        Object.entries(payload.params).forEach(([k, v]) => {
+          finalPath = finalPath.replace(`:${k}`, encodeURIComponent(String(v)));
+        });
+      }
 
-                const response = await globalThis.fetch(
-                  `${baseUrl}${finalPath}`,
-                  {
-                    method: meta.method,
-                    headers: {
-                      'Content-Type': 'application/json',
-                      ...payload.headers,
-                    },
-                    body:
-                      meta.method !== 'GET' &&
-                      meta.method !== 'HEAD' &&
-                      payload.body
-                        ? JSON.stringify(payload.body)
-                        : undefined,
-                  },
-                );
+      if (payload.query) {
+        const searchParams = new URLSearchParams();
+        Object.entries(payload.query).forEach(([k, v]) => {
+          if (v !== undefined && v !== null) {
+            searchParams.append(k, String(v));
+          }
+        });
+        const qs = searchParams.toString();
+        if (qs) finalPath += `?${qs}`;
+      }
 
-                if (!response.ok) {
-                  // Safely cast the unknown JSON payload to an expected error interface
-                  const errBody = (await response.json().catch(() => ({}))) as {
-                    message?: string;
-                    error?: string;
-                  };
+      const response = await globalThis.fetch(`${baseUrl}${finalPath}`, {
+        method: meta.method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...payload.headers,
+        },
+        body:
+          meta.method !== 'GET' && meta.method !== 'HEAD' && payload.body
+            ? JSON.stringify(payload.body)
+            : undefined,
+      });
 
-                  const errorMessage =
-                    errBody.message || errBody.error || response.statusText;
-                  throw new Error(
-                    `Axiomify Error [${response.status}]: ${errorMessage}`,
-                  );
-                }
-                return response.json();
-              };
-            },
-          },
-        );
-      },
-    },
-  ) as unknown as {
-    // This creates perfect IDE autocomplete for frontend developers
-    [Domain in keyof Router]: {
-      [Route in keyof Router[Domain]]: (
-        payload: RequestPayload<
-          Router[Domain][Route]['params'],
-          Router[Domain][Route]['query'],
-          Router[Domain][Route]['body']
-        >,
-      ) => Promise<Router[Domain][Route]['response']>;
+      if (!response.ok) {
+        const errBody = (await response.json().catch(() => ({}))) as any;
+        const errorMessage =
+          errBody.message || errBody.error || response.statusText;
+        throw new Error(`Axiomify Error [${response.status}]: ${errorMessage}`);
+      }
+      return response.json();
     };
-  };
+
+    // Return a Proxy that wraps the callable function
+    return new Proxy(callable, {
+      get(_, prop: string) {
+        return createProxy([...path, prop]);
+      },
+    });
+  }
+
+  // Cast the untyped recursive proxy strictly to the generated AppRouter
+  return createProxy([]) as unknown as Router;
 }
