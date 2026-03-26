@@ -50,6 +50,8 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
     "@types/express": "^5.0.6",
     "@types/node": "^20.0.0",
     "@types/supertest": "^7.2.0",
@@ -58,6 +60,7 @@
     "@typescript-eslint/parser": "^7.0.0",
     "eslint": "^8.57.0",
     "prettier": "^3.2.5",
+    "semantic-release": "^24.2.9",
     "supertest": "^7.2.2",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0",
