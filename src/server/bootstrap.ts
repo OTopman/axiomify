@@ -66,17 +66,7 @@ export async function bootstrap(
 
     const fastifyExpress = await import('@fastify/express');
     await app.register(fastifyExpress.default || fastifyExpress);
-    /* const swaggerMiddlewares = ([] as any[]).concat(
-      (req: any, res: any, next: any) => {
-        if (req.url === '/' || req.url === '/index.html' || req.url === '') {
-          res.setHeader('Content-Type', 'text/html');
-        }
-        next();
-      },
-      swaggerUi.serve,
-      swaggerUi.setup(openApiDoc),
-    ); */
-
+  
    const swaggerMiddlewares: RequestHandler[] = [
      (req: Request, res: Response, next: NextFunction) => {
        if (req.url === '/' || req.url === '/index.html' || req.url === '') {
@@ -92,19 +82,23 @@ export async function bootstrap(
       app.use('/docs', mw);
     });
 
+    if (config.engineSetup) {
+      console.log('⚙️  Executing custom engineSetup hook...');
+      await config.engineSetup(app);
+    }
+
     // Fastify .listen() expects a configuration object
     await app.listen({ port: PORT, host: '0.0.0.0' });
     console.log(`\n✨ Axiomify (Fastify) is running!`);
   } else {
     // Express-specific initialization
-    const app = createExpressApp();
+    const app = await createExpressApp(config);
+    if (config.engineSetup) await config.engineSetup(app);
 
     app.use('/docs', swaggerUi.serve, swaggerUi.setup(openApiDoc));
 
-    // Express .listen() expects port and callback
-    app.listen(PORT, () => {
-      console.log(`\n✨ Axiomify (Express) is running!`);
-    });
+    app.use('/docs', swaggerUi.serve, swaggerUi.setup(openApiDoc));
+    app.listen(PORT, () => console.log(`\n✨ Axiomify (Express) is running!`));
   }
 
   console.log(`🔗 Local API: http://localhost:${PORT}`);

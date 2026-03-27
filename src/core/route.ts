@@ -1,4 +1,11 @@
-import { AxiomifyPlugin, Infer, RouteDefinition, Schema } from './types';
+import {
+  AxiomifyPlugin,
+  ExtractRouteParams,
+  Infer,
+  ResponsesMap,
+  RouteDefinition,
+  Schema,
+} from './types';
 
 // An unconstrained AST Wrapper for the CLI scanner to read
 export interface ClientRouteAST<P, Q, B, R> {
@@ -9,18 +16,20 @@ export interface ClientRouteAST<P, Q, B, R> {
 }
 
 export function route<
-  P extends Schema | void = void,
+  Path extends string = string,
+  P extends ExtractRouteParams<Path> | void = void,
   Q extends Schema | void = void,
   B extends Schema | void = void,
-  R extends Schema | void = void,
+  R extends ResponsesMap = { 200: void },
   Plugins extends readonly AxiomifyPlugin<unknown>[] = [],
 >(
-  config: RouteDefinition<P, Q, B, R, Plugins>,
+  config: RouteDefinition<Path, P, Q, B, R, Plugins>,
 ): ClientRouteAST<
-  P extends Schema ? Infer<P> : void,
+  P,
   Q extends Schema ? Infer<Q> : void,
   B extends Schema ? Infer<B> : void,
-  R extends Schema ? Infer<R> : void
+  // Flattens the multi-status ResponsesMap into a union of possible payload types for the frontend
+  { [K in keyof R]: R[K] extends Schema ? Infer<R[K]> : void }[keyof R]
 > {
   // Return the runtime config unchanged, but force the compiler to read the clean AST
   return config as any;

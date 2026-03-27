@@ -87,4 +87,39 @@ describe("Axiomify Adapters: Integration Tests", () => {
       expect(body.error).toBe("Validation Error");
     });
   });
+
+  describe('Zero-Dependency Global Configurations', () => {
+    it('injects native security headers when helmet is enabled', async () => {
+      // Create a specific config just for this test
+      const app = await createExpressApp({ helmet: true });
+
+      const response = await request(app).get('/users'); // Use a mock or 404 route
+
+      // Verify our native implementation mimics Helmet
+      expect(response.headers['x-content-type-options']).toBe('nosniff');
+      expect(response.headers['x-frame-options']).toBe('SAMEORIGIN');
+      expect(response.headers['x-xss-protection']).toBe('1; mode=block');
+      expect(response.headers['strict-transport-security']).toBe(
+        'max-age=31536000; includeSubDomains',
+      );
+    });
+
+    it('injects native CORS headers when cors is enabled', async () => {
+      const app = await createExpressApp({
+        cors: { origin: 'https://test.com', credentials: true },
+      });
+
+      // Simulate a Preflight OPTIONS request
+      const response = await request(app).options('/users');
+
+      expect(response.status).toBe(204);
+      expect(response.headers['access-control-allow-origin']).toBe(
+        'https://test.com',
+      );
+      expect(response.headers['access-control-allow-credentials']).toBe('true');
+      expect(response.headers['access-control-allow-methods']).toContain(
+        'POST',
+      );
+    });
+  });
 });
