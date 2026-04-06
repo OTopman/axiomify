@@ -1,0 +1,62 @@
+import * as esbuild from 'esbuild';
+import fs from 'fs/promises';
+import path from 'path';
+
+export async function inspectRoutes(entry: string): Promise<void> {
+  const entryPath = path.resolve(process.cwd(), entry);
+  const tempPath = path.resolve(process.cwd(), '.axiomify/inspect.cjs');
+
+  try {
+    // 1. Compile the app to a temporary CommonJS file
+    await esbuild.build({
+      entryPoints: [entryPath],
+      bundle: true,
+      platform: 'node',
+      format: 'cjs',
+      outfile: tempPath,
+      external: ['express', '@axiomify/core', '@axiomify/express'],
+    });
+
+    // 2. Clear require cache to ensure fresh load
+    delete require.cache[require.resolve(tempPath)];
+
+    // 3. Import the compiled app
+    const mod = require(tempPath);
+    const app = mod.app || mod.default;
+
+    if (!app || typeof app.registeredRoutes === 'undefined') {
+      console.error('❌ Error: Could not find an exported Axiomify instance.');
+      console.error(
+        'Ensure your entry file exports the app: `export const app = new Axiomify();`',
+      );
+      process.exit(1);
+    }
+
+    // 4. Format and print the routes
+    console.log('\n🧭 Registered Axiomify Routes:');
+    console.log('----------------------------------------------------');
+    console.log(`${'METHOD'.padEnd(10)} | ${'PATH'.padEnd(30)} | VALIDATION`);
+    console.log('----------------------------------------------------');
+
+    app.registeredRoutes.forEach((route: any) => {
+      const schemas = [];
+      if (route.schema?.body) schemas.push('Body');
+      if (route.schema?.query) schemas.push('Query');
+      if (route.schema?.params) schemas.push('Params');
+
+      const validationStr = schemas.length > 0 ? schemas.join(', ') : 'None';
+
+      console.log(
+        `${route.method.padEnd(10)} | ${route.path.padEnd(30)} | ${validationStr}`,
+      );
+    });
+    console.log('----------------------------------------------------\n');
+  } catch (error) {
+    console.error('❌ Failed to inspect routes:', error);
+  } finally {
+    // 5. Cleanup temp file
+    await fs
+      .rm(path.dirname(tempPath), { recursive: true, force: true })
+      .catch(() => {});
+  }
+}
