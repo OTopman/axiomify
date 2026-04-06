@@ -1,5 +1,6 @@
 {
   "name": "axiomify-workspace",
+  "description": "Zero-compromise Node.js framework with Radix routing, Zod-native validation, and a modular plugin ecosystem for building high-performance, type-safe APIs.",
   "private": true,
   "engines": {
     "node": ">=18.0.0"
@@ -18,5 +19,28 @@
   },
   "dependencies": {
     "maskify-ts": "^3.5.0"
-  }
+  },
+  "keywords": [
+    "nodejs",
+    "framework",
+    "web-framework",
+    "backend",
+    "api",
+    "http",
+    "server",
+    "fastify-alternative",
+    "express-alternative",
+    "nestjs-alternative",
+    "high-performance",
+    "radix-router",
+    "routing",
+    "zod",
+    "validation",
+    "type-safe",
+    "typescript",
+    "schema-first",
+    "plugin-system",
+    "microservices",
+    "rest-api"
+  ]
 }
