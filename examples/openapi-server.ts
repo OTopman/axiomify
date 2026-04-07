@@ -11,10 +11,7 @@ app.route({
   path: '/api/v1/users',
   schema: {
     body: z.object({
-      username: z
-        .string()
-        .min(3)
-        .openapi({ description: 'The unique username' }),
+      username: z.string().min(3).describe('The unique username'),
       age: z.number().min(18),
     }),
     response: z.object({
