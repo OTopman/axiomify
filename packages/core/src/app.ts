@@ -38,34 +38,35 @@ export class Axiomify {
     req: AxiomifyRequest,
     res: AxiomifyResponse,
   ): Promise<void> {
-    // 1. Match the Route (You should already have this logic)
-    const match = this.router.lookup(req.method, req.path);
-
-    if (!match) {
-      return res.status(404).send(null, 'Route not found');
-    }
-
-    Object.assign(req.params as any, match.params);
-    const routeId = `${match.route.method}:${match.route.path}`;
-
     try {
+      // 🚀 1. Execute 'onRequest' BEFORE routing
+      // Perfect for global rate-limiting, CORS, or initial request logging
+      await this.hooks.run('onRequest', req, res);
 
-      console.log(`\n[ENGINE] Request arrived for: ${match.route.path}`);
-      console.log(`[ENGINE] About to run 'preHandler' hooks...`);
-      // 🚀 2. Run Plugins & Parsers FIRST
-      // This allows Busboy to consume the stream and attach req.body and req.files
+      // 2. Match the Route
+      const match = this.router.lookup(req.method, req.path);
+
+      if (!match) {
+        return res.status(404).send(null, 'Route not found');
+      }
+
+      Object.assign(req.params as any, match.params);
+      const routeId = `${match.route.method}:${match.route.path}`;
+
+      // 🚀 3. Execute 'preHandler' (Plugins & Parsers)
+      // Busboy stream parsing and auth checks happen here
       await this.hooks.run('preHandler', req, res, match);
 
-      console.log(
-        `[ENGINE] 'preHandler' hooks finished. Moving to validation...`,
-      );
-
-      // 🚀 3. Run Validation SECOND
-      // Now Zod can securely check the fully populated req.body
+      // 4. Run Validation
       this.validator.execute(routeId, req);
 
-      // 4. Run the Developer's Business Logic
+      // 5. Run the Developer's Business Logic
       await this.engine.run(req, res, match.route.handler);
+
+      // 🚀 6. Execute 'onPostHandler' (Response Modification)
+      // Perfect for response serialization, audit logging, or header injection
+      // (Assuming you have an onPostHandler in your HookType type)
+      await this.hooks.run('onPostHandler', req, res, match);
     } catch (err: any) {
       // Centralized Error Dispatcher
       this.handleError(err, req, res);

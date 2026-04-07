@@ -55,7 +55,12 @@ export class ValidationCompiler {
         Object.assign(errors, result.errors);
         hasErrors = true;
       } else {
-        Object.assign(req, { body: result.data });
+        Object.defineProperty(req, 'body', {
+          value: result.data,
+          writable: true, // Allow further modifications downstream
+          enumerable: true, // Ensure it shows up in console.log/serialization
+          configurable: true, // Allow it to be redefined later if needed
+        });
       } // Overwrite with Zod's transformed data
     }
 
@@ -65,7 +70,12 @@ export class ValidationCompiler {
         Object.assign(errors, result.errors);
         hasErrors = true;
       } else {
-        Object.assign(req, { query: result.data });
+        Object.defineProperty(req, 'query', {
+          value: result.data,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
       }
     }
 
@@ -75,7 +85,12 @@ export class ValidationCompiler {
         Object.assign(errors, result.errors);
         hasErrors = true;
       } else {
-        Object.assign(req, { params: result.data });
+        Object.defineProperty(req, 'params', {
+          value: result.data,
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
       }
     }
 

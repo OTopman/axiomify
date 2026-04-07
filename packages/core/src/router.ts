@@ -62,15 +62,17 @@ export class Router {
       if (currentNode.children.has(part)) {
         currentNode = currentNode.children.get(part)!;
       } else if (currentNode.paramChild) {
+        // FIX: Extract paramName from the parent BEFORE advancing
+        const paramName = currentNode.paramName!;
         currentNode = currentNode.paramChild;
-        params[currentNode.paramName!] = part;
+        params[paramName] = part;
       } else {
         return null; // 404 Not Found
       }
     }
 
     const route = currentNode.routes.get(method);
-    if (!route) return null; // 405 Method Not Allowed (could be expanded)
+    if (!route) return null;
 
     return { route, params };
   }
