@@ -105,7 +105,7 @@ export function useUpload(app: Axiomify): void {
         });
 
         busboy.on('error', reject);
-        (req.raw as Readable).pipe(busboy);
+        req.stream.pipe(busboy);
       });
     },
   );

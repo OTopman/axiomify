@@ -75,6 +75,9 @@ export class Axiomify {
     res: AxiomifyResponse,
   ) {
     await this.hooks.run('onError', err, req, res);
+    
+    // If a hook already sent a response (like 401 Unauthorized), bail out to prevent a crash.
+    if (res.headersSent) return;
 
     const statusCode = err.statusCode || err.status || 500;
     const message = err.message || 'Internal Server Error';

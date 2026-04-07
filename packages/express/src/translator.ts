@@ -25,7 +25,9 @@ export function translateRequest(req: Request): AxiomifyRequest {
     get headers() {
       return req.headers as Record<string, string | string[] | undefined>;
     },
-
+    get stream() {
+      return req;
+    },
     // engine can overwrite them with transformed Zod data.
     body: req.body,
     query: req.query,
@@ -82,6 +84,9 @@ export function translateResponse(res: Response): AxiomifyResponse {
     },
     get raw() {
       return res;
+    },
+    get headersSent() {
+      return res.headersSent;
     },
   };
 }

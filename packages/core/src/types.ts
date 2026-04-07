@@ -16,11 +16,7 @@ export type HttpMethod =
   | 'OPTIONS'
   | 'HEAD';
 
-export interface AxiomifyRequest<
-  Body = unknown,
-  Query = unknown,
-  Params = unknown,
-> {
+export interface AxiomifyRequest<Body = unknown, Query = unknown, Params = unknown> {
   readonly id: string;
   readonly method: HttpMethod;
   readonly url: string;
@@ -32,8 +28,9 @@ export interface AxiomifyRequest<
   readonly query: Query;
   readonly params: Params;
 
-  state: Record<string, any>;
+  readonly state: Record<string, any>;
   readonly raw: unknown;
+  readonly stream: import('stream').Readable;
 }
 
 export interface AxiomifyResponse {
@@ -42,8 +39,9 @@ export interface AxiomifyResponse {
   removeHeader(key: string): this;
   send<T>(data: T, message?: string): void;
   sendRaw(payload: any, contentType?: string): void;
-  error(err: Error | unknown): void;
+  error(err: unknown): void;
   readonly raw: unknown;
+  readonly headersSent: boolean;
 }
 
 /**

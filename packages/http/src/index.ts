@@ -116,6 +116,9 @@ export class HttpAdapter {
       get raw() {
         return req;
       },
+      get stream() {
+        return req;
+      },
     };
   }
 
@@ -157,6 +160,9 @@ export class HttpAdapter {
       },
       get raw() {
         return res;
+      },
+      get headersSent() {
+        return res.headersSent;
       },
     };
   }
