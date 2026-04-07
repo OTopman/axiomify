@@ -60,6 +60,9 @@ export class HttpAdapter {
     const path = urlParts[0];
     const query = new URLSearchParams(urlParts[1] || '');
 
+    const _params = {};
+    const _state = {};
+
     return {
       get id() {
         return (req.headers['x-request-id'] as string) || crypto.randomUUID();
@@ -86,10 +89,10 @@ export class HttpAdapter {
         return Object.fromEntries(query.entries());
       },
       get params() {
-        return {};
+        return _params;
       },
       get state() {
-        return {};
+        return _state;
       },
       get raw() {
         return req;

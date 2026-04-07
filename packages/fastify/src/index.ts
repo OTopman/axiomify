@@ -29,6 +29,8 @@ export class FastifyAdapter {
   }
 
   private translateRequest(req: FastifyRequest): AxiomifyRequest {
+    const _params = {};
+    const _state = {};
     return {
       get id() {
         return (
@@ -61,10 +63,10 @@ export class FastifyAdapter {
         return req.query;
       },
       get params() {
-        return {};
+        return _params;
       },
       get state() {
-        return {};
+        return _state;
       },
       get raw() {
         return req;

@@ -66,14 +66,14 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
 
   // 2. Log Outgoing Responses
   app.addHook(
-    'onPostHandler',
+    'onRequest',
     (req: AxiomifyRequest, res: AxiomifyResponse) => {
       const endTime = process.hrtime.bigint();
       const durationMs = Number(endTime - req.state.startTime) / 1_000_000;
 
       // We hook into the 'send' method dynamically to capture the final payload
       const originalSend = res.send.bind(res);
-      res.send = <T>(data: T, message?: string) => {
+      /* res.send = <T>(data: T, message?: string) => {
         log('info', 'Outgoing Response', {
           requestId: req.id,
           method: req.method,
@@ -83,6 +83,11 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
           payload: data,
         });
         originalSend(data, message);
+      }; */
+
+      res.send = <T>(data: T, message?: string) => {
+        console.log(`[LOG] Outgoing response:`, { data, message });
+        return originalSend(data, message);
       };
     },
   );

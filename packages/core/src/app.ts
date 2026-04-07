@@ -69,13 +69,13 @@ export class Axiomify {
       await this.hooks.run('onPostHandler', req, res, match);
     } catch (err: any) {
       // Centralized Error Dispatcher
-      this.handleError(err, req, res);
+      await this.handleError(err, req, res);
     }
   }
 
   // Add this helper method to the Axiomify class:
-  private handleError(err: any, req: AxiomifyRequest, res: AxiomifyResponse) {
-    this.hooks.run('onError', err, req, res);
+  private async handleError(err: any, req: AxiomifyRequest, res: AxiomifyResponse) {
+    await this.hooks.run('onError', err, req, res);
 
     const statusCode = err.statusCode || err.status || 500;
     const message = err.message || 'Internal Server Error';

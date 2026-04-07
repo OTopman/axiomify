@@ -33,6 +33,8 @@ export class HapiAdapter {
   }
 
   private translateRequest(req: Request): AxiomifyRequest {
+    const _params = {};
+    const _state = {};
     return {
       get id() {
         return (
@@ -63,10 +65,10 @@ export class HapiAdapter {
         return req.query;
       },
       get params() {
-        return {};
+        return _params;
       },
       get state() {
-        return {};
+        return _state;
       },
       get raw() {
         return req;
