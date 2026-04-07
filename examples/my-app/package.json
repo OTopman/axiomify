@@ -1,0 +1,21 @@
+{
+  "name": "axiomify-app",
+  "version": "2.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "axiomify dev src/index.ts",
+    "build": "axiomify build src/index.ts",
+    "start": "node dist/index.js",
+    "routes": "axiomify routes src/index.ts"
+  },
+  "dependencies": {
+    "@axiomify/core": "*",
+    "@axiomify/fastify": "*",
+    "@axiomify/openapi": "*",
+    "@axiomify/upload": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  }
+}

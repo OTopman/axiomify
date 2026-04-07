@@ -1,0 +1,21 @@
+{
+  "name": "@axiomify/cli",
+  "version": "2.0.0",
+  "bin": {
+    "axiomify": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@axiomify/core": "*",
+    "commander": "^12.0.0",
+    "esbuild": "^0.20.1"
+  }
+}
