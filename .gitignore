@@ -25,6 +25,7 @@ Desktop.ini
 # =========================
 node_modules/
 .npm/
+package-lock.json
 
 # =========================
 # Build & Compilation
