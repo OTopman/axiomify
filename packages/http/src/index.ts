@@ -62,10 +62,12 @@ export class HttpAdapter {
 
     const _params = {};
     const _state = {};
+    const requestId =
+      (req.headers['x-request-id'] as string) || crypto.randomUUID();
 
     return {
       get id() {
-        return (req.headers['x-request-id'] as string) || crypto.randomUUID();
+        return requestId;
       },
       get method() {
         return (req.method || 'GET') as AxiomifyRequest['method'];

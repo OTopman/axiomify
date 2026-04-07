@@ -65,15 +65,13 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
   });
 
   // 2. Log Outgoing Responses
-  app.addHook(
-    'onRequest',
-    (req: AxiomifyRequest, res: AxiomifyResponse) => {
-      const endTime = process.hrtime.bigint();
-      const durationMs = Number(endTime - req.state.startTime) / 1_000_000;
+  app.addHook('onRequest', (req: AxiomifyRequest, res: AxiomifyResponse) => {
+    const endTime = process.hrtime.bigint();
+    const durationMs = Number(endTime - req.state.startTime) / 1_000_000;
 
-      // We hook into the 'send' method dynamically to capture the final payload
-      const originalSend = res.send.bind(res);
-      /* res.send = <T>(data: T, message?: string) => {
+    // We hook into the 'send' method dynamically to capture the final payload
+    const originalSend = res.send.bind(res);
+    /* res.send = <T>(data: T, message?: string) => {
         log('info', 'Outgoing Response', {
           requestId: req.id,
           method: req.method,
@@ -85,31 +83,36 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
         originalSend(data, message);
       }; */
 
-      res.send = <T>(data: T, message?: string) => {
-        console.log(`[LOG] Outgoing response:`, { data, message });
-        return originalSend(data, message);
-      };
-    },
-  );
+    res.send = <T>(data: T, message?: string) => {
+      console.log(`[LOG] Outgoing response:`, {
+        ...Maskify.autoMask(data as any),
+        message,
+      });
+      return originalSend(data, message);
+    };
+  });
 
   // 3. Centralized Error Logging
-  app.addHook('onError', (err: any, req: AxiomifyRequest, res: AxiomifyResponse) => {
-    const endTime = process.hrtime.bigint();
-    const durationMs = req.state.startTime
-      ? Number(endTime - req.state.startTime) / 1_000_000
-      : 0;
+  app.addHook(
+    'onError',
+    (err: any, req: AxiomifyRequest, res: AxiomifyResponse) => {
+      const endTime = process.hrtime.bigint();
+      const durationMs = req.state.startTime
+        ? Number(endTime - req.state.startTime) / 1_000_000
+        : 0;
 
-    const errorObj =
-      err instanceof Error
-        ? { name: err.name, message: err.message, stack: err.stack }
-        : { err };
+      const errorObj =
+        err instanceof Error
+          ? { name: err.name, message: err.message, stack: err.stack }
+          : { err };
 
-    log('error', 'Request Failed', {
-      requestId: req.id,
-      method: req.method,
-      path: req.path,
-      durationMs: durationMs.toFixed(3),
-      error: errorObj,
-    });
-  });
+      log('error', 'Request Failed', {
+        requestId: req.id,
+        method: req.method,
+        path: req.path,
+        durationMs: durationMs.toFixed(3),
+        error: errorObj,
+      });
+    },
+  );
 }

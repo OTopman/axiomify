@@ -82,31 +82,26 @@ export class ExecutionEngine {
     handler: RouteHandler,
     routeHooks?: Partial<PluginHooks>,
   ): Promise<void> {
-    try {
-      // 1. onRequest (Global -> Route)
-      await this.executeHooks(this.globalHooks.onRequest, req, res);
-      if (routeHooks?.onRequest)
-        await this.executeHooks(routeHooks.onRequest, req, res);
+    // 1. onRequest (Global -> Route)
+    await this.executeHooks(this.globalHooks.onRequest, req, res);
+    if (routeHooks?.onRequest)
+      await this.executeHooks(routeHooks.onRequest, req, res);
 
-      // 2. Validation (To be implemented in the next step)
-      // await this.validateRequest(req, routeSchema);
+    // 2. Validation (To be implemented in the next step)
+    // await this.validateRequest(req, routeSchema);
 
-      // 3. onPreHandler (Global -> Route)
-      await this.executeHooks(this.globalHooks.onPreHandler, req, res);
-      if (routeHooks?.onPreHandler)
-        await this.executeHooks(routeHooks.onPreHandler, req, res);
+    // 3. onPreHandler (Global -> Route)
+    await this.executeHooks(this.globalHooks.onPreHandler, req, res);
+    if (routeHooks?.onPreHandler)
+      await this.executeHooks(routeHooks.onPreHandler, req, res);
 
-      // 4. Main Route Handler
-      await handler(req, res);
+    // 4. Main Route Handler
+    await handler(req, res);
 
-      // 5. onPostHandler (Global -> Route)
-      await this.executeHooks(this.globalHooks.onPostHandler, req, res);
-      if (routeHooks?.onPostHandler)
-        await this.executeHooks(routeHooks.onPostHandler, req, res);
-    } catch (err) {
-      // 6. Centralized Error Handling
-      await this.handleError(err, req, res);
-    }
+    // 5. onPostHandler (Global -> Route)
+    await this.executeHooks(this.globalHooks.onPostHandler, req, res);
+    if (routeHooks?.onPostHandler)
+      await this.executeHooks(routeHooks.onPostHandler, req, res);
   }
 
   /**
