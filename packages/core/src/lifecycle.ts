@@ -14,6 +14,9 @@ export class HookManager {
   };
 
   add(type: HookType, fn: Function) {
+    if (!this.hooks[type]) {
+      this.hooks[type] = [];
+    }
     this.hooks[type].push(fn);
   }
 

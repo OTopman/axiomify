@@ -1,5 +1,5 @@
 import { Axiomify, UnauthorizedError, z } from '@axiomify/core';
-import { FastifyAdapter } from '@axiomify/fastify';
+import { ExpressAdapter } from '@axiomify/express';
 import { useOpenAPI } from '@axiomify/openapi';
 import { useUpload } from '@axiomify/upload';
 import { randomUUID } from 'crypto';
@@ -21,7 +21,7 @@ app.route({
     res.status(201).send({ id: 1, ...req.body }, 'User created successfully');
   },
 });
-
+ 
 // 1. Enable the Upload Engine
 useUpload(app);
 app.route({
@@ -85,14 +85,14 @@ app.route({
 
 app.route({
   method: 'GET',
-  path: '/api/ping',
+  path: '/ping',
   handler: async (req, res) => {
     res.status(200).send({ message: 'pong' });
   },
 });
 
 if (require.main === module) {
-  const adapter = new FastifyAdapter(app);
+  const adapter = new ExpressAdapter(app);
   const server = adapter.listen(3000, () => {
     console.log('🚀 Axiomify engine online on port 3000');
   });
