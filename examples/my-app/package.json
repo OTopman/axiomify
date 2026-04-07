@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@axiomify/core": "*",
-    "@axiomify/express": "*"
+    "@axiomify/fastify": "*",
+    "@axiomify/openapi": "*",
+    "@axiomify/upload": "*"
   },
   "devDependencies": {
     "typescript": "^5.0.0",

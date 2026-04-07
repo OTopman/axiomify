@@ -16,6 +16,11 @@ export class FastifyAdapter {
   constructor(private core: Axiomify) {
     this.app = fastify({ logger: false });
 
+    // This allows the raw stream to reach Axiomify's Busboy engine
+    this.app.addContentTypeParser('multipart/form-data', (_, payload, done) => {
+      done(null, payload);
+    });
+
     // Catch-all route to hijack traffic to the Axiomify Radix Engine
     this.app.all('/*', async (req: FastifyRequest, res: FastifyReply) => {
       const axiomifyReq = this.translateRequest(req);

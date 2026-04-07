@@ -6,7 +6,9 @@ export interface SwaggerPluginOptions extends OpenApiOptions {
 }
 
 export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
-  const prefix = options.routePrefix || '/docs';
+  const prefix = options.routePrefix?.endsWith('/')
+    ? options.routePrefix.slice(0, -1)
+    : options.routePrefix;
   const generator = new OpenApiGenerator(app, options);
 
   let cachedSpec: any = null;
@@ -27,10 +29,10 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
   // 2. Serve the Swagger UI HTML
   app.route({
     method: 'GET',
-    path: prefix,
+    path: `${prefix}`,
     handler: async (req, res) => {
       // FIX: Use the clean prefix instead of req.url to avoid trailing slash bugs
-      const cleanPrefix = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
+      const cleanPrefix = prefix?.endsWith('/') ? prefix.slice(0, -1) : prefix;
       const specUrl = `${cleanPrefix}/openapi.json`;
 
       const html = `
