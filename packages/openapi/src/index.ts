@@ -5,6 +5,15 @@ export interface SwaggerPluginOptions extends OpenApiOptions {
   routePrefix?: string; // e.g., '/docs'
 }
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
   const prefix = options.routePrefix?.endsWith('/')
     ? options.routePrefix.slice(0, -1)
@@ -41,7 +50,7 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>${options.info.title} - API Docs</title>
+          <title>${escapeHtml(options.info.title)} - API Docs</title>
           <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css" />
         </head>
         <body style="margin: 0; padding: 0;">

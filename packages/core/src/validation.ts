@@ -61,7 +61,7 @@ export class ValidationCompiler {
           enumerable: true, // Ensure it shows up in console.log/serialization
           configurable: true, // Allow it to be redefined later if needed
         });
-      } // Overwrite with Zod's transformed data
+      }
     }
 
     if (validators.query) {
@@ -104,17 +104,20 @@ export class ValidationCompiler {
       const result = schema.safeParse(data);
 
       if (result.success) {
-        return { valid: true, data: result.data }; // Return parsed/transformed data
+        return { valid: true, data: result.data };
       }
 
       const errors: Record<string, string> = {};
       result.error.issues.forEach((issue) => {
-        console.log(issue)
-       const path = issue.path.length > 0 ? issue.path.join('.') : '_root';
-       errors[path] =
-         issue.message === 'Required'
-           ? 'The entire request body/payload is missing'
-           : issue.message;
+        // 🚀 THE FIX: Removed console.log(issue) to prevent PII leaks
+        const path = issue.path.length > 0 ? issue.path.join('.') : '_root';
+
+        // 🚀 THE FIX: Only say the body is missing if it's actually the root object
+        const isRootMissing =
+          issue.path.length === 0 && issue.message === 'Required';
+        errors[path] = isRootMissing
+          ? 'The request body is missing or empty'
+          : issue.message;
       });
 
       return { valid: false, errors };

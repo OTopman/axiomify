@@ -16,6 +16,8 @@ export type HttpMethod =
   | 'OPTIONS'
   | 'HEAD';
 
+export interface RequestState {}
+
 export interface AxiomifyRequest<Body = unknown, Query = unknown, Params = unknown> {
   readonly id: string;
   readonly method: HttpMethod;
@@ -28,7 +30,7 @@ export interface AxiomifyRequest<Body = unknown, Query = unknown, Params = unkno
   readonly query: Query;
   readonly params: Params;
 
-  readonly state: Record<string, any>;
+  readonly state: RequestState;
   readonly raw: unknown;
   readonly stream: import('stream').Readable;
 }

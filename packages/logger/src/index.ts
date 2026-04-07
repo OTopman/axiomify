@@ -5,6 +5,12 @@ import type {
 } from '@axiomify/core';
 import { Maskify } from 'maskify-ts';
 
+declare module '@axiomify/core' {
+  export interface RequestState {
+    startTime?: bigint;
+  }
+}
+
 export interface LoggerOptions {
   /** Fields to mask in the logs (e.g., ['password', 'token', 'credit_card']) */
   sensitiveFields?: string[];
