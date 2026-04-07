@@ -1,6 +1,23 @@
 import { ChildProcess, spawn } from 'child_process';
 import * as esbuild from 'esbuild';
+import fs from 'fs';
 import path from 'path';
+
+// 🚀 THE FIX: Dynamically detect what the user has installed
+async function getUserExternals(cwd: string): Promise<string[]> {
+  try {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(cwd, 'package.json'), 'utf8'),
+    );
+    return [
+      ...Object.keys(pkg.dependencies || {}),
+      ...Object.keys(pkg.devDependencies || {}),
+      ...Object.keys(pkg.peerDependencies || {}),
+    ];
+  } catch {
+    return [];
+  }
+}
 
 export async function devServer(entry: string): Promise<void> {
   const entryPath = path.resolve(process.cwd(), entry);
@@ -9,7 +26,6 @@ export async function devServer(entry: string): Promise<void> {
 
   const restartServer = () => {
     if (nodeProcess) nodeProcess.kill();
-
     console.log(`\n🔄 Restarting server...`);
     nodeProcess = spawn('node', [outPath], { stdio: 'inherit' });
   };
@@ -27,18 +43,14 @@ export async function devServer(entry: string): Promise<void> {
     },
   };
 
+  const userExternals = await getUserExternals(process.cwd());
+
   const ctx = await esbuild.context({
     entryPoints: [entryPath],
     bundle: true,
     platform: 'node',
     outfile: outPath,
-    external: [
-      'express',
-      '@axiomify/core',
-      '@axiomify/express',
-      '@axiomify/logger',
-      'maskify-ts',
-    ],
+    external: [...new Set([...userExternals, 'node:*'])],
     plugins: [watchPlugin],
   });
 

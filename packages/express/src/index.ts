@@ -13,15 +13,20 @@ export class ExpressAdapter {
 
     // Essential Express middleware for parsing
     this.app.use((req, res, next) => {
+      // This prevents allocating memory for payloads on unmapped/404 routes.
+      const match = this.core.router.lookup(req.method as any, req.path);
+      if (!match) return next();
+
       const contentType = req.headers['content-type'] || '';
 
-      // 1. If it's standard JSON, let Express handle it
       if (contentType.includes('application/json')) {
         return express.json()(req, res, next);
       }
 
-      // 2. If it's a file upload, DO NOT touch the stream.
-      // Just pass it to the next step (Axiomify's upload plugin).
+      if (contentType.includes('application/x-www-form-urlencoded')) {
+        return express.urlencoded({ extended: true })(req, res, next);
+      }
+
       next();
     });
 

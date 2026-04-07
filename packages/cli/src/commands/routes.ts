@@ -21,7 +21,8 @@ export async function inspectRoutes(entry: string): Promise<void> {
     delete require.cache[require.resolve(tempPath)];
 
     // 3. Import the compiled app
-    const mod = require(tempPath);
+    const fileUrl = `file://${tempPath}?t=${Date.now()}`;
+    const mod = await import(fileUrl);
     const app = mod.app || mod.default;
 
     if (!app || typeof app.registeredRoutes === 'undefined') {
@@ -47,7 +48,9 @@ export async function inspectRoutes(entry: string): Promise<void> {
       const validationStr = schemas.length > 0 ? schemas.join(', ') : 'None';
 
       console.log(
-        `${route.method.padEnd(10)} | ${route.path.padEnd(30)} | ${validationStr}`,
+        `${route.method.padEnd(10)} | ${route.path.padEnd(
+          30,
+        )} | ${validationStr}`,
       );
     });
     console.log('----------------------------------------------------\n');

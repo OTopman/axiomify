@@ -27,9 +27,6 @@ export class FastifyAdapter {
       const axiomifyRes = this.translateResponse(res);
 
       await this.core.handle(axiomifyReq, axiomifyRes);
-
-      // Fastify requires knowing when the async chain is done if we don't return directly
-      return res;
     });
   }
 
@@ -76,6 +73,9 @@ export class FastifyAdapter {
       get raw() {
         return req;
       },
+      get stream() {
+        return req.raw;
+      },
     };
   }
 
@@ -107,6 +107,9 @@ export class FastifyAdapter {
       },
       get raw() {
         return res;
+      },
+      get headersSent() {
+        return res.sent;
       },
     };
   }

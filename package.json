@@ -11,12 +11,14 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces",
-    "test": "npm run test --workspaces"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@changesets/cli": "^2.30.0",
     "@types/node": "^25.5.2",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.2",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "maskify-ts": "^3.5.0"

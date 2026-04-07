@@ -3,6 +3,7 @@ import type {
   Axiomify,
   AxiomifyRequest,
   AxiomifyResponse,
+  UploadedFile,
 } from '@axiomify/core';
 import Busboy from 'busboy';
 import { createWriteStream, existsSync, mkdirSync } from 'fs';
@@ -10,14 +11,6 @@ import { unlink } from 'fs/promises';
 import path from 'path';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
-
-export interface UploadedFile {
-  originalName: string;
-  savedName: string;
-  path: string;
-  size: number;
-  mimetype: string;
-}
 
 // 🚀 2. Inject it into the Core Request
 declare module '@axiomify/core' {
@@ -27,10 +20,8 @@ declare module '@axiomify/core' {
 }
 
 export function useUpload(app: Axiomify): void {
-  // We use a 'preHandler' hook so the route is already matched,
-  // but the user's handler hasn't executed yet.
   app.addHook(
-    'preHandler',
+    'onPreHandler',
     async (req: AxiomifyRequest, _res: AxiomifyResponse, match: any) => {
       const fileSchema = match?.route?.schema?.files;
       const contentType = req.headers['content-type'] || '';
@@ -43,13 +34,9 @@ export function useUpload(app: Axiomify): void {
 
       await new Promise<void>((resolve, reject) => {
         const busboy = Busboy({ headers: req.headers as any });
-
-        // 🚀 1. The Tracker Array
         const fileWrites: Promise<void>[] = [];
 
-        // ⚠️ Note: Remove 'async' from this callback signature!
         busboy.on('file', (fieldname, file, info) => {
-          // 🚀 2. Wrap the background work in a tracked task
           const writeTask = (async () => {
             try {
               const config = fileSchema[fieldname];
@@ -67,6 +54,15 @@ export function useUpload(app: Axiomify): void {
               const savePath = path.join(config.autoSaveTo, finalName);
               let byteCount = 0;
 
+              // 🚀 THE FIX: Register the file early so the cleanup hook can find it if we abort!
+              mutableReq.files[fieldname] = {
+                originalName: info.filename,
+                savedName: finalName,
+                path: savePath,
+                size: 0,
+                mimetype: info.mimeType,
+              };
+
               file.on('data', (data) => {
                 byteCount += data.length;
                 if (byteCount > config.maxSize) {
@@ -80,21 +76,22 @@ export function useUpload(app: Axiomify): void {
 
               await pipeline(file, createWriteStream(savePath));
 
-              // 🚀 3. This now runs safely BEFORE the handler!
-              mutableReq.files[fieldname] = {
-                originalName: info.filename,
-                savedName: finalName,
-                path: savePath,
-                size: byteCount,
-                mimetype: info.mimeType,
-              };
+              // Update the final size
+              mutableReq.files[fieldname].size = byteCount;
             } catch (err) {
-              file.resume();
-              reject(err); // Instantly abort the main request if a write fails
+              file.resume(); // drain buffer
+
+              // 🚀 THE FIX: Destroy the underlying TCP socket to prevent memory bombs
+              const rawSocket =
+                (req.raw as any).socket || (req.raw as any).connection;
+              if (rawSocket && typeof rawSocket.destroy === 'function') {
+                rawSocket.destroy();
+              }
+
+              reject(err);
             }
           })();
 
-          // Add the task to the tracker
           fileWrites.push(writeTask);
         });
 
@@ -102,15 +99,13 @@ export function useUpload(app: Axiomify): void {
           mutableReq.body[name] = val;
         });
 
-        // 🚀 4. Wait for the hard drive!
         busboy.on('finish', async () => {
-          await Promise.all(fileWrites); // Wait for all pipelines to finish
-          resolve(); // NOW it is safe to run the route handler
+          await Promise.all(fileWrites);
+          resolve();
         });
 
         busboy.on('error', reject);
-
-        (req.raw as Readable).pipe(busboy);
+        req.stream.pipe(busboy);
       });
     },
   );

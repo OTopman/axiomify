@@ -54,21 +54,31 @@ export class Router {
    * Returns the matched route and any extracted dynamic parameters.
    */
   public lookup(method: HttpMethod, path: string): RouteMatch | null {
-    const parts = this.splitPath(path);
     let currentNode = this.root;
     const params: Record<string, string> = {};
 
-    for (const part of parts) {
-      if (currentNode.children.has(part)) {
-        currentNode = currentNode.children.get(part)!;
-      } else if (currentNode.paramChild) {
-        // FIX: Extract paramName from the parent BEFORE advancing
-        const paramName = currentNode.paramName!;
-        currentNode = currentNode.paramChild;
-        params[paramName] = part;
-      } else {
-        return null; // 404 Not Found
+    let start = 1; // Skip the leading slash
+    let end = path.indexOf('/', start);
+
+    while (start < path.length) {
+      const isLast = end === -1;
+      const part = path.substring(start, isLast ? path.length : end);
+
+      if (part.length > 0) {
+        if (currentNode.children.has(part)) {
+          currentNode = currentNode.children.get(part)!;
+        } else if (currentNode.paramChild) {
+          const paramName = currentNode.paramName!;
+          currentNode = currentNode.paramChild;
+          params[paramName] = part;
+        } else {
+          return null; // 404
+        }
       }
+
+      if (isLast) break;
+      start = end + 1;
+      end = path.indexOf('/', start);
     }
 
     const route = currentNode.routes.get(method);
