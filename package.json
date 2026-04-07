@@ -1,92 +1,47 @@
 {
-  "name": "axiomify",
-  "version": "1.1.0",
-  "description": "Zero-boilerplate, code-first API contract system and universal engine optimized for both Express and Fastify",
-  "main": "./dist/index.js",
-  "module": "./dist/index.mjs",
-  "types": "./dist/index.d.ts",
-  "files": [
-    "dist"
+  "name": "axiomify-workspace",
+  "description": "Zero-compromise Node.js framework with Radix routing, Zod-native validation, and a modular plugin ecosystem for building high-performance, type-safe APIs.",
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "examples/*"
   ],
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
-    },
-    "./client": {
-      "types": "./dist/client.d.ts",
-      "import": "./dist/client.mjs",
-      "require": "./dist/client.js"
-    }
-  },
-  "bin": {
-    "axiomify": "./dist/cli.js"
-  },
   "scripts": {
-    "build": "tsup src/index.ts src/cli.ts src/client.ts src/testing/index.ts --format cjs,esm --dts --clean",
-    "dev": "tsup src/index.ts src/cli.ts src/client.ts src/testing/index.ts --format cjs,esm --watch",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "lint": "eslint \"{src,tests}/**/*.ts\"",
-    "lint:fix": "eslint \"{src,tests}/**/*.ts\" --fix",
-    "format": "prettier --write \"**/*.{ts,js,json,md}\"",
-    "format:check": "prettier --check \"**/*.{ts,js,json,md}\"",
-    "prepublishOnly": "npm run build",
-    "release": "semantic-release"
-  },
-  "dependencies": {
-    "@asteasolutions/zod-to-openapi": "^7.0.0",
-    "@fastify/express": "^4.0.4",
-    "commander": "^12.0.0",
-    "esbuild": "^0.27.4",
-    "express": "^5.2.1",
-    "fast-glob": "^3.3.2",
-    "fastify": "^5.8.2",
-    "jiti": "^2.6.1",
-    "openapi3-ts": "^4.5.0",
-    "swagger-ui-express": "^5.0.1",
-    "ts-morph": "^27.0.2",
-    "tsx": "^4.21.0",
-    "zod": "^3.23.0"
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces"
   },
   "devDependencies": {
-    "@semantic-release/changelog": "^6.0.3",
-    "@semantic-release/git": "^10.0.1",
-    "@types/express": "^5.0.6",
-    "@types/node": "^20.0.0",
-    "@types/supertest": "^7.2.0",
-    "@types/swagger-ui-express": "^4.1.8",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
-    "eslint": "^8.57.0",
-    "prettier": "^3.2.5",
-    "semantic-release": "^24.2.9",
-    "supertest": "^7.2.2",
-    "tsup": "^8.0.0",
-    "typescript": "^5.4.0",
-    "vitest": "^4.1.0"
+    "@changesets/cli": "^2.30.0",
+    "@types/node": "^25.5.2",
+    "typescript": "^6.0.2"
   },
-  "release": {
-    "branches": [
-      "main"
-    ],
-    "plugins": [
-      "@semantic-release/commit-analyzer",
-      "@semantic-release/release-notes-generator",
-      "@semantic-release/changelog",
-      "@semantic-release/npm",
-      "@semantic-release/github",
-      [
-        "@semantic-release/git",
-        {
-          "assets": [
-            "CHANGELOG.md",
-            "package.json"
-          ],
-          "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
-        }
-      ]
-    ]
-  }
+  "dependencies": {
+    "maskify-ts": "^3.5.0"
+  },
+  "keywords": [
+    "nodejs",
+    "framework",
+    "web-framework",
+    "backend",
+    "api",
+    "http",
+    "server",
+    "fastify-alternative",
+    "express-alternative",
+    "nestjs-alternative",
+    "high-performance",
+    "radix-router",
+    "routing",
+    "zod",
+    "validation",
+    "type-safe",
+    "typescript",
+    "schema-first",
+    "plugin-system",
+    "microservices",
+    "rest-api"
+  ]
 }

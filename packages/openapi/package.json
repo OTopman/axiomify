@@ -1,0 +1,19 @@
+{
+  "name": "@axiomify/openapi",
+  "version": "2.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@axiomify/core": "*",
+    "zod-to-json-schema": "^3.22.4"
+  }
+}
