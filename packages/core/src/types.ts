@@ -42,7 +42,7 @@ export interface AxiomifyResponse {
   removeHeader(key: string): this;
   send<T>(data: T, message?: string): void;
   sendRaw(payload: any, contentType?: string): void;
-  error(err: Error | unknown): void; // <-- Restored!
+  error(err: Error | unknown): void;
   readonly raw: unknown;
 }
 
@@ -54,11 +54,26 @@ export interface RouteSchema {
   query?: ZodTypeAny;
   params?: ZodTypeAny;
   response?: ZodTypeAny;
-  files?: Record<string, FileConfig>; 
+  files?: Record<string, FileConfig>;
 }
 
-export type RouteHandler<B = unknown, Q = unknown, P = unknown> = (
-  req: AxiomifyRequest<B, Q, P>,
+export interface UploadedFile {
+  originalName: string;
+  savedName: string;
+  path: string;
+  size: number;
+  mimetype: string;
+}
+
+export type RouteHandler<
+  B = unknown,
+  Q = unknown,
+  P = unknown,
+  F extends Record<string, any> | undefined = undefined,
+> = (
+  req: AxiomifyRequest<B, Q, P> & {
+    files: F extends undefined ? undefined : Record<keyof F, UploadedFile>;
+  },
   res: AxiomifyResponse,
 ) => Promise<void> | void;
 
@@ -75,5 +90,5 @@ export interface RouteDefinition<
   path: string;
   schema?: S;
   plugins?: string[];
-  handler: RouteHandler<B, Q, P>;
+  handler: RouteHandler<B, Q, P, S['files']>;
 }

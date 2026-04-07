@@ -32,14 +32,30 @@ export class HttpAdapter {
     });
   }
 
-  private async parseBody(req: IncomingMessage): Promise<unknown> {
+  private async parseBody(
+    req: IncomingMessage,
+    limitBytes = 1_048_576,
+  ): Promise<unknown> {
     if (req.method === 'GET' || req.method === 'HEAD') return undefined;
 
     return new Promise((resolve, reject) => {
       let body = '';
-      req.on('data', (chunk) => {
+      let receivedBytes = 0;
+
+      req.on('data', (chunk: Buffer) => {
+        receivedBytes += chunk.length;
+
+        // 🚀 THE FIX: Kill the socket immediately if it exceeds the limit (Default 1MB)
+        if (receivedBytes > limitBytes) {
+          req.destroy();
+          return reject(
+            Object.assign(new Error('Payload Too Large'), { statusCode: 413 }),
+          );
+        }
+
         body += chunk.toString();
       });
+
       req.on('end', () => {
         if (!body) return resolve(undefined);
         try {
@@ -48,6 +64,7 @@ export class HttpAdapter {
           resolve(body);
         }
       });
+
       req.on('error', reject);
     });
   }

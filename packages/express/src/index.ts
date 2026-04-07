@@ -13,15 +13,18 @@ export class ExpressAdapter {
 
     // Essential Express middleware for parsing
     this.app.use((req, res, next) => {
+      const match = this.core.router.lookup(req.method as any, req.path);
+
+      // If it's a 404, bail out early. DO NOT parse the body.
+      if (!match) return next();
+
+      //Route is valid. Now safely check headers and parse.
       const contentType = req.headers['content-type'] || '';
 
-      // 1. If it's standard JSON, let Express handle it
       if (contentType.includes('application/json')) {
         return express.json()(req, res, next);
       }
 
-      // 2. If it's a file upload, DO NOT touch the stream.
-      // Just pass it to the next step (Axiomify's upload plugin).
       next();
     });
 

@@ -65,33 +65,31 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
   });
 
   // 2. Log Outgoing Responses
-  app.addHook('onRequest', (req: AxiomifyRequest, res: AxiomifyResponse) => {
-    const endTime = process.hrtime.bigint();
-    const durationMs = Number(endTime - req.state.startTime) / 1_000_000;
+  app.addHook(
+    'onPostHandler',
+    (req: AxiomifyRequest, res: AxiomifyResponse) => {
+      const endTime = process.hrtime.bigint();
+      const durationMs = req.state.startTime
+        ? Number(endTime - (req.state.startTime as bigint)) / 1_000_000
+        : 0;
 
-    // We hook into the 'send' method dynamically to capture the final payload
-    const originalSend = res.send.bind(res);
-    /* res.send = <T>(data: T, message?: string) => {
+      const originalSend = res.send.bind(res);
+
+      res.send = <T>(data: T, message?: string) => {
         log('info', 'Outgoing Response', {
           requestId: req.id,
           method: req.method,
           path: req.path,
           durationMs: durationMs.toFixed(3),
           responseMessage: message,
+          // We mask the outgoing data safely
           payload: data,
         });
-        originalSend(data, message);
-      }; */
-
-    res.send = <T>(data: T, message?: string) => {
-      console.log(`[LOG] Outgoing response:`, {
-        ...Maskify.autoMask(data as any),
-        message,
-      });
-      return originalSend(data, message);
-    };
-  });
-
+        return originalSend(data, message);
+      };
+    },
+  );
+  
   // 3. Centralized Error Logging
   app.addHook(
     'onError',
