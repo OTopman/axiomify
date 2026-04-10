@@ -25816,6 +25816,18 @@ var import_crypto = require("crypto");
 var import_path = __toESM(require("path"));
 var app = new import_core.Axiomify();
 (0, import_logger.useLogger)(app);
+app.registerPlugin("requireAuth", async (req, res) => {
+  const token = req.headers["authorization"];
+  if (!token) {
+    res.status(401).send(null, "Unauthorized");
+  }
+});
+app.registerPlugin("requireAdmin", async (req, res) => {
+  const role = req.state.role;
+  if (role !== "admin") {
+    res.status(403).send(null, "Forbidden");
+  }
+});
 app.route({
   method: "POST",
   path: "/api/users",
@@ -25870,6 +25882,7 @@ app.route({
 app.route({
   method: "GET",
   path: "/api/secure-data",
+  plugins: ["requireAuth", "requireAdmin"],
   handler: async (req, res) => {
     const isAuthed = false;
     if (!isAuthed) {

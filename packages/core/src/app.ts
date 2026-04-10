@@ -9,6 +9,7 @@ import type {
   AxiomifyRequest,
   AxiomifyResponse,
   PluginHandler,
+  PluginName,
   RouteDefinition,
   RouteSchema,
 } from './types';
@@ -38,7 +39,7 @@ export class Axiomify {
     this._timeout = options.timeout ?? 0;
   }
 
-  public registerPlugin(name: string, handler: PluginHandler): this {
+  public registerPlugin(name: PluginName, handler: PluginHandler): this {
     if (this._plugins.has(name)) {
       throw new Error(`Plugin "${name}" is already registered.`);
     }

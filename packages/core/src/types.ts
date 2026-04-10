@@ -85,6 +85,13 @@ export type RouteHandler<
   res: AxiomifyResponse,
 ) => Promise<void> | void;
 
+export interface RegisteredPlugins {}
+
+// If the user augments the interface, use their keys. Otherwise, fallback to string.
+export type PluginName = [keyof RegisteredPlugins] extends [never]
+  ? string
+  : keyof RegisteredPlugins;
+
 export type PluginHandler = (
   req: AxiomifyRequest,
   res: AxiomifyResponse,
@@ -102,7 +109,7 @@ export interface RouteDefinition<
   method: HttpMethod;
   path: string;
   schema?: S;
-  plugins?: string[];
+  plugins?: PluginName[];
   timeout?: number; // milliseconds; overrides the global default when set
   handler: RouteHandler<B, Q, P, S['files']>;
 }

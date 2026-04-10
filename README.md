@@ -245,6 +245,18 @@ If Zod schema validation fails during the `validator.execute()` phase, Axiomify 
 
 Axiomify allows execution of specific middleware plugins per-route. Route plugins run in array order after global `onPreHandler` hooks but before schema validation.
 
+**💡 Pro-Tip: Enable IntelliSense**
+To get strict TypeScript autocomplete for your plugin names, augment the `@axiomify/core` module anywhere in your project:
+
+```typescript
+declare module '@axiomify/core' {
+  interface RegisteredPlugins {
+    requireAuth: void;
+    requireAdmin: void;
+  }
+}
+```
+
 ```typescript
 // 1. Register the plugins globally before defining routes
 app.registerPlugin('requireAuth', async (req, res) => {
