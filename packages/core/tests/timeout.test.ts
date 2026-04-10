@@ -1,4 +1,3 @@
-// packages/core/tests/timeout.test.ts
 import { describe, expect, it, vi } from 'vitest';
 import { Axiomify } from '../src/app';
 
