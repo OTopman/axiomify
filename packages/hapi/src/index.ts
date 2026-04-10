@@ -10,7 +10,7 @@ import crypto from 'crypto';
 export class HapiAdapter {
   private server: Hapi.Server;
 
-  constructor(private app: Axiomify, config: Hapi.ServerOptions = {}) {
+  constructor(private core: Axiomify, config: Hapi.ServerOptions = {}) {
     // Merge the user configuration but force routes.payload options
     this.server = Hapi.server({
       ...config,
@@ -21,6 +21,31 @@ export class HapiAdapter {
           output: 'stream',
           parse: false,
         },
+      },
+    });
+
+    this.server.route({
+      method: '*',
+      path: '/{any*}',
+      handler: (req: Request, h: ResponseToolkit) => {
+        return new Promise((resolve, reject) => {
+          const axiomifyReq = this.translateRequest(req);
+          const axiomifyRes = this.translateResponse(h, resolve);
+
+          this.core.handle(axiomifyReq, axiomifyRes).catch((err) => {
+            axiomifyRes.error(err);
+          });
+
+          setTimeout(() => {
+            if (!axiomifyRes.headersSent) {
+              reject(
+                new Error(
+                  'Axiomify handler did not send a response within the 30s timeout',
+                ),
+              );
+            }
+          }, 30_000).unref();
+        });
       },
     });
   }

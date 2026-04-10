@@ -57,9 +57,9 @@ export class HookManager {
     return this.execute(list, args);
   }
 
-  private async execute(list: Function[], args: any[]): Promise<void> {
+  private async execute(list: ((...args: any[]) => any)[], args: unknown[]): Promise<void> {
     for (let i = 0; i < list.length; i++) {
-      await list[i](...args);
+      await list[i](...args as any);
     }
   }
 }

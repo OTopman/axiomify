@@ -3,6 +3,45 @@ import { Axiomify } from '../src/app';
 import type { AxiomifyRequest, AxiomifyResponse } from '../src/types';
 
 describe('Route-level Plugin System', () => {
+  it('executes multiple plugins in the declared array order', async () => {
+    const app = new Axiomify();
+    const order: number[] = [];
+
+    app.registerPlugin('first', async () => {
+      order.push(1);
+    });
+    app.registerPlugin('second', async () => {
+      order.push(2);
+    });
+    app.registerPlugin('third', async () => {
+      order.push(3);
+    });
+
+    app.route({
+      method: 'GET',
+      path: '/ordered',
+      plugins: ['first', 'second', 'third'],
+      handler: async (req, res) => {
+        res.status(200).send(null);
+      },
+    });
+
+    const mockReq = {
+      method: 'GET',
+      path: '/ordered',
+      params: {},
+      headers: {},
+    } as any;
+    const mockRes = {
+      status: vi.fn().mockReturnThis(),
+      send: vi.fn(),
+      headersSent: false,
+    } as any;
+
+    await app.handle(mockReq, mockRes);
+    expect(order).toEqual([1, 2, 3]);
+  });
+
   it('executes registered plugins before the route handler', async () => {
     const app = new Axiomify();
     const mockReq = {

@@ -100,14 +100,14 @@ if (require.main === module) {
 
   // Signal Handling for Production
   const shutdown = (signal: string) => {
-    console.log(`\n shadowing ${signal} received. Closing Axiomify engine...`);
+    console.log(`\n${signal} received. Closing Axiomify engine...`);
 
     // 1. Stop accepting new connections
     // 2. Wait for existing requests to finish (default node behavior)
-    /* server.close(() => {
+    server.close(() => {
       console.log('🤝 All active requests finished. Server closed.');
       process.exit(0);
-    }); */
+    });
 
     // 3. Force shutdown after 10s if hanging
     setTimeout(() => {

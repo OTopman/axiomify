@@ -12,7 +12,7 @@ Built on a modular, adapter-driven architecture, Axiomify allows you to write yo
 
 * **Custom Radix Tree Router:** Engineered from the ground up using a highly optimized `TrieNode` structure. Endpoint resolution occurs instantaneously (O(k), where k = path depth), bypassing O(n) array-looping bottlenecks.
 * **Ahead-of-Time Zod Compilation:** Validation schemas are compiled *once* during server bootstrap via the `ValidationCompiler`. This guarantees zero-overhead runtime validation while providing flawless, out-of-the-box TypeScript inference for `req.body`, `req.query`, and `req.params`.
-* **Asynchronous Hook Engine:** A deterministic lifecycle manager (`preHandler`, `onError`) that executes plugins securely before validation phases. 
+*  **Asynchronous Hook Engine:** A deterministic lifecycle manager (`onPreHandler`, `onError`) that executes plugins securely before validation phases.
 * **Adapter Pattern:** The framework is runtime-agnostic. The core engine (`@axiomify/core`) parses the declarative schema, while dedicated adapters (`@axiomify/express`, `@axiomify/fastify`) bridge the gap to the underlying server implementation.
 
 ---
@@ -159,7 +159,7 @@ useOpenAPI(app, {
 Axiomify exposes an execution lifecycle allowing you to intercept requests predictably. Hooks are executed *before* validation, allowing plugins (like file upload streams) to populate the request object.
 
 ```typescript
-app.addHook('preHandler', async (req, res, match) => {
+app.addHook('onPreHandler', async (req, res, match) => {
   console.log(`[ENGINE] Request arrived for: ${match.route.path}`);
   
   // Custom authentication logic can be injected here

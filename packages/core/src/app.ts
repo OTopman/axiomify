@@ -94,7 +94,15 @@ export class Axiomify {
       };
 
       await this.engine.run(req, res, match.route.handler);
-      this.validator.validateResponse(routeId, responsePayload);
+      try {
+        this.validator.validateResponse(routeId, responsePayload);
+      } catch (validationErr: any) {
+        // The response was already sent, so we cannot change the HTTP response.
+        console.error(
+          `[Axiomify] Response schema mismatch on ${routeId}:`,
+          validationErr.errors ?? validationErr.message,
+        );
+      }
 
       await this.hooks.run('onPostHandler', req, res, match);
     } catch (err: any) {
