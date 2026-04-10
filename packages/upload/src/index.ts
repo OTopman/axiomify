@@ -9,7 +9,6 @@ import Busboy from 'busboy';
 import { createWriteStream, existsSync, mkdirSync } from 'fs';
 import { unlink } from 'fs/promises';
 import path from 'path';
-import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 
 // 🚀 2. Inject it into the Core Request
@@ -32,8 +31,22 @@ export function useUpload(app: Axiomify): void {
       if (!mutableReq.body) mutableReq.body = {};
       mutableReq.files = {};
 
-      await new Promise<void>((resolve, reject) => {
-        const busboy = Busboy({ headers: req.headers as any });
+      return new Promise<void>((resolve, reject) => {
+        let settled = false;
+        const safeResolve = () => {
+          if (!settled) {
+            settled = true;
+            resolve();
+          }
+        };
+        const safeReject = (err: unknown) => {
+          if (!settled) {
+            settled = true;
+            reject(err);
+          }
+        };
+
+        const busboy = Busboy({ headers: req.headers });
         const fileWrites: Promise<void>[] = [];
 
         busboy.on('file', (fieldname, file, info) => {
@@ -54,7 +67,7 @@ export function useUpload(app: Axiomify): void {
               const savePath = path.join(config.autoSaveTo, finalName);
               let byteCount = 0;
 
-              // 🚀 THE FIX: Register the file early so the cleanup hook can find it if we abort!
+              // Register the file early so the cleanup hook can find it if we abort!
               mutableReq.files[fieldname] = {
                 originalName: info.filename,
                 savedName: finalName,
@@ -81,14 +94,14 @@ export function useUpload(app: Axiomify): void {
             } catch (err) {
               file.resume(); // drain buffer
 
-              // 🚀 THE FIX: Destroy the underlying TCP socket to prevent memory bombs
+              // Destroy the underlying TCP socket to prevent memory bombs
               const rawSocket =
                 (req.raw as any).socket || (req.raw as any).connection;
               if (rawSocket && typeof rawSocket.destroy === 'function') {
                 rawSocket.destroy();
               }
 
-              reject(err);
+              safeReject(err);
             }
           })();
 
@@ -100,11 +113,15 @@ export function useUpload(app: Axiomify): void {
         });
 
         busboy.on('finish', async () => {
-          await Promise.all(fileWrites);
-          resolve();
+          try {
+            await Promise.all(fileWrites);
+          } catch {
+            /* already rejected via safeReject, avoid uncaught promise rejection */
+          }
+          safeResolve();
         });
 
-        busboy.on('error', reject);
+        busboy.on('error', (err) => safeReject(err));
         req.stream.pipe(busboy);
       });
     },

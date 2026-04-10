@@ -10,10 +10,7 @@ export interface OpenApiOptions {
 }
 
 export class OpenApiGenerator {
-  constructor(
-    private app: Axiomify,
-    private options: OpenApiOptions,
-  ) {}
+  constructor(private app: Axiomify, private options: OpenApiOptions) {}
 
   public generate(): Record<string, any> {
     const spec: any = {
@@ -57,12 +54,10 @@ export class OpenApiGenerator {
     const parameters: any[] = [];
 
     if (route.schema?.params) {
-      // FIX: Add "as any" inside the function call
       const paramSchema = zodToJsonSchema(route.schema.params as any, {
         target: 'openApi3',
       }) as any;
       for (const [key, prop] of Object.entries(paramSchema.properties || {})) {
-        // ... rest of the loop remains the same
         parameters.push({
           name: key,
           in: 'path',
@@ -73,12 +68,10 @@ export class OpenApiGenerator {
     }
 
     if (route.schema?.query) {
-      // FIX: Add "as any" inside the function call
       const querySchema = zodToJsonSchema(route.schema.query as any, {
         target: 'openApi3',
       }) as any;
       for (const [key, prop] of Object.entries(querySchema.properties || {})) {
-        // ... rest of the loop remains the same
         parameters.push({
           name: key,
           in: 'query',
@@ -92,74 +85,57 @@ export class OpenApiGenerator {
   }
 
   private extractBody(route: RouteDefinition): any {
-     const buildRequestBody = (schema: any) => {
-       // 🚀 THE FIX: Check if schema itself exists before checking its properties!
-       if (!schema || (!schema.body && !schema.files)) {
-         return undefined;
-       }
+    const buildRequestBody = (schema: any) => {
+      //  Check if schema itself exists before checking its properties!
+      if (!schema || (!schema.body && !schema.files)) {
+        return undefined;
+      }
 
-       const hasFiles = !!schema.files;
-       const contentType = hasFiles
-         ? 'multipart/form-data'
-         : 'application/json';
-       const properties: Record<string, any> = {};
-       let requiredFields: string[] = [];
+      const hasFiles = !!schema.files;
+      const contentType = hasFiles ? 'multipart/form-data' : 'application/json';
+      const properties: Record<string, any> = {};
+      let requiredFields: string[] = [];
 
-       // 🚀 The Fix: Safely cast the generated schema to bypass the strict Union Type
-       if (schema.body) {
-         const bodySchema = zodToJsonSchema(schema.body) as any;
+      //  Safely cast the generated schema to bypass the strict Union Type
+      if (schema.body) {
+        const bodySchema = zodToJsonSchema(schema.body) as any;
 
-         // Safely extract properties if it's an object
-         if (bodySchema.properties) {
-           Object.assign(properties, bodySchema.properties);
-         }
+        // Safely extract properties if it's an object
+        if (bodySchema.properties) {
+          Object.assign(properties, bodySchema.properties);
+        }
 
-         // Safely extract the required array
-         if (bodySchema.required) {
-           requiredFields = bodySchema.required;
-         }
-       }
+        // Safely extract the required array
+        if (bodySchema.required) {
+          requiredFields = bodySchema.required;
+        }
+      }
 
-       // Attach the File fields for the Swagger UI
-       if (hasFiles) {
-         for (const fieldName of Object.keys(schema.files)) {
-           properties[fieldName] = {
-             type: 'string',
-             format: 'binary',
-             description: `Max size: ${schema.files[fieldName].maxSize} bytes`,
-           };
-         }
-       }
+      // Attach the File fields for the Swagger UI
+      if (hasFiles) {
+        for (const fieldName of Object.keys(schema.files)) {
+          properties[fieldName] = {
+            type: 'string',
+            format: 'binary',
+            description: `Max size: ${schema.files[fieldName].maxSize} bytes`,
+          };
+        }
+      }
 
-       return {
-         content: {
-           [contentType]: {
-             schema: {
-               type: 'object',
-               properties: properties,
-               // Only attach 'required' if there are actually required fields
-               required: requiredFields.length > 0 ? requiredFields : undefined,
-             },
-           },
-         },
-       };
-     };
-    return buildRequestBody(route.schema);
-   
-
-    /* if (!route.schema?.body) return undefined;
-
-    return {
-      required: true,
-      content: {
-        'application/json': {
-          // FIX: Add "as any" inside the function call
-          schema: zodToJsonSchema(route.schema.body as any, {
-            target: 'openApi3',
-          }),
+      return {
+        content: {
+          [contentType]: {
+            schema: {
+              type: 'object',
+              properties: properties,
+              // Only attach 'required' if there are actually required fields
+              required: requiredFields.length > 0 ? requiredFields : undefined,
+            },
+          },
         },
-      },
-    }; */
+      };
+    };
+    return buildRequestBody(route.schema);
   }
 
   private extractResponse(route: RouteDefinition): any {
@@ -168,7 +144,6 @@ export class OpenApiGenerator {
     }
     return {
       'application/json': {
-        // FIX: Add "as any" inside the function call
         schema: zodToJsonSchema(route.schema.response as any, {
           target: 'openApi3',
         }),

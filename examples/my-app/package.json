@@ -1,6 +1,6 @@
 {
   "name": "axiomify-app",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "private": true,
   "scripts": {
     "dev": "axiomify dev src/index.ts",

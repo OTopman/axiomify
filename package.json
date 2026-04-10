@@ -20,9 +20,6 @@
     "typescript": "^6.0.2",
     "vitest": "^3.2.4"
   },
-  "dependencies": {
-    "maskify-ts": "^3.5.0"
-  },
   "keywords": [
     "nodejs",
     "framework",

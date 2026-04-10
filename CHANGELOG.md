@@ -1,26 +1,30 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+## v3.1.0
 
----
+### ✨ Features
+- **Core**: Introduced a route-level plugin system (`app.registerPlugin()`) allowing targeted middleware execution on specific routes prior to schema validation.
+- **Feature**: Added wildcard route segment support (`*`) for fallbacks, static proxying, and catch-all 404 handlers.
+- **Feature**: Introduced global and per-route request timeouts (`timeout: ms`) to safely bound connection lifespan and automatically dispatch `503 Service Unavailable`.
+- **Bug Fix**: Added missing `@axiomify/core` to `@axiomify/upload` dependencies.
 
-Here is a precise and structural draft for the `v2.0.0` changelog, focusing purely on the architectural leaps and ecosystem expansions introduced in the streaming engine branch. 
+### 🐛 Bug Fixes
+- **Core**: Enforced strict generics on `addHook()` handlers to prevent silent lifecycle failures and eliminate escaping `any` types.
+- **Core**: Activated response validation (`schema.response`) to strictly enforce outgoing payload shapes (throws in development, warns in production).
+- **Logger**: Re-engineered payload interception to correctly log outgoing responses and accurately calculate request `durationMs` via `process.hrtime.bigint()`.
+- **Hapi Adapter**: Disabled default payload parsing and forced native streams to restore `@axiomify/upload` compatibility.
+- **Upload**: Hardened the busboy streaming pipeline against unhandled promise rejections and race conditions during stream failures.
+- **CLI**: Standardized dynamic `externals` resolution across `build`, `dev`, and `routes` commands to prevent bundling external server adapters.
+- **OpenAPI**: Removed dead legacy generator code and safely handled optional schema objects.
+- **Docs**: Corrected the Radix Tree routing time complexity claim from O(1) to a factual O(k, where k = path depth).
 
-### v2.0.0 (Streaming Engine & Ecosystem Expansion)
+## v3.0.0
+- **Feature**: Added structured logging package (`@axiomify/logger`) with PII masking via `maskify-ts`.
+- **Feature**: Added fully-functional Hapi adapter (`@axiomify/hapi`).
+- **Security**: Hardened file upload plugin (`@axiomify/upload`) to stream directly to disk, bypassing RAM entirely. Included unhandled rejection safety buffers.
+- **Feature**: Added OpenAPI generator (`@axiomify/openapi`) deriving Swagger docs directly from route schemas.
 
-**🚀 Major Features**
-* **RAM-Safe Streaming Engine (`@axiomify/upload`)**: Introduced a native `Busboy` stream pipeline for multipart/form-data parsing. Uploads are now piped directly to the hard drive prior to handler execution, entirely bypassing RAM buffering and eliminating memory-spike crashes under load.
-* **Developer CLI Ecosystem (`@axiomify/cli`)**: 
-  * `axiomify init`: Rapid project scaffolding.
-  * `axiomify dev`: High-speed, `esbuild`-powered development server with integrated hot-reloading.
-  * `axiomify routes`: A terminal-based visual inspector that maps all registered routes and their associated Zod validation layers.
-* **Auto-Generated OpenAPI (`@axiomify/openapi`)**: Added a dynamic Swagger/OpenAPI documentation generator that infers endpoints directly from the registered declarative Zod schemas.
-
-**⚙️ Core Engine Upgrades (`@axiomify/core`)**
-* **Custom Radix Tree Router**: Transitioned to a highly optimized `TrieNode` data structure for O(1) instantaneous endpoint resolution, entirely eliminating array-looping bottlenecks.
-* **Deterministic Lifecycle Hooks**: Implemented an asynchronous hook manager (`preHandler`, `onError`). Plugins can now securely intercept requests and populate the `req` object *before* the validation compiler executes.
-* **Centralized Error Dispatcher**: Zod schema validation failures and hook exceptions are now automatically caught, mapped safely, and returned to the client (automatically hiding stack traces in production environments).
-
-**📦 Structural Changes**
-* **Adapter Pattern Formalization**: Decoupled the routing logic from the HTTP server implementation, splitting the runtime bridges into distinct interoperable packages: `@axiomify/express`, `@axiomify/fastify`, `@axiomify/hapi`, and `@axiomify/http`.
----
+## v2.0.0
+- **Core Optimization**: Introduced custom Radix Tree Router reducing path resolution to O(k).
+- **Validation**: Added ahead-of-time Zod compiler.
+- **Adapters**: Built adapter abstraction with Express and Fastify support.

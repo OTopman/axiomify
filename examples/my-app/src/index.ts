@@ -1,5 +1,6 @@
 import { Axiomify, UnauthorizedError, z } from '@axiomify/core';
 import { ExpressAdapter } from '@axiomify/express';
+import { useLogger } from '@axiomify/logger';
 import { useOpenAPI } from '@axiomify/openapi';
 import { useUpload } from '@axiomify/upload';
 import { randomUUID } from 'crypto';
@@ -7,10 +8,14 @@ import path from 'path';
 
 export const app = new Axiomify();
 
+// To log requests, responses, and errors in a structured way, with zero config:
+useLogger(app);
+
 // 1. A strictly validated route
 app.route({
   method: 'POST',
   path: '/api/users',
+
   schema: {
     body: z.object({
       username: z.string().min(3).describe('The new username'),
@@ -21,7 +26,7 @@ app.route({
     res.status(201).send({ id: 1, ...req.body }, 'User created successfully');
   },
 });
- 
+
 // 1. Enable the Upload Engine
 useUpload(app);
 app.route({
@@ -86,6 +91,11 @@ app.route({
 app.route({
   method: 'GET',
   path: '/ping',
+  schema: {
+    response: z.object({
+      message: z.string(),
+    }),
+  },
   handler: async (req, res) => {
     res.status(200).send({ message: 'pong' });
   },
@@ -99,14 +109,14 @@ if (require.main === module) {
 
   // Signal Handling for Production
   const shutdown = (signal: string) => {
-    console.log(`\n shadowing ${signal} received. Closing Axiomify engine...`);
+    console.log(`\n${signal} received. Closing Axiomify engine...`);
 
     // 1. Stop accepting new connections
     // 2. Wait for existing requests to finish (default node behavior)
-    /* server.close(() => {
+    server.close(() => {
       console.log('🤝 All active requests finished. Server closed.');
       process.exit(0);
-    }); */
+    });
 
     // 3. Force shutdown after 10s if hanging
     setTimeout(() => {

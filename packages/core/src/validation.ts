@@ -25,6 +25,7 @@ export class ValidationCompiler {
       body?: ValidateFunction;
       query?: ValidateFunction;
       params?: ValidateFunction;
+      response?: ValidateFunction;
     }
   >();
 
@@ -33,11 +34,14 @@ export class ValidationCompiler {
       body?: ValidateFunction;
       query?: ValidateFunction;
       params?: ValidateFunction;
+      response?: ValidateFunction;
     } = {};
 
     if (schema.body) compiled.body = this.createZodValidator(schema.body);
     if (schema.query) compiled.query = this.createZodValidator(schema.query);
     if (schema.params) compiled.params = this.createZodValidator(schema.params);
+    if (schema.response)
+      compiled.response = this.createZodValidator(schema.response);
 
     this.compiledSchemas.set(routeId, compiled);
   }
@@ -57,9 +61,9 @@ export class ValidationCompiler {
       } else {
         Object.defineProperty(req, 'body', {
           value: result.data,
-          writable: true, // Allow further modifications downstream
-          enumerable: true, // Ensure it shows up in console.log/serialization
-          configurable: true, // Allow it to be redefined later if needed
+          writable: true,
+          enumerable: true,
+          configurable: true,
         });
       }
     }
@@ -99,6 +103,27 @@ export class ValidationCompiler {
     }
   }
 
+  public validateResponse(routeId: string, data: unknown): void {
+    const validators = this.compiledSchemas.get(routeId);
+    if (!validators || !validators.response) return;
+
+    const result = validators.response(data);
+
+    if (!result.valid) {
+      if (process.env.NODE_ENV !== 'production') {
+        throw new ValidationError(
+          'Response validation failed',
+          result.errors || {},
+        );
+      } else {
+        console.warn(
+          `[Axiomify] Response validation mismatch for route ${routeId}:`,
+          result.errors,
+        );
+      }
+    }
+  }
+
   private createZodValidator(schema: ZodTypeAny): ValidateFunction {
     return (data: unknown) => {
       const result = schema.safeParse(data);
@@ -109,10 +134,7 @@ export class ValidationCompiler {
 
       const errors: Record<string, string> = {};
       result.error.issues.forEach((issue) => {
-        // 🚀 THE FIX: Removed console.log(issue) to prevent PII leaks
         const path = issue.path.length > 0 ? issue.path.join('.') : '_root';
-
-        // 🚀 THE FIX: Only say the body is missing if it's actually the root object
         const isRootMissing =
           issue.path.length === 0 && issue.message === 'Required';
         errors[path] = isRootMissing

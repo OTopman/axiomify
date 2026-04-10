@@ -10,9 +10,9 @@ Built on a modular, adapter-driven architecture, Axiomify allows you to write yo
 
 ## ⚡ Core Architecture
 
-* **Custom Radix Tree Router:** Engineered from the ground up using a highly optimized `TrieNode` structure. Endpoint resolution occurs instantaneously (O(1)), bypassing O(n) array-looping bottlenecks.
+* **Custom Radix Tree Router:** Engineered from the ground up using a highly optimized `TrieNode` structure. Endpoint resolution occurs instantaneously (O(k), where k = path depth), bypassing O(n) array-looping bottlenecks.
 * **Ahead-of-Time Zod Compilation:** Validation schemas are compiled *once* during server bootstrap via the `ValidationCompiler`. This guarantees zero-overhead runtime validation while providing flawless, out-of-the-box TypeScript inference for `req.body`, `req.query`, and `req.params`.
-* **Asynchronous Hook Engine:** A deterministic lifecycle manager (`preHandler`, `onError`) that executes plugins securely before validation phases. 
+*  **Asynchronous Hook Engine:** A deterministic lifecycle manager (`onPreHandler`, `onError`) that executes plugins securely before validation phases.
 * **Adapter Pattern:** The framework is runtime-agnostic. The core engine (`@axiomify/core`) parses the declarative schema, while dedicated adapters (`@axiomify/express`, `@axiomify/fastify`) bridge the gap to the underlying server implementation.
 
 ---
@@ -96,6 +96,49 @@ adapter.listen(3000, () => {
 });
 ```
 
+**Wildcard routes**
+
+Use `*` as the final path segment to match any remainder. The captured
+portion is available as `req.params['*']`:
+
+```typescript
+app.route({
+  method: 'GET',
+  path: '/files/*',
+  handler: async (req, res) => {
+    const filePath = req.params['*']; // e.g. 'images/logo.png'
+    res.status(200).send({ path: filePath });
+  },
+});
+
+---
+**Response schema validation**
+
+When a `response` schema is defined, Axiomify validates the payload passed to
+`res.send()` after your handler returns.
+
+- In **development** (`NODE_ENV !== 'production'`): a mismatch throws a
+  `ValidationError` and logs the field errors to stderr. Your HTTP response
+  is already sent — this is a developer-visible signal only, not a client error.
+- In **production**: a mismatch logs a `console.warn` to stderr and does not
+  affect the response in any way.
+
+The response schema is also used by `@axiomify/openapi` to generate the OpenAPI
+response body definition — so defining it serves both validation and documentation.
+
+```typescript
+app.route({
+  method: 'GET',
+  path: '/users/:id',
+  schema: {
+    params: z.object({ id: z.string().uuid() }),
+    response: z.object({ id: z.string(), name: z.string() }),
+  },
+  handler: async (req, res) => {
+    res.status(200).send({ id: req.params.id, name: 'Alice' });
+  },
+});
+
 ### 3. RAM-Safe File Uploads (The Streaming Engine)
 Traditional Node.js frameworks buffer file uploads into RAM, causing massive memory spikes and crashes under load. Axiomify's @axiomify/upload package uses a native Busboy stream pipeline to pipe multipart data directly to the hard drive, bypassing RAM entirely.
 
@@ -159,7 +202,7 @@ useOpenAPI(app, {
 Axiomify exposes an execution lifecycle allowing you to intercept requests predictably. Hooks are executed *before* validation, allowing plugins (like file upload streams) to populate the request object.
 
 ```typescript
-app.addHook('preHandler', async (req, res, match) => {
+app.addHook('onPreHandler', async (req, res, match) => {
   console.log(`[ENGINE] Request arrived for: ${match.route.path}`);
   
   // Custom authentication logic can be injected here
@@ -197,3 +240,69 @@ new HttpAdapter(app).listen(3000);
 Errors thrown inside handlers or hooks are automatically caught by Axiomify's centralized error dispatcher. 
 
 If Zod schema validation fails during the `validator.execute()` phase, Axiomify automatically short-circuits the request and returns the parsed Zod issues directly to the client, mapped safely against your environment variables (hiding stack traces in production automatically).
+
+### 8. Route-specific plugins
+
+Axiomify allows execution of specific middleware plugins per-route. Route plugins run in array order after global `onPreHandler` hooks but before schema validation.
+
+**💡 Pro-Tip: Enable IntelliSense**
+To get strict TypeScript autocomplete for your plugin names, augment the `@axiomify/core` module anywhere in your project:
+
+```typescript
+declare module '@axiomify/core' {
+  interface RegisteredPlugins {
+    requireAuth: void;
+    requireAdmin: void;
+  }
+}
+```
+
+```typescript
+// 1. Register the plugins globally before defining routes
+app.registerPlugin('requireAuth', async (req, res) => {
+  const token = req.headers['authorization'];
+  if (!token) {
+    res.status(401).send(null, 'Unauthorized');
+    // Returning after sending — the framework checks res.headersSent
+    // and will not call subsequent plugins or the handler
+  }
+});
+
+app.registerPlugin('requireAdmin', async (req, res) => {
+  const role = (req.state as any).role;
+  if (role !== 'admin') {
+    res.status(403).send(null, 'Forbidden');
+  }
+});
+
+// 2. Attach named plugins to specific routes
+app.route({
+  method: 'DELETE',
+  path: '/users/:id',
+  plugins: ['requireAuth', 'requireAdmin'], // Runs in this order
+  handler: async (req, res) => {
+    res.status(200).send(null, 'User deleted');
+  },
+});
+```
+
+### 9. Request Timeouts
+
+Set a global timeout in milliseconds via the Axiomify constructor. Any handler
+that does not call res.send() within the window automatically receives a 503:
+
+```typescript
+const app = new Axiomify({ timeout: 5000 }); // 5 seconds global default
+```
+
+Override per-route with the timeout field on any route definition:
+
+```typescript
+app.route({
+  method: 'POST',
+  path: '/heavy-job',
+  timeout: 30_000, // 30 seconds for this route only
+  handler: async (req, res) => { ... },
+});
+```
+Set timeout: 0 (the default) to disable timeouts entirely.

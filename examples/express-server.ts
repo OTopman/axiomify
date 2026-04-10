@@ -1,42 +1,42 @@
-import { Axiomify } from '@axiomify/core';
+import { Axiomify, z } from '@axiomify/core';
 import { ExpressAdapter } from '@axiomify/express';
 
-// 1. Initialize the Core Engine
 const app = new Axiomify();
 
-// 2. Register Global Plugins (Lifecycle hooks)
-app.addHook('onRequest', async (req, res) => {
-  console.log(`[${req.id}] Incoming: ${req.method} ${req.path}`);
-  req.state.startTime = Date.now();
+app.addHook('onRequest', (req, res) => {
+  (req.state as any).startTime = process.hrtime.bigint();
 });
 
-app.addHook('onPostHandler', async (req, res) => {
-  const duration = Date.now() - req.state.startTime;
-  res.header('x-response-time', `${duration}ms`);
+app.addHook('onPostHandler', (req, res) => {
+  const endTime = process.hrtime.bigint();
+  const startTime = (req.state as any).startTime;
+  if (startTime) {
+    const durationMs = Number(endTime - startTime) / 1_000_000;
+    console.log(
+      `[Express Example] Request to ${req.path} took ${durationMs.toFixed(
+        3,
+      )}ms`,
+    );
+  }
 });
 
-// 3. Define a Route with strict types and schema validation
 app.route({
   method: 'POST',
-  path: '/api/v1/users',
+  path: '/users',
   schema: {
-    body: { required: true }, // Hooks into our ValidationCompiler
+    body: z.object({
+      name: z.string().min(1),
+      email: z.string().email(),
+    }),
   },
   handler: async (req, res) => {
-    // req.body is strongly typed based on generic injection (to be added via Zod/Typebox later)
-    const userData = req.body;
-
-    // Simulate DB save
-    const user = { id: 99, ...(userData as any) };
-
-    // Delivers our unified response contract automatically
-    res.status(201).send(user, 'User created successfully');
+    // req.body is now strictly typed as { name: string, email: string }
+    const { name, email } = req.body;
+    res.status(201).send({ name, email }, 'User created successfully');
   },
 });
 
-// 4. Bind the Core to the Express Adapter and start listening
 const adapter = new ExpressAdapter(app);
-
 adapter.listen(3000, () => {
-  console.log('🚀 Axiomify engine running on Express port 3000');
+  console.log('🚀 Axiomify Express Example listening on port 3000');
 });

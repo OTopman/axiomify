@@ -1,10 +1,13 @@
 import * as esbuild from 'esbuild';
 import fs from 'fs/promises';
 import path from 'path';
+import { getUserExternals } from '../utils/externals';
 
 export async function inspectRoutes(entry: string): Promise<void> {
   const entryPath = path.resolve(process.cwd(), entry);
   const tempPath = path.resolve(process.cwd(), '.axiomify/inspect.cjs');
+
+  const userExternals = getUserExternals(process.cwd());
 
   try {
     // 1. Compile the app to a temporary CommonJS file
@@ -14,15 +17,20 @@ export async function inspectRoutes(entry: string): Promise<void> {
       platform: 'node',
       format: 'cjs',
       outfile: tempPath,
-      external: ['express', '@axiomify/core', '@axiomify/express'],
+      external: [...new Set([...userExternals, 'node:*'])],
     });
 
     // 2. Clear require cache to ensure fresh load
-    delete require.cache[require.resolve(tempPath)];
+    try {
+      delete require.cache[require.resolve(tempPath)];
+    } catch (e) {
+      // Ignore if it's the first time and not yet in cache
+    }
 
     // 3. Import the compiled app
-    const fileUrl = `file://${tempPath}?t=${Date.now()}`;
-    const mod = await import(fileUrl);
+    // Since the CLI is CJS, import() becomes require().
+    // require() uses raw absolute paths, not file:// URLs.
+    const mod = require(tempPath);
     const app = mod.app || mod.default;
 
     if (!app || typeof app.registeredRoutes === 'undefined') {
@@ -44,6 +52,8 @@ export async function inspectRoutes(entry: string): Promise<void> {
       if (route.schema?.body) schemas.push('Body');
       if (route.schema?.query) schemas.push('Query');
       if (route.schema?.params) schemas.push('Params');
+      if (route.schema?.response) schemas.push('Response');
+      if (route.schema?.files) schemas.push('Files');
 
       const validationStr = schemas.length > 0 ? schemas.join(', ') : 'None';
 

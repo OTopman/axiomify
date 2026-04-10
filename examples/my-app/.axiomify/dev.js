@@ -1042,12 +1042,12 @@ var require_debug = __commonJS({
       function debug() {
         if (!debug.enabled)
           return;
-        var self = debug;
+        var self2 = debug;
         var curr = +/* @__PURE__ */ new Date();
         var ms = curr - (prevTime || curr);
-        self.diff = ms;
-        self.prev = prevTime;
-        self.curr = curr;
+        self2.diff = ms;
+        self2.prev = prevTime;
+        self2.curr = curr;
         prevTime = curr;
         var args = new Array(arguments.length);
         for (var i = 0; i < args.length; i++) {
@@ -1065,15 +1065,15 @@ var require_debug = __commonJS({
           var formatter = exports2.formatters[format];
           if ("function" === typeof formatter) {
             var val = args[index];
-            match = formatter.call(self, val);
+            match = formatter.call(self2, val);
             args.splice(index, 1);
             index--;
           }
           return match;
         });
-        exports2.formatArgs.call(self, args);
+        exports2.formatArgs.call(self2, args);
         var logFn = debug.log || exports2.log || console.log.bind(console);
-        logFn.apply(self, args);
+        logFn.apply(self2, args);
       }
       debug.namespace = namespace;
       debug.enabled = exports2.enabled(namespace);
@@ -18063,7 +18063,7 @@ var require_router = __commonJS({
       return this;
     };
     proto.handle = function handle(req, res, out) {
-      var self = this;
+      var self2 = this;
       debug("dispatching %s %s", req.method, req.url);
       var idx = 0;
       var protohost = getProtohost(req.url) || "";
@@ -18072,7 +18072,7 @@ var require_router = __commonJS({
       var sync = 0;
       var paramcalled = {};
       var options = [];
-      var stack = self.stack;
+      var stack = self2.stack;
       var parentParams = req.params;
       var parentUrl = req.baseUrl || "";
       var done = restore(out, req, "baseUrl", "next", "params");
@@ -18148,9 +18148,9 @@ var require_router = __commonJS({
         if (route) {
           req.route = route;
         }
-        req.params = self.mergeParams ? mergeParams(layer.params, parentParams) : layer.params;
+        req.params = self2.mergeParams ? mergeParams(layer.params, parentParams) : layer.params;
         var layerPath = layer.path;
-        self.process_params(layer, paramcalled, req, res, function(err2) {
+        self2.process_params(layer, paramcalled, req, res, function(err2) {
           if (err2) {
             next(layerError || err2);
           } else if (route) {
@@ -18749,14 +18749,14 @@ var require_etag = __commonJS({
   "../../node_modules/etag/index.js"(exports2, module2) {
     "use strict";
     module2.exports = etag;
-    var crypto = require("crypto");
+    var crypto2 = require("crypto");
     var Stats = require("fs").Stats;
     var toString = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
         return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
       }
-      var hash = crypto.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
+      var hash = crypto2.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
       var len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
       return '"' + len.toString(16) + "-" + hash + '"';
     }
@@ -19461,59 +19461,59 @@ var require_send = __commonJS({
     };
     SendStream.prototype.sendFile = function sendFile(path3) {
       var i = 0;
-      var self = this;
+      var self2 = this;
       debug('stat "%s"', path3);
       fs.stat(path3, function onstat(err, stat) {
         if (err && err.code === "ENOENT" && !extname(path3) && path3[path3.length - 1] !== sep) {
           return next(err);
         }
         if (err)
-          return self.onStatError(err);
+          return self2.onStatError(err);
         if (stat.isDirectory())
-          return self.redirect(path3);
-        self.emit("file", path3, stat);
-        self.send(path3, stat);
+          return self2.redirect(path3);
+        self2.emit("file", path3, stat);
+        self2.send(path3, stat);
       });
       function next(err) {
-        if (self._extensions.length <= i) {
-          return err ? self.onStatError(err) : self.error(404);
+        if (self2._extensions.length <= i) {
+          return err ? self2.onStatError(err) : self2.error(404);
         }
-        var p = path3 + "." + self._extensions[i++];
+        var p = path3 + "." + self2._extensions[i++];
         debug('stat "%s"', p);
         fs.stat(p, function(err2, stat) {
           if (err2)
             return next(err2);
           if (stat.isDirectory())
             return next();
-          self.emit("file", p, stat);
-          self.send(p, stat);
+          self2.emit("file", p, stat);
+          self2.send(p, stat);
         });
       }
     };
     SendStream.prototype.sendIndex = function sendIndex(path3) {
       var i = -1;
-      var self = this;
+      var self2 = this;
       function next(err) {
-        if (++i >= self._index.length) {
+        if (++i >= self2._index.length) {
           if (err)
-            return self.onStatError(err);
-          return self.error(404);
+            return self2.onStatError(err);
+          return self2.error(404);
         }
-        var p = join(path3, self._index[i]);
+        var p = join(path3, self2._index[i]);
         debug('stat "%s"', p);
         fs.stat(p, function(err2, stat) {
           if (err2)
             return next(err2);
           if (stat.isDirectory())
             return next();
-          self.emit("file", p, stat);
-          self.send(p, stat);
+          self2.emit("file", p, stat);
+          self2.send(p, stat);
         });
       }
       next();
     };
     SendStream.prototype.stream = function stream(path3, options) {
-      var self = this;
+      var self2 = this;
       var res = this.res;
       var stream2 = fs.createReadStream(path3, options);
       this.emit("stream", stream2);
@@ -19524,10 +19524,10 @@ var require_send = __commonJS({
       onFinished(res, cleanup);
       stream2.on("error", function onerror(err) {
         cleanup();
-        self.onStatError(err);
+        self2.onStatError(err);
       });
       stream2.on("end", function onend() {
-        self.emit("end");
+        self2.emit("end");
       });
     };
     SendStream.prototype.type = function type(path3) {
@@ -21679,13 +21679,13 @@ var require_request = __commonJS({
 // ../../packages/express/node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "../../packages/express/node_modules/cookie-signature/index.js"(exports2) {
-    var crypto = require("crypto");
+    var crypto2 = require("crypto");
     exports2.sign = function(val, secret) {
       if ("string" !== typeof val)
         throw new TypeError("Cookie value must be provided as a string.");
       if (null == secret)
         throw new TypeError("Secret key must be provided.");
-      return val + "." + crypto.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
+      return val + "." + crypto2.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
     };
     exports2.unsign = function(val, secret) {
       if ("string" !== typeof val)
@@ -21696,7 +21696,7 @@ var require_cookie_signature = __commonJS({
       return sha1(mac) == sha1(val) ? str : false;
     };
     function sha1(str) {
-      return crypto.createHash("sha1").update(str).digest("hex");
+      return crypto2.createHash("sha1").update(str).digest("hex");
     }
   }
 });
@@ -22394,16 +22394,16 @@ var require_response = __commonJS({
       var done = callback;
       var opts = options || {};
       var req = this.req;
-      var self = this;
+      var self2 = this;
       if (typeof options === "function") {
         done = options;
         opts = {};
       }
-      opts._locals = self.locals;
+      opts._locals = self2.locals;
       done = done || function(err, str) {
         if (err)
           return req.next(err);
-        self.send(str);
+        self2.send(str);
       };
       app2.render(view, opts, done);
     };
@@ -22831,6 +22831,2976 @@ var require_dist = __commonJS({
   }
 });
 
+// ../../node_modules/reflect-metadata/Reflect.js
+var require_Reflect = __commonJS({
+  "../../node_modules/reflect-metadata/Reflect.js"() {
+    var Reflect2;
+    (function(Reflect3) {
+      (function(factory) {
+        var root = typeof globalThis === "object" ? globalThis : typeof global === "object" ? global : typeof self === "object" ? self : typeof this === "object" ? this : sloppyModeThis();
+        var exporter = makeExporter(Reflect3);
+        if (typeof root.Reflect !== "undefined") {
+          exporter = makeExporter(root.Reflect, exporter);
+        }
+        factory(exporter, root);
+        if (typeof root.Reflect === "undefined") {
+          root.Reflect = Reflect3;
+        }
+        function makeExporter(target, previous) {
+          return function(key, value) {
+            Object.defineProperty(target, key, { configurable: true, writable: true, value });
+            if (previous)
+              previous(key, value);
+          };
+        }
+        function functionThis() {
+          try {
+            return Function("return this;")();
+          } catch (_) {
+          }
+        }
+        function indirectEvalThis() {
+          try {
+            return (void 0, eval)("(function() { return this; })()");
+          } catch (_) {
+          }
+        }
+        function sloppyModeThis() {
+          return functionThis() || indirectEvalThis();
+        }
+      })(function(exporter, root) {
+        var hasOwn = Object.prototype.hasOwnProperty;
+        var supportsSymbol = typeof Symbol === "function";
+        var toPrimitiveSymbol = supportsSymbol && typeof Symbol.toPrimitive !== "undefined" ? Symbol.toPrimitive : "@@toPrimitive";
+        var iteratorSymbol = supportsSymbol && typeof Symbol.iterator !== "undefined" ? Symbol.iterator : "@@iterator";
+        var supportsCreate = typeof Object.create === "function";
+        var supportsProto = { __proto__: [] } instanceof Array;
+        var downLevel = !supportsCreate && !supportsProto;
+        var HashMap = {
+          // create an object in dictionary mode (a.k.a. "slow" mode in v8)
+          create: supportsCreate ? function() {
+            return MakeDictionary(/* @__PURE__ */ Object.create(null));
+          } : supportsProto ? function() {
+            return MakeDictionary({ __proto__: null });
+          } : function() {
+            return MakeDictionary({});
+          },
+          has: downLevel ? function(map, key) {
+            return hasOwn.call(map, key);
+          } : function(map, key) {
+            return key in map;
+          },
+          get: downLevel ? function(map, key) {
+            return hasOwn.call(map, key) ? map[key] : void 0;
+          } : function(map, key) {
+            return map[key];
+          }
+        };
+        var functionPrototype = Object.getPrototypeOf(Function);
+        var _Map = typeof Map === "function" && typeof Map.prototype.entries === "function" ? Map : CreateMapPolyfill();
+        var _Set = typeof Set === "function" && typeof Set.prototype.entries === "function" ? Set : CreateSetPolyfill();
+        var _WeakMap = typeof WeakMap === "function" ? WeakMap : CreateWeakMapPolyfill();
+        var registrySymbol = supportsSymbol ? Symbol.for("@reflect-metadata:registry") : void 0;
+        var metadataRegistry = GetOrCreateMetadataRegistry();
+        var metadataProvider = CreateMetadataProvider(metadataRegistry);
+        function decorate(decorators, target, propertyKey, attributes) {
+          if (!IsUndefined(propertyKey)) {
+            if (!IsArray(decorators))
+              throw new TypeError();
+            if (!IsObject(target))
+              throw new TypeError();
+            if (!IsObject(attributes) && !IsUndefined(attributes) && !IsNull(attributes))
+              throw new TypeError();
+            if (IsNull(attributes))
+              attributes = void 0;
+            propertyKey = ToPropertyKey(propertyKey);
+            return DecorateProperty(decorators, target, propertyKey, attributes);
+          } else {
+            if (!IsArray(decorators))
+              throw new TypeError();
+            if (!IsConstructor(target))
+              throw new TypeError();
+            return DecorateConstructor(decorators, target);
+          }
+        }
+        exporter("decorate", decorate);
+        function metadata(metadataKey, metadataValue) {
+          function decorator(target, propertyKey) {
+            if (!IsObject(target))
+              throw new TypeError();
+            if (!IsUndefined(propertyKey) && !IsPropertyKey(propertyKey))
+              throw new TypeError();
+            OrdinaryDefineOwnMetadata(metadataKey, metadataValue, target, propertyKey);
+          }
+          return decorator;
+        }
+        exporter("metadata", metadata);
+        function defineMetadata(metadataKey, metadataValue, target, propertyKey) {
+          if (!IsObject(target))
+            throw new TypeError();
+          if (!IsUndefined(propertyKey))
+            propertyKey = ToPropertyKey(propertyKey);
+          return OrdinaryDefineOwnMetadata(metadataKey, metadataValue, target, propertyKey);
+        }
+        exporter("defineMetadata", defineMetadata);
+        function hasMetadata(metadataKey, target, propertyKey) {
+          if (!IsObject(target))
+            throw new TypeError();
+          if (!IsUndefined(propertyKey))
+            propertyKey = ToPropertyKey(propertyKey);
+          return OrdinaryHasMetadata(metadataKey, target, propertyKey);
+        }
+        exporter("hasMetadata", hasMetadata);
+        function hasOwnMetadata(metadataKey, target, propertyKey) {
+          if (!IsObject(target))
+            throw new TypeError();
+          if (!IsUndefined(propertyKey))
+            propertyKey = ToPropertyKey(propertyKey);
+          return OrdinaryHasOwnMetadata(metadataKey, target, propertyKey);
+        }
+        exporter("hasOwnMetadata", hasOwnMetadata);
+        function getMetadata(metadataKey, target, propertyKey) {
+          if (!IsObject(target))
+            throw new TypeError();
+          if (!IsUndefined(propertyKey))
+            propertyKey = ToPropertyKey(propertyKey);
+          return OrdinaryGetMetadata(metadataKey, target, propertyKey);
+        }
+        exporter("getMetadata", getMetadata);
+        function getOwnMetadata(metadataKey, target, propertyKey) {
+          if (!IsObject(target))
+            throw new TypeError();
+          if (!IsUndefined(propertyKey))
+            propertyKey = ToPropertyKey(propertyKey);
+          return OrdinaryGetOwnMetadata(metadataKey, target, propertyKey);
+        }
+        exporter("getOwnMetadata", getOwnMetadata);
+        function getMetadataKeys(target, propertyKey) {
+          if (!IsObject(target))
+            throw new TypeError();
+          if (!IsUndefined(propertyKey))
+            propertyKey = ToPropertyKey(propertyKey);
+          return OrdinaryMetadataKeys(target, propertyKey);
+        }
+        exporter("getMetadataKeys", getMetadataKeys);
+        function getOwnMetadataKeys(target, propertyKey) {
+          if (!IsObject(target))
+            throw new TypeError();
+          if (!IsUndefined(propertyKey))
+            propertyKey = ToPropertyKey(propertyKey);
+          return OrdinaryOwnMetadataKeys(target, propertyKey);
+        }
+        exporter("getOwnMetadataKeys", getOwnMetadataKeys);
+        function deleteMetadata(metadataKey, target, propertyKey) {
+          if (!IsObject(target))
+            throw new TypeError();
+          if (!IsUndefined(propertyKey))
+            propertyKey = ToPropertyKey(propertyKey);
+          if (!IsObject(target))
+            throw new TypeError();
+          if (!IsUndefined(propertyKey))
+            propertyKey = ToPropertyKey(propertyKey);
+          var provider = GetMetadataProvider(
+            target,
+            propertyKey,
+            /*Create*/
+            false
+          );
+          if (IsUndefined(provider))
+            return false;
+          return provider.OrdinaryDeleteMetadata(metadataKey, target, propertyKey);
+        }
+        exporter("deleteMetadata", deleteMetadata);
+        function DecorateConstructor(decorators, target) {
+          for (var i = decorators.length - 1; i >= 0; --i) {
+            var decorator = decorators[i];
+            var decorated = decorator(target);
+            if (!IsUndefined(decorated) && !IsNull(decorated)) {
+              if (!IsConstructor(decorated))
+                throw new TypeError();
+              target = decorated;
+            }
+          }
+          return target;
+        }
+        function DecorateProperty(decorators, target, propertyKey, descriptor) {
+          for (var i = decorators.length - 1; i >= 0; --i) {
+            var decorator = decorators[i];
+            var decorated = decorator(target, propertyKey, descriptor);
+            if (!IsUndefined(decorated) && !IsNull(decorated)) {
+              if (!IsObject(decorated))
+                throw new TypeError();
+              descriptor = decorated;
+            }
+          }
+          return descriptor;
+        }
+        function OrdinaryHasMetadata(MetadataKey, O, P) {
+          var hasOwn2 = OrdinaryHasOwnMetadata(MetadataKey, O, P);
+          if (hasOwn2)
+            return true;
+          var parent = OrdinaryGetPrototypeOf(O);
+          if (!IsNull(parent))
+            return OrdinaryHasMetadata(MetadataKey, parent, P);
+          return false;
+        }
+        function OrdinaryHasOwnMetadata(MetadataKey, O, P) {
+          var provider = GetMetadataProvider(
+            O,
+            P,
+            /*Create*/
+            false
+          );
+          if (IsUndefined(provider))
+            return false;
+          return ToBoolean(provider.OrdinaryHasOwnMetadata(MetadataKey, O, P));
+        }
+        function OrdinaryGetMetadata(MetadataKey, O, P) {
+          var hasOwn2 = OrdinaryHasOwnMetadata(MetadataKey, O, P);
+          if (hasOwn2)
+            return OrdinaryGetOwnMetadata(MetadataKey, O, P);
+          var parent = OrdinaryGetPrototypeOf(O);
+          if (!IsNull(parent))
+            return OrdinaryGetMetadata(MetadataKey, parent, P);
+          return void 0;
+        }
+        function OrdinaryGetOwnMetadata(MetadataKey, O, P) {
+          var provider = GetMetadataProvider(
+            O,
+            P,
+            /*Create*/
+            false
+          );
+          if (IsUndefined(provider))
+            return;
+          return provider.OrdinaryGetOwnMetadata(MetadataKey, O, P);
+        }
+        function OrdinaryDefineOwnMetadata(MetadataKey, MetadataValue, O, P) {
+          var provider = GetMetadataProvider(
+            O,
+            P,
+            /*Create*/
+            true
+          );
+          provider.OrdinaryDefineOwnMetadata(MetadataKey, MetadataValue, O, P);
+        }
+        function OrdinaryMetadataKeys(O, P) {
+          var ownKeys = OrdinaryOwnMetadataKeys(O, P);
+          var parent = OrdinaryGetPrototypeOf(O);
+          if (parent === null)
+            return ownKeys;
+          var parentKeys = OrdinaryMetadataKeys(parent, P);
+          if (parentKeys.length <= 0)
+            return ownKeys;
+          if (ownKeys.length <= 0)
+            return parentKeys;
+          var set = new _Set();
+          var keys = [];
+          for (var _i = 0, ownKeys_1 = ownKeys; _i < ownKeys_1.length; _i++) {
+            var key = ownKeys_1[_i];
+            var hasKey = set.has(key);
+            if (!hasKey) {
+              set.add(key);
+              keys.push(key);
+            }
+          }
+          for (var _a = 0, parentKeys_1 = parentKeys; _a < parentKeys_1.length; _a++) {
+            var key = parentKeys_1[_a];
+            var hasKey = set.has(key);
+            if (!hasKey) {
+              set.add(key);
+              keys.push(key);
+            }
+          }
+          return keys;
+        }
+        function OrdinaryOwnMetadataKeys(O, P) {
+          var provider = GetMetadataProvider(
+            O,
+            P,
+            /*create*/
+            false
+          );
+          if (!provider) {
+            return [];
+          }
+          return provider.OrdinaryOwnMetadataKeys(O, P);
+        }
+        function Type(x) {
+          if (x === null)
+            return 1;
+          switch (typeof x) {
+            case "undefined":
+              return 0;
+            case "boolean":
+              return 2;
+            case "string":
+              return 3;
+            case "symbol":
+              return 4;
+            case "number":
+              return 5;
+            case "object":
+              return x === null ? 1 : 6;
+            default:
+              return 6;
+          }
+        }
+        function IsUndefined(x) {
+          return x === void 0;
+        }
+        function IsNull(x) {
+          return x === null;
+        }
+        function IsSymbol(x) {
+          return typeof x === "symbol";
+        }
+        function IsObject(x) {
+          return typeof x === "object" ? x !== null : typeof x === "function";
+        }
+        function ToPrimitive(input, PreferredType) {
+          switch (Type(input)) {
+            case 0:
+              return input;
+            case 1:
+              return input;
+            case 2:
+              return input;
+            case 3:
+              return input;
+            case 4:
+              return input;
+            case 5:
+              return input;
+          }
+          var hint = PreferredType === 3 ? "string" : PreferredType === 5 ? "number" : "default";
+          var exoticToPrim = GetMethod(input, toPrimitiveSymbol);
+          if (exoticToPrim !== void 0) {
+            var result = exoticToPrim.call(input, hint);
+            if (IsObject(result))
+              throw new TypeError();
+            return result;
+          }
+          return OrdinaryToPrimitive(input, hint === "default" ? "number" : hint);
+        }
+        function OrdinaryToPrimitive(O, hint) {
+          if (hint === "string") {
+            var toString_1 = O.toString;
+            if (IsCallable(toString_1)) {
+              var result = toString_1.call(O);
+              if (!IsObject(result))
+                return result;
+            }
+            var valueOf = O.valueOf;
+            if (IsCallable(valueOf)) {
+              var result = valueOf.call(O);
+              if (!IsObject(result))
+                return result;
+            }
+          } else {
+            var valueOf = O.valueOf;
+            if (IsCallable(valueOf)) {
+              var result = valueOf.call(O);
+              if (!IsObject(result))
+                return result;
+            }
+            var toString_2 = O.toString;
+            if (IsCallable(toString_2)) {
+              var result = toString_2.call(O);
+              if (!IsObject(result))
+                return result;
+            }
+          }
+          throw new TypeError();
+        }
+        function ToBoolean(argument) {
+          return !!argument;
+        }
+        function ToString(argument) {
+          return "" + argument;
+        }
+        function ToPropertyKey(argument) {
+          var key = ToPrimitive(
+            argument,
+            3
+            /* String */
+          );
+          if (IsSymbol(key))
+            return key;
+          return ToString(key);
+        }
+        function IsArray(argument) {
+          return Array.isArray ? Array.isArray(argument) : argument instanceof Object ? argument instanceof Array : Object.prototype.toString.call(argument) === "[object Array]";
+        }
+        function IsCallable(argument) {
+          return typeof argument === "function";
+        }
+        function IsConstructor(argument) {
+          return typeof argument === "function";
+        }
+        function IsPropertyKey(argument) {
+          switch (Type(argument)) {
+            case 3:
+              return true;
+            case 4:
+              return true;
+            default:
+              return false;
+          }
+        }
+        function SameValueZero(x, y) {
+          return x === y || x !== x && y !== y;
+        }
+        function GetMethod(V, P) {
+          var func = V[P];
+          if (func === void 0 || func === null)
+            return void 0;
+          if (!IsCallable(func))
+            throw new TypeError();
+          return func;
+        }
+        function GetIterator(obj) {
+          var method = GetMethod(obj, iteratorSymbol);
+          if (!IsCallable(method))
+            throw new TypeError();
+          var iterator = method.call(obj);
+          if (!IsObject(iterator))
+            throw new TypeError();
+          return iterator;
+        }
+        function IteratorValue(iterResult) {
+          return iterResult.value;
+        }
+        function IteratorStep(iterator) {
+          var result = iterator.next();
+          return result.done ? false : result;
+        }
+        function IteratorClose(iterator) {
+          var f = iterator["return"];
+          if (f)
+            f.call(iterator);
+        }
+        function OrdinaryGetPrototypeOf(O) {
+          var proto = Object.getPrototypeOf(O);
+          if (typeof O !== "function" || O === functionPrototype)
+            return proto;
+          if (proto !== functionPrototype)
+            return proto;
+          var prototype = O.prototype;
+          var prototypeProto = prototype && Object.getPrototypeOf(prototype);
+          if (prototypeProto == null || prototypeProto === Object.prototype)
+            return proto;
+          var constructor = prototypeProto.constructor;
+          if (typeof constructor !== "function")
+            return proto;
+          if (constructor === O)
+            return proto;
+          return constructor;
+        }
+        function CreateMetadataRegistry() {
+          var fallback;
+          if (!IsUndefined(registrySymbol) && typeof root.Reflect !== "undefined" && !(registrySymbol in root.Reflect) && typeof root.Reflect.defineMetadata === "function") {
+            fallback = CreateFallbackProvider(root.Reflect);
+          }
+          var first;
+          var second;
+          var rest;
+          var targetProviderMap = new _WeakMap();
+          var registry = {
+            registerProvider,
+            getProvider,
+            setProvider
+          };
+          return registry;
+          function registerProvider(provider) {
+            if (!Object.isExtensible(registry)) {
+              throw new Error("Cannot add provider to a frozen registry.");
+            }
+            switch (true) {
+              case fallback === provider:
+                break;
+              case IsUndefined(first):
+                first = provider;
+                break;
+              case first === provider:
+                break;
+              case IsUndefined(second):
+                second = provider;
+                break;
+              case second === provider:
+                break;
+              default:
+                if (rest === void 0)
+                  rest = new _Set();
+                rest.add(provider);
+                break;
+            }
+          }
+          function getProviderNoCache(O, P) {
+            if (!IsUndefined(first)) {
+              if (first.isProviderFor(O, P))
+                return first;
+              if (!IsUndefined(second)) {
+                if (second.isProviderFor(O, P))
+                  return first;
+                if (!IsUndefined(rest)) {
+                  var iterator = GetIterator(rest);
+                  while (true) {
+                    var next = IteratorStep(iterator);
+                    if (!next) {
+                      return void 0;
+                    }
+                    var provider = IteratorValue(next);
+                    if (provider.isProviderFor(O, P)) {
+                      IteratorClose(iterator);
+                      return provider;
+                    }
+                  }
+                }
+              }
+            }
+            if (!IsUndefined(fallback) && fallback.isProviderFor(O, P)) {
+              return fallback;
+            }
+            return void 0;
+          }
+          function getProvider(O, P) {
+            var providerMap = targetProviderMap.get(O);
+            var provider;
+            if (!IsUndefined(providerMap)) {
+              provider = providerMap.get(P);
+            }
+            if (!IsUndefined(provider)) {
+              return provider;
+            }
+            provider = getProviderNoCache(O, P);
+            if (!IsUndefined(provider)) {
+              if (IsUndefined(providerMap)) {
+                providerMap = new _Map();
+                targetProviderMap.set(O, providerMap);
+              }
+              providerMap.set(P, provider);
+            }
+            return provider;
+          }
+          function hasProvider(provider) {
+            if (IsUndefined(provider))
+              throw new TypeError();
+            return first === provider || second === provider || !IsUndefined(rest) && rest.has(provider);
+          }
+          function setProvider(O, P, provider) {
+            if (!hasProvider(provider)) {
+              throw new Error("Metadata provider not registered.");
+            }
+            var existingProvider = getProvider(O, P);
+            if (existingProvider !== provider) {
+              if (!IsUndefined(existingProvider)) {
+                return false;
+              }
+              var providerMap = targetProviderMap.get(O);
+              if (IsUndefined(providerMap)) {
+                providerMap = new _Map();
+                targetProviderMap.set(O, providerMap);
+              }
+              providerMap.set(P, provider);
+            }
+            return true;
+          }
+        }
+        function GetOrCreateMetadataRegistry() {
+          var metadataRegistry2;
+          if (!IsUndefined(registrySymbol) && IsObject(root.Reflect) && Object.isExtensible(root.Reflect)) {
+            metadataRegistry2 = root.Reflect[registrySymbol];
+          }
+          if (IsUndefined(metadataRegistry2)) {
+            metadataRegistry2 = CreateMetadataRegistry();
+          }
+          if (!IsUndefined(registrySymbol) && IsObject(root.Reflect) && Object.isExtensible(root.Reflect)) {
+            Object.defineProperty(root.Reflect, registrySymbol, {
+              enumerable: false,
+              configurable: false,
+              writable: false,
+              value: metadataRegistry2
+            });
+          }
+          return metadataRegistry2;
+        }
+        function CreateMetadataProvider(registry) {
+          var metadata2 = new _WeakMap();
+          var provider = {
+            isProviderFor: function(O, P) {
+              var targetMetadata = metadata2.get(O);
+              if (IsUndefined(targetMetadata))
+                return false;
+              return targetMetadata.has(P);
+            },
+            OrdinaryDefineOwnMetadata: OrdinaryDefineOwnMetadata2,
+            OrdinaryHasOwnMetadata: OrdinaryHasOwnMetadata2,
+            OrdinaryGetOwnMetadata: OrdinaryGetOwnMetadata2,
+            OrdinaryOwnMetadataKeys: OrdinaryOwnMetadataKeys2,
+            OrdinaryDeleteMetadata
+          };
+          metadataRegistry.registerProvider(provider);
+          return provider;
+          function GetOrCreateMetadataMap(O, P, Create) {
+            var targetMetadata = metadata2.get(O);
+            var createdTargetMetadata = false;
+            if (IsUndefined(targetMetadata)) {
+              if (!Create)
+                return void 0;
+              targetMetadata = new _Map();
+              metadata2.set(O, targetMetadata);
+              createdTargetMetadata = true;
+            }
+            var metadataMap = targetMetadata.get(P);
+            if (IsUndefined(metadataMap)) {
+              if (!Create)
+                return void 0;
+              metadataMap = new _Map();
+              targetMetadata.set(P, metadataMap);
+              if (!registry.setProvider(O, P, provider)) {
+                targetMetadata.delete(P);
+                if (createdTargetMetadata) {
+                  metadata2.delete(O);
+                }
+                throw new Error("Wrong provider for target.");
+              }
+            }
+            return metadataMap;
+          }
+          function OrdinaryHasOwnMetadata2(MetadataKey, O, P) {
+            var metadataMap = GetOrCreateMetadataMap(
+              O,
+              P,
+              /*Create*/
+              false
+            );
+            if (IsUndefined(metadataMap))
+              return false;
+            return ToBoolean(metadataMap.has(MetadataKey));
+          }
+          function OrdinaryGetOwnMetadata2(MetadataKey, O, P) {
+            var metadataMap = GetOrCreateMetadataMap(
+              O,
+              P,
+              /*Create*/
+              false
+            );
+            if (IsUndefined(metadataMap))
+              return void 0;
+            return metadataMap.get(MetadataKey);
+          }
+          function OrdinaryDefineOwnMetadata2(MetadataKey, MetadataValue, O, P) {
+            var metadataMap = GetOrCreateMetadataMap(
+              O,
+              P,
+              /*Create*/
+              true
+            );
+            metadataMap.set(MetadataKey, MetadataValue);
+          }
+          function OrdinaryOwnMetadataKeys2(O, P) {
+            var keys = [];
+            var metadataMap = GetOrCreateMetadataMap(
+              O,
+              P,
+              /*Create*/
+              false
+            );
+            if (IsUndefined(metadataMap))
+              return keys;
+            var keysObj = metadataMap.keys();
+            var iterator = GetIterator(keysObj);
+            var k = 0;
+            while (true) {
+              var next = IteratorStep(iterator);
+              if (!next) {
+                keys.length = k;
+                return keys;
+              }
+              var nextValue = IteratorValue(next);
+              try {
+                keys[k] = nextValue;
+              } catch (e) {
+                try {
+                  IteratorClose(iterator);
+                } finally {
+                  throw e;
+                }
+              }
+              k++;
+            }
+          }
+          function OrdinaryDeleteMetadata(MetadataKey, O, P) {
+            var metadataMap = GetOrCreateMetadataMap(
+              O,
+              P,
+              /*Create*/
+              false
+            );
+            if (IsUndefined(metadataMap))
+              return false;
+            if (!metadataMap.delete(MetadataKey))
+              return false;
+            if (metadataMap.size === 0) {
+              var targetMetadata = metadata2.get(O);
+              if (!IsUndefined(targetMetadata)) {
+                targetMetadata.delete(P);
+                if (targetMetadata.size === 0) {
+                  metadata2.delete(targetMetadata);
+                }
+              }
+            }
+            return true;
+          }
+        }
+        function CreateFallbackProvider(reflect) {
+          var defineMetadata2 = reflect.defineMetadata, hasOwnMetadata2 = reflect.hasOwnMetadata, getOwnMetadata2 = reflect.getOwnMetadata, getOwnMetadataKeys2 = reflect.getOwnMetadataKeys, deleteMetadata2 = reflect.deleteMetadata;
+          var metadataOwner = new _WeakMap();
+          var provider = {
+            isProviderFor: function(O, P) {
+              var metadataPropertySet = metadataOwner.get(O);
+              if (!IsUndefined(metadataPropertySet) && metadataPropertySet.has(P)) {
+                return true;
+              }
+              if (getOwnMetadataKeys2(O, P).length) {
+                if (IsUndefined(metadataPropertySet)) {
+                  metadataPropertySet = new _Set();
+                  metadataOwner.set(O, metadataPropertySet);
+                }
+                metadataPropertySet.add(P);
+                return true;
+              }
+              return false;
+            },
+            OrdinaryDefineOwnMetadata: defineMetadata2,
+            OrdinaryHasOwnMetadata: hasOwnMetadata2,
+            OrdinaryGetOwnMetadata: getOwnMetadata2,
+            OrdinaryOwnMetadataKeys: getOwnMetadataKeys2,
+            OrdinaryDeleteMetadata: deleteMetadata2
+          };
+          return provider;
+        }
+        function GetMetadataProvider(O, P, Create) {
+          var registeredProvider = metadataRegistry.getProvider(O, P);
+          if (!IsUndefined(registeredProvider)) {
+            return registeredProvider;
+          }
+          if (Create) {
+            if (metadataRegistry.setProvider(O, P, metadataProvider)) {
+              return metadataProvider;
+            }
+            throw new Error("Illegal state.");
+          }
+          return void 0;
+        }
+        function CreateMapPolyfill() {
+          var cacheSentinel = {};
+          var arraySentinel = [];
+          var MapIterator = (
+            /** @class */
+            function() {
+              function MapIterator2(keys, values, selector) {
+                this._index = 0;
+                this._keys = keys;
+                this._values = values;
+                this._selector = selector;
+              }
+              MapIterator2.prototype["@@iterator"] = function() {
+                return this;
+              };
+              MapIterator2.prototype[iteratorSymbol] = function() {
+                return this;
+              };
+              MapIterator2.prototype.next = function() {
+                var index = this._index;
+                if (index >= 0 && index < this._keys.length) {
+                  var result = this._selector(this._keys[index], this._values[index]);
+                  if (index + 1 >= this._keys.length) {
+                    this._index = -1;
+                    this._keys = arraySentinel;
+                    this._values = arraySentinel;
+                  } else {
+                    this._index++;
+                  }
+                  return { value: result, done: false };
+                }
+                return { value: void 0, done: true };
+              };
+              MapIterator2.prototype.throw = function(error) {
+                if (this._index >= 0) {
+                  this._index = -1;
+                  this._keys = arraySentinel;
+                  this._values = arraySentinel;
+                }
+                throw error;
+              };
+              MapIterator2.prototype.return = function(value) {
+                if (this._index >= 0) {
+                  this._index = -1;
+                  this._keys = arraySentinel;
+                  this._values = arraySentinel;
+                }
+                return { value, done: true };
+              };
+              return MapIterator2;
+            }()
+          );
+          var Map2 = (
+            /** @class */
+            function() {
+              function Map3() {
+                this._keys = [];
+                this._values = [];
+                this._cacheKey = cacheSentinel;
+                this._cacheIndex = -2;
+              }
+              Object.defineProperty(Map3.prototype, "size", {
+                get: function() {
+                  return this._keys.length;
+                },
+                enumerable: true,
+                configurable: true
+              });
+              Map3.prototype.has = function(key) {
+                return this._find(
+                  key,
+                  /*insert*/
+                  false
+                ) >= 0;
+              };
+              Map3.prototype.get = function(key) {
+                var index = this._find(
+                  key,
+                  /*insert*/
+                  false
+                );
+                return index >= 0 ? this._values[index] : void 0;
+              };
+              Map3.prototype.set = function(key, value) {
+                var index = this._find(
+                  key,
+                  /*insert*/
+                  true
+                );
+                this._values[index] = value;
+                return this;
+              };
+              Map3.prototype.delete = function(key) {
+                var index = this._find(
+                  key,
+                  /*insert*/
+                  false
+                );
+                if (index >= 0) {
+                  var size = this._keys.length;
+                  for (var i = index + 1; i < size; i++) {
+                    this._keys[i - 1] = this._keys[i];
+                    this._values[i - 1] = this._values[i];
+                  }
+                  this._keys.length--;
+                  this._values.length--;
+                  if (SameValueZero(key, this._cacheKey)) {
+                    this._cacheKey = cacheSentinel;
+                    this._cacheIndex = -2;
+                  }
+                  return true;
+                }
+                return false;
+              };
+              Map3.prototype.clear = function() {
+                this._keys.length = 0;
+                this._values.length = 0;
+                this._cacheKey = cacheSentinel;
+                this._cacheIndex = -2;
+              };
+              Map3.prototype.keys = function() {
+                return new MapIterator(this._keys, this._values, getKey);
+              };
+              Map3.prototype.values = function() {
+                return new MapIterator(this._keys, this._values, getValue);
+              };
+              Map3.prototype.entries = function() {
+                return new MapIterator(this._keys, this._values, getEntry);
+              };
+              Map3.prototype["@@iterator"] = function() {
+                return this.entries();
+              };
+              Map3.prototype[iteratorSymbol] = function() {
+                return this.entries();
+              };
+              Map3.prototype._find = function(key, insert) {
+                if (!SameValueZero(this._cacheKey, key)) {
+                  this._cacheIndex = -1;
+                  for (var i = 0; i < this._keys.length; i++) {
+                    if (SameValueZero(this._keys[i], key)) {
+                      this._cacheIndex = i;
+                      break;
+                    }
+                  }
+                }
+                if (this._cacheIndex < 0 && insert) {
+                  this._cacheIndex = this._keys.length;
+                  this._keys.push(key);
+                  this._values.push(void 0);
+                }
+                return this._cacheIndex;
+              };
+              return Map3;
+            }()
+          );
+          return Map2;
+          function getKey(key, _) {
+            return key;
+          }
+          function getValue(_, value) {
+            return value;
+          }
+          function getEntry(key, value) {
+            return [key, value];
+          }
+        }
+        function CreateSetPolyfill() {
+          var Set2 = (
+            /** @class */
+            function() {
+              function Set3() {
+                this._map = new _Map();
+              }
+              Object.defineProperty(Set3.prototype, "size", {
+                get: function() {
+                  return this._map.size;
+                },
+                enumerable: true,
+                configurable: true
+              });
+              Set3.prototype.has = function(value) {
+                return this._map.has(value);
+              };
+              Set3.prototype.add = function(value) {
+                return this._map.set(value, value), this;
+              };
+              Set3.prototype.delete = function(value) {
+                return this._map.delete(value);
+              };
+              Set3.prototype.clear = function() {
+                this._map.clear();
+              };
+              Set3.prototype.keys = function() {
+                return this._map.keys();
+              };
+              Set3.prototype.values = function() {
+                return this._map.keys();
+              };
+              Set3.prototype.entries = function() {
+                return this._map.entries();
+              };
+              Set3.prototype["@@iterator"] = function() {
+                return this.keys();
+              };
+              Set3.prototype[iteratorSymbol] = function() {
+                return this.keys();
+              };
+              return Set3;
+            }()
+          );
+          return Set2;
+        }
+        function CreateWeakMapPolyfill() {
+          var UUID_SIZE = 16;
+          var keys = HashMap.create();
+          var rootKey = CreateUniqueKey();
+          return (
+            /** @class */
+            function() {
+              function WeakMap2() {
+                this._key = CreateUniqueKey();
+              }
+              WeakMap2.prototype.has = function(target) {
+                var table = GetOrCreateWeakMapTable(
+                  target,
+                  /*create*/
+                  false
+                );
+                return table !== void 0 ? HashMap.has(table, this._key) : false;
+              };
+              WeakMap2.prototype.get = function(target) {
+                var table = GetOrCreateWeakMapTable(
+                  target,
+                  /*create*/
+                  false
+                );
+                return table !== void 0 ? HashMap.get(table, this._key) : void 0;
+              };
+              WeakMap2.prototype.set = function(target, value) {
+                var table = GetOrCreateWeakMapTable(
+                  target,
+                  /*create*/
+                  true
+                );
+                table[this._key] = value;
+                return this;
+              };
+              WeakMap2.prototype.delete = function(target) {
+                var table = GetOrCreateWeakMapTable(
+                  target,
+                  /*create*/
+                  false
+                );
+                return table !== void 0 ? delete table[this._key] : false;
+              };
+              WeakMap2.prototype.clear = function() {
+                this._key = CreateUniqueKey();
+              };
+              return WeakMap2;
+            }()
+          );
+          function CreateUniqueKey() {
+            var key;
+            do
+              key = "@@WeakMap@@" + CreateUUID();
+            while (HashMap.has(keys, key));
+            keys[key] = true;
+            return key;
+          }
+          function GetOrCreateWeakMapTable(target, create) {
+            if (!hasOwn.call(target, rootKey)) {
+              if (!create)
+                return void 0;
+              Object.defineProperty(target, rootKey, { value: HashMap.create() });
+            }
+            return target[rootKey];
+          }
+          function FillRandomBytes(buffer, size) {
+            for (var i = 0; i < size; ++i)
+              buffer[i] = Math.random() * 255 | 0;
+            return buffer;
+          }
+          function GenRandomBytes(size) {
+            if (typeof Uint8Array === "function") {
+              var array = new Uint8Array(size);
+              if (typeof crypto !== "undefined") {
+                crypto.getRandomValues(array);
+              } else if (typeof msCrypto !== "undefined") {
+                msCrypto.getRandomValues(array);
+              } else {
+                FillRandomBytes(array, size);
+              }
+              return array;
+            }
+            return FillRandomBytes(new Array(size), size);
+          }
+          function CreateUUID() {
+            var data = GenRandomBytes(UUID_SIZE);
+            data[6] = data[6] & 79 | 64;
+            data[8] = data[8] & 191 | 128;
+            var result = "";
+            for (var offset = 0; offset < UUID_SIZE; ++offset) {
+              var byte = data[offset];
+              if (offset === 4 || offset === 6 || offset === 8)
+                result += "-";
+              if (byte < 16)
+                result += "0";
+              result += byte.toString(16).toLowerCase();
+            }
+            return result;
+          }
+        }
+        function MakeDictionary(obj) {
+          obj.__ = void 0;
+          delete obj.__;
+          return obj;
+        }
+      });
+    })(Reflect2 || (Reflect2 = {}));
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/maskers/address.js
+var require_address = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/maskers/address.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.maskAddress = maskAddress;
+    function maskAddress(value, opts) {
+      const { maskChar = "*", maxAsterisks = 4 } = opts;
+      return value.replace(/\d+/g, maskChar.repeat(3)).replace(/\b(\w{3,})\b/g, (m) => {
+        const len = m.length;
+        return m[0] + maskChar.repeat(Math.min(maxAsterisks, len - 2)) + m[len - 1];
+      });
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/utils/defaults.js
+var require_defaults = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/utils/defaults.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.DEFAULT_MASK_OPTIONS = void 0;
+    exports2.DEFAULT_MASK_OPTIONS = {
+      maskChar: "*",
+      maxAsterisks: 4,
+      visibleStart: 0,
+      visibleEnd: 0
+    };
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/maskers/card.js
+var require_card = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/maskers/card.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.maskCard = maskCard;
+    var defaults_1 = require_defaults();
+    function maskCard(card, options = {}) {
+      const { maxAsterisks, maskChar } = { ...defaults_1.DEFAULT_MASK_OPTIONS, ...options };
+      if (!card)
+        return "";
+      const digitsOnly = card.replace(/\D/g, "");
+      const groups = digitsOnly.match(/.{1,4}/g) || [];
+      const maskedGroups = groups.map((group, i) => (
+        // Preserve first and last group, mask the middle ones
+        i === 0 || i === groups.length - 1 ? group : maskChar.repeat(maxAsterisks)
+      ));
+      return maskedGroups.join(" ");
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/maskers/deterministic.js
+var require_deterministic = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/maskers/deterministic.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.maskDeterministic = maskDeterministic;
+    var crypto_1 = require("crypto");
+    function maskDeterministic(value, opts) {
+      const secret = opts.secret || "default-maskify-secret";
+      return (0, crypto_1.createHmac)("sha256", secret).update(value).digest("hex").substring(0, 12);
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/maskers/email.js
+var require_email = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/maskers/email.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.maskEmail = maskEmail;
+    var defaults_1 = require_defaults();
+    function maskEmail(email, options = {}) {
+      if (!email || typeof email !== "string" || !email.includes("@")) {
+        return email || "";
+      }
+      const config = {
+        ...defaults_1.DEFAULT_MASK_OPTIONS,
+        ...options
+      };
+      const { maxAsterisks = 4, visibleStart = 0, visibleEnd = 0, maskChar = "*" } = config;
+      const [localPart, domainPart] = email.split("@");
+      if (!localPart || !domainPart)
+        return email;
+      const [domainName, ...rest] = domainPart.split(".");
+      const domainExt = rest.join(".") || "";
+      const safeVisibleStart = Math.min(visibleStart, localPart.length - 1);
+      const maskedLocalCount = Math.min(maxAsterisks, Math.max(localPart.length - safeVisibleStart, 3));
+      const start = localPart.slice(0, safeVisibleStart);
+      const maskedLocal = `${start}${maskChar.repeat(maskedLocalCount)}`;
+      const safeVisibleEnd = Math.min(visibleEnd, domainName.length - 1);
+      const maskedDomainCount = Math.min(3, Math.max(domainName.length - safeVisibleEnd, 1));
+      const domainVisibleStart = domainName.slice(0, safeVisibleEnd);
+      const maskedDomain = `${domainVisibleStart}${maskChar.repeat(maskedDomainCount)}`;
+      return `${maskedLocal}@${maskedDomain}${domainExt ? `.${domainExt}` : ""}`;
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/maskers/generic.js
+var require_generic = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/maskers/generic.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.maskGeneric = maskGeneric;
+    var defaults_1 = require_defaults();
+    function maskGeneric(value, options = {}) {
+      const { visibleStart, visibleEnd, maxAsterisks, maskChar } = {
+        ...defaults_1.DEFAULT_MASK_OPTIONS,
+        ...options
+      };
+      if (!value || typeof value !== "string")
+        return "";
+      const len = value.length;
+      if (len <= visibleStart + visibleEnd) {
+        const maskCount2 = Math.min(len - 1, maxAsterisks);
+        return value[0] + maskChar.repeat(maskCount2);
+      }
+      const start = value.slice(0, visibleStart);
+      const end = visibleEnd > 0 ? value.slice(-visibleEnd) : "";
+      const maskCount = Math.min(maxAsterisks, Math.max(len - visibleStart - visibleEnd, 3));
+      return `${start}${maskChar.repeat(maskCount)}${end}`;
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/maskers/ip.js
+var require_ip = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/maskers/ip.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.maskIp = maskIp;
+    function maskIp(value, _opts = {}) {
+      if (value.includes(".")) {
+        return value.replace(/\.\d+$/, ".***");
+      }
+      if (value.includes(":")) {
+        return value.replace(/:[\da-fA-F]+$/, ":****");
+      }
+      return value;
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/maskers/jwt.js
+var require_jwt = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/maskers/jwt.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.maskJwt = maskJwt;
+    function maskJwt(token, opts) {
+      if (!token || typeof token !== "string")
+        return "";
+      const parts = token.split(".");
+      if (parts.length !== 3)
+        return token;
+      const [header, payload, signature] = parts;
+      const { maskChar = "*" } = opts;
+      const maskedPayload = maskChar.repeat(Math.min(payload.length, 10));
+      const maskedSig = maskChar.repeat(Math.min(signature.length, 10));
+      return `${header}.${maskedPayload}.${maskedSig}`;
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/maskers/name.js
+var require_name = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/maskers/name.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.maskName = maskName;
+    function maskName(value, opts) {
+      const { maskChar = "*", maxAsterisks = 4 } = opts;
+      return value.split(/\s+/).map((word) => word.length > 2 ? word[0] + maskChar.repeat(Math.min(maxAsterisks, word.length - 1)) : maskChar.repeat(word.length)).join(" ");
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/maskers/pattern.js
+var require_pattern = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/maskers/pattern.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.maskPattern = maskPattern;
+    function maskPattern(value, pattern, options = {}) {
+      if (value == null)
+        return "";
+      const str = String(value).replace(/\s+/g, "");
+      const maskChar = options.maskChar ?? "*";
+      const maxTail = 4;
+      const expanded = pattern.replace(/([#*])\{(\d+)\}/g, (_, ch, count) => ch.repeat(Number(count)));
+      let vi = 0;
+      let out = "";
+      for (let i = 0; i < expanded.length; i++) {
+        const p = expanded[i];
+        if (vi >= str.length) {
+          if (p === "#" || p === "*")
+            continue;
+          out += p;
+          continue;
+        }
+        const ch = str[vi];
+        if (p === "#") {
+          out += ch;
+          vi++;
+        } else if (p === "*") {
+          out += maskChar;
+          vi++;
+        } else {
+          out += p;
+        }
+      }
+      if (vi < str.length) {
+        const remaining = str.slice(vi);
+        out += maskChar.repeat(Math.min(remaining.length, maxTail));
+      }
+      return out;
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/maskers/phone.js
+var require_phone = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/maskers/phone.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.maskPhone = maskPhone;
+    var defaults_1 = require_defaults();
+    function maskPhone(phone, options = {}) {
+      const config = {
+        ...defaults_1.DEFAULT_MASK_OPTIONS,
+        visibleStart: 2,
+        // Phone specific override
+        visibleEnd: 3,
+        // Phone specific override
+        ...options
+      };
+      const { maxAsterisks = 4, maskChar = "*", visibleStart = 2, visibleEnd = 3 } = config;
+      if (!phone)
+        return "";
+      const hasPlus = phone.startsWith("+");
+      const digitsOnly = phone.replace(/\D/g, "");
+      if (!digitsOnly.length)
+        return phone;
+      const pureValue = hasPlus && visibleStart > 0 ? digitsOnly : phone.replace("+", "").replace(/\D/g, "");
+      const len = pureValue.length;
+      if (len <= visibleStart + visibleEnd) {
+        const start2 = pureValue.slice(0, 1);
+        const masked = maskChar.repeat(Math.min(maxAsterisks, len - 1));
+        return `${visibleStart > 0 && hasPlus ? "+" : ""}${start2}${masked}`;
+      }
+      const start = pureValue.slice(0, visibleStart);
+      const end = pureValue.slice(-visibleEnd);
+      const maskCount = Math.min(maxAsterisks, Math.max(len - visibleStart - visibleEnd, 3));
+      const maskedMiddle = maskChar.repeat(maskCount);
+      return `${visibleStart > 0 && hasPlus ? "+" : ""}${start}${maskedMiddle}${end}`;
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/maskers/url.js
+var require_url = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/maskers/url.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.maskUrl = maskUrl;
+    function maskUrl(urlStr, opts) {
+      if (!urlStr)
+        return "";
+      try {
+        const url = new URL(urlStr);
+        const { maskChar = "*" } = opts;
+        const sensitiveKeys = [
+          "token",
+          "key",
+          "password",
+          "secret",
+          "auth",
+          "apikey"
+        ];
+        url.searchParams.forEach((value, key) => {
+          if (sensitiveKeys.some((k) => key.toLowerCase().includes(k))) {
+            url.searchParams.set(key, maskChar.repeat(8));
+          }
+        });
+        return url.toString();
+      } catch {
+        return urlStr;
+      }
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/maskers/index.js
+var require_maskers = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/maskers/index.js"(exports2) {
+    "use strict";
+    var __createBinding = exports2 && exports2.__createBinding || (Object.create ? function(o, m, k, k2) {
+      if (k2 === void 0)
+        k2 = k;
+      var desc = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+        desc = { enumerable: true, get: function() {
+          return m[k];
+        } };
+      }
+      Object.defineProperty(o, k2, desc);
+    } : function(o, m, k, k2) {
+      if (k2 === void 0)
+        k2 = k;
+      o[k2] = m[k];
+    });
+    var __exportStar = exports2 && exports2.__exportStar || function(m, exports3) {
+      for (var p in m)
+        if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports3, p))
+          __createBinding(exports3, m, p);
+    };
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    __exportStar(require_address(), exports2);
+    __exportStar(require_card(), exports2);
+    __exportStar(require_deterministic(), exports2);
+    __exportStar(require_email(), exports2);
+    __exportStar(require_generic(), exports2);
+    __exportStar(require_ip(), exports2);
+    __exportStar(require_jwt(), exports2);
+    __exportStar(require_name(), exports2);
+    __exportStar(require_pattern(), exports2);
+    __exportStar(require_phone(), exports2);
+    __exportStar(require_url(), exports2);
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/core/registry.js
+var require_registry = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/core/registry.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.registry = void 0;
+    var MaskerRegistry = class {
+      constructor() {
+        this.maskers = /* @__PURE__ */ new Map();
+      }
+      /**
+       * Register a new masker function for a specific type.
+       * @param type - The unique identifier (e.g., 'email', 'phone')
+       * @param masker - The function to execute
+       */
+      register(type, masker) {
+        this.maskers.set(type, masker);
+      }
+      /**
+       * Retrieve a masker by type.
+       */
+      get(type) {
+        return this.maskers.get(type);
+      }
+      /**
+       * Check if a masker exists (useful for debugging/validation)
+       */
+      has(type) {
+        return this.maskers.has(type.toLowerCase());
+      }
+    };
+    exports2.registry = new MaskerRegistry();
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/core/bootstrap.js
+var require_bootstrap = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/core/bootstrap.js"(exports2) {
+    "use strict";
+    var __createBinding = exports2 && exports2.__createBinding || (Object.create ? function(o, m, k, k2) {
+      if (k2 === void 0)
+        k2 = k;
+      var desc = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+        desc = { enumerable: true, get: function() {
+          return m[k];
+        } };
+      }
+      Object.defineProperty(o, k2, desc);
+    } : function(o, m, k, k2) {
+      if (k2 === void 0)
+        k2 = k;
+      o[k2] = m[k];
+    });
+    var __setModuleDefault = exports2 && exports2.__setModuleDefault || (Object.create ? function(o, v) {
+      Object.defineProperty(o, "default", { enumerable: true, value: v });
+    } : function(o, v) {
+      o["default"] = v;
+    });
+    var __importStar = exports2 && exports2.__importStar || /* @__PURE__ */ function() {
+      var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function(o2) {
+          var ar = [];
+          for (var k in o2)
+            if (Object.prototype.hasOwnProperty.call(o2, k))
+              ar[ar.length] = k;
+          return ar;
+        };
+        return ownKeys(o);
+      };
+      return function(mod) {
+        if (mod && mod.__esModule)
+          return mod;
+        var result = {};
+        if (mod != null) {
+          for (var k = ownKeys(mod), i = 0; i < k.length; i++)
+            if (k[i] !== "default")
+              __createBinding(result, mod, k[i]);
+        }
+        __setModuleDefault(result, mod);
+        return result;
+      };
+    }();
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.registerDefaults = registerDefaults;
+    var maskers = __importStar(require_maskers());
+    var registry_1 = require_registry();
+    function registerDefaults() {
+      registry_1.registry.register("email", maskers.maskEmail);
+      registry_1.registry.register("phone", maskers.maskPhone);
+      registry_1.registry.register("card", maskers.maskCard);
+      registry_1.registry.register("ip", maskers.maskIp);
+      registry_1.registry.register("jwt", maskers.maskJwt);
+      registry_1.registry.register("url", maskers.maskUrl);
+      registry_1.registry.register("address", maskers.maskAddress);
+      registry_1.registry.register("name", maskers.maskName);
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/core/patterns/definitions.js
+var require_definitions = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/core/patterns/definitions.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.RegexLib = void 0;
+    exports2.RegexLib = {
+      /**
+       * Matches standard email addresses.
+       * Captures: group 1 (local), group 2 (domain).
+       */
+      EMAIL: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/,
+      /**
+       * Matches IPv4 addresses.
+       * Checks for 4 groups of 1-3 digits separated by dots.
+       */
+      IPV4: /\b(?:\d{1,3}\.){3}\d{1,3}\b/,
+      /**
+       * Matches IPv6 addresses (simplified).
+       * Checks for hex groups separated by colons.
+       */
+      IPV6: /([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}/,
+      /**
+       * Matches Credit Card numbers (13-19 digits).
+       * supports space and dash separators.
+       */
+      CARD: /\b(?:\d[ -]*?){13,19}\b/,
+      /**
+       * Matches International Phone Numbers.
+       * Supports: +1-555-555-5555, (555) 555-5555
+       */
+      PHONE: /\b(?:\+?(\d{1,3}))?[-. (]*(\d{3})[-. )]*(\d{3})[-. ]*(\d{4})(?: *x(\d+))?\b/,
+      /**
+       * Matches valid characters for a Name (Alphabets, space, dot, apostrophe, dash).
+       * Used in combination with a space check to avoid matching single words.
+       */
+      NAME_CHARS: /^[A-Za-z\s.'-]+$/,
+      /**
+       * Matches the general structure of an address (starting with digits).
+       * e.g. "123 Main St"
+       */
+      ADDRESS_START: /\d+\s+[\w\s,.-]+/,
+      /**
+       * Matches common street suffixes to reduce false positives for addresses.
+       */
+      ADDRESS_SUFFIX: /(road|street|st|rd|ave|lane|close|way|boulevard|crescent)/i,
+      /**
+       * Matches JSON Web Tokens (JWT).
+       * Header.Payload.Signature
+       */
+      JWT: /ey[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.[A-Za-z0-9-_.+/=]+/,
+      /**
+       * Matches standard URLs with protocol (http/https).
+       */
+      URL: /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*)/
+    };
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/core/compiler/patterns.js
+var require_patterns = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/core/compiler/patterns.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.PATTERNS = exports2.TokenType = void 0;
+    var definitions_1 = require_definitions();
+    var TokenType;
+    (function(TokenType2) {
+      TokenType2["JWT"] = "JWT";
+      TokenType2["EMAIL"] = "EMAIL";
+      TokenType2["IP"] = "IP";
+      TokenType2["CARD"] = "CARD";
+      TokenType2["PHONE"] = "PHONE";
+      TokenType2["URL"] = "URL";
+      TokenType2["TEXT"] = "TEXT";
+    })(TokenType || (exports2.TokenType = TokenType = {}));
+    exports2.PATTERNS = [
+      { type: TokenType.JWT, regex: definitions_1.RegexLib.JWT },
+      { type: TokenType.URL, regex: definitions_1.RegexLib.URL },
+      { type: TokenType.EMAIL, regex: definitions_1.RegexLib.EMAIL },
+      { type: TokenType.IP, regex: definitions_1.RegexLib.IPV4 },
+      { type: TokenType.IP, regex: definitions_1.RegexLib.IPV6 },
+      // Add IPv6 support to lexer!
+      { type: TokenType.CARD, regex: definitions_1.RegexLib.CARD },
+      { type: TokenType.PHONE, regex: definitions_1.RegexLib.PHONE }
+    ];
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/core/compiler/lexer.js
+var require_lexer = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/core/compiler/lexer.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.Lexer = void 0;
+    var patterns_1 = require_patterns();
+    var Lexer = class {
+      /**
+       * Lazy-initializes the master regex for O(1) repeated access.
+       * Compiles all patterns into one giant Regex: (JWT)|(URL)|(EMAIL)|...
+       */
+      static init() {
+        if (this.masterRegex)
+          return;
+        this.groupIndexMap = /* @__PURE__ */ new Map();
+        let nextGroupIndex = 1;
+        const patternSources = patterns_1.PATTERNS.map((p) => {
+          this.groupIndexMap.set(nextGroupIndex, p.type);
+          const source = p.regex.source;
+          const numGroups = new RegExp(`${source}|`).exec("").length - 1;
+          nextGroupIndex += 1 + numGroups;
+          return `(${source})`;
+        });
+        this.masterRegex = new RegExp(patternSources.join("|"), "g");
+      }
+      /**
+       * Scans input string in a single pass (O(N)) and produces a stream of tokens.
+       */
+      static tokenize(input) {
+        this.init();
+        const tokens = [];
+        let lastIndex = 0;
+        let match;
+        this.masterRegex.lastIndex = 0;
+        while ((match = this.masterRegex.exec(input)) !== null) {
+          const matchStart = match.index;
+          const matchValue = match[0];
+          if (matchStart > lastIndex) {
+            tokens.push({
+              type: patterns_1.TokenType.TEXT,
+              value: input.slice(lastIndex, matchStart),
+              index: lastIndex
+            });
+          }
+          let type = patterns_1.TokenType.TEXT;
+          for (let i = 1; i < match.length; i++) {
+            if (match[i] !== void 0) {
+              if (this.groupIndexMap.has(i)) {
+                type = this.groupIndexMap.get(i);
+                break;
+              }
+            }
+          }
+          tokens.push({ type, value: matchValue, index: matchStart });
+          lastIndex = this.masterRegex.lastIndex;
+        }
+        if (lastIndex < input.length) {
+          tokens.push({
+            type: patterns_1.TokenType.TEXT,
+            value: input.slice(lastIndex),
+            index: lastIndex
+          });
+        }
+        return tokens;
+      }
+    };
+    exports2.Lexer = Lexer;
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/package.json
+var require_package = __commonJS({
+  "../../node_modules/maskify-ts/dist/package.json"(exports2, module2) {
+    module2.exports = {
+      name: "maskify-ts",
+      version: "3.5.0",
+      description: "Advanced data masking utility for Node.js \u2014 safely mask emails, phones, cards, and nested object fields with wildcard support.",
+      main: "dist/src/index.js",
+      types: "dist/src/index.d.ts",
+      module: "dist/src/index.esm.js",
+      funding: {
+        type: "individual",
+        url: "https://buymeacoffee.com/maskify"
+      },
+      files: [
+        "dist"
+      ],
+      scripts: {
+        pretest: "npm run build",
+        test: "jest",
+        "test:coverage": "jest --coverage",
+        prepare: "npm run build",
+        prebuild: "rimraf dist",
+        build: "tsc -p tsconfig.json",
+        prepublishOnly: "npm run build"
+      },
+      repository: {
+        type: "git",
+        url: "git+ssh://git@github.com/OTopman/maskify.git"
+      },
+      keywords: [
+        "mask",
+        "masking",
+        "privacy",
+        "data-protection",
+        "sanitize",
+        "obfuscate",
+        "express",
+        "sensitive-data",
+        "middleware",
+        "security",
+        "email-mask",
+        "card-mask",
+        "phone-mask",
+        "pii",
+        "gdpr",
+        "nodejs",
+        "typescript",
+        "javascript",
+        "utility",
+        "maskify"
+      ],
+      author: "Temitope Okunlola<okunlolatopman14@gmail.com>",
+      license: "MIT",
+      bugs: {
+        url: "https://github.com/OTopman/maskify/issues"
+      },
+      bin: {
+        maskify: "dist/src/cli/index.js"
+      },
+      homepage: "https://github.com/OTopman/maskify#readme",
+      peerDependencies: {
+        "@types/express": "^5.0.3",
+        express: "^5.1.0",
+        fastify: "^5.6.2",
+        "fastify-plugin": "^5.1.0"
+      },
+      devDependencies: {
+        "@types/jest": "^30.0.0",
+        "@types/node": "^24.7.1",
+        "@types/supertest": "^6.0.3",
+        eslint: "^9.37.0",
+        jest: "^29.7.0",
+        rimraf: "^6.0.1",
+        supertest: "^7.1.4",
+        "ts-jest": "^29.4.5",
+        typescript: "^5.9.3"
+      },
+      dependencies: {
+        "reflect-metadata": "^0.2.2"
+      }
+    };
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/utils/config.js
+var require_config = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/utils/config.js"(exports2) {
+    "use strict";
+    var __importDefault = exports2 && exports2.__importDefault || function(mod) {
+      return mod && mod.__esModule ? mod : { "default": mod };
+    };
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.GlobalConfigLoader = void 0;
+    exports2.defineConfig = defineConfig;
+    var fs_1 = __importDefault(require("fs"));
+    var path_1 = __importDefault(require("path"));
+    var CONFIG_FILES = [
+      "maskify.config.js",
+      "maskify.config.ts",
+      // Added TS support (requires ts-node usually, but useful for definition)
+      ".maskifyrc.js",
+      ".maskifyrc.json",
+      ".maskifyrc"
+    ];
+    function defineConfig(config) {
+      return config;
+    }
+    var ConfigLoader = class {
+      static load() {
+        if (this.config)
+          return this.config;
+        try {
+          const cwd = process.cwd();
+          for (const file of CONFIG_FILES) {
+            const filePath = path_1.default.join(cwd, file);
+            if (fs_1.default.existsSync(filePath)) {
+              if (file.endsWith(".js") || file.endsWith(".ts")) {
+                const loaded = require(filePath);
+                this.config = loaded.default || loaded;
+                return this.config;
+              } else {
+                const content = fs_1.default.readFileSync(filePath, "utf-8");
+                this.config = JSON.parse(content);
+                return this.config;
+              }
+            }
+          }
+          const pkgPath = path_1.default.join(cwd, "package.json");
+          if (fs_1.default.existsSync(pkgPath)) {
+            const pkg = JSON.parse(fs_1.default.readFileSync(pkgPath, "utf-8"));
+            if (pkg.maskify) {
+              this.config = pkg.maskify;
+              return this.config;
+            }
+          }
+        } catch (error) {
+        }
+        this.config = {};
+        return this.config;
+      }
+      static reload() {
+        this.config = null;
+        return this.load();
+      }
+    };
+    ConfigLoader.config = null;
+    exports2.GlobalConfigLoader = ConfigLoader;
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/utils/cache.js
+var require_cache = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/utils/cache.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.regexCache = exports2.pathCache = void 0;
+    exports2.getCachedPathSegments = getCachedPathSegments;
+    exports2.getCachedRegex = getCachedRegex;
+    var config_1 = require_config();
+    var LimitedCache = class {
+      constructor(limit = 1e3) {
+        this.map = /* @__PURE__ */ new Map();
+        this.limit = limit;
+      }
+      get(key) {
+        return this.map.get(key);
+      }
+      set(key, value) {
+        if (this.map.size >= this.limit) {
+          const firstKey = this.map.keys().next().value;
+          if (firstKey !== void 0) {
+            this.map.delete(firstKey);
+          }
+        }
+        this.map.set(key, value);
+      }
+      clear() {
+        this.map.clear();
+      }
+    };
+    exports2.pathCache = new LimitedCache(2e3);
+    exports2.regexCache = new LimitedCache(1e3);
+    function getCachedPathSegments(path2, parser) {
+      if (config_1.GlobalConfigLoader.load().disableCache) {
+        return parser(path2);
+      }
+      let segments = exports2.pathCache.get(path2);
+      if (!segments) {
+        segments = parser(path2);
+        exports2.pathCache.set(path2, segments);
+      }
+      return segments;
+    }
+    function getCachedRegex(key, creator) {
+      let regex = exports2.regexCache.get(key);
+      if (!regex) {
+        regex = creator();
+        exports2.regexCache.set(key, regex);
+      }
+      return regex;
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/utils/clone.js
+var require_clone = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/utils/clone.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.safeClone = safeClone;
+    function safeClone(obj, map = /* @__PURE__ */ new WeakMap()) {
+      if (obj === null || typeof obj !== "object")
+        return obj;
+      if (typeof obj === "function")
+        return obj;
+      if (map.has(obj))
+        return map.get(obj);
+      if (typeof structuredClone === "function") {
+        try {
+          return structuredClone(obj);
+        } catch (e) {
+        }
+      }
+      if (Array.isArray(obj)) {
+        const arr = [];
+        map.set(obj, arr);
+        obj.forEach((v, i) => arr[i] = safeClone(v, map));
+        return arr;
+      }
+      if (obj instanceof Date) {
+        return new Date(obj.getTime());
+      }
+      const clone = {};
+      map.set(obj, clone);
+      for (const key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+          clone[key] = safeClone(obj[key], map);
+        }
+      }
+      return clone;
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/utils/detectors.js
+var require_detectors = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/utils/detectors.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.Detectors = void 0;
+    var definitions_1 = require_definitions();
+    exports2.Detectors = {
+      isEmail: (v) => new RegExp(`^${definitions_1.RegexLib.EMAIL.source}$`).test(v),
+      isPhone: (v) => new RegExp(`^${definitions_1.RegexLib.PHONE.source}$`).test(v),
+      isCard: (v) => new RegExp(`^${definitions_1.RegexLib.CARD.source}$`).test(v),
+      /**
+       * Detects if a string is likely an address.
+       * Requires:
+       * 1. Starting with digits (street number)
+       * 2. Containing a known street suffix (Street, Rd, Ave, etc.)
+       */
+      isAddress: (v) => new RegExp(definitions_1.RegexLib.ADDRESS_START).test(v) && new RegExp(definitions_1.RegexLib.ADDRESS_SUFFIX).test(v),
+      /**
+       * Detects if a string is likely a name.
+       * Requires:
+       * 1. Only valid name characters (letters, dots, dashes, apostrophes)
+       * 2. At least one space (to distinguish "John Doe" from just "John" or "Hello")
+       */
+      isName: (v) => new RegExp(definitions_1.RegexLib.NAME_CHARS).test(v.trim()) && /\s/.test(v.trim()),
+      isIp: (v) => new RegExp(`^${definitions_1.RegexLib.IPV4.source}$`).test(v) || new RegExp(`^${definitions_1.RegexLib.IPV6.source}$`).test(v),
+      isJwt: (v) => new RegExp(`^${definitions_1.RegexLib.JWT.source}$`).test(v),
+      isUrl: (v) => new RegExp(`^${definitions_1.RegexLib.URL.source}$`).test(v),
+      detectType(value) {
+        const trimmed = value.trim();
+        if (this.isEmail(trimmed))
+          return "email";
+        if (this.isPhone(trimmed))
+          return "phone";
+        if (this.isCard(trimmed))
+          return "card";
+        if (this.isIp(trimmed))
+          return "ip";
+        if (this.isJwt(trimmed))
+          return "jwt";
+        if (this.isUrl(trimmed))
+          return "url";
+        if (this.isAddress(trimmed))
+          return "address";
+        if (this.isName(trimmed))
+          return "name";
+        return "generic";
+      }
+    };
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/utils/paths.js
+var require_paths = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/utils/paths.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.normalizePath = normalizePath;
+    exports2.splitPath = splitPath;
+    var cache_1 = require_cache();
+    function normalizePath(path2) {
+      if (!path2.includes("[") && !path2.includes("..") && !path2.startsWith(".") && !path2.endsWith(".")) {
+        return path2;
+      }
+      return path2.replace(/\[(\*|\d+)\]/g, ".$1").replace(/\.{2,}/g, ".").replace(/^\./, "").replace(/\.$/, "");
+    }
+    var parseRaw = (path2) => normalizePath(path2).split(".").filter(Boolean);
+    function splitPath(path2) {
+      return (0, cache_1.getCachedPathSegments)(path2, parseRaw);
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/utils/types.js
+var require_types2 = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/utils/types.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/utils/index.js
+var require_utils3 = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/utils/index.js"(exports2) {
+    "use strict";
+    var __createBinding = exports2 && exports2.__createBinding || (Object.create ? function(o, m, k, k2) {
+      if (k2 === void 0)
+        k2 = k;
+      var desc = Object.getOwnPropertyDescriptor(m, k);
+      if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+        desc = { enumerable: true, get: function() {
+          return m[k];
+        } };
+      }
+      Object.defineProperty(o, k2, desc);
+    } : function(o, m, k, k2) {
+      if (k2 === void 0)
+        k2 = k;
+      o[k2] = m[k];
+    });
+    var __exportStar = exports2 && exports2.__exportStar || function(m, exports3) {
+      for (var p in m)
+        if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports3, p))
+          __createBinding(exports3, m, p);
+    };
+    var __importDefault = exports2 && exports2.__importDefault || function(mod) {
+      return mod && mod.__esModule ? mod : { "default": mod };
+    };
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.__maskifySignature = void 0;
+    var package_json_1 = __importDefault(require_package());
+    __exportStar(require_cache(), exports2);
+    __exportStar(require_clone(), exports2);
+    __exportStar(require_config(), exports2);
+    __exportStar(require_detectors(), exports2);
+    __exportStar(require_paths(), exports2);
+    __exportStar(require_types2(), exports2);
+    exports2.__maskifySignature = `maskify-ts::v${package_json_1.default.version}::\xA9Temitope Okunlola`;
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/core/strategies/allow-strategy.js
+var require_allow_strategy = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/core/strategies/allow-strategy.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.applyAllowStrategy = applyAllowStrategy;
+    var cache_1 = require_cache();
+    var paths_1 = require_paths();
+    function applyAllowStrategy(target, schema, defaultMask, maskFn) {
+      const schemaKey = Object.keys(schema).sort().join("|");
+      const allowRegex = (0, cache_1.getCachedRegex)(`allow:${schemaKey}`, () => {
+        const patterns = Object.keys(schema).map((path2) => {
+          const norm = (0, paths_1.normalizePath)(path2);
+          return "^" + norm.replace(/\./g, "\\.").replace(/\*/g, "[^.]+") + "$";
+        });
+        return new RegExp(patterns.join("|"));
+      });
+      traverse(target, "", allowRegex, defaultMask, maskFn);
+    }
+    function traverse(current, currentPath, allowRegex, defaultMask, maskFn) {
+      if (!current || typeof current !== "object")
+        return;
+      for (const key in current) {
+        if (!Object.prototype.hasOwnProperty.call(current, key))
+          continue;
+        const val = current[key];
+        const newPath = currentPath ? `${currentPath}.${key}` : key;
+        if (typeof val === "object" && val !== null) {
+          if (Array.isArray(val)) {
+            for (let i = 0; i < val.length; i++) {
+              traverse(val[i], `${newPath}.${i}`, allowRegex, defaultMask, maskFn);
+            }
+          } else {
+            traverse(val, newPath, allowRegex, defaultMask, maskFn);
+          }
+        } else {
+          if (!allowRegex.test(newPath)) {
+            if (["string", "number", "boolean"].includes(typeof val)) {
+              current[key] = maskFn(String(val), defaultMask);
+            }
+          }
+        }
+      }
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/core/strategies/traverser.js
+var require_traverser = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/core/strategies/traverser.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.deepVisit = deepVisit;
+    function deepVisit(target, visitor, seen = /* @__PURE__ */ new WeakSet()) {
+      if (!target || typeof target !== "object")
+        return;
+      if (seen.has(target))
+        return;
+      seen.add(target);
+      for (const key in target) {
+        if (Object.prototype.hasOwnProperty.call(target, key)) {
+          const val = target[key];
+          visitor(key, val, target);
+          if (typeof val === "object" && val !== null) {
+            deepVisit(val, visitor, seen);
+          }
+        }
+      }
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/core/strategies/auto-strategy.js
+var require_auto_strategy = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/core/strategies/auto-strategy.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.applyAutoStrategy = applyAutoStrategy;
+    var utils_1 = require_utils3();
+    var cache_1 = require_cache();
+    var maskify_1 = require_maskify();
+    var traverser_1 = require_traverser();
+    var DEFAULT_SENSITIVE_KEYS = [
+      "password",
+      "secret",
+      "token",
+      "auth",
+      "api_key",
+      "apikey",
+      "access_token",
+      "refresh_token",
+      "cvv",
+      "cvc",
+      "pin",
+      "otp",
+      "ssn",
+      "social_security",
+      "credit_card"
+    ];
+    var DEFAULT_DETECT_TYPES = [
+      "email",
+      "phone",
+      "card",
+      "ip",
+      "jwt"
+    ];
+    function applyAutoStrategy(target, options = {}) {
+      const keysList = options.sensitiveKeys || DEFAULT_SENSITIVE_KEYS;
+      const detectTypes = new Set(options.autoDetectTypes || DEFAULT_DETECT_TYPES);
+      const cacheKey = `keys:${keysList.join(",")}`;
+      const keyRegex = (0, cache_1.getCachedRegex)(cacheKey, () => {
+        const escaped = keysList.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+        return new RegExp(escaped.join("|"), "i");
+      });
+      (0, traverser_1.deepVisit)(target, (key, val, parent) => {
+        if (keyRegex.test(key) && ["string", "number", "boolean"].includes(typeof val)) {
+          parent[key] = maskify_1.MaskifyCore.mask(String(val), {
+            ...options,
+            type: "generic"
+          });
+          return;
+        }
+        if (typeof val === "string") {
+          const type = utils_1.Detectors.detectType(val);
+          if (detectTypes.has(type)) {
+            parent[key] = maskify_1.MaskifyCore.mask(val, { ...options, type });
+          }
+        }
+      });
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/core/strategies/mask-strategy.js
+var require_mask_strategy = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/core/strategies/mask-strategy.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.applyMaskStrategy = applyMaskStrategy;
+    var paths_1 = require_paths();
+    function applyMaskStrategy(target, schema, maskFn) {
+      for (const [path2, opts] of Object.entries(schema)) {
+        const segments = (0, paths_1.splitPath)(path2);
+        recurseMask(target, segments, 0, opts, maskFn);
+      }
+    }
+    function recurseMask(current, segments, i, opts, maskFn) {
+      if (current == null)
+        return;
+      const key = segments[i];
+      const isLast = i === segments.length - 1;
+      if (key === "*") {
+        if (Array.isArray(current)) {
+          for (let j = 0; j < current.length; j++) {
+            recurseMask(current[j], segments, i + 1, opts, maskFn);
+          }
+        } else if (typeof current === "object") {
+          for (const k in current) {
+            recurseMask(current[k], segments, i + 1, opts, maskFn);
+          }
+        }
+        return;
+      }
+      if (Array.isArray(current)) {
+        const idx = parseInt(key, 10);
+        if (!isNaN(idx) && current[idx] != null) {
+          recurseMask(current[idx], segments, i + 1, opts, maskFn);
+        }
+        return;
+      }
+      const nextVal = current[key];
+      if (nextVal === void 0)
+        return;
+      if (isLast) {
+        if (typeof nextVal === "string") {
+          current[key] = maskFn(nextVal, opts);
+        }
+      } else {
+        recurseMask(nextVal, segments, i + 1, opts, maskFn);
+      }
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/core/maskify.js
+var require_maskify = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/core/maskify.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.MaskifyCore = void 0;
+    var maskers_1 = require_maskers();
+    var utils_1 = require_utils3();
+    var registry_1 = require_registry();
+    var allow_strategy_1 = require_allow_strategy();
+    var auto_strategy_1 = require_auto_strategy();
+    var mask_strategy_1 = require_mask_strategy();
+    var MaskifyCore = class _MaskifyCore {
+      /**
+       * Helper to merge provided options with global configuration.
+       * @param opts - Per-call options.
+       * @param config - Optional global config override (dependency injection).
+       */
+      static getEffectiveOptions(opts = {}, configOverride) {
+        const globalDefaults = configOverride || utils_1.GlobalConfigLoader.load().maskOptions || {};
+        return { ...globalDefaults, ...opts };
+      }
+      /**
+       * Masks a single value based on the provided options.
+       * @param value - The string to mask.
+       * @param opts - Masking options.
+       */
+      static mask(value, opts) {
+        const options = _MaskifyCore.getEffectiveOptions(opts);
+        const { autoDetect = true, type } = options;
+        if (!value)
+          return value;
+        const trimmed = value.trim();
+        if (options.transform) {
+          return options.transform(trimmed);
+        }
+        if (options.pattern)
+          return (0, maskers_1.maskPattern)(trimmed, options.pattern, opts);
+        if (type)
+          return _MaskifyCore.maskByType(trimmed, type, options);
+        if (autoDetect) {
+          const inferredType = utils_1.Detectors.detectType(trimmed);
+          return _MaskifyCore.maskByType(trimmed, inferredType, options);
+        }
+        return (0, maskers_1.maskGeneric)(trimmed, options);
+      }
+      static autoMask(data, options) {
+        const globalConfig = utils_1.GlobalConfigLoader.load();
+        const globalMaskOpts = globalConfig.maskOptions || {};
+        const effectiveOptions = {
+          ...globalMaskOpts,
+          ...options
+        };
+        const clone = (0, utils_1.safeClone)(data);
+        if (Array.isArray(clone)) {
+          clone.forEach((item) => (0, auto_strategy_1.applyAutoStrategy)(item, effectiveOptions));
+        } else {
+          (0, auto_strategy_1.applyAutoStrategy)(clone, effectiveOptions);
+        }
+        return clone;
+      }
+      /**
+       * Pattern-based masking helper.
+       * Supports:
+       *  - '#' reveal char
+       *  - '*' mask char (opts.maskChar)
+       *  - '{n}' repeat expansion for previous symbol
+       * Fault-tolerant: will append masked tail if value longer than pattern.
+       */
+      static pattern(value, pattern, option = {}) {
+        return (0, maskers_1.maskPattern)(value, pattern, option);
+      }
+      /**
+       * Delegates masking to the registered handler.
+       */
+      static maskByType(value, type, opts) {
+        const masker = registry_1.registry.get(type);
+        if (masker) {
+          return masker(value, opts);
+        }
+        if (opts.secret)
+          return (0, maskers_1.maskDeterministic)(value, opts);
+        return (0, maskers_1.maskGeneric)(value, opts);
+      }
+      /**
+       * Mask fields in nested object/array based on schema.
+       *
+       * Supports:
+       * - dot paths: 'user.email'
+       * - array wildcard: 'users[*].email'
+       * - numeric indices: 'cards[0].number'
+       *
+       * @param data - The object or array to mask.
+       * @param schema - Map of paths to mask options (e.g. { 'user.email': { type: 'email' } })
+       * @param options - Configuration for the schema application (mode, defaultMask).
+       * @param configOverride - Optional global config injection.
+       */
+      static maskSensitiveFields(data, schema, options, configOverride) {
+        const clone = (0, utils_1.safeClone)(data);
+        const globalConfig = utils_1.GlobalConfigLoader.load();
+        const globalMaskOpts = configOverride || globalConfig.maskOptions || {};
+        const mode = options?.mode || globalConfig.mode || "mask";
+        const defaultMask = {
+          ...globalMaskOpts,
+          ...options?.defaultMask || {}
+        };
+        const maskCallback = (val, fieldOpts) => {
+          return _MaskifyCore.mask(val, { ...globalMaskOpts, ...fieldOpts });
+        };
+        if (mode === "allow") {
+          (0, allow_strategy_1.applyAllowStrategy)(clone, schema, defaultMask, maskCallback);
+        } else {
+          (0, mask_strategy_1.applyMaskStrategy)(clone, schema, maskCallback);
+        }
+        return clone;
+      }
+    };
+    exports2.MaskifyCore = MaskifyCore;
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/core/compiler/index.js
+var require_compiler = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/core/compiler/index.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.SmartMasker = void 0;
+    var lexer_1 = require_lexer();
+    var patterns_1 = require_patterns();
+    var maskify_1 = require_maskify();
+    var SmartMasker = class {
+      /**
+       * Compiles the input string by tokenizing it and applying specific masks
+       * to sensitive tokens while preserving the surrounding text layout.
+       */
+      static process(text, options = {}) {
+        if (!text || typeof text !== "string")
+          return text || "";
+        const tokens = lexer_1.Lexer.tokenize(text);
+        return tokens.map((token) => {
+          if (token.type === patterns_1.TokenType.TEXT) {
+            return token.value;
+          }
+          const maskType = token.type.toLowerCase();
+          return maskify_1.MaskifyCore.mask(token.value, {
+            ...options,
+            type: maskType,
+            autoDetect: false
+            // We already detected the type!
+          });
+        }).join("");
+      }
+    };
+    exports2.SmartMasker = SmartMasker;
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/middlewares/express.js
+var require_express3 = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/middlewares/express.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.express = express;
+    var maskify_1 = require_maskify();
+    var config_1 = require_config();
+    var expressLoaded = false;
+    function ensureExpressInstalled() {
+      if (expressLoaded)
+        return;
+      try {
+        require.resolve("express");
+        expressLoaded = true;
+      } catch {
+        throw new Error("Express is required but not installed. Please run `npm install express`.");
+      }
+    }
+    function express(options) {
+      ensureExpressInstalled();
+      const config = options || config_1.GlobalConfigLoader.load();
+      const { fields, maskOptions: globalOptions } = config;
+      let schema = null;
+      if (fields && fields.length > 0) {
+        schema = Object.fromEntries(fields.map((f) => {
+          if (typeof f === "string") {
+            return [f, globalOptions || {}];
+          }
+          return [
+            f.name,
+            {
+              ...globalOptions || {},
+              ...f.options || {}
+            }
+          ];
+        }));
+      }
+      return (_, res, next) => {
+        const originalJson = res.json.bind(res);
+        res.json = (data) => {
+          if (!data || typeof data !== "object")
+            return originalJson(data);
+          let masked;
+          if (schema) {
+            masked = maskify_1.MaskifyCore.maskSensitiveFields(data, schema);
+          } else {
+            masked = maskify_1.MaskifyCore.autoMask(data, globalOptions);
+          }
+          return originalJson(masked);
+        };
+        next();
+      };
+    }
+  }
+});
+
+// ../../node_modules/fastify-plugin/lib/getPluginName.js
+var require_getPluginName = __commonJS({
+  "../../node_modules/fastify-plugin/lib/getPluginName.js"(exports2, module2) {
+    "use strict";
+    var fpStackTracePattern = /at\s(?:.*\.)?plugin\s.*\n\s*(.*)/;
+    var fileNamePattern = /(\w*(\.\w*)*)\..*/;
+    module2.exports = function getPluginName(fn) {
+      if (fn.name.length > 0)
+        return fn.name;
+      const stackTraceLimit = Error.stackTraceLimit;
+      Error.stackTraceLimit = 10;
+      try {
+        throw new Error("anonymous function");
+      } catch (e) {
+        Error.stackTraceLimit = stackTraceLimit;
+        return extractPluginName(e.stack);
+      }
+    };
+    function extractPluginName(stack) {
+      const m = stack.match(fpStackTracePattern);
+      return m ? m[1].split(/[/\\]/).slice(-1)[0].match(fileNamePattern)[1] : "anonymous";
+    }
+    module2.exports.extractPluginName = extractPluginName;
+  }
+});
+
+// ../../node_modules/fastify-plugin/lib/toCamelCase.js
+var require_toCamelCase = __commonJS({
+  "../../node_modules/fastify-plugin/lib/toCamelCase.js"(exports2, module2) {
+    "use strict";
+    module2.exports = function toCamelCase(name) {
+      if (name[0] === "@") {
+        name = name.slice(1).replace("/", "-");
+      }
+      return name.replace(/-(.)/g, function(match, g1) {
+        return g1.toUpperCase();
+      });
+    };
+  }
+});
+
+// ../../node_modules/fastify-plugin/plugin.js
+var require_plugin = __commonJS({
+  "../../node_modules/fastify-plugin/plugin.js"(exports2, module2) {
+    "use strict";
+    var getPluginName = require_getPluginName();
+    var toCamelCase = require_toCamelCase();
+    var count = 0;
+    function plugin(fn, options = {}) {
+      let autoName = false;
+      if (fn.default !== void 0) {
+        fn = fn.default;
+      }
+      if (typeof fn !== "function") {
+        throw new TypeError(
+          `fastify-plugin expects a function, instead got a '${typeof fn}'`
+        );
+      }
+      if (typeof options === "string") {
+        options = {
+          fastify: options
+        };
+      }
+      if (typeof options !== "object" || Array.isArray(options) || options === null) {
+        throw new TypeError("The options object should be an object");
+      }
+      if (options.fastify !== void 0 && typeof options.fastify !== "string") {
+        throw new TypeError(`fastify-plugin expects a version string, instead got '${typeof options.fastify}'`);
+      }
+      if (!options.name) {
+        autoName = true;
+        options.name = getPluginName(fn) + "-auto-" + count++;
+      }
+      fn[Symbol.for("skip-override")] = options.encapsulate !== true;
+      fn[Symbol.for("fastify.display-name")] = options.name;
+      fn[Symbol.for("plugin-meta")] = options;
+      if (!fn.default) {
+        fn.default = fn;
+      }
+      const camelCase = toCamelCase(options.name);
+      if (!autoName && !fn[camelCase]) {
+        fn[camelCase] = fn;
+      }
+      return fn;
+    }
+    module2.exports = plugin;
+    module2.exports.default = plugin;
+    module2.exports.fastifyPlugin = plugin;
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/middlewares/fastify.js
+var require_fastify = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/middlewares/fastify.js"(exports2) {
+    "use strict";
+    var __importDefault = exports2 && exports2.__importDefault || function(mod) {
+      return mod && mod.__esModule ? mod : { "default": mod };
+    };
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.fastify = void 0;
+    var fastify_plugin_1 = __importDefault(require_plugin());
+    var maskify_1 = require_maskify();
+    var config_1 = require_config();
+    var fastifyPlugin = async (app2, options) => {
+      const config = options || config_1.GlobalConfigLoader.load();
+      const { fields, maskOptions: globalOptions } = config;
+      let schema = null;
+      if (fields && fields.length > 0) {
+        schema = Object.fromEntries(fields.map((f) => {
+          if (typeof f === "string")
+            return [f, globalOptions || {}];
+          return [f.name, { ...globalOptions || {}, ...f.options || {} }];
+        }));
+      }
+      app2.addHook("onSend", async (_req, _reply, payload) => {
+        if (!payload)
+          return payload;
+        try {
+          let jsonString;
+          if (Buffer.isBuffer(payload)) {
+            jsonString = payload.toString("utf-8");
+          } else if (typeof payload === "string") {
+            jsonString = payload;
+          } else {
+            if (schema) {
+              return JSON.stringify(maskify_1.MaskifyCore.maskSensitiveFields(payload, schema));
+            }
+            return JSON.stringify(maskify_1.MaskifyCore.autoMask(payload, globalOptions));
+          }
+          const json = JSON.parse(jsonString);
+          let masked;
+          if (schema) {
+            masked = maskify_1.MaskifyCore.maskSensitiveFields(json, schema);
+          } else {
+            masked = maskify_1.MaskifyCore.autoMask(json, globalOptions);
+          }
+          return JSON.stringify(masked);
+        } catch (err) {
+          return payload;
+        }
+      });
+    };
+    exports2.fastify = (0, fastify_plugin_1.default)(fastifyPlugin, {
+      name: "maskify-ts"
+    });
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/middlewares/mongoose.js
+var require_mongoose = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/middlewares/mongoose.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.mongoose = mongoose;
+    var maskify_1 = require_maskify();
+    function mongoose(schema, options) {
+      const { fields, maskOptions: globalOptions } = options;
+      let maskSchema = null;
+      if (fields && fields.length > 0) {
+        maskSchema = Object.fromEntries(fields.map((f) => {
+          if (typeof f === "string")
+            return [f, globalOptions || {}];
+          return [f.name, { ...globalOptions || {}, ...f.options || {} }];
+        }));
+      }
+      schema.methods.mask = function() {
+        const obj = this.toObject();
+        if (maskSchema) {
+          return maskify_1.MaskifyCore.maskSensitiveFields(obj, maskSchema);
+        }
+        return maskify_1.MaskifyCore.autoMask(obj, globalOptions);
+      };
+      schema.set("toJSON", {
+        transform: (doc, ret) => {
+          if (maskSchema) {
+            return maskify_1.MaskifyCore.maskSensitiveFields(ret, maskSchema);
+          }
+          return maskify_1.MaskifyCore.autoMask(ret, globalOptions);
+        }
+      });
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/middlewares/prisma.js
+var require_prisma = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/middlewares/prisma.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.prisma = prisma;
+    var maskify_1 = require_maskify();
+    var config_1 = require_config();
+    function prisma(options) {
+      const config = options || config_1.GlobalConfigLoader.load();
+      const { fields, maskOptions: globalOptions } = config;
+      let schema = null;
+      if (fields && fields.length > 0) {
+        schema = Object.fromEntries(fields.map((f) => {
+          if (typeof f === "string")
+            return [f, globalOptions || {}];
+          return [f.name, { ...globalOptions || {}, ...f.options || {} }];
+        }));
+      }
+      return {
+        name: "maskify-prisma",
+        query: {
+          $allModels: {
+            async $allOperations({ model, operation, args, query }) {
+              const result = await query(args);
+              if (["findUnique", "findFirst", "findMany", "queryRaw"].includes(operation)) {
+                if (schema) {
+                  return maskify_1.MaskifyCore.maskSensitiveFields(result, schema);
+                }
+                return maskify_1.MaskifyCore.autoMask(result, globalOptions);
+              }
+              return result;
+            }
+          }
+        }
+      };
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/middlewares/typeorm.js
+var require_typeorm = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/middlewares/typeorm.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.typeorm = exports2.TypeORMSubscriber = void 0;
+    var auto_strategy_1 = require_auto_strategy();
+    var index_1 = require_src2();
+    var config_1 = require_config();
+    var TypeORMSubscriber = class {
+      constructor(options) {
+        this.options = options || config_1.GlobalConfigLoader.load();
+      }
+      afterLoad(entity) {
+        if (!entity)
+          return;
+        const MASK_METADATA_KEY = Symbol.for("MASK_METADATA");
+        const proto = Object.getPrototypeOf(entity);
+        if (proto) {
+          const metadata = Reflect.getMetadata(MASK_METADATA_KEY, proto);
+          if (metadata) {
+            for (const key of Object.keys(metadata)) {
+              if (entity[key]) {
+                entity[key] = index_1.Maskify.mask(entity[key], metadata[key]);
+              }
+            }
+          }
+        }
+        if (!this.options.fields || this.options.fields.length === 0) {
+          (0, auto_strategy_1.applyAutoStrategy)(entity, this.options.maskOptions);
+        }
+      }
+    };
+    exports2.TypeORMSubscriber = TypeORMSubscriber;
+    var typeorm = (options) => new TypeORMSubscriber(options);
+    exports2.typeorm = typeorm;
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/middlewares/index.js
+var require_middlewares = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/middlewares/index.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.middlewares = void 0;
+    var express_1 = require_express3();
+    var fastify_1 = require_fastify();
+    var mongoose_1 = require_mongoose();
+    var prisma_1 = require_prisma();
+    var typeorm_1 = require_typeorm();
+    exports2.middlewares = {
+      express: express_1.express,
+      fastify: fastify_1.fastify,
+      mongoose: mongoose_1.mongoose,
+      prisma: prisma_1.prisma,
+      typeorm: typeorm_1.typeorm
+    };
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/decorators/index.js
+var require_decorators = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/decorators/index.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.MASK_METADATA_KEY = void 0;
+    exports2.Mask = Mask;
+    require_Reflect();
+    exports2.MASK_METADATA_KEY = Symbol.for("MASK_METADATA");
+    function Mask(options) {
+      return function(target, propertyKey) {
+        const existing = Reflect.getMetadata(exports2.MASK_METADATA_KEY, target) || {};
+        existing[propertyKey] = options || { autoDetect: true };
+        Reflect.defineMetadata(exports2.MASK_METADATA_KEY, existing, target);
+      };
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/stream/index.js
+var require_stream = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/stream/index.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.MaskifyStream = void 0;
+    exports2.createMaskStream = createMaskStream;
+    var stream_1 = require("stream");
+    var maskify_1 = require_maskify();
+    var utils_1 = require_utils3();
+    var MaskifyStream = class extends stream_1.Transform {
+      constructor(schema, options) {
+        super({ objectMode: true });
+        this.configOverride = options?.configOverride;
+        const fileConfig = utils_1.GlobalConfigLoader.load();
+        const globalMaskOpts = this.configOverride || fileConfig.maskOptions || {};
+        this.options = {
+          mode: options?.mode || fileConfig.mode || "mask",
+          ...globalMaskOpts,
+          ...options
+        };
+        let effectiveSchema = schema || {};
+        if (!schema && fileConfig.fields) {
+          effectiveSchema = Object.fromEntries(fileConfig.fields.map((field) => [field, globalMaskOpts]));
+        }
+        this.schema = effectiveSchema;
+      }
+      _transform(chunk, encoding, callback) {
+        try {
+          let data = chunk;
+          let isBuffer = false;
+          if (Buffer.isBuffer(chunk) || typeof chunk === "string") {
+            isBuffer = true;
+            const str = chunk.toString();
+            if (!str.trim()) {
+              this.push(chunk);
+              return callback();
+            }
+            try {
+              data = JSON.parse(str);
+            } catch {
+              if (Object.keys(this.schema).length === 0) {
+                const masked2 = maskify_1.MaskifyCore.mask(str, {
+                  ...this.options,
+                  autoDetect: true
+                });
+                this.push(masked2);
+                return callback();
+              }
+              this.push(chunk);
+              return callback();
+            }
+          }
+          const masked = maskify_1.MaskifyCore.maskSensitiveFields(
+            data,
+            this.schema,
+            {
+              mode: this.options.mode,
+              defaultMask: this.options
+            },
+            this.configOverride
+            // Pass injected config to core
+          );
+          if (isBuffer) {
+            this.push(JSON.stringify(masked) + "\n");
+          } else {
+            this.push(masked);
+          }
+          callback();
+        } catch (err) {
+          callback(null, chunk);
+        }
+      }
+    };
+    exports2.MaskifyStream = MaskifyStream;
+    function createMaskStream(schema, options) {
+      return new MaskifyStream(schema, options);
+    }
+  }
+});
+
+// ../../node_modules/maskify-ts/dist/src/index.js
+var require_src2 = __commonJS({
+  "../../node_modules/maskify-ts/dist/src/index.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.Maskify = exports2.defineConfig = exports2.MaskifyStream = exports2.createMaskStream = exports2.Mask = void 0;
+    require_Reflect();
+    var bootstrap_1 = require_bootstrap();
+    var compiler_1 = require_compiler();
+    var maskify_1 = require_maskify();
+    var deterministic_1 = require_deterministic();
+    var middlewares_1 = require_middlewares();
+    (0, bootstrap_1.registerDefaults)();
+    var decorators_1 = require_decorators();
+    Object.defineProperty(exports2, "Mask", { enumerable: true, get: function() {
+      return decorators_1.Mask;
+    } });
+    var stream_1 = require_stream();
+    Object.defineProperty(exports2, "createMaskStream", { enumerable: true, get: function() {
+      return stream_1.createMaskStream;
+    } });
+    Object.defineProperty(exports2, "MaskifyStream", { enumerable: true, get: function() {
+      return stream_1.MaskifyStream;
+    } });
+    var config_1 = require_config();
+    Object.defineProperty(exports2, "defineConfig", { enumerable: true, get: function() {
+      return config_1.defineConfig;
+    } });
+    var Maskify;
+    (function(Maskify2) {
+      Maskify2.mask = maskify_1.MaskifyCore.mask;
+      Maskify2.pattern = maskify_1.MaskifyCore.pattern;
+      Maskify2.maskSensitiveFields = maskify_1.MaskifyCore.maskSensitiveFields;
+      Maskify2.deterministic = deterministic_1.maskDeterministic;
+      Maskify2.autoMask = maskify_1.MaskifyCore.autoMask;
+      Maskify2.smart = compiler_1.SmartMasker.process;
+      Maskify2.middlewares = middlewares_1.middlewares;
+      function maskClass(instance) {
+        const MASK_METADATA_KEY = Symbol.for("MASK_METADATA");
+        const proto = Object.getPrototypeOf(instance);
+        if (!proto)
+          return instance;
+        const metadata = Reflect.getMetadata(MASK_METADATA_KEY, proto);
+        if (!metadata)
+          return instance;
+        const clone = Object.assign(Object.create(proto), instance);
+        for (const key of Object.keys(metadata)) {
+          if (clone[key]) {
+            clone[key] = Maskify2.mask(clone[key], metadata[key]);
+          }
+        }
+        return clone;
+      }
+      Maskify2.maskClass = maskClass;
+      Maskify2.use = (app2, options, type = "express") => {
+        if (type === "express") {
+          const mw = Maskify2.middlewares.express(options);
+          app2.use(mw);
+        } else if (type === "fastify") {
+          app2.register(Maskify2.middlewares.fastify, options);
+        } else {
+          throw new Error(`Unimplemented server type: ${type}`);
+        }
+      };
+    })(Maskify || (exports2.Maskify = Maskify = {}));
+  }
+});
+
+// ../../packages/logger/dist/index.js
+var require_dist2 = __commonJS({
+  "../../packages/logger/dist/index.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.useLogger = useLogger2;
+    var maskify_ts_1 = require_src2();
+    function useLogger2(app2, options = {}) {
+      const sensitiveFields = options.sensitiveFields || [
+        "password",
+        "token",
+        "authorization",
+        "credit_card",
+        "ssn"
+      ];
+      const logLevel = options.level || "info";
+      const levels = { debug: 0, info: 1, warn: 2, error: 3 };
+      const currentLevelInt = levels[logLevel];
+      const log = (level, message, meta) => {
+        if (levels[level] < currentLevelInt)
+          return;
+        process.stdout.write(JSON.stringify({
+          timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+          level: level.toUpperCase(),
+          message,
+          ...maskify_ts_1.Maskify.autoMask(meta, {
+            sensitiveKeys: sensitiveFields,
+            maskChar: "*",
+            visibleStart: 0,
+            visibleEnd: 2
+          })
+        }) + "\n");
+      };
+      app2.addHook("onRequest", (req, res) => {
+        req.state.startTime = process.hrtime.bigint();
+        log("info", "Incoming Request", {
+          requestId: req.id,
+          method: req.method,
+          path: req.path,
+          ip: req.ip,
+          headers: req.headers
+        });
+      });
+      app2.addHook("onPreHandler", (req, res) => {
+        const originalSend = res.send.bind(res);
+        res.send = (data, message) => {
+          const endTime = process.hrtime.bigint();
+          const durationMs = req.state.startTime ? Number(endTime - req.state.startTime) / 1e6 : 0;
+          log("info", "Outgoing Response", {
+            requestId: req.id,
+            method: req.method,
+            path: req.path,
+            durationMs: durationMs.toFixed(3),
+            responseMessage: message,
+            payload: data
+          });
+          return originalSend(data, message);
+        };
+      });
+      app2.addHook("onError", (err, req) => {
+        const endTime = process.hrtime.bigint();
+        const durationMs = req.state.startTime ? Number(endTime - req.state.startTime) / 1e6 : 0;
+        const errorObj = err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : { err };
+        log("error", "Request Failed", {
+          requestId: req.id,
+          method: req.method,
+          path: req.path,
+          durationMs: durationMs.toFixed(3),
+          error: errorObj
+        });
+      });
+    }
+  }
+});
+
 // src/index.ts
 var src_exports = {};
 __export(src_exports, {
@@ -22839,11 +25809,25 @@ __export(src_exports, {
 module.exports = __toCommonJS(src_exports);
 var import_core = require("@axiomify/core");
 var import_express = __toESM(require_dist());
+var import_logger = __toESM(require_dist2());
 var import_openapi = require("@axiomify/openapi");
 var import_upload = require("@axiomify/upload");
 var import_crypto = require("crypto");
 var import_path = __toESM(require("path"));
 var app = new import_core.Axiomify();
+(0, import_logger.useLogger)(app);
+app.registerPlugin("requireAuth", async (req, res) => {
+  const token = req.headers["authorization"];
+  if (!token) {
+    res.status(401).send(null, "Unauthorized");
+  }
+});
+app.registerPlugin("requireAdmin", async (req, res) => {
+  const role = req.state.role;
+  if (role !== "admin") {
+    res.status(403).send(null, "Forbidden");
+  }
+});
 app.route({
   method: "POST",
   path: "/api/users",
@@ -22898,6 +25882,7 @@ app.route({
 app.route({
   method: "GET",
   path: "/api/secure-data",
+  plugins: ["requireAuth", "requireAdmin"],
   handler: async (req, res) => {
     const isAuthed = false;
     if (!isAuthed) {
@@ -22909,6 +25894,11 @@ app.route({
 app.route({
   method: "GET",
   path: "/ping",
+  schema: {
+    response: import_core.z.object({
+      message: import_core.z.string()
+    })
+  },
   handler: async (req, res) => {
     res.status(200).send({ message: "pong" });
   }
@@ -22920,7 +25910,11 @@ if (require.main === module) {
   });
   const shutdown = (signal) => {
     console.log(`
- shadowing ${signal} received. Closing Axiomify engine...`);
+${signal} received. Closing Axiomify engine...`);
+    server.close(() => {
+      console.log("\u{1F91D} All active requests finished. Server closed.");
+      process.exit(0);
+    });
     setTimeout(() => {
       console.error(
         "\u26A0\uFE0F Could not close connections in time, forcing shut down"
@@ -23343,4 +26337,20 @@ express/index.js:
    * Copyright(c) 2014-2015 Douglas Christopher Wilson
    * MIT Licensed
    *)
+
+reflect-metadata/Reflect.js:
+  (*! *****************************************************************************
+  Copyright (C) Microsoft. All rights reserved.
+  Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+  this file except in compliance with the License. You may obtain a copy of the
+  License at http://www.apache.org/licenses/LICENSE-2.0
+  
+  THIS CODE IS PROVIDED ON AN *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED
+  WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE,
+  MERCHANTABLITY OR NON-INFRINGEMENT.
+  
+  See the Apache Version 2.0 License for specific language governing permissions
+  and limitations under the License.
+  ***************************************************************************** *)
 */

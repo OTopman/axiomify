@@ -1,48 +1,74 @@
-import type { AxiomifyRequest, AxiomifyResponse, RouteHandler } from './types';
+import type {
+  AxiomifyRequest,
+  AxiomifyResponse,
+  RouteDefinition,
+  RouteHandler,
+} from './types';
+
 export type HookType =
   | 'onRequest'
   | 'onPreHandler'
   | 'onPostHandler'
   | 'onError';
 
+export type HookHandlerMap = {
+  onRequest: (
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+  ) => void | Promise<void>;
+  onPreHandler: (
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+    match: { route: RouteDefinition; params: Record<string, string> },
+  ) => void | Promise<void>;
+  onPostHandler: (
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+    match: { route: RouteDefinition; params: Record<string, string> },
+  ) => void | Promise<void>;
+  onError: (
+    err: unknown,
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+  ) => void | Promise<void>;
+};
+
 export class HookManager {
-  private hooks: Record<HookType, Function[]> = {
+  private hooks: { [K in HookType]: HookHandlerMap[K][] } = {
     onRequest: [],
     onPreHandler: [],
     onPostHandler: [],
     onError: [],
   };
 
-  add(type: HookType, fn: Function) {
+  add<T extends HookType>(type: T, fn: HookHandlerMap[T]): void {
     if (!this.hooks[type]) {
       this.hooks[type] = [];
     }
     this.hooks[type].push(fn);
   }
 
-  public run(type: HookType, ...args: any[]): Promise<void> | void {
+  public run<T extends HookType>(
+    type: T,
+    ...args: Parameters<HookHandlerMap[T]>
+  ): Promise<void> | void {
     const list = this.hooks[type];
     if (list.length === 0) return;
     return this.execute(list, args);
   }
 
-  private async execute(list: Function[], args: any[]): Promise<void> {
+  private async execute(list: ((...args: any[]) => any)[], args: unknown[]): Promise<void> {
     for (let i = 0; i < list.length; i++) {
-      await list[i](...args);
+      await list[i](...args as any);
     }
   }
 }
 
 export class ExecutionEngine {
-  /**
-   * The Core Request Runner.
-   * Executes the developer's business logic.
-   * Hook orchestration is now handled entirely by Axiomify.handle via HookEngine.
-   */
   public async run(
     req: AxiomifyRequest,
     res: AxiomifyResponse,
-    handler: RouteHandler | Function,
+    handler: RouteHandler,
   ): Promise<void> {
     await handler(req as any, res);
   }

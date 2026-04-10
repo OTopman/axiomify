@@ -55,4 +55,64 @@ describe('TrieNode Radix Router', () => {
     // It should not match a GET request on a POST route
     expect(match).toBeNull();
   });
+
+  it('throws when sibling routes use different param names at the same depth', () => {
+    const router = new Router();
+    router.register({
+      method: 'GET',
+      path: '/api/:version/health',
+      handler: async () => {},
+    } as RouteDefinition);
+    expect(() =>
+      router.register({
+        method: 'GET',
+        path: '/api/:region/status',
+        handler: async () => {},
+      } as RouteDefinition),
+    ).toThrow('Route conflict');
+  });
+
+  it('matches a wildcard route and captures the remainder in params["*"]', () => {
+    const router = new Router();
+    router.register({
+      method: 'GET',
+      path: '/static/*',
+      handler: async () => {},
+    } as RouteDefinition);
+
+    const match = router.lookup('GET', '/static/images/logo.png');
+    expect(match).not.toBeNull();
+    expect(match?.params['*']).toBe('images/logo.png');
+  });
+
+  it('throws when wildcard is not the final path segment', () => {
+    const router = new Router();
+    expect(() =>
+      router.register({
+        method: 'GET',
+        path: '/bad/*/route',
+        handler: async () => {},
+      } as RouteDefinition),
+    ).toThrow('wildcard * must be the final path segment');
+  });
+
+  it('static and param routes take priority over wildcard at the same depth', () => {
+    const router = new Router();
+    router.register({
+      method: 'GET',
+      path: '/files/readme',
+      handler: async () => {},
+    } as RouteDefinition);
+    router.register({
+      method: 'GET',
+      path: '/files/*',
+      handler: async () => {},
+    } as RouteDefinition);
+
+    const exactMatch = router.lookup('GET', '/files/readme');
+    expect(exactMatch?.route.path).toBe('/files/readme');
+
+    const wildcardMatch = router.lookup('GET', '/files/unknown.txt');
+    expect(wildcardMatch?.route.path).toBe('/files/*');
+  });
 });
