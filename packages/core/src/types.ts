@@ -89,6 +89,5 @@ export interface RouteDefinition<
   method: HttpMethod;
   path: string;
   schema?: S;
-  plugins?: string[];
   handler: RouteHandler<B, Q, P, S['files']>;
 }

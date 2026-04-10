@@ -1,4 +1,9 @@
-import { ExecutionEngine, HookManager, HookType } from './lifecycle';
+import {
+  ExecutionEngine,
+  HookHandlerMap,
+  HookManager,
+  HookType,
+} from './lifecycle';
 import { Router } from './router';
 import type {
   AxiomifyRequest,
@@ -22,7 +27,10 @@ export class Axiomify {
     return this._routes;
   }
 
-  public addHook(type: HookType, handler: any) {
+  public addHook<T extends HookType>(
+    type: T,
+    handler: HookHandlerMap[T],
+  ): this {
     this.hooks.add(type, handler);
     return this;
   }
@@ -55,14 +63,24 @@ export class Axiomify {
       Object.assign(req.params as any, match.params);
       const routeId = `${match.route.method}:${match.route.path}`;
 
-      // 🚀 2. Use the correct unified name: 'onPreHandler'
       await this.hooks.run('onPreHandler', req, res, match);
 
       this.validator.execute(routeId, req);
 
+      // Intercept res.send to capture the response payload
+      let responsePayload: unknown = undefined;
+      const originalSend = res.send;
+
+      res.send = (data: any, message?: string) => {
+        responsePayload = data;
+        return originalSend.call(res, data, message);
+      };
+
       await this.engine.run(req, res, match.route.handler);
 
-      // 🚀 3. Run post handler
+      // Validate the captured payload before the post-handler fires
+      this.validator.validateResponse(routeId, responsePayload);
+
       await this.hooks.run('onPostHandler', req, res, match);
     } catch (err: any) {
       await this.handleError(err, req, res);
@@ -75,7 +93,7 @@ export class Axiomify {
     res: AxiomifyResponse,
   ) {
     await this.hooks.run('onError', err, req, res);
-    
+
     // If a hook already sent a response (like 401 Unauthorized), bail out to prevent a crash.
     if (res.headersSent) return;
 

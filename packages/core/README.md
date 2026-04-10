@@ -6,7 +6,7 @@ The high-performance, zero-dependency routing engine, lifecycle hook manager, an
 
 ## ✨ Features
 
-- **Blazing Fast Routing:** Custom `O(1)` Radix Trie implementation for deterministic, hyper-fast static and dynamic route matching (`/users/:id`).
+- **Blazing Fast Routing:** Custom `O(k), where k = path depth` Radix Trie implementation for deterministic, hyper-fast static and dynamic route matching (`/users/:id`).
 - **Robust Lifecycle Engine:** Full asynchronous hook support (`onRequest`, `preHandler`, `onPostHandler`, `onError`) for building powerful plugins.
 - **Native Zod Validation:** Built-in schema validation with safe, getter-bypassing request mutation.
 - **Centralized Error Dispatcher:** Guaranteed execution of `onError` hooks (like file cleanup) before standardizing the HTTP error response.

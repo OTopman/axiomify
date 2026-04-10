@@ -11,6 +11,7 @@ export const app = new Axiomify();
 app.route({
   method: 'POST',
   path: '/api/users',
+
   schema: {
     body: z.object({
       username: z.string().min(3).describe('The new username'),
@@ -21,7 +22,7 @@ app.route({
     res.status(201).send({ id: 1, ...req.body }, 'User created successfully');
   },
 });
- 
+
 // 1. Enable the Upload Engine
 useUpload(app);
 app.route({

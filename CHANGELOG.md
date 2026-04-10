@@ -17,7 +17,7 @@ Here is a precise and structural draft for the `v2.0.0` changelog, focusing pure
 * **Auto-Generated OpenAPI (`@axiomify/openapi`)**: Added a dynamic Swagger/OpenAPI documentation generator that infers endpoints directly from the registered declarative Zod schemas.
 
 **⚙️ Core Engine Upgrades (`@axiomify/core`)**
-* **Custom Radix Tree Router**: Transitioned to a highly optimized `TrieNode` data structure for O(1) instantaneous endpoint resolution, entirely eliminating array-looping bottlenecks.
+* **Custom Radix Tree Router**: Transitioned to a highly optimized `TrieNode` data structure for O(k), where k = path depth instantaneous endpoint resolution, entirely eliminating array-looping bottlenecks.
 * **Deterministic Lifecycle Hooks**: Implemented an asynchronous hook manager (`preHandler`, `onError`). Plugins can now securely intercept requests and populate the `req` object *before* the validation compiler executes.
 * **Centralized Error Dispatcher**: Zod schema validation failures and hook exceptions are now automatically caught, mapped safely, and returned to the client (automatically hiding stack traces in production environments).
 
