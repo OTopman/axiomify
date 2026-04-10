@@ -1,3 +1,4 @@
+// packages/core/tests/timeout.test.ts
 import { describe, expect, it, vi } from 'vitest';
 import { Axiomify } from '../src/app';
 
@@ -46,7 +47,9 @@ describe('Request timeout', () => {
     } as any;
 
     const handlePromise = app.handle(mockReq, mockRes);
-    vi.advanceTimersByTime(200);
+
+    // Use Async timer advancement to allow microtasks to register the timeout
+    await vi.advanceTimersByTimeAsync(200);
     await handlePromise;
 
     expect(mockRes.status).toHaveBeenCalledWith(503);
@@ -60,7 +63,7 @@ describe('Request timeout', () => {
       method: 'GET',
       path: '/strict',
       timeout: 50, // fast per-route override
-      handler: () => new Promise(() => {}),
+      handler: () => new Promise(() => {}), // never resolves
     });
     const mockReq = {
       method: 'GET',
@@ -75,7 +78,9 @@ describe('Request timeout', () => {
     } as any;
 
     const handlePromise = app.handle(mockReq, mockRes);
-    vi.advanceTimersByTime(100);
+
+    // Use Async timer advancement
+    await vi.advanceTimersByTimeAsync(100);
     await handlePromise;
 
     expect(mockRes.status).toHaveBeenCalledWith(503);
