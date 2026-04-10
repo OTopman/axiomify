@@ -197,3 +197,35 @@ new HttpAdapter(app).listen(3000);
 Errors thrown inside handlers or hooks are automatically caught by Axiomify's centralized error dispatcher. 
 
 If Zod schema validation fails during the `validator.execute()` phase, Axiomify automatically short-circuits the request and returns the parsed Zod issues directly to the client, mapped safely against your environment variables (hiding stack traces in production automatically).
+
+### 8. Route-specific plugins
+
+Axiomify allows execution of specific middleware plugins per-route. Route plugins run in array order after global `onPreHandler` hooks but before schema validation.
+
+```typescript
+// 1. Register the plugins globally before defining routes
+app.registerPlugin('requireAuth', async (req, res) => {
+  const token = req.headers['authorization'];
+  if (!token) {
+    res.status(401).send(null, 'Unauthorized');
+    // Returning after sending — the framework checks res.headersSent
+    // and will not call subsequent plugins or the handler
+  }
+});
+
+app.registerPlugin('requireAdmin', async (req, res) => {
+  const role = (req.state as any).role;
+  if (role !== 'admin') {
+    res.status(403).send(null, 'Forbidden');
+  }
+});
+
+// 2. Attach named plugins to specific routes
+app.route({
+  method: 'DELETE',
+  path: '/users/:id',
+  plugins: ['requireAuth', 'requireAdmin'], // Runs in this order
+  handler: async (req, res) => {
+    res.status(200).send(null, 'User deleted');
+  },
+});

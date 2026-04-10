@@ -16,9 +16,17 @@ export type HttpMethod =
   | 'OPTIONS'
   | 'HEAD';
 
+/**
+ * RequestState is intentionally empty.
+ * Packages can extend it without coupling via module augmentation.
+ */
 export interface RequestState {}
 
-export interface AxiomifyRequest<Body = unknown, Query = unknown, Params = unknown> {
+export interface AxiomifyRequest<
+  Body = unknown,
+  Query = unknown,
+  Params = unknown,
+> {
   readonly id: string;
   readonly method: HttpMethod;
   readonly url: string;
@@ -77,6 +85,11 @@ export type RouteHandler<
   res: AxiomifyResponse,
 ) => Promise<void> | void;
 
+export type PluginHandler = (
+  req: AxiomifyRequest,
+  res: AxiomifyResponse,
+) => void | Promise<void>;
+
 /**
  * RouteDefinition now automatically infers the generic types directly from the Zod schema.
  */
@@ -89,5 +102,6 @@ export interface RouteDefinition<
   method: HttpMethod;
   path: string;
   schema?: S;
+  plugins?: string[];
   handler: RouteHandler<B, Q, P, S['files']>;
 }

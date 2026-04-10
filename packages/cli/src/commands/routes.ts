@@ -1,10 +1,13 @@
 import * as esbuild from 'esbuild';
 import fs from 'fs/promises';
 import path from 'path';
+import { getUserExternals } from '../utils/externals';
 
 export async function inspectRoutes(entry: string): Promise<void> {
   const entryPath = path.resolve(process.cwd(), entry);
   const tempPath = path.resolve(process.cwd(), '.axiomify/inspect.cjs');
+
+  const userExternals = getUserExternals(process.cwd());
 
   try {
     // 1. Compile the app to a temporary CommonJS file
@@ -14,7 +17,7 @@ export async function inspectRoutes(entry: string): Promise<void> {
       platform: 'node',
       format: 'cjs',
       outfile: tempPath,
-      external: ['express', '@axiomify/core', '@axiomify/express'],
+      external: [...new Set([...userExternals, 'node:*'])],
     });
 
     // 2. Clear require cache to ensure fresh load

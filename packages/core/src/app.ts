@@ -8,6 +8,7 @@ import { Router } from './router';
 import type {
   AxiomifyRequest,
   AxiomifyResponse,
+  PluginHandler,
   RouteDefinition,
   RouteSchema,
 } from './types';
@@ -22,9 +23,18 @@ export class Axiomify {
   public readonly hooks = new HookManager();
 
   private readonly _routes: RouteDefinition[] = [];
+  private readonly _plugins = new Map<string, PluginHandler>();
 
   public get registeredRoutes(): readonly RouteDefinition[] {
     return this._routes;
+  }
+
+  public registerPlugin(name: string, handler: PluginHandler): this {
+    if (this._plugins.has(name)) {
+      throw new Error(`Plugin "${name}" is already registered.`);
+    }
+    this._plugins.set(name, handler);
+    return this;
   }
 
   public addHook<T extends HookType>(
@@ -55,30 +65,35 @@ export class Axiomify {
       await this.hooks.run('onRequest', req, res);
 
       const match = this.router.lookup(req.method, req.path);
-
-      if (!match) {
-        return res.status(404).send(null, 'Route not found');
-      }
+      if (!match) return res.status(404).send(null, 'Route not found');
 
       Object.assign(req.params as any, match.params);
       const routeId = `${match.route.method}:${match.route.path}`;
 
       await this.hooks.run('onPreHandler', req, res, match);
 
+      const routePlugins = match.route.plugins ?? [];
+      for (const name of routePlugins) {
+        const plugin = this._plugins.get(name);
+        if (!plugin) {
+          throw new Error(
+            `Plugin "${name}" is not registered. Call app.registerPlugin() before app.route().`,
+          );
+        }
+        await plugin(req, res);
+        if (res.headersSent) return;
+      }
+
       this.validator.execute(routeId, req);
 
-      // Intercept res.send to capture the response payload
       let responsePayload: unknown = undefined;
       const originalSend = res.send;
-
       res.send = (data: any, message?: string) => {
         responsePayload = data;
         return originalSend.call(res, data, message);
       };
 
       await this.engine.run(req, res, match.route.handler);
-
-      // Validate the captured payload before the post-handler fires
       this.validator.validateResponse(routeId, responsePayload);
 
       await this.hooks.run('onPostHandler', req, res, match);

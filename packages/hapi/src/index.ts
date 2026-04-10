@@ -3,39 +3,24 @@ import type {
   AxiomifyRequest,
   AxiomifyResponse,
 } from '@axiomify/core';
-import type { Request, ResponseToolkit, Server } from '@hapi/hapi';
+import type { Request, ResponseToolkit } from '@hapi/hapi';
 import Hapi from '@hapi/hapi';
 import crypto from 'crypto';
 
 export class HapiAdapter {
-  private server: Server;
+  private server: Hapi.Server;
 
-  constructor(private core: Axiomify, config?: Hapi.ServerOptions) {
-    this.server = Hapi.server(config || {});
-
-    this.server.route({
-      method: '*',
-      path: '/{any*}',
-      handler: async (req: Request, h: ResponseToolkit) => {
-        return new Promise((resolve, reject) => {
-          const axiomifyReq = this.translateRequest(req);
-          const axiomifyRes = this.translateResponse(h, resolve);
-
-          this.core.handle(axiomifyReq, axiomifyRes).catch((err) => {
-            axiomifyRes.error(err);
-          });
-
-          // 🚀 THE FIX: Safety valve to prevent Hapi from hanging forever
-          setTimeout(() => {
-            if (!axiomifyRes.headersSent) {
-              reject(
-                new Error(
-                  'Axiomify handler did not send a response within the 30s timeout',
-                ),
-              );
-            }
-          }, 30_000).unref();
-        });
+  constructor(private app: Axiomify, config: Hapi.ServerOptions = {}) {
+    // Merge the user configuration but force routes.payload options
+    this.server = Hapi.server({
+      ...config,
+      routes: {
+        ...(config.routes || {}),
+        payload: {
+          ...(config.routes?.payload || {}),
+          output: 'stream',
+          parse: false,
+        },
       },
     });
   }
