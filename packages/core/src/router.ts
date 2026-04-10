@@ -9,6 +9,7 @@ class TrieNode {
   public children = new Map<string, TrieNode>();
   public paramChild: TrieNode | null = null;
   public paramName: string | null = null;
+  public wildcardChild: TrieNode | null = null;
   public routes = new Map<HttpMethod, RouteDefinition>();
 }
 
@@ -25,6 +26,7 @@ export class Router {
 
     for (const part of parts) {
       if (part.startsWith(':')) {
+        // Handle dynamic parameters (e.g., :id)
         if (!currentNode.paramChild) {
           currentNode.paramChild = new TrieNode();
           currentNode.paramName = part.slice(1);
@@ -37,6 +39,21 @@ export class Router {
           );
         }
         currentNode = currentNode.paramChild;
+      } else if (part === '*') {
+        // Handle wildcard segments
+        if (!currentNode.wildcardChild) {
+          currentNode.wildcardChild = new TrieNode();
+        }
+        currentNode = currentNode.wildcardChild;
+
+        // Wildcard must be the last segment
+        const remainingParts = parts.slice(parts.indexOf(part) + 1);
+        if (remainingParts.length > 0) {
+          throw new Error(
+            `Invalid route "${route.path}": wildcard * must be the final path segment.`,
+          );
+        }
+        break; // nothing after * is valid
       } else {
         // Handle static path segments
         if (!currentNode.children.has(part)) {
@@ -77,6 +94,11 @@ export class Router {
           const paramName = currentNode.paramName!;
           currentNode = currentNode.paramChild;
           params[paramName] = part;
+        } else if (currentNode.wildcardChild) {
+          // Capture the rest of the path (current segment onward) as params['*']
+          params['*'] = path.slice(start);
+          currentNode = currentNode.wildcardChild;
+          break; // wildcard consumes the rest
         } else {
           return null; // 404
         }

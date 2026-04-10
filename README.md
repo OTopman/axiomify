@@ -96,6 +96,21 @@ adapter.listen(3000, () => {
 });
 ```
 
+**Wildcard routes**
+
+Use `*` as the final path segment to match any remainder. The captured
+portion is available as `req.params['*']`:
+
+```typescript
+app.route({
+  method: 'GET',
+  path: '/files/*',
+  handler: async (req, res) => {
+    const filePath = req.params['*']; // e.g. 'images/logo.png'
+    res.status(200).send({ path: filePath });
+  },
+});
+
 ---
 **Response schema validation**
 
@@ -257,3 +272,25 @@ app.route({
     res.status(200).send(null, 'User deleted');
   },
 });
+```
+
+### 9. Request Timeouts
+
+Set a global timeout in milliseconds via the Axiomify constructor. Any handler
+that does not call res.send() within the window automatically receives a 503:
+
+```typescript
+const app = new Axiomify({ timeout: 5000 }); // 5 seconds global default
+```
+
+Override per-route with the timeout field on any route definition:
+
+```typescript
+app.route({
+  method: 'POST',
+  path: '/heavy-job',
+  timeout: 30_000, // 30 seconds for this route only
+  handler: async (req, res) => { ... },
+});
+```
+Set timeout: 0 (the default) to disable timeouts entirely.

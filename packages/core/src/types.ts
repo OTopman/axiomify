@@ -103,5 +103,6 @@ export interface RouteDefinition<
   path: string;
   schema?: S;
   plugins?: string[];
+  timeout?: number; // milliseconds; overrides the global default when set
   handler: RouteHandler<B, Q, P, S['files']>;
 }

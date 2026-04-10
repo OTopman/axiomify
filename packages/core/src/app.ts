@@ -14,6 +14,10 @@ import type {
 } from './types';
 import { ValidationCompiler } from './validation';
 
+export interface AxiomifyOptions {
+  timeout?: number; // Default request timeout in ms. 0 = disabled. Default: 0.
+}
+
 export class Axiomify {
   public router = new Router();
   public engine = new ExecutionEngine();
@@ -24,9 +28,14 @@ export class Axiomify {
 
   private readonly _routes: RouteDefinition[] = [];
   private readonly _plugins = new Map<string, PluginHandler>();
+  private readonly _timeout: number;
 
   public get registeredRoutes(): readonly RouteDefinition[] {
     return this._routes;
+  }
+
+  constructor(options: AxiomifyOptions = {}) {
+    this._timeout = options.timeout ?? 0;
   }
 
   public registerPlugin(name: string, handler: PluginHandler): this {
@@ -93,7 +102,26 @@ export class Axiomify {
         return originalSend.call(res, data, message);
       };
 
-      await this.engine.run(req, res, match.route.handler);
+      const effectiveTimeout = match.route.timeout ?? this._timeout;
+
+      if (effectiveTimeout > 0) {
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => {
+            reject(
+              Object.assign(new Error('Request timed out'), {
+                statusCode: 503,
+              }),
+            );
+          }, effectiveTimeout),
+        );
+        await Promise.race([
+          this.engine.run(req, res, match.route.handler),
+          timeoutPromise,
+        ]);
+      } else {
+        await this.engine.run(req, res, match.route.handler);
+      }
+
       try {
         this.validator.validateResponse(routeId, responsePayload);
       } catch (validationErr: any) {

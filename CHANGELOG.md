@@ -4,6 +4,9 @@
 
 ### ✨ Features
 - **Core**: Introduced a route-level plugin system (`app.registerPlugin()`) allowing targeted middleware execution on specific routes prior to schema validation.
+- **Feature**: Added wildcard route segment support (`*`) for fallbacks, static proxying, and catch-all 404 handlers.
+- **Feature**: Introduced global and per-route request timeouts (`timeout: ms`) to safely bound connection lifespan and automatically dispatch `503 Service Unavailable`.
+- **Bug Fix**: Added missing `@axiomify/core` to `@axiomify/upload` dependencies.
 
 ### 🐛 Bug Fixes
 - **Core**: Enforced strict generics on `addHook()` handlers to prevent silent lifecycle failures and eliminate escaping `any` types.

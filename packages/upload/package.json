@@ -13,7 +13,8 @@
     "build": "tsc"
   },
   "dependencies": {
-    "busboy": "^1.6.0"
+    "busboy": "^1.6.0",
+    "@axiomify/core": "*"
   },
   "devDependencies": {
     "@types/busboy": "^1.5.4"
