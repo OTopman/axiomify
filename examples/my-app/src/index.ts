@@ -1,11 +1,15 @@
 import { Axiomify, UnauthorizedError, z } from '@axiomify/core';
 import { ExpressAdapter } from '@axiomify/express';
+import { useLogger } from '@axiomify/logger';
 import { useOpenAPI } from '@axiomify/openapi';
 import { useUpload } from '@axiomify/upload';
 import { randomUUID } from 'crypto';
 import path from 'path';
 
 export const app = new Axiomify();
+
+// To log requests, responses, and errors in a structured way, with zero config:
+useLogger(app);
 
 // 1. A strictly validated route
 app.route({
@@ -87,6 +91,11 @@ app.route({
 app.route({
   method: 'GET',
   path: '/ping',
+  schema: {
+    response: z.object({
+      message: z.string(),
+    }),
+  },
   handler: async (req, res) => {
     res.status(200).send({ message: 'pong' });
   },

@@ -21,11 +21,16 @@ export async function inspectRoutes(entry: string): Promise<void> {
     });
 
     // 2. Clear require cache to ensure fresh load
-    delete require.cache[require.resolve(tempPath)];
+    try {
+      delete require.cache[require.resolve(tempPath)];
+    } catch (e) {
+      // Ignore if it's the first time and not yet in cache
+    }
 
     // 3. Import the compiled app
-    const fileUrl = `file://${tempPath}?t=${Date.now()}`;
-    const mod = await import(fileUrl);
+    // Since the CLI is CJS, import() becomes require().
+    // require() uses raw absolute paths, not file:// URLs.
+    const mod = require(tempPath);
     const app = mod.app || mod.default;
 
     if (!app || typeof app.registeredRoutes === 'undefined') {
