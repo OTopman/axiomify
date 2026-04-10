@@ -1,5 +1,8 @@
 # Changelog
 
+## v3.2.0
+- **Feature**: Created `@axiomify/cors`, a framework-agnostic CORS plugin with automatic preflight `OPTIONS` handling.
+
 ## v3.1.0
 
 ### ✨ Features

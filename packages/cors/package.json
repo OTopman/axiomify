@@ -1,5 +1,5 @@
 {
-  "name": "@axiomify/fastify",
+  "name": "@axiomify/cors",
   "version": "3.2.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -13,7 +13,6 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@axiomify/core": "*",
-    "fastify": "^4.26.0"
+    "@axiomify/core": "*"
   }
 }

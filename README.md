@@ -31,6 +31,7 @@ Axiomify is distributed as a suite of interoperable packages. Install only what 
 | **`@axiomify/hapi`** | The Hapi.js adapter. |
 | **`@axiomify/openapi`** | Auto-generates Swagger/OpenAPI documentation derived directly from your Zod schemas. |
 | **`@axiomify/upload`** | RAM-safe, stream-based multipart/form-data parsing for secure file uploads. |
+| **`@axiomify/cors`** | Framework-agnostic CORS plugin with preflight support. |
 
 ---
 
@@ -306,3 +307,17 @@ app.route({
 });
 ```
 Set timeout: 0 (the default) to disable timeouts entirely.
+
+### 10. CORS
+```typescript
+import { useCors } from '@axiomify/cors';
+
+useCors(app, {
+  origin: ['[https://myapp.com](https://myapp.com)', '[https://staging.myapp.com](https://staging.myapp.com)'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true,
+});
+```
+Call useCors() before registering routes. Options default to open
+(origin: '*', no credentials). For preflight requests (OPTIONS),
+the plugin automatically responds with 204 and bypasses your handlers.
