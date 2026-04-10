@@ -11,21 +11,19 @@ export class ExpressAdapter {
     this.core = coreApp;
     this.app = express();
 
-    // Essential Express middleware for parsing
+    // Instantiate memory-heavy parsers ONCE during boot
+    const jsonParser = express.json();
+    const urlencodedParser = express.urlencoded({ extended: true });
+
     this.app.use((req, res, next) => {
-      // This prevents allocating memory for payloads on unmapped/404 routes.
       const match = this.core.router.lookup(req.method as any, req.path);
       if (!match) return next();
 
       const contentType = req.headers['content-type'] || '';
-
-      if (contentType.includes('application/json')) {
-        return express.json()(req, res, next);
-      }
-
-      if (contentType.includes('application/x-www-form-urlencoded')) {
-        return express.urlencoded({ extended: true })(req, res, next);
-      }
+      if (contentType.includes('application/json'))
+        return jsonParser(req, res, next);
+      if (contentType.includes('application/x-www-form-urlencoded'))
+        return urlencodedParser(req, res, next);
 
       next();
     });

@@ -74,6 +74,9 @@ export class Axiomify {
     try {
       await this.hooks.run('onRequest', req, res);
 
+      // Halt execution if a hook (like CORS preflight) sends a response
+      if (res.headersSent) return;
+
       const match = this.router.lookup(req.method, req.path);
       if (!match) return res.status(404).send(null, 'Route not found');
 
@@ -84,10 +87,12 @@ export class Axiomify {
 
       const routePlugins = match.route.plugins ?? [];
       for (const name of routePlugins) {
-        const plugin = this._plugins.get(name);
+        const plugin = this._plugins.get(name as string);
         if (!plugin) {
           throw new Error(
-            `Plugin "${name}" is not registered. Call app.registerPlugin() before app.route().`,
+            `Plugin "${
+              name as string
+            }" is not registered. Call app.registerPlugin() before app.route().`,
           );
         }
         await plugin(req, res);
@@ -98,27 +103,38 @@ export class Axiomify {
 
       let responsePayload: unknown = undefined;
       const originalSend = res.send;
+
       res.send = (data: any, message?: string) => {
         responsePayload = data;
+        // Expose payload directly on the response object for the Logger plugin
+        (res as any).payload = data;
+        (res as any).responseMessage = message;
         return originalSend.call(res, data, message);
       };
 
       const effectiveTimeout = match.route.timeout ?? this._timeout;
 
       if (effectiveTimeout > 0) {
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => {
+        let timeoutId: NodeJS.Timeout;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
             reject(
               Object.assign(new Error('Request timed out'), {
                 statusCode: 503,
               }),
             );
-          }, effectiveTimeout),
-        );
-        await Promise.race([
-          this.engine.run(req, res, match.route.handler),
-          timeoutPromise,
-        ]);
+          }, effectiveTimeout);
+        });
+
+        try {
+          await Promise.race([
+            this.engine.run(req, res, match.route.handler),
+            timeoutPromise,
+          ]);
+        } finally {
+          // Clear the timeout to prevent severe memory leaks!
+          clearTimeout(timeoutId!);
+        }
       } else {
         await this.engine.run(req, res, match.route.handler);
       }
@@ -126,11 +142,13 @@ export class Axiomify {
       try {
         this.validator.validateResponse(routeId, responsePayload);
       } catch (validationErr: any) {
-        // The response was already sent, so we cannot change the HTTP response.
-        console.error(
-          `[Axiomify] Response schema mismatch on ${routeId}:`,
-          validationErr.errors ?? validationErr.message,
-        );
+        // Prevent double-logging by letting the framework handle it natively
+        if (process.env.NODE_ENV === 'development') {
+          console.error(
+            `[Axiomify] Response schema mismatch on ${routeId}:`,
+            validationErr.errors ?? validationErr.message,
+          );
+        }
       }
 
       await this.hooks.run('onPostHandler', req, res, match);

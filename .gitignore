@@ -66,3 +66,7 @@ coverage/
 .next/
 .nuxt/
 .cache/
+
+
+# Axiomify CLI temporary artifacts
+.axiomify/

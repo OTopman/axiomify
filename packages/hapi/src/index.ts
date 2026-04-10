@@ -36,15 +36,20 @@ export class HapiAdapter {
             axiomifyRes.error(err);
           });
 
-          setTimeout(() => {
-            if (!axiomifyRes.headersSent) {
-              reject(
-                new Error(
-                  'Axiomify handler did not send a response within the 30s timeout',
-                ),
-              );
-            }
-          }, 30_000).unref();
+          // Respect framework-level default timeout rather than hardcoding 30s
+          const effectiveTimeout = (this.core as any)._timeout || 30_000;
+
+          if (effectiveTimeout > 0) {
+            setTimeout(() => {
+              if (!axiomifyRes.headersSent) {
+                reject(
+                  new Error(
+                    `Axiomify handler did not send a response within the ${effectiveTimeout}ms timeout`,
+                  ),
+                );
+              }
+            }, effectiveTimeout).unref();
+          }
         });
       },
     });

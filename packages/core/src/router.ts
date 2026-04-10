@@ -79,34 +79,25 @@ export class Router {
   public lookup(method: HttpMethod, path: string): RouteMatch | null {
     let currentNode = this.root;
     const params: Record<string, string> = {};
+    const parts = this.splitPath(path);
 
-    let start = 1; // Skip the leading slash
-    let end = path.indexOf('/', start);
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
 
-    while (start < path.length) {
-      const isLast = end === -1;
-      const part = path.substring(start, isLast ? path.length : end);
-
-      if (part.length > 0) {
-        if (currentNode.children.has(part)) {
-          currentNode = currentNode.children.get(part)!;
-        } else if (currentNode.paramChild) {
-          const paramName = currentNode.paramName!;
-          currentNode = currentNode.paramChild;
-          params[paramName] = part;
-        } else if (currentNode.wildcardChild) {
-          // Capture the rest of the path (current segment onward) as params['*']
-          params['*'] = path.slice(start);
-          currentNode = currentNode.wildcardChild;
-          break; // wildcard consumes the rest
-        } else {
-          return null; // 404
-        }
+      if (currentNode.children.has(part)) {
+        currentNode = currentNode.children.get(part)!;
+      } else if (currentNode.paramChild) {
+        const paramName = currentNode.paramName!;
+        currentNode = currentNode.paramChild;
+        params[paramName] = part;
+      } else if (currentNode.wildcardChild) {
+        // Correctly consume the remaining path segments for the wildcard
+        params['*'] = parts.slice(i).join('/');
+        currentNode = currentNode.wildcardChild;
+        break;
+      } else {
+        return null; // 404
       }
-
-      if (isLast) break;
-      start = end + 1;
-      end = path.indexOf('/', start);
     }
 
     const route = currentNode.routes.get(method);
