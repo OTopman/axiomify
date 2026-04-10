@@ -25,10 +25,16 @@ export class Router {
 
     for (const part of parts) {
       if (part.startsWith(':')) {
-        // Handle dynamic parameters (e.g., :id)
         if (!currentNode.paramChild) {
           currentNode.paramChild = new TrieNode();
           currentNode.paramName = part.slice(1);
+        } else if (currentNode.paramName !== part.slice(1)) {
+          throw new Error(
+            `Route conflict: cannot register "${route.path}" — ` +
+              `param name ":${part.slice(1)}" conflicts with existing ` +
+              `":${currentNode.paramName}" at the same position. ` +
+              `Use the same param name for sibling dynamic routes.`,
+          );
         }
         currentNode = currentNode.paramChild;
       } else {

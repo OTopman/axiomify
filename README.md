@@ -96,6 +96,34 @@ adapter.listen(3000, () => {
 });
 ```
 
+---
+**Response schema validation**
+
+When a `response` schema is defined, Axiomify validates the payload passed to
+`res.send()` after your handler returns.
+
+- In **development** (`NODE_ENV !== 'production'`): a mismatch throws a
+  `ValidationError` and logs the field errors to stderr. Your HTTP response
+  is already sent — this is a developer-visible signal only, not a client error.
+- In **production**: a mismatch logs a `console.warn` to stderr and does not
+  affect the response in any way.
+
+The response schema is also used by `@axiomify/openapi` to generate the OpenAPI
+response body definition — so defining it serves both validation and documentation.
+
+```typescript
+app.route({
+  method: 'GET',
+  path: '/users/:id',
+  schema: {
+    params: z.object({ id: z.string().uuid() }),
+    response: z.object({ id: z.string(), name: z.string() }),
+  },
+  handler: async (req, res) => {
+    res.status(200).send({ id: req.params.id, name: 'Alice' });
+  },
+});
+
 ### 3. RAM-Safe File Uploads (The Streaming Engine)
 Traditional Node.js frameworks buffer file uploads into RAM, causing massive memory spikes and crashes under load. Axiomify's @axiomify/upload package uses a native Busboy stream pipeline to pipe multipart data directly to the hard drive, bypassing RAM entirely.
 

@@ -47,6 +47,8 @@ export async function inspectRoutes(entry: string): Promise<void> {
       if (route.schema?.body) schemas.push('Body');
       if (route.schema?.query) schemas.push('Query');
       if (route.schema?.params) schemas.push('Params');
+      if (route.schema?.response) schemas.push('Response');
+      if (route.schema?.files) schemas.push('Files');
 
       const validationStr = schemas.length > 0 ? schemas.join(', ') : 'None';
 

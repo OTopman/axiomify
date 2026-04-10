@@ -55,4 +55,20 @@ describe('TrieNode Radix Router', () => {
     // It should not match a GET request on a POST route
     expect(match).toBeNull();
   });
+
+  it('throws when sibling routes use different param names at the same depth', () => {
+    const router = new Router();
+    router.register({
+      method: 'GET',
+      path: '/api/:version/health',
+      handler: async () => {},
+    } as RouteDefinition);
+    expect(() =>
+      router.register({
+        method: 'GET',
+        path: '/api/:region/status',
+        handler: async () => {},
+      } as RouteDefinition),
+    ).toThrow('Route conflict');
+  });
 });
