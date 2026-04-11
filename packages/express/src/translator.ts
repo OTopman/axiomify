@@ -105,7 +105,9 @@ export function translateResponse(
       res.write(`data: ${JSON.stringify(data)}\n\n`);
       // Optional: Call res.flush() here if using a compression middleware that requires it
     },
-
+    get statusCode() {
+      return statusCode;
+    },
     get raw() {
       return res;
     },

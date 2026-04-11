@@ -140,6 +140,10 @@ export class FastifyAdapter {
         res.raw.write(`data: ${JSON.stringify(data)}\n\n`);
       },
 
+      get statusCode() {
+        return statusCode;
+      },
+
       get raw() {
         return res;
       },

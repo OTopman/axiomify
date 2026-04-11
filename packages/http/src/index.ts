@@ -63,22 +63,25 @@ export class HttpAdapter {
     return new Promise((resolve, reject) => {
       let body = '';
       let receivedBytes = 0;
+      let settled = false; // 🚀 State lock
 
       req.on('data', (chunk: Buffer) => {
+        if (settled) return;
         receivedBytes += chunk.length;
 
-        // 🚀 THE FIX: Kill the socket immediately if it exceeds the limit (Default 1MB)
         if (receivedBytes > limitBytes) {
+          settled = true;
           req.destroy();
           return reject(
             Object.assign(new Error('Payload Too Large'), { statusCode: 413 }),
           );
         }
-
         body += chunk.toString();
       });
 
       req.on('end', () => {
+        if (settled) return;
+        settled = true;
         if (!body) return resolve(undefined);
         try {
           resolve(JSON.parse(body));
@@ -87,7 +90,11 @@ export class HttpAdapter {
         }
       });
 
-      req.on('error', reject);
+      req.on('error', (err) => {
+        if (settled) return;
+        settled = true;
+        reject(err);
+      });
     });
   }
 
@@ -210,6 +217,10 @@ export class HttpAdapter {
       sseSend(data: any, event?: string) {
         if (event) res.write(`event: ${event}\n`);
         res.write(`data: ${JSON.stringify(data)}\n\n`);
+      },
+
+      get statusCode() {
+        return statusCode;
       },
 
       get raw() {

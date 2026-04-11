@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import type { IncomingMessage, Server } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { ZodTypeAny } from 'zod';
@@ -51,7 +52,7 @@ export class WsManager {
           // WS Upgrade Callback
           this.wss.handleUpgrade(request, socket, head, (ws: any) => {
             const client = ws as WsClient;
-            client.id = Math.random().toString(36).substring(2, 15);
+            client.id = crypto.randomUUID();
             client.rooms = new Set();
             client.user = user;
 

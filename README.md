@@ -1,5 +1,7 @@
 # 🌌 Axiomify
 
+[![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg?token=QSI2WR3YWZ)](https://codecov.io/github/otopman/axiomify)
+
 **Fastify-level speed. NestJS-level structure. Zero compromises.**
 
 Axiomify is a high-performance, schema-first Node.js framework engineered for strict type safety and minimal runtime overhead. By unifying routing, validation, and request handling into a single declarative source of truth, Axiomify eliminates middleware fragmentation. 

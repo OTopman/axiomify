@@ -181,6 +181,10 @@ export class HapiAdapter {
         sseStream.write(`data: ${JSON.stringify(data)}\n\n`);
       },
 
+      get statusCode() {
+        return statusCode;
+      },
+
       get raw() {
         return h;
       },

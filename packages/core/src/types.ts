@@ -59,6 +59,7 @@ export interface AxiomifyResponse {
   sseInit(): void;
   sseSend(data: any, event?: string): void;
 
+  readonly statusCode: number;
   readonly raw: unknown;
   readonly headersSent: boolean;
 }

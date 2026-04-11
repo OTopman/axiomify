@@ -12,7 +12,27 @@ export interface RateLimitStore {
 }
 
 export class MemoryStore implements RateLimitStore {
-  private hits = new Map<string, number[]>();
+  private hits = new Map<string, { timestamps: number[]; windowMs: number }>();
+  private timer: NodeJS.Timeout;
+
+  constructor() {
+    // Prune expired keys every 60 seconds to prevent OOM DoS attacks
+    this.timer = setInterval(() => this.prune(), 60_000);
+    this.timer.unref(); // Don't block the Node event loop from exiting
+  }
+
+  private prune() {
+    const now = Date.now();
+    for (const [key, data] of this.hits.entries()) {
+      const windowStart = now - data.windowMs;
+      const valid = data.timestamps.filter((t) => t > windowStart);
+      if (valid.length === 0) {
+        this.hits.delete(key);
+      } else {
+        this.hits.set(key, { timestamps: valid, windowMs: data.windowMs });
+      }
+    }
+  }
 
   public async increment(
     key: string,
@@ -21,12 +41,11 @@ export class MemoryStore implements RateLimitStore {
     const now = Date.now();
     const windowStart = now - windowMs;
 
-    // Sliding window: filter out timestamps older than the window
-    let timestamps = this.hits.get(key) || [];
-    timestamps = timestamps.filter((time) => time > windowStart);
+    let data = this.hits.get(key) || { timestamps: [], windowMs };
+    let timestamps = data.timestamps.filter((time) => time > windowStart);
     timestamps.push(now);
 
-    this.hits.set(key, timestamps);
+    this.hits.set(key, { timestamps, windowMs });
 
     return {
       count: timestamps.length,

@@ -1,11 +1,13 @@
 import type { Axiomify } from '@axiomify/core';
 import type { Express, Request, Response } from 'express';
 import express from 'express';
+import { Server } from 'http';
 import { translateRequest, translateResponse } from './translator';
 
 export class ExpressAdapter {
   private app: Express;
   private core: Axiomify;
+  private server?: Server;
 
   constructor(coreApp: Axiomify) {
     this.core = coreApp;
@@ -40,8 +42,17 @@ export class ExpressAdapter {
   /**
    * Bootstraps the server.
    */
-  public listen(port: number, callback?: () => void): import('http').Server {
-    return this.app.listen(port, callback);
+  public listen(port: number, callback?: () => void): Server {
+    this.server = this.app.listen(port, callback);
+    return this.server;
+  }
+
+  // Graceful Shutdown
+  public async close(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.server) return resolve();
+      this.server.close((err) => (err ? reject(err) : resolve()));
+    });
   }
 
   /**

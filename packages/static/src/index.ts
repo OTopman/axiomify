@@ -47,6 +47,17 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
           return res.status(404).send(null, 'File not found');
         }
 
+        // Generate ETag from file size and modified time
+        const etag = `W/"${stat.size.toString(16)}-${stat.mtime
+          .getTime()
+          .toString(16)}"`;
+        res.header('ETag', etag);
+
+        // Check If-None-Match for 304 Not Modified
+        if (req.headers['if-none-match'] === etag) {
+          return res.status(304).sendRaw('');
+        }
+
         // Determine MIME type
         const ext = path.extname(absolutePath).toLowerCase();
         const contentType = MIME_TYPES[ext] || 'application/octet-stream';
