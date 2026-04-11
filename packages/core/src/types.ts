@@ -1,3 +1,4 @@
+import { Readable } from 'stream';
 import { z, ZodTypeAny } from 'zod';
 
 export interface FileConfig {
@@ -20,7 +21,10 @@ export type HttpMethod =
  * RequestState is intentionally empty.
  * Packages can extend it without coupling via module augmentation.
  */
-export interface RequestState {}
+export interface RequestState {
+  startTime?: bigint;
+  [key: string]: any; // Allows users to append custom state safely
+}
 
 export interface AxiomifyRequest<
   Body = unknown,
@@ -50,8 +54,18 @@ export interface AxiomifyResponse {
   send<T>(data: T, message?: string): void;
   sendRaw(payload: any, contentType?: string): void;
   error(err: unknown): void;
+
+  stream(readable: Readable, contentType?: string): void;
+  sseInit(): void;
+  sseSend(data: any, event?: string): void;
+
   readonly raw: unknown;
   readonly headersSent: boolean;
+}
+
+export interface RouteGroup {
+  route<S extends RouteSchema>(definition: RouteDefinition<S>): this;
+  group(prefix: string, callback: (group: RouteGroup) => void): this;
 }
 
 /**
@@ -61,7 +75,7 @@ export interface RouteSchema {
   body?: ZodTypeAny;
   query?: ZodTypeAny;
   params?: ZodTypeAny;
-  response?: ZodTypeAny;
+  response?: ZodTypeAny | Record<number, ZodTypeAny>;
   files?: Record<string, FileConfig>;
 }
 

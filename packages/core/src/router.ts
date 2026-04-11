@@ -5,6 +5,11 @@ interface RouteMatch {
   params: Record<string, string>;
 }
 
+export type RouterLookupResult =
+  | { route: RouteDefinition; params: Record<string, string> }
+  | { error: 'MethodNotAllowed'; allowed: HttpMethod[] }
+  | null;
+
 class TrieNode {
   public children = new Map<string, TrieNode>();
   public paramChild: TrieNode | null = null;
@@ -76,7 +81,7 @@ export class Router {
    * High-speed lookup for incoming requests.
    * Returns the matched route and any extracted dynamic parameters.
    */
-  public lookup(method: HttpMethod, path: string): RouteMatch | null {
+  public lookup(method: HttpMethod, path: string): RouterLookupResult {
     let currentNode = this.root;
     const params: Record<string, string> = {};
     const parts = this.splitPath(path);
@@ -87,11 +92,10 @@ export class Router {
       if (currentNode.children.has(part)) {
         currentNode = currentNode.children.get(part)!;
       } else if (currentNode.paramChild) {
-        const paramName = currentNode.paramName!;
-        currentNode = currentNode.paramChild;
-        params[paramName] = part;
+       const paramName = currentNode.paramName!;
+       currentNode = currentNode.paramChild;
+       params[paramName] = part;
       } else if (currentNode.wildcardChild) {
-        // Correctly consume the remaining path segments for the wildcard
         params['*'] = parts.slice(i).join('/');
         currentNode = currentNode.wildcardChild;
         break;
@@ -100,8 +104,24 @@ export class Router {
       }
     }
 
-    const route = currentNode.routes.get(method);
-    if (!route) return null;
+    let route = currentNode.routes.get(method);
+
+    // Auto-handle HEAD requests using GET handlers
+    if (!route && method === 'HEAD') {
+      route = currentNode.routes.get('GET');
+    }
+
+    if (!route) {
+      // 405 Method Not Allowed Support
+      if (currentNode.routes.size > 0) {
+        const allowed = Array.from(currentNode.routes.keys());
+        if (allowed.includes('GET') && !allowed.includes('HEAD')) {
+          allowed.push('HEAD');
+        }
+        return { error: 'MethodNotAllowed', allowed };
+      }
+      return null;
+    }
 
     return { route, params };
   }

@@ -2,10 +2,10 @@ import { ZodTypeAny } from 'zod';
 import type { AxiomifyRequest, RouteSchema } from './types';
 
 export class ValidationError extends Error {
-  public readonly errors: Record<string, string>;
+  public readonly errors: Record<string, Record<string, string>>;
   public readonly statusCode = 400;
 
-  constructor(message: string, errors: Record<string, string>) {
+  constructor(message: string, errors: Record<string, Record<string, string>>) {
     super(message);
     this.name = 'ValidationError';
     this.errors = errors;
@@ -25,7 +25,7 @@ export class ValidationCompiler {
       body?: ValidateFunction;
       query?: ValidateFunction;
       params?: ValidateFunction;
-      response?: ValidateFunction;
+      response?: ValidateFunction | Record<number, ValidateFunction>;
     }
   >();
 
@@ -34,14 +34,30 @@ export class ValidationCompiler {
       body?: ValidateFunction;
       query?: ValidateFunction;
       params?: ValidateFunction;
-      response?: ValidateFunction;
+      response?: ValidateFunction | Record<number, ValidateFunction>;
     } = {};
 
     if (schema.body) compiled.body = this.createZodValidator(schema.body);
     if (schema.query) compiled.query = this.createZodValidator(schema.query);
     if (schema.params) compiled.params = this.createZodValidator(schema.params);
-    if (schema.response)
-      compiled.response = this.createZodValidator(schema.response);
+
+    if (schema.response) {
+      // Check if it's a direct Zod schema via its internal _def property
+      if ((schema.response as any)._def !== undefined) {
+        compiled.response = this.createZodValidator(
+          schema.response as ZodTypeAny,
+        );
+      } else {
+        // It's a Record<number, ZodTypeAny> map
+        const responseMap: Record<number, ValidateFunction> = {};
+        for (const [code, zodSchema] of Object.entries(schema.response)) {
+          responseMap[Number(code)] = this.createZodValidator(
+            zodSchema as ZodTypeAny,
+          );
+        }
+        compiled.response = responseMap;
+      }
+    }
 
     this.compiledSchemas.set(routeId, compiled);
   }
@@ -50,13 +66,13 @@ export class ValidationCompiler {
     const validators = this.compiledSchemas.get(routeId);
     if (!validators) return;
 
-    const errors: Record<string, string> = {};
+    const errors: Record<string, Record<string, string>> = {};
     let hasErrors = false;
 
     if (validators.body) {
       const result = validators.body(req.body);
       if (!result.valid) {
-        Object.assign(errors, result.errors);
+        errors.body = result.errors!;
         hasErrors = true;
       } else {
         Object.defineProperty(req, 'body', {
@@ -71,7 +87,7 @@ export class ValidationCompiler {
     if (validators.query) {
       const result = validators.query(req.query);
       if (!result.valid) {
-        Object.assign(errors, result.errors);
+        errors.query = result.errors!;
         hasErrors = true;
       } else {
         Object.defineProperty(req, 'query', {
@@ -86,7 +102,7 @@ export class ValidationCompiler {
     if (validators.params) {
       const result = validators.params(req.params);
       if (!result.valid) {
-        Object.assign(errors, result.errors);
+        errors.params = result.errors!;
         hasErrors = true;
       } else {
         Object.defineProperty(req, 'params', {
@@ -103,18 +119,31 @@ export class ValidationCompiler {
     }
   }
 
-  public validateResponse(routeId: string, data: unknown): void {
+  public validateResponse(
+    routeId: string,
+    data: unknown,
+    statusCode: number = 200,
+  ): void {
     const validators = this.compiledSchemas.get(routeId);
     if (!validators || !validators.response) return;
 
-    const result = validators.response(data);
+    let validator: ValidateFunction;
+
+    if (typeof validators.response === 'function') {
+      validator = validators.response; // Single schema applies to all successful responses
+    } else {
+      validator = validators.response[statusCode] || validators.response[200];
+      if (!validator) return; // No schema defined for this specific status code
+    }
+
+    const result = validator(data);
 
     if (!result.valid) {
       if (process.env.NODE_ENV !== 'production') {
-        throw new ValidationError(
-          'Response validation failed',
-          result.errors || {},
-        );
+        // Wrap the error in a namespaced 'response' object
+        throw new ValidationError('Response validation failed', {
+          response: result.errors || {},
+        });
       } else {
         console.warn(
           `[Axiomify] Response validation mismatch for route ${routeId}:`,

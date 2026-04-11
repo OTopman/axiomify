@@ -11,6 +11,7 @@ import type {
   PluginHandler,
   PluginName,
   RouteDefinition,
+  RouteGroup,
   RouteSchema,
 } from './types';
 import { ValidationCompiler } from './validation';
@@ -18,6 +19,13 @@ import { ValidationCompiler } from './validation';
 export interface AxiomifyOptions {
   timeout?: number; // Default request timeout in ms. 0 = disabled. Default: 0.
 }
+
+export type SerializerFn = (
+  data: any,
+  message?: string,
+  statusCode?: number,
+  isError?: boolean,
+) => any;
 
 export class Axiomify {
   public router = new Router();
@@ -67,34 +75,77 @@ export class Axiomify {
     return this;
   }
 
+  // Default Serializer (Overridable)
+  public serializer: SerializerFn = (data, message, statusCode, isError) => ({
+    status: isError || (statusCode && statusCode >= 400) ? 'failed' : 'success',
+    message:
+      message ||
+      (isError || (statusCode && statusCode >= 400)
+        ? 'Error'
+        : 'Operation successful'),
+    data,
+  });
+
+  public setSerializer(fn: SerializerFn): this {
+    this.serializer = fn;
+    return this;
+  }
+
+  // Route Grouping
+  public group(prefix: string, callback: (group: RouteGroup) => void): this {
+    const groupProxy: RouteGroup = {
+      route: <S extends RouteSchema>(def: RouteDefinition<S>) => {
+        const scopedPath =
+          (prefix + def.path).replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+        return this.route({ ...def, path: scopedPath });
+      },
+      group: (subPrefix, subCallback) => {
+        this.group((prefix + subPrefix).replace(/\/+/g, '/'), subCallback);
+        return groupProxy;
+      },
+    };
+    callback(groupProxy);
+    return this;
+  }
+
   public async handle(
     req: AxiomifyRequest,
     res: AxiomifyResponse,
   ): Promise<void> {
     try {
       await this.hooks.run('onRequest', req, res);
-
-      // Halt execution if a hook (like CORS preflight) sends a response
       if (res.headersSent) return;
 
       const match = this.router.lookup(req.method, req.path);
-      if (!match) return res.status(404).send(null, 'Route not found');
 
-      Object.assign(req.params as any, match.params);
-      const routeId = `${match.route.method}:${match.route.path}`;
+      // 1. Handle 404 (Eliminates 'null' from the union)
+      if (!match) {
+        return res.status(404).send(null, 'Route not found');
+      }
 
+      // 2. Handle 405 (Eliminates the '{ error, allowed }' object from the union)
+      if ('error' in match) {
+        res.header('Allow', match.allowed.join(', '));
+        return res.status(405).send(null, 'Method Not Allowed');
+      }
+
+      // 3. TypeScript now mathematically GUARANTEES match is `{ route, params }`
+      const { route, params } = match;
+
+      Object.assign(req.params as any, params);
+      const routeId = `${route.method}:${route.path}`;
+
+      // This is now 100% type-safe
       await this.hooks.run('onPreHandler', req, res, match);
 
-      const routePlugins = match.route.plugins ?? [];
+      // Halt execution if a global hook (like Rate Limit) sends a response!
+      if (res.headersSent) return;
+
+      const routePlugins = route.plugins ?? [];
       for (const name of routePlugins) {
         const plugin = this._plugins.get(name as string);
-        if (!plugin) {
-          throw new Error(
-            `Plugin "${
-              name as string
-            }" is not registered. Call app.registerPlugin() before app.route().`,
-          );
-        }
+        if (!plugin)
+          throw new Error(`Plugin "${name as string}" is not registered.`);
         await plugin(req, res);
         if (res.headersSent) return;
       }
@@ -109,10 +160,14 @@ export class Axiomify {
         // Expose payload directly on the response object for the Logger plugin
         (res as any).payload = data;
         (res as any).responseMessage = message;
+        // Auto-strip body for HEAD requests
+        if (req.method === 'HEAD') {
+          return originalSend.call(res, undefined, message);
+        }
         return originalSend.call(res, data, message);
       };
 
-      const effectiveTimeout = match.route.timeout ?? this._timeout;
+      const effectiveTimeout = route.timeout ?? this._timeout;
 
       if (effectiveTimeout > 0) {
         let timeoutId: NodeJS.Timeout;
@@ -128,7 +183,7 @@ export class Axiomify {
 
         try {
           await Promise.race([
-            this.engine.run(req, res, match.route.handler),
+            this.engine.run(req, res, route.handler),
             timeoutPromise,
           ]);
         } finally {
@@ -136,7 +191,7 @@ export class Axiomify {
           clearTimeout(timeoutId!);
         }
       } else {
-        await this.engine.run(req, res, match.route.handler);
+        await this.engine.run(req, res, route.handler);
       }
 
       try {

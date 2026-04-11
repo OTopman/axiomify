@@ -12,7 +12,10 @@
     "@axiomify/core": "*",
     "@axiomify/fastify": "*",
     "@axiomify/openapi": "*",
-    "@axiomify/upload": "*"
+    "@axiomify/upload": "*",
+    "@axiomify/ws": "*",
+    "@axiomify/metrics": "*",
+    "@axiomify/static": "*"
   },
   "devDependencies": {
     "typescript": "^5.0.0",

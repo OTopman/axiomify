@@ -1,0 +1,17 @@
+{
+  "name": "@axiomify/ws",
+  "version": "3.2.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@axiomify/core": "*",
+    "ws": "^8.16.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.10"
+  }
+}

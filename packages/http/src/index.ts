@@ -1,11 +1,8 @@
-import type {
-  Axiomify,
-  AxiomifyRequest,
-  AxiomifyResponse,
-} from '@axiomify/core';
+import type { Axiomify, AxiomifyRequest } from '@axiomify/core';
 import crypto from 'crypto';
-import type { IncomingMessage, ServerResponse } from 'http';
+import type { IncomingMessage } from 'http';
 import http from 'http';
+import { Readable } from 'stream';
 
 export class HttpAdapter {
   private server: http.Server;
@@ -13,21 +10,46 @@ export class HttpAdapter {
   constructor(private core: Axiomify) {
     this.server = http.createServer(async (req, res) => {
       try {
-        const body = await this.parseBody(req);
-        const axiomifyReq = this.translateRequest(req, body);
-        const axiomifyRes = this.translateResponse(res);
+        // 1. Read the raw native stream into a buffer
+        const buffers: Buffer[] = [];
+        for await (const chunk of req) {
+          buffers.push(chunk as Buffer);
+        }
+        const rawBody = Buffer.concat(buffers).toString();
 
+        // 2. Parse JSON if the content-type dictates it
+        let parsedBody: unknown = rawBody;
+        if (
+          req.headers['content-type']?.includes('application/json') &&
+          rawBody
+        ) {
+          try {
+            parsedBody = JSON.parse(rawBody);
+          } catch (e) {
+            // If JSON is malformed, we fall back to the raw string
+            parsedBody = rawBody;
+          }
+        }
+
+        // 3. Pass BOTH arguments to the translator
+        const axiomifyReq = this.translateRequest(req, parsedBody);
+
+        // 4. Inject the serializer into the response translator
+        const axiomifyRes = this.translateResponse(res, this.core.serializer);
+
+        // 5. Fire the core engine
         await this.core.handle(axiomifyReq, axiomifyRes);
       } catch (err) {
-        res.statusCode = 500;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(
-          JSON.stringify({
-            status: 'failed',
-            message: 'Internal Server Error',
-            data: null,
-          }),
-        );
+        console.error('[Axiomify Native HTTP Error]:', err);
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              status: 'failed',
+              message: 'Internal Server Error',
+            }),
+          );
+        }
       }
     });
   }
@@ -122,10 +144,13 @@ export class HttpAdapter {
     };
   }
 
-  private translateResponse(res: ServerResponse): AxiomifyResponse {
+  private translateResponse(res: http.ServerResponse, serializer: any): any {
+    let statusCode = 200;
+    let isSent = false;
+
     return {
       status(code: number) {
-        res.statusCode = code;
+        statusCode = code;
         return this;
       },
       header(key: string, value: string) {
@@ -136,38 +161,74 @@ export class HttpAdapter {
         res.removeHeader(key);
         return this;
       },
-      send<T>(data: T, message = 'Operation successful') {
-        if (!res.hasHeader('Content-Type'))
+      send(data: any, message?: string) {
+        isSent = true;
+        const isError = statusCode >= 400;
+        const payload = serializer(data, message, statusCode, isError);
+
+        if (!res.hasHeader('Content-Type')) {
           res.setHeader('Content-Type', 'application/json');
-        const isError = res.statusCode >= 400;
-        res.end(
-          JSON.stringify({
-            status: isError ? 'failed' : 'success',
-            message,
-            data,
-          }),
-        );
+        }
+        res.writeHead(statusCode);
+        res.end(JSON.stringify(payload));
       },
       sendRaw(payload: any, contentType = 'text/plain') {
+        isSent = true;
         res.setHeader('Content-Type', contentType);
+        res.writeHead(statusCode);
         res.end(payload);
       },
       error(err: unknown) {
+        isSent = true;
         const message = err instanceof Error ? err.message : 'Unknown Error';
-        res.statusCode = 500;
+        const payload = serializer(null, message, 500, true);
+
         res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ status: 'failed', message, data: null }));
+        res.writeHead(500);
+        res.end(JSON.stringify(payload));
       },
+
+      // Native HTTP Stream implementation
+      stream(readable: Readable, contentType = 'application/octet-stream') {
+        isSent = true;
+        res.setHeader('Content-Type', contentType);
+        res.writeHead(statusCode);
+        readable.pipe(res);
+      },
+
+      // Native HTTP SSE Init
+      sseInit() {
+        isSent = true;
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        });
+      },
+
+      // Native HTTP SSE Send
+      sseSend(data: any, event?: string) {
+        if (event) res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      },
+
       get raw() {
         return res;
       },
       get headersSent() {
-        return res.headersSent;
+        return isSent;
       },
     };
   }
 
   public listen(port: number, callback?: () => void): http.Server {
     return this.server.listen(port, callback);
+  }
+
+  public async close(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.server) return resolve();
+      this.server.close((err) => (err ? reject(err) : resolve()));
+    });
   }
 }

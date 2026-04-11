@@ -1,0 +1,15 @@
+{
+  "name": "@axiomify/rate-limit",
+  "version": "3.2.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@axiomify/core": "*"
+  }
+}

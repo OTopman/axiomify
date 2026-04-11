@@ -1,9 +1,15 @@
+import { useAuth } from '@axiomify/auth';
 import { Axiomify, UnauthorizedError, z } from '@axiomify/core';
 import { ExpressAdapter } from '@axiomify/express';
 import { useLogger } from '@axiomify/logger';
 import { useOpenAPI } from '@axiomify/openapi';
+import { useRateLimit } from '@axiomify/rate-limit';
 import { useUpload } from '@axiomify/upload';
+import { useWebSockets } from '@axiomify/ws';
+import { useMetrics } from '@axiomify/metrics';
+import { serveStatic } from '@axiomify/static';
 import { randomUUID } from 'crypto';
+import { createReadStream } from 'fs';
 import path from 'path';
 
 export const app = new Axiomify();
@@ -11,7 +17,20 @@ export const app = new Axiomify();
 // To log requests, responses, and errors in a structured way, with zero config:
 useLogger(app);
 
-// 1. A strictly validated route
+// Initialize Prometheus Metrics (available at GET /metrics)
+useMetrics(app);
+
+// 2. Serve Static Assets (e.g., GET /assets/logo.png)
+serveStatic(app, {
+  prefix: '/assets',
+  root: path.join(process.cwd(), 'public'),
+});
+
+// Initialize plugins
+useRateLimit(app, { max: 5, windowMs: 60_000 }); // 50 requests per minute globally
+useAuth(app, { secret: 'super-secret-jwt-key' });
+
+// A strictly validated route
 app.route({
   method: 'POST',
   path: '/api/users',
@@ -27,7 +46,7 @@ app.route({
   },
 });
 
-// 1. Enable the Upload Engine
+// Enable the Upload Engine
 useUpload(app);
 app.route({
   method: 'POST',
@@ -67,7 +86,7 @@ app.route({
   },
 });
 
-// 2. Generate Swagger Docs automatically
+// Generate Swagger Docs automatically
 useOpenAPI(app, {
   routePrefix: '/docs',
   info: { title: 'Axiomify Test API', version: '1.0.0' },
@@ -90,6 +109,16 @@ app.route({
 
 app.route({
   method: 'GET',
+  path: '/protected/data',
+  plugins: ['requireAuth'], // 🚀 Strict IntelliSense here!
+  handler: async (req, res) => {
+    // req.user is fully typed and available!
+    res.send({ accessedBy: req.user?.id });
+  },
+});
+
+app.route({
+  method: 'GET',
   path: '/ping',
   schema: {
     response: z.object({
@@ -101,11 +130,60 @@ app.route({
   },
 });
 
+//  REST Streaming Example (Large File)
+app.route({
+  method: 'GET',
+  path: '/download',
+  handler: async (req, res) => {
+    const fileStream = createReadStream('./large-video.mp4');
+    res.stream(fileStream, 'video/mp4');
+  },
+});
+
+// REST SSE Example (Live Updates)
+app.route({
+  method: 'GET',
+  path: '/live-feed',
+  handler: async (req, res) => {
+    res.sseInit();
+
+    const interval = setInterval(() => {
+      res.sseSend({ time: Date.now() }, 'tick');
+    }, 1000);
+
+    req.raw.on('close', () => clearInterval(interval)); // Cleanup on disconnect
+  },
+});
+
 if (require.main === module) {
   const adapter = new ExpressAdapter(app);
   const server = adapter.listen(3000, () => {
     console.log('🚀 Axiomify engine online on port 3000');
   });
+
+  // 2. Initialize WebSockets
+  const wsManager = useWebSockets({
+    server,
+    path: '/ws',
+    authenticate: async (req) => {
+      // Return true/user object to allow connection, or null to reject 401
+      return { id: 'user-123' };
+    },
+  });
+
+  // 3. Register a strictly typed WS event
+  wsManager.on(
+    'chat:message',
+    z.object({ room: z.string(), text: z.string() }), // Zod Validation!
+    (client, data) => {
+      // If we reach here, data is guaranteed to match the Zod schema
+      wsManager.joinRoom(client, data.room);
+      wsManager.broadcastToRoom(data.room, 'chat:received', {
+        sender: client.user.id,
+        text: data.text,
+      });
+    },
+  );
 
   // Signal Handling for Production
   const shutdown = (signal: string) => {
