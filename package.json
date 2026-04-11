@@ -42,5 +42,6 @@
     "plugin-system",
     "microservices",
     "rest-api"
-  ]
+  ],
+  "version": "3.3.0"
 }
