@@ -1,50 +1,57 @@
-import {
-  ExecutionEngine,
-  HookHandlerMap,
-  HookManager,
-  HookType,
-} from './lifecycle';
+import { ExecutionEngine, HookHandlerMap, HookManager } from './lifecycle';
 import { Router } from './router';
 import type {
   AxiomifyRequest,
   AxiomifyResponse,
+  HookType,
   PluginHandler,
   PluginName,
   RouteDefinition,
   RouteGroup,
   RouteSchema,
+  SerializerFn,
 } from './types';
 import { ValidationCompiler } from './validation';
 
 export interface AxiomifyOptions {
   timeout?: number; // Default request timeout in ms. 0 = disabled. Default: 0.
+  telemetry?: {
+    startSpan: (
+      name: string,
+      attributes: Record<string, string>,
+    ) => { end(): void };
+  };
 }
-
-export type SerializerFn = (
-  data: any,
-  message?: string,
-  statusCode?: number,
-  isError?: boolean,
-) => any;
 
 export class Axiomify {
   public router = new Router();
   public engine = new ExecutionEngine();
   public validator = new ValidationCompiler();
 
-  // 🚀 1. Use the new unified HookEngine
+  // Use the new unified HookEngine
   public readonly hooks = new HookManager();
 
   private readonly _routes: RouteDefinition[] = [];
   private readonly _plugins = new Map<string, PluginHandler>();
   private readonly _timeout: number;
+  private readonly _telemetry?: AxiomifyOptions['telemetry'];
 
   public get registeredRoutes(): readonly RouteDefinition[] {
     return this._routes;
   }
 
+  public get timeout(): number {
+    return this._timeout;
+  }
+
   constructor(options: AxiomifyOptions = {}) {
     this._timeout = options.timeout ?? 0;
+    this._telemetry = options.telemetry;
+
+    // Auto-inject Request ID
+    this.addHook('onRequest', (req, res) => {
+      res.header('X-Request-Id', req.id);
+    });
   }
 
   public registerPlugin(name: PluginName, handler: PluginHandler): this {
@@ -76,7 +83,13 @@ export class Axiomify {
   }
 
   // Default Serializer (Overridable)
-  public serializer: SerializerFn = (data, message, statusCode, isError) => ({
+  public serializer: SerializerFn = (
+    data,
+    message,
+    statusCode,
+    isError,
+    req,
+  ) => ({
     status: isError || (statusCode && statusCode >= 400) ? 'failed' : 'success',
     message:
       message ||
@@ -105,6 +118,40 @@ export class Axiomify {
       },
     };
     callback(groupProxy);
+    return this;
+  }
+
+  // Health Check Method
+  public healthCheck(
+    path = '/health',
+    checks?: Record<string, () => Promise<boolean>>,
+  ): this {
+    this.route({
+      method: 'GET',
+      path,
+      handler: async (req, res) => {
+        if (!checks)
+          return res
+            .status(200)
+            .send({ status: 'ok', uptime: process.uptime() });
+        const results: Record<string, boolean> = {};
+        let passed = true;
+        await Promise.all(
+          Object.entries(checks).map(async ([name, fn]) => {
+            try {
+              results[name] = await fn();
+              if (!results[name]) passed = false;
+            } catch {
+              results[name] = false;
+              passed = false;
+            }
+          }),
+        );
+        return res
+          .status(passed ? 200 : 503)
+          .send({ status: passed ? 'ok' : 'degraded', checks: results });
+      },
+    });
     return this;
   }
 
@@ -169,29 +216,40 @@ export class Axiomify {
 
       const effectiveTimeout = route.timeout ?? this._timeout;
 
-      if (effectiveTimeout > 0) {
-        let timeoutId: NodeJS.Timeout;
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(() => {
-            reject(
-              Object.assign(new Error('Request timed out'), {
-                statusCode: 503,
-              }),
-            );
-          }, effectiveTimeout);
+      let span: { end(): void } | undefined;
+      if (this._telemetry) {
+        span = this._telemetry.startSpan('http.request', {
+          method: req.method,
+          path: route.path,
         });
+      }
 
-        try {
-          await Promise.race([
-            this.engine.run(req, res, route.handler),
-            timeoutPromise,
-          ]);
-        } finally {
-          // Clear the timeout to prevent severe memory leaks!
-          clearTimeout(timeoutId!);
+      try {
+        if (effectiveTimeout > 0) {
+          let timeoutId: NodeJS.Timeout;
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => {
+              reject(
+                Object.assign(new Error('Request timed out'), {
+                  statusCode: 503,
+                }),
+              );
+            }, effectiveTimeout);
+          });
+
+          try {
+            await Promise.race([
+              this.engine.run(req, res, route.handler),
+              timeoutPromise,
+            ]);
+          } finally {
+            clearTimeout(timeoutId!);
+          }
+        } else {
+          await this.engine.run(req, res, route.handler);
         }
-      } else {
-        await this.engine.run(req, res, route.handler);
+      } finally {
+        if (span) span.end();
       }
 
       try {
@@ -209,6 +267,8 @@ export class Axiomify {
       await this.hooks.run('onPostHandler', req, res, match);
     } catch (err: any) {
       await this.handleError(err, req, res);
+    } finally {
+      await this.hooks.run('onClose', req, res);
     }
   }
 

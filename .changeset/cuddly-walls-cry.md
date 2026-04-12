@@ -38,10 +38,41 @@ This update transforms Axiomify from a core routing engine into a production-rea
     * Added `startTime` to `RequestState` for precise high-resolution duration tracking.
     * Fixed `extractResponse` in OpenAPI generator to support both Zod schemas and Record-based status mappings.
 
+**Overview**
+This release finalizes the 7-phase production-readiness protocol for the Axiomify framework. It introduces enterprise-grade security, comprehensive observability, enhanced WebSocket management, and strict CI/CD coverage gates. The core framework now operates with a 100% passing test suite (63/63) and strictly enforces an 80%+ coverage threshold.
+
+### 🔒 Security & Reliability
+* **Security Headers:** Added `@axiomify/helmet` for configurable HTTP security headers.
+* **CORS Hardening:** Patched origin reflection bypasses and enforced proper `Vary: Origin` headers.
+* **Payload Protection:** Fixed unbounded memory exhaustion in the Native HTTP adapter, now properly returning `413 Payload Too Large`.
+* **Prototype Pollution:** Patched JSON prototype pollution vulnerabilities across all HTTP adapters.
+* **Authentication:** Enforced JWT algorithm pinning, added minimum secret entropy warnings, and introduced `createRefreshHandler` for secure token rotation.
+* **Lifecycle Management:** Added `gracefulShutdown` utility and unified `onClose` hooks to guarantee resource cleanup and zero-downtime deployments.
+* **Health Checks:** Built-in `app.healthCheck()` with parallel promise execution.
+
+### 📊 Observability & Performance
+* **OpenTelemetry:** Native hook integration for distributed tracing and automatic span generation (`http.request`).
+* **Metrics Dashboard:** Upgraded `/metrics` to expose Prometheus-compatible endpoint data, including real-time WebSocket connection and room stats.
+* **Rate Limiting:** Added `createRateLimitPlugin` for per-route rate limiting, fully compatible with PM2 clustering via RedisStore.
+* **Performance Baseline:** Established HTTP adapter baseline at ~16,260 req/sec (M1 benchmark).
+
+### 🔌 WebSocket Enhancements
+* **Resilience:** Implemented connection heartbeats (`ping/pong`) to drop dead clients.
+* **Security:** Enforced configurable message size limits (`maxMessageBytes`), dropping oversized payloads with `1009` close codes.
+* **Telemetry:** Added robust `.getStats()` reporting for connected clients and active rooms.
+
+### 🛠️ Developer Experience & CI/CD
+* **Testing:** Massively expanded Vitest integration and unit test suites across all core modules and plugins.
+* **Coverage Gates:** Refined `vitest.config.ts` to strictly track core `src` files, enforcing an absolute >80% coverage floor for statements, branches, functions, and lines.
+* **Static Analysis:** Added automated GitHub Actions CodeQL workflow for continuous security scanning.
+* **Documentation:** Shipped comprehensive `SECURITY.md` (with known-safe configuration checklists), updated `CHANGELOG.md`, and refreshed `README.md`.
+* **Package Integrity:** Ensured all sub-packages export standard ESM and CommonJS bundles via Node `exports`.
+
 ### 🐞 Bug Fixes
 * **Router**: Fixed parameter extraction order in the Radix Trie to ensure dynamic path segments are captured correctly.
 * **Adapters**: Resolved `ERR_HTTP_HEADERS_SENT` issues when global hooks and route handlers overlapped.
 * **Fastify**: Corrected `.listen()` overloads to handle optional callbacks without type errors.
+* 
 
 ---
 

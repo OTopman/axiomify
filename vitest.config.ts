@@ -2,17 +2,31 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    projects: ['packages/*'],
     coverage: {
       provider: 'v8',
+      // Strictly include ONLY TypeScript source files in the packages
+      include: ['packages/*/src/**/*.ts'],
+      // Exclude build artifacts, test files, configs, and non-core adapters
       exclude: [
-        '**/dist/**', // Ignore compiled output
-        'examples/**', // Ignore example apps
-        'packages/cli/**', // Optional: Exclude CLI if you only want framework coverage
-        '**/*.d.ts', // Ignore type declarations
-        'vitest.config.ts',
-        'tsup.config.ts',
+        '**/node_modules/**',
+        '**/dist/**',
+        '**/tests/**',
+        '**/*.config.ts',
+        'benchmarks/**',
+        'examples/**',
+        // 'packages/cli/**',
+        // 'packages/express/**',
+        // 'packages/fastify/**',
+        // 'packages/hapi/**',
+        // 'packages/openapi/**'
       ],
+      thresholds: {
+        lines: 50,
+        functions: 50,
+        branches: 65,
+        statements: 50,
+      },
+      reporter: ['text', 'json', 'html'],
     },
   },
 });

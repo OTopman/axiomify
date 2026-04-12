@@ -10,9 +10,20 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsup"
   },
   "dependencies": {
-    "zod": "^3.22.4"
+    "zod": "3.22.4"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "module": "./dist/index.mjs",
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

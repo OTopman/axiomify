@@ -26,10 +26,11 @@ describe('Unified HookEngine Lifecycle', () => {
     });
 
     // Mock Request and Response for the test
-    const mockReq = { method: 'GET', path: '/lifecycle', params: {} } as any;
+    const mockReq = { method: 'GET', path: '/lifecycle', params: {}, id: 'test-req' } as any;
     const mockRes = {
       status: () => mockRes,
       send: () => {},
+      header: () => mockRes,
       headersSent: false,
     } as any;
 
@@ -61,10 +62,11 @@ describe('Unified HookEngine Lifecycle', () => {
       },
     });
 
-    const mockReq = { method: 'GET', path: '/error', params: {} } as any;
+    const mockReq = { method: 'GET', path: '/error', params: {}, id: 'test-req' } as any;
     const mockRes = {
       status: () => mockRes,
       send: () => {},
+      header: () => mockRes,
       headersSent: false,
     } as any;
 

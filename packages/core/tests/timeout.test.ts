@@ -16,10 +16,12 @@ describe('Request timeout', () => {
       path: '/fast',
       params: {},
       headers: {},
+      id: 'test-req',
     } as any;
     const mockRes = {
       status: vi.fn().mockReturnThis(),
       send: vi.fn(),
+      header: vi.fn().mockReturnThis(),
       headersSent: false,
     } as any;
     await expect(app.handle(mockReq, mockRes)).resolves.not.toThrow();
@@ -38,10 +40,12 @@ describe('Request timeout', () => {
       path: '/slow',
       params: {},
       headers: {},
+      id: 'test-req',
     } as any;
     const mockRes = {
       status: vi.fn().mockReturnThis(),
       send: vi.fn(),
+      header: vi.fn().mockReturnThis(),
       headersSent: false,
     } as any;
 
@@ -69,10 +73,12 @@ describe('Request timeout', () => {
       path: '/strict',
       params: {},
       headers: {},
+      id: 'test-req',
     } as any;
     const mockRes = {
       status: vi.fn().mockReturnThis(),
       send: vi.fn(),
+      header: vi.fn().mockReturnThis(),
       headersSent: false,
     } as any;
 

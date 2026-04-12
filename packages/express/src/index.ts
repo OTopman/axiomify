@@ -33,7 +33,11 @@ export class ExpressAdapter {
     // The Hijack: Catch all traffic and route it to Axiomify's Radix Engine
     this.app.all('*', async (req: Request, res: Response) => {
       const axiomifyReq = translateRequest(req);
-      const axiomifyRes = translateResponse(res, this.core.serializer);
+      const axiomifyRes = translateResponse(
+        res,
+        this.core.serializer,
+        axiomifyReq,
+      );
 
       await this.core.handle(axiomifyReq, axiomifyRes);
     });

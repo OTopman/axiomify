@@ -2,12 +2,12 @@ import { useAuth } from '@axiomify/auth';
 import { Axiomify, UnauthorizedError, z } from '@axiomify/core';
 import { ExpressAdapter } from '@axiomify/express';
 import { useLogger } from '@axiomify/logger';
+import { useMetrics } from '@axiomify/metrics';
 import { useOpenAPI } from '@axiomify/openapi';
 import { useRateLimit } from '@axiomify/rate-limit';
+import { serveStatic } from '@axiomify/static';
 import { useUpload } from '@axiomify/upload';
 import { useWebSockets } from '@axiomify/ws';
-import { useMetrics } from '@axiomify/metrics';
-import { serveStatic } from '@axiomify/static';
 import { randomUUID } from 'crypto';
 import { createReadStream } from 'fs';
 import path from 'path';
@@ -28,7 +28,13 @@ serveStatic(app, {
 
 // Initialize plugins
 useRateLimit(app, { max: 5, windowMs: 60_000 }); // 50 requests per minute globally
-useAuth(app, { secret: 'super-secret-jwt-key' });
+useAuth(app, {
+  secret:
+    process.env.JWT_SECRET ??
+    (() => {
+      throw new Error('JWT_SECRET env var is required');
+    })(),
+});
 
 // A strictly validated route
 app.route({
@@ -151,7 +157,7 @@ app.route({
       res.sseSend({ time: Date.now() }, 'tick');
     }, 1000);
 
-    req.raw.on('close', () => clearInterval(interval)); // Cleanup on disconnect
+    (req.raw as any).on('close', () => clearInterval(interval)); // Cleanup on disconnect
   },
 });
 

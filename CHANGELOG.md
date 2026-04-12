@@ -31,3 +31,21 @@
 - **Core Optimization**: Introduced custom Radix Tree Router reducing path resolution to O(k).
 - **Validation**: Added ahead-of-time Zod compiler.
 - **Adapters**: Built adapter abstraction with Express and Fastify support.
+## [3.3.0] - 2026-04-12
+### Added
+- **@axiomify/helmet**: New package for configurable HTTP security headers.
+- **Graceful Shutdown**: Core utility to gracefully drain connections on SIGTERM/SIGINT.
+- **Health Checks**: Built-in `app.healthCheck()` with parallel promise execution.
+- **OpenTelemetry**: Native hook integration for distributed tracing.
+- **WebSocket Enhancements**: Connection heartbeats, message size limits, and connection stats.
+- **Per-Route Rate Limiting**: New `createRateLimitPlugin` and RedisStore support for PM2 clustering.
+- **Auth Refresh**: New `createRefreshHandler` for secure token rotation.
+
+### Fixed
+- **Critical Security**: Patched JSON prototype pollution vulnerabilities across all HTTP adapters.
+- **Critical Security**: Fixed CORS origin reflection bypass and missing Vary headers.
+- **Critical Security**: Enforced JWT algorithm pinning and added minimum secret entropy warnings.
+- **Reliability**: Fixed unbounded payload memory exhaustion in Native HTTP adapter.
+- **Reliability**: Fixed orphaned partial file uploads during size limit breaches.
+- **Reliability**: Added unified `onClose` lifecycle hook to guarantee resource cleanup.
+- **Package Integrity**: All sub-packages now properly export ESM and CommonJS via Node `exports`.

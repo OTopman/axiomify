@@ -17,6 +17,21 @@ export type HttpMethod =
   | 'OPTIONS'
   | 'HEAD';
 
+export type HookType =
+  | 'onRequest'
+  | 'onPreHandler'
+  | 'onPostHandler'
+  | 'onError'
+  | 'onClose';
+
+export type SerializerFn = (
+  data: any,
+  message?: string,
+  statusCode?: number,
+  isError?: boolean,
+  req?: AxiomifyRequest,
+) => any;
+
 /**
  * RequestState is intentionally empty.
  * Packages can extend it without coupling via module augmentation.
@@ -56,7 +71,7 @@ export interface AxiomifyResponse {
   error(err: unknown): void;
 
   stream(readable: Readable, contentType?: string): void;
-  sseInit(): void;
+  sseInit(sseHeartbeatMs?: number): void;
   sseSend(data: any, event?: string): void;
 
   readonly statusCode: number;

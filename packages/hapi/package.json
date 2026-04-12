@@ -10,13 +10,24 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsup"
   },
   "dependencies": {
     "@axiomify/core": "*",
-    "@hapi/hapi": "^21.3.3"
+    "@hapi/hapi": "21.3.3"
   },
   "devDependencies": {
-    "@types/hapi__hapi": "^20.0.13"
+    "@types/hapi__hapi": "20.0.13"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "module": "./dist/index.mjs",
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

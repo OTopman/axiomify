@@ -1,43 +1,40 @@
-import type { Axiomify, AxiomifyRequest } from '@axiomify/core';
+import type { Axiomify, AxiomifyRequest, SerializerFn } from '@axiomify/core';
 import crypto from 'crypto';
 import type { IncomingMessage } from 'http';
 import http from 'http';
 import { Readable } from 'stream';
 
+function sanitize(obj: any): any {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(sanitize);
+  const clean: any = {};
+  for (const key of Object.keys(obj)) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype')
+      continue;
+    clean[key] = sanitize(obj[key]);
+  }
+  return clean;
+}
+
 export class HttpAdapter {
   private server: http.Server;
 
-  constructor(private core: Axiomify) {
+  constructor(
+    private core: Axiomify,
+    options: { bodyLimitBytes?: number } = {},
+  ) {
     this.server = http.createServer(async (req, res) => {
       try {
-        // 1. Read the raw native stream into a buffer
-        const buffers: Buffer[] = [];
-        for await (const chunk of req) {
-          buffers.push(chunk as Buffer);
-        }
-        const rawBody = Buffer.concat(buffers).toString();
-
-        // 2. Parse JSON if the content-type dictates it
-        let parsedBody: unknown = rawBody;
-        if (
-          req.headers['content-type']?.includes('application/json') &&
-          rawBody
-        ) {
-          try {
-            parsedBody = JSON.parse(rawBody);
-          } catch (e) {
-            // If JSON is malformed, we fall back to the raw string
-            parsedBody = rawBody;
-          }
-        }
-
-        // 3. Pass BOTH arguments to the translator
+        const parsedBody = await this.parseBody(
+          req,
+          options.bodyLimitBytes ?? 1_048_576,
+        );
         const axiomifyReq = this.translateRequest(req, parsedBody);
-
-        // 4. Inject the serializer into the response translator
-        const axiomifyRes = this.translateResponse(res, this.core.serializer);
-
-        // 5. Fire the core engine
+        const axiomifyRes = this.translateResponse(
+          res,
+          this.core.serializer,
+          axiomifyReq,
+        );
         await this.core.handle(axiomifyReq, axiomifyRes);
       } catch (err) {
         console.error('[Axiomify Native HTTP Error]:', err);
@@ -84,7 +81,7 @@ export class HttpAdapter {
         settled = true;
         if (!body) return resolve(undefined);
         try {
-          resolve(JSON.parse(body));
+          resolve(sanitize(JSON.parse(body)));
         } catch {
           resolve(body);
         }
@@ -151,7 +148,11 @@ export class HttpAdapter {
     };
   }
 
-  private translateResponse(res: http.ServerResponse, serializer: any): any {
+  private translateResponse(
+    res: http.ServerResponse,
+    serializer: SerializerFn,
+    req: AxiomifyRequest,
+  ): any {
     let statusCode = 200;
     let isSent = false;
 
@@ -171,7 +172,7 @@ export class HttpAdapter {
       send(data: any, message?: string) {
         isSent = true;
         const isError = statusCode >= 400;
-        const payload = serializer(data, message, statusCode, isError);
+        const payload = serializer(data, message, statusCode, isError, req);
 
         if (!res.hasHeader('Content-Type')) {
           res.setHeader('Content-Type', 'application/json');
@@ -188,7 +189,7 @@ export class HttpAdapter {
       error(err: unknown) {
         isSent = true;
         const message = err instanceof Error ? err.message : 'Unknown Error';
-        const payload = serializer(null, message, 500, true);
+        const payload = serializer(null, message, 500, true, req);
 
         res.setHeader('Content-Type', 'application/json');
         res.writeHead(500);
@@ -204,13 +205,18 @@ export class HttpAdapter {
       },
 
       // Native HTTP SSE Init
-      sseInit() {
+      sseInit(sseHeartbeatMs: number = 15_000) {
         isSent = true;
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
           Connection: 'keep-alive',
         });
+
+        const heartbeat = setInterval(() => {
+          res.write(': keepalive\n\n');
+        }, sseHeartbeatMs);
+        res.on('close', () => clearInterval(heartbeat));
       },
 
       // Native HTTP SSE Send

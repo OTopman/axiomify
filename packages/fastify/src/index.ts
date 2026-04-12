@@ -2,6 +2,7 @@ import type {
   Axiomify,
   AxiomifyRequest,
   AxiomifyResponse,
+  SerializerFn,
 } from '@axiomify/core';
 import crypto from 'crypto';
 import fastify, {
@@ -25,7 +26,11 @@ export class FastifyAdapter {
     // Catch-all route to hijack traffic to the Axiomify Radix Engine
     this.app.all('/*', async (req: FastifyRequest, res: FastifyReply) => {
       const axiomifyReq = this.translateRequest(req);
-      const axiomifyRes = this.translateResponse(res, this.core.serializer);
+      const axiomifyRes = this.translateResponse(
+        res,
+        this.core.serializer,
+        axiomifyReq,
+      );
 
       await this.core.handle(axiomifyReq, axiomifyRes);
     });
@@ -82,7 +87,8 @@ export class FastifyAdapter {
 
   private translateResponse(
     res: FastifyReply,
-    serializer: any,
+    serializer: SerializerFn,
+    req: AxiomifyRequest,
   ): AxiomifyResponse {
     let statusCode = 200;
     let isSent = false;
@@ -104,7 +110,7 @@ export class FastifyAdapter {
       send<T>(data: T, message = 'Operation successful') {
         const isError = res.statusCode >= 400;
         isSent = true;
-        const payload = serializer(data, message, statusCode, isError);
+        const payload = serializer(data, message, statusCode, isError, req);
         res.send(payload);
       },
       sendRaw(payload: any, contentType = 'text/plain') {
@@ -114,7 +120,7 @@ export class FastifyAdapter {
       error(err: unknown) {
         isSent = true;
         const message = err instanceof Error ? err.message : 'Unknown Error';
-        const payload = serializer(null, message, 500, true);
+        const payload = serializer(null, message, 500, true, req);
         res.status(500).send(payload);
       },
 
@@ -125,13 +131,18 @@ export class FastifyAdapter {
       },
 
       // Fastify SSE Init
-      sseInit() {
-        isSent = true; // Mark as sent so Axiomify core doesn't timeout
+      sseInit(sseHeartbeatMs: number = 15_000) {
+        isSent = true;
         res.raw.writeHead(200, {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
           Connection: 'keep-alive',
         });
+
+        const heartbeat = setInterval(() => {
+          res.raw.write(': keepalive\n\n');
+        }, sseHeartbeatMs);
+        res.raw.on('close', () => clearInterval(heartbeat));
       },
 
       // Fastify SSE Send

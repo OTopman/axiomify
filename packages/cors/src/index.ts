@@ -40,12 +40,21 @@ export function useCors(app: Axiomify, options: CorsOptions = {}): void {
     // Resolve the allowed origin for this request
     let resolvedOrigin = '*';
     if (Array.isArray(origin)) {
-      resolvedOrigin =
-        requestOrigin && origin.includes(requestOrigin)
-          ? requestOrigin
-          : origin[0];
+      if (requestOrigin && origin.includes(requestOrigin)) {
+        resolvedOrigin = requestOrigin;
+      } else {
+        resolvedOrigin = ''; // Do not set header if mismatch
+      }
     } else {
       resolvedOrigin = origin;
+    }
+
+    if (resolvedOrigin && resolvedOrigin !== '') {
+      res.header('Access-Control-Allow-Origin', resolvedOrigin);
+    }
+
+    if (resolvedOrigin && resolvedOrigin !== '*') {
+      res.header('Vary', 'Origin');
     }
 
     res.header('Access-Control-Allow-Origin', resolvedOrigin);

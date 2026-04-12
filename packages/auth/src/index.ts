@@ -19,10 +19,48 @@ export interface AuthUser {
 
 export interface AuthOptions {
   secret: string;
+  algorithms?: jwt.Algorithm[];
   getToken?: (req: AxiomifyRequest) => string | null;
 }
 
+export interface RefreshOptions {
+  secret: string;
+  refreshSecret: string;
+  accessTokenTtl?: number;
+  refreshTokenTtl?: number;
+  algorithms?: jwt.Algorithm[];
+}
+
+export function createRefreshHandler(options: RefreshOptions) {
+  return async (req: any, res: any) => {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).send(null, 'Missing refresh token');
+    try {
+      const decoded = jwt.verify(token, options.refreshSecret, {
+        algorithms: options.algorithms ?? ['HS256'],
+      });
+      const accessToken = jwt.sign(
+        { id: (decoded as any).id },
+        options.secret,
+        { expiresIn: options.accessTokenTtl ?? 900 },
+      );
+      res
+        .status(200)
+        .send({ accessToken, expiresIn: options.accessTokenTtl ?? 900 });
+    } catch {
+      res.status(401).send(null, 'Invalid refresh token');
+    }
+  };
+}
+
 export function useAuth(app: Axiomify, options: AuthOptions): void {
+  if (options.secret.length < 32) {
+    console.warn(
+      '[axiomify/auth] JWT secret is shorter than 32 characters. ' +
+        'Use a cryptographically random secret of at least 256 bits in production.',
+    );
+  }
+
   const getToken =
     options.getToken ??
     ((req) => {
@@ -50,7 +88,9 @@ export function useAuth(app: Axiomify, options: AuthOptions): void {
       }
 
       try {
-        const decoded = jwt.verify(token, options.secret) as AuthUser;
+        const decoded = jwt.verify(token, options.secret, {
+          algorithms: options.algorithms ?? ['HS256'],
+        }) as AuthUser;
         req.user = decoded; // Type-safe assignment
       } catch (err) {
         return res

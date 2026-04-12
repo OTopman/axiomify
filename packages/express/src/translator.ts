@@ -1,7 +1,19 @@
-import type { AxiomifyRequest, AxiomifyResponse } from '@axiomify/core';
+import type { AxiomifyRequest, AxiomifyResponse, SerializerFn } from '@axiomify/core';
 import crypto from 'crypto';
 import type { Request, Response } from 'express';
 import { Readable } from 'stream';
+
+function sanitize(obj: any): any {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(sanitize);
+  const clean: any = {};
+  for (const key of Object.keys(obj)) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype')
+      continue;
+    clean[key] = sanitize(obj[key]);
+  }
+  return clean;
+}
 
 export function translateRequest(req: Request): AxiomifyRequest {
   const state: Record<string, any> = {};
@@ -30,7 +42,7 @@ export function translateRequest(req: Request): AxiomifyRequest {
       return req;
     },
     // engine can overwrite them with transformed Zod data.
-    body: req.body,
+    body: sanitize(req.body),
     query: req.query,
     params: req.params,
 
@@ -45,7 +57,8 @@ export function translateRequest(req: Request): AxiomifyRequest {
 
 export function translateResponse(
   res: Response,
-  serializer: any,
+  serializer: SerializerFn,
+  req: AxiomifyRequest
 ): AxiomifyResponse {
   let statusCode = 200;
   let isSent = false;
@@ -67,7 +80,7 @@ export function translateResponse(
       isSent = true;
       const isError = statusCode >= 400;
       // Safely call the Serializer injected from the core app
-      const payload = serializer(data, message, statusCode, isError);
+      const payload = serializer(data, message, statusCode, isError, req);
       res.status(statusCode).json(payload);
     },
     sendRaw(payload: any, contentType = 'text/plain') {
@@ -78,7 +91,7 @@ export function translateResponse(
     error(err: unknown) {
       isSent = true;
       const message = err instanceof Error ? err.message : 'Unknown Error';
-      const payload = serializer(null, message, 500, true);
+      const payload = serializer(null, message, 500, true, req);
       res.status(500).json(payload);
     },
 
@@ -91,12 +104,17 @@ export function translateResponse(
     },
 
     // SSE (Server-Sent Events) setup
-    sseInit() {
-      isSent = true; // Mark headers as sent so core doesn't timeout/override
+    sseInit(sseHeartbeatMs: number = 15_000) {
+      isSent = true;
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       res.flushHeaders();
+
+      const heartbeat = setInterval(() => {
+        res.write(': keepalive\n\n');
+      }, sseHeartbeatMs);
+      res.on('close', () => clearInterval(heartbeat));
     },
 
     // SSE payload dispatcher

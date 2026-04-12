@@ -10,13 +10,24 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsup"
   },
   "dependencies": {
-    "busboy": "^1.6.0",
+    "busboy": "1.6.0",
     "@axiomify/core": "*"
   },
   "devDependencies": {
-    "@types/busboy": "^1.5.4"
+    "@types/busboy": "1.5.4"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "module": "./dist/index.mjs",
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

@@ -323,3 +323,8 @@ useCors(app, {
 Call useCors() before registering routes. Options default to open
 (origin: '*', no credentials). For preflight requests (OPTIONS),
 the plugin automatically responds with 204 and bypasses your handlers.
+## Production Readiness (v3.3.0+)
+Axiomify ships with built-in primitives for enterprise environments:
+- **Telemetry**: Hook into `@opentelemetry/api` via `options.telemetry`.
+- **Resilience**: Wire `gracefulShutdown(server)` to guarantee zero-downtime deploys.
+- **Security**: Use `@axiomify/helmet` and strict body limits to harden against malicious payloads.

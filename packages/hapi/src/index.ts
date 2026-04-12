@@ -1,4 +1,4 @@
-import type { Axiomify, AxiomifyRequest } from '@axiomify/core';
+import type { Axiomify, AxiomifyRequest, SerializerFn } from '@axiomify/core';
 import type { Request } from '@hapi/hapi';
 import Hapi from '@hapi/hapi';
 import crypto from 'crypto';
@@ -32,13 +32,14 @@ export class HapiAdapter {
             h,
             resolve,
             this.core.serializer,
+            axiomifyReq,
           );
 
           this.core.handle(axiomifyReq, axiomifyRes).catch((err) => {
             axiomifyRes.error(err);
           });
 
-          const effectiveTimeout = (this.core as any)._timeout || 30_000;
+          const effectiveTimeout = this.core.timeout || 30_000;
           if (effectiveTimeout > 0) {
             setTimeout(() => {
               if (!axiomifyRes.headersSent) {
@@ -105,7 +106,8 @@ export class HapiAdapter {
   private translateResponse(
     h: any,
     resolve: (val: any) => void,
-    serializer: any,
+    serializer: SerializerFn,
+    req: AxiomifyRequest
   ): any {
     let statusCode = 200;
     let isSent = false;
@@ -135,7 +137,7 @@ export class HapiAdapter {
       send(data: any, message?: string) {
         isSent = true;
         const isError = statusCode >= 400;
-        const payload = serializer(data, message, statusCode, isError);
+        const payload = serializer(data, message, statusCode, isError, req);
         const response = h.response(payload).code(statusCode);
         resolve(applyHeaders(response));
       },
@@ -148,7 +150,7 @@ export class HapiAdapter {
       error(err: unknown) {
         isSent = true;
         const message = err instanceof Error ? err.message : 'Unknown Error';
-        const payload = serializer(null, message, 500, true);
+        const payload = serializer(null, message, 500, true, req);
         const response = h.response(payload).code(500);
         resolve(applyHeaders(response));
       },
@@ -162,13 +164,18 @@ export class HapiAdapter {
       },
 
       // Hapi SSE Init (Creates and returns a PassThrough stream)
-      sseInit() {
+      sseInit(sseHeartbeatMs: number = 15_000) {
         isSent = true;
         sseStream = new PassThrough();
 
         headers['Content-Type'] = 'text/event-stream';
         headers['Cache-Control'] = 'no-cache';
         headers['Connection'] = 'keep-alive';
+
+        const heartbeat = setInterval(() => {
+          sseStream!.write(': keepalive\n\n');
+        }, sseHeartbeatMs);
+        sseStream.on('close', () => clearInterval(heartbeat));
 
         const response = h.response(sseStream).code(200);
         resolve(applyHeaders(response));
