@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/fastify",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -10,10 +10,21 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsup"
   },
   "dependencies": {
     "@axiomify/core": "*",
-    "fastify": "^4.26.0"
+    "fastify": "4.28.1"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "module": "./dist/index.mjs",
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

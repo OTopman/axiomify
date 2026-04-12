@@ -35,10 +35,9 @@ describe('ValidationCompiler', () => {
 
     try {
       compiler.execute('POST:/users', req);
-      expect.unreachable('Should have thrown ValidationError');
     } catch (err: any) {
       expect(err).toBeInstanceOf(ValidationError);
-      expect(err.errors.name).toBeDefined();
+      expect(err.errors.body.name).toBeDefined();
     }
   });
 
@@ -53,7 +52,9 @@ describe('ValidationCompiler', () => {
     try {
       compiler.execute('POST:/users', req);
     } catch (err: any) {
-      expect(err.errors['_root']).toBe('The request body is missing or empty');
+      expect(err.errors.body['_root']).toBe(
+        'The request body is missing or empty',
+      );
     }
   });
 
@@ -72,8 +73,8 @@ describe('ValidationCompiler', () => {
     try {
       compiler.execute('GET:/search/:id', req);
     } catch (err: any) {
-      expect(err.errors.id).toBeDefined();
-      expect(err.errors.q).toBeUndefined();
+      expect(err.errors.params.id).toBeDefined();
+      expect(err.errors.query).toBeUndefined();
     }
   });
 });

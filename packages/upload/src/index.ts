@@ -51,6 +51,7 @@ export function useUpload(app: Axiomify): void {
 
         busboy.on('file', (fieldname, file, info) => {
           const writeTask = (async () => {
+            let savePath = '';
             try {
               const config = fileSchema[fieldname];
               if (!config || !config.accept.includes(info.mimeType)) {
@@ -64,7 +65,7 @@ export function useUpload(app: Axiomify): void {
               if (!existsSync(config.autoSaveTo))
                 mkdirSync(config.autoSaveTo, { recursive: true });
 
-              const savePath = path.join(config.autoSaveTo, finalName);
+              savePath = path.join(config.autoSaveTo, finalName);
               let byteCount = 0;
 
               // Register the file early so the cleanup hook can find it if we abort!
@@ -93,14 +94,13 @@ export function useUpload(app: Axiomify): void {
               mutableReq.files[fieldname].size = byteCount;
             } catch (err) {
               file.resume(); // drain buffer
+              await unlink(savePath).catch(() => {}); // Delete partial file
 
-              // Destroy the underlying TCP socket to prevent memory bombs
               const rawSocket =
                 (req.raw as any).socket || (req.raw as any).connection;
               if (rawSocket && typeof rawSocket.destroy === 'function') {
                 rawSocket.destroy();
               }
-
               safeReject(err);
             }
           })();

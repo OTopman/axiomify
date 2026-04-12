@@ -1,0 +1,33 @@
+{
+  "name": "@axiomify/auth",
+  "version": "3.3.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@axiomify/core": "*",
+    "jsonwebtoken": "9.0.2"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "9.0.6"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "module": "./dist/index.mjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,15 +1,10 @@
 import type {
   AxiomifyRequest,
   AxiomifyResponse,
+  HookType,
   RouteDefinition,
   RouteHandler,
 } from './types';
-
-export type HookType =
-  | 'onRequest'
-  | 'onPreHandler'
-  | 'onPostHandler'
-  | 'onError';
 
 export type HookHandlerMap = {
   onRequest: (
@@ -31,6 +26,10 @@ export type HookHandlerMap = {
     req: AxiomifyRequest,
     res: AxiomifyResponse,
   ) => void | Promise<void>;
+  onClose: (
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+  ) => void | Promise<void>;
 };
 
 export class HookManager {
@@ -39,6 +38,7 @@ export class HookManager {
     onPreHandler: [],
     onPostHandler: [],
     onError: [],
+    onClose: [],
   };
 
   add<T extends HookType>(type: T, fn: HookHandlerMap[T]): void {
@@ -57,9 +57,12 @@ export class HookManager {
     return this.execute(list, args);
   }
 
-  private async execute(list: ((...args: any[]) => any)[], args: unknown[]): Promise<void> {
+  private async execute(
+    list: ((...args: any[]) => any)[],
+    args: unknown[],
+  ): Promise<void> {
     for (let i = 0; i < list.length; i++) {
-      await list[i](...args as any);
+      await list[i](...(args as any));
     }
   }
 }

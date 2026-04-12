@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/express",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -10,13 +10,24 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsup"
   },
   "dependencies": {
     "@axiomify/core": "*",
-    "express": "^4.18.2"
+    "express": "4.18.2"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21"
+    "@types/express": "4.17.21"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "module": "./dist/index.mjs",
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

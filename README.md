@@ -1,5 +1,7 @@
 # 🌌 Axiomify
 
+[![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg?token=QSI2WR3YWZ)](https://codecov.io/github/otopman/axiomify)
+
 **Fastify-level speed. NestJS-level structure. Zero compromises.**
 
 Axiomify is a high-performance, schema-first Node.js framework engineered for strict type safety and minimal runtime overhead. By unifying routing, validation, and request handling into a single declarative source of truth, Axiomify eliminates middleware fragmentation. 
@@ -321,3 +323,8 @@ useCors(app, {
 Call useCors() before registering routes. Options default to open
 (origin: '*', no credentials). For preflight requests (OPTIONS),
 the plugin automatically responds with 204 and bypasses your handlers.
+## Production Readiness (v3.3.0+)
+Axiomify ships with built-in primitives for enterprise environments:
+- **Telemetry**: Hook into `@opentelemetry/api` via `options.telemetry`.
+- **Resilience**: Wire `gracefulShutdown(server)` to guarantee zero-downtime deploys.
+- **Security**: Use `@axiomify/helmet` and strict body limits to harden against malicious payloads.

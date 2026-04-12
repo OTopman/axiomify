@@ -31,10 +31,12 @@ describe('Route-level Plugin System', () => {
       path: '/ordered',
       params: {},
       headers: {},
+      id: 'test-req',
     } as any;
     const mockRes = {
       status: vi.fn().mockReturnThis(),
       send: vi.fn(),
+      header: vi.fn().mockReturnThis(),
       headersSent: false,
     } as any;
 
@@ -49,10 +51,12 @@ describe('Route-level Plugin System', () => {
       path: '/test',
       params: {},
       headers: {},
+      id: 'test-req',
     } as AxiomifyRequest;
     const mockRes = {
       status: vi.fn().mockReturnThis(),
       send: vi.fn(),
+      header: vi.fn().mockReturnThis(),
       headersSent: false,
     } as unknown as AxiomifyResponse;
     const pluginSpy = vi.fn();
@@ -80,6 +84,7 @@ describe('Route-level Plugin System', () => {
       path: '/auth',
       params: {},
       headers: {},
+      id: 'test-req',
     } as AxiomifyRequest;
 
     const sendSpy = vi.fn();
@@ -121,10 +126,12 @@ describe('Route-level Plugin System', () => {
       path: '/fail',
       params: {},
       headers: {},
+      id: 'test-req',
     } as AxiomifyRequest;
     const mockRes = {
       status: vi.fn().mockReturnThis(),
       send: vi.fn(),
+      header: vi.fn().mockReturnThis(),
       headersSent: false,
     } as unknown as AxiomifyResponse;
 

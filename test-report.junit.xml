@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="39" failures="0" errors="0" time="0.042239742">
+    <testsuite name="packages/core/tests/lifecycle.test.ts" timestamp="2026-04-11T10:51:28.381Z" hostname="Deebezt-2.local" tests="0" failures="0" errors="0" skipped="0" time="0">
+    </testsuite>
+    <testsuite name="packages/core/tests/plugins.test.ts" timestamp="2026-04-11T10:51:28.381Z" hostname="Deebezt-2.local" tests="5" failures="0" errors="0" skipped="0" time="0.008770344">
+        <testcase classname="packages/core/tests/plugins.test.ts" name="Route-level Plugin System &gt; executes multiple plugins in the declared array order" time="0.004065187">
+        </testcase>
+        <testcase classname="packages/core/tests/plugins.test.ts" name="Route-level Plugin System &gt; executes registered plugins before the route handler" time="0.000950673">
+        </testcase>
+        <testcase classname="packages/core/tests/plugins.test.ts" name="Route-level Plugin System &gt; stops execution if a plugin sends a response" time="0.00074008">
+        </testcase>
+        <testcase classname="packages/core/tests/plugins.test.ts" name="Route-level Plugin System &gt; throws an error if an unregistered plugin is referenced" time="0.000891551">
+        </testcase>
+        <testcase classname="packages/core/tests/plugins.test.ts" name="Route-level Plugin System &gt; throws an error if registering a plugin name twice" time="0.000982729">
+        </testcase>
+    </testsuite>
+    <testsuite name="packages/core/tests/router.test.ts" timestamp="2026-04-11T10:51:28.382Z" hostname="Deebezt-2.local" tests="8" failures="0" errors="0" skipped="0" time="0.005988787">
+        <testcase classname="packages/core/tests/router.test.ts" name="TrieNode Radix Router &gt; should route exact static paths in O(k) time" time="0.001627334">
+        </testcase>
+        <testcase classname="packages/core/tests/router.test.ts" name="TrieNode Radix Router &gt; should accurately extract dynamic parameters" time="0.000790823">
+        </testcase>
+        <testcase classname="packages/core/tests/router.test.ts" name="TrieNode Radix Router &gt; should return null for unmatched routes (404)" time="0.000226109">
+        </testcase>
+        <testcase classname="packages/core/tests/router.test.ts" name="TrieNode Radix Router &gt; should strictly enforce HTTP methods" time="0.000199819">
+        </testcase>
+        <testcase classname="packages/core/tests/router.test.ts" name="TrieNode Radix Router &gt; throws when sibling routes use different param names at the same depth" time="0.000831821">
+        </testcase>
+        <testcase classname="packages/core/tests/router.test.ts" name="TrieNode Radix Router &gt; matches a wildcard route and captures the remainder in params[&quot;*&quot;]" time="0.000225164">
+        </testcase>
+        <testcase classname="packages/core/tests/router.test.ts" name="TrieNode Radix Router &gt; throws when wildcard is not the final path segment" time="0.000228943">
+        </testcase>
+        <testcase classname="packages/core/tests/router.test.ts" name="TrieNode Radix Router &gt; static and param routes take priority over wildcard at the same depth" time="0.000245396">
+        </testcase>
+    </testsuite>
+    <testsuite name="packages/core/tests/timeout.test.ts" timestamp="2026-04-11T10:51:28.384Z" hostname="Deebezt-2.local" tests="0" failures="0" errors="0" skipped="0" time="0">
+    </testsuite>
+    <testsuite name="packages/core/tests/validation.test.ts" timestamp="2026-04-11T10:51:28.384Z" hostname="Deebezt-2.local" tests="5" failures="0" errors="0" skipped="0" time="0.009124307">
+        <testcase classname="packages/core/tests/validation.test.ts" name="ValidationCompiler &gt; skips validation silently if no schema is provided" time="0.002176905">
+        </testcase>
+        <testcase classname="packages/core/tests/validation.test.ts" name="ValidationCompiler &gt; passes valid body and writes parsed Zod data back to req.body" time="0.002993855">
+        </testcase>
+        <testcase classname="packages/core/tests/validation.test.ts" name="ValidationCompiler &gt; throws ValidationError with structured map for invalid body" time="0.001279141">
+        </testcase>
+        <testcase classname="packages/core/tests/validation.test.ts" name="ValidationCompiler &gt; returns a human-readable error when a required body is missing entirely" time="0.000571605">
+        </testcase>
+        <testcase classname="packages/core/tests/validation.test.ts" name="ValidationCompiler &gt; validates query and params independently" time="0.000680238">
+        </testcase>
+    </testsuite>
+    <testsuite name="packages/auth/tests/auth.test.ts" timestamp="2026-04-11T10:51:28.386Z" hostname="Deebezt-2.local" tests="0" failures="0" errors="0" skipped="0" time="0">
+    </testsuite>
+    <testsuite name="packages/express/tests/adapter.test.ts" timestamp="2026-04-11T10:51:28.386Z" hostname="Deebezt-2.local" tests="4" failures="0" errors="0" skipped="0" time="0">
+        <testcase classname="packages/express/tests/adapter.test.ts" name="Express Adapter Translators &gt; maps method, path, ip, body, query, and headers via translateRequest" time="0">
+        </testcase>
+        <testcase classname="packages/express/tests/adapter.test.ts" name="Express Adapter Translators &gt; formats translateResponse.send() with 2xx status as success" time="0">
+        </testcase>
+        <testcase classname="packages/express/tests/adapter.test.ts" name="Express Adapter Translators &gt; formats translateResponse.send() with 4xx status as failed" time="0">
+        </testcase>
+        <testcase classname="packages/express/tests/adapter.test.ts" name="Express Adapter Translators &gt; translateResponse.sendRaw() sets the Content-Type header correctly" time="0">
+        </testcase>
+    </testsuite>
+    <testsuite name="packages/cors/tests/cors.test.ts" timestamp="2026-04-11T10:51:28.387Z" hostname="Deebezt-2.local" tests="4" failures="0" errors="0" skipped="0" time="0">
+        <testcase classname="packages/cors/tests/cors.test.ts" name="useCors &gt; sets Access-Control-Allow-Origin to * by default" time="0">
+        </testcase>
+        <testcase classname="packages/cors/tests/cors.test.ts" name="useCors &gt; reflects the request origin when it is in the allowed list" time="0">
+        </testcase>
+        <testcase classname="packages/cors/tests/cors.test.ts" name="useCors &gt; responds to OPTIONS preflight with 204 and short-circuits the handler" time="0">
+        </testcase>
+        <testcase classname="packages/cors/tests/cors.test.ts" name="useCors &gt; sets credentials header when credentials: true" time="0">
+        </testcase>
+    </testsuite>
+    <testsuite name="packages/metrics/tests/metrics.test.ts" timestamp="2026-04-11T10:51:28.388Z" hostname="Deebezt-2.local" tests="0" failures="0" errors="0" skipped="0" time="0">
+    </testsuite>
+    <testsuite name="packages/logger/tests/logger.test.ts" timestamp="2026-04-11T10:51:28.388Z" hostname="Deebezt-2.local" tests="0" failures="0" errors="0" skipped="0" time="0">
+    </testsuite>
+    <testsuite name="packages/openapi/tests/generator.test.ts" timestamp="2026-04-11T10:51:28.388Z" hostname="Deebezt-2.local" tests="0" failures="0" errors="0" skipped="0" time="0">
+    </testsuite>
+    <testsuite name="packages/static/tests/static.test.ts" timestamp="2026-04-11T10:51:28.388Z" hostname="Deebezt-2.local" tests="4" failures="0" errors="0" skipped="0" time="0.00841186">
+        <testcase classname="packages/static/tests/static.test.ts" name="serveStatic Plugin &gt; registers the wildcard route correctly" time="0.003849002">
+        </testcase>
+        <testcase classname="packages/static/tests/static.test.ts" name="serveStatic Plugin &gt; securely resolves paths and blocks directory traversal" time="0.001578962">
+        </testcase>
+        <testcase classname="packages/static/tests/static.test.ts" name="serveStatic Plugin &gt; returns 404 for missing files" time="0.001197498">
+        </testcase>
+        <testcase classname="packages/static/tests/static.test.ts" name="serveStatic Plugin &gt; returns 404 if path resolves to a directory" time="0.000528189">
+        </testcase>
+    </testsuite>
+    <testsuite name="packages/rate-limit/tests/rate-limit.test.ts" timestamp="2026-04-11T10:51:28.389Z" hostname="Deebezt-2.local" tests="5" failures="0" errors="0" skipped="0" time="0.009944444">
+        <testcase classname="packages/rate-limit/tests/rate-limit.test.ts" name="Rate Limit MemoryStore &gt; increments correctly within the window" time="0.003751821">
+        </testcase>
+        <testcase classname="packages/rate-limit/tests/rate-limit.test.ts" name="Rate Limit MemoryStore &gt; slides the window and drops old timestamps" time="0.000714446">
+        </testcase>
+        <testcase classname="packages/rate-limit/tests/rate-limit.test.ts" name="Rate Limit MemoryStore &gt; prunes expired keys from memory to prevent OOM leaks" time="0.00052103">
+        </testcase>
+        <testcase classname="packages/rate-limit/tests/rate-limit.test.ts" name="useRateLimit Plugin hook &gt; applies rate limit headers and blocks on max requests" time="0.003009992">
+        </testcase>
+        <testcase classname="packages/rate-limit/tests/rate-limit.test.ts" name="useRateLimit Plugin hook &gt; skips rate limiting if skip function returns true" time="0.000406344">
+        </testcase>
+    </testsuite>
+    <testsuite name="packages/ws/tests/ws.test.ts" timestamp="2026-04-11T10:51:28.391Z" hostname="Deebezt-2.local" tests="0" failures="0" errors="0" skipped="0" time="0">
+    </testsuite>
+    <testsuite name="packages/upload/tests/upload.test.ts" timestamp="2026-04-11T10:51:28.391Z" hostname="Deebezt-2.local" tests="4" failures="0" errors="0" skipped="0" time="0">
+        <testcase classname="packages/upload/tests/upload.test.ts" name="useUpload Plugin &gt; registers the onPreHandler and onError hooks" time="0">
+        </testcase>
+        <testcase classname="packages/upload/tests/upload.test.ts" name="useUpload Plugin &gt; skips parsing immediately if the request is not multipart/form-data" time="0">
+        </testcase>
+        <testcase classname="packages/upload/tests/upload.test.ts" name="useUpload Plugin &gt; safely scrubs the hard drive of orphaned files if a request crashes" time="0">
+        </testcase>
+        <testcase classname="packages/upload/tests/upload.test.ts" name="useUpload Plugin &gt; processes multipart fields and streams files successfully" time="0">
+        </testcase>
+    </testsuite>
+</testsuites>

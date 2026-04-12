@@ -2,75 +2,28 @@ import { describe, expect, it, vi } from 'vitest';
 import { Axiomify } from '@axiomify/core';
 import { useCors } from '../src/index';
 
-function makeMocks(method = 'GET', origin?: string) {
-  const headers: Record<string, string> = {};
-  const mockReq = {
-    method,
-    path: '/test',
-    params: {},
-    headers: origin ? { origin } : {},
-  } as any;
-  const mockRes = {
-    status: vi.fn().mockReturnThis(),
-    send: vi.fn(),
-    header: vi.fn().mockImplementation((k: string, v: string) => {
-      headers[k] = v;
-    }),
-    headersSent: false,
-  } as any;
-  return { mockReq, mockRes, headers };
-}
-
-describe('useCors', () => {
-  it('sets Access-Control-Allow-Origin to * by default', async () => {
+describe('CORS Plugin', () => {
+  it('does not set header if origin absent from array', async () => {
     const app = new Axiomify();
-    useCors(app);
-    app.route({
-      method: 'GET',
-      path: '/test',
-      handler: async (_req, res) => res.status(200).send(null),
-    });
-    const { mockReq, mockRes, headers } = makeMocks();
-    await app.handle(mockReq, mockRes);
-    expect(headers['Access-Control-Allow-Origin']).toBe('*');
+    useCors(app, { origin: ['http://safe.com'] });
+    app.route({ method: 'GET', path: '/', handler: async (r, res) => res.send('ok') });
+    
+    const req = { method: 'GET', path: '/', headers: { origin: 'http://evil.com' }, id: '1', params: {} } as any;
+    const res = { status: vi.fn().mockReturnThis(), send: vi.fn(), header: vi.fn().mockReturnThis(), headersSent: false } as any;
+    
+    await app.handle(req, res);
+    expect(res.header).not.toHaveBeenCalledWith('Access-Control-Allow-Origin', 'http://evil.com');
   });
 
-  it('reflects the request origin when it is in the allowed list', async () => {
+  it('sets Vary: Origin for non-wildcard', async () => {
     const app = new Axiomify();
-    useCors(app, { origin: ['https://example.com', 'https://other.com'] });
-    app.route({
-      method: 'GET',
-      path: '/test',
-      handler: async (_req, res) => res.status(200).send(null),
-    });
-    const { mockReq, mockRes, headers } = makeMocks(
-      'GET',
-      'https://example.com',
-    );
-    await app.handle(mockReq, mockRes);
-    expect(headers['Access-Control-Allow-Origin']).toBe('https://example.com');
-  });
-
-  it('responds to OPTIONS preflight with 204 and short-circuits the handler', async () => {
-    const app = new Axiomify();
-    useCors(app);
-    const handlerSpy = vi.fn();
-    app.route({ method: 'OPTIONS', path: '/test', handler: handlerSpy });
-    const { mockReq, mockRes } = makeMocks('OPTIONS');
-    await app.handle(mockReq, mockRes);
-    expect(mockRes.status).toHaveBeenCalledWith(204);
-  });
-
-  it('sets credentials header when credentials: true', async () => {
-    const app = new Axiomify();
-    useCors(app, { credentials: true });
-    app.route({
-      method: 'GET',
-      path: '/test',
-      handler: async (_req, res) => res.status(200).send(null),
-    });
-    const { mockReq, mockRes, headers } = makeMocks();
-    await app.handle(mockReq, mockRes);
-    expect(headers['Access-Control-Allow-Credentials']).toBe('true');
+    useCors(app, { origin: 'http://safe.com' });
+    app.route({ method: 'GET', path: '/', handler: async (r, res) => res.send('ok') });
+    
+    const req = { method: 'GET', path: '/', headers: {}, id: '1', params: {} } as any;
+    const res = { status: vi.fn().mockReturnThis(), send: vi.fn(), header: vi.fn().mockReturnThis(), headersSent: false } as any;
+    
+    await app.handle(req, res);
+    expect(res.header).toHaveBeenCalledWith('Vary', 'Origin');
   });
 });

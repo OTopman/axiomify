@@ -2,6 +2,7 @@ import type {
   Axiomify,
   AxiomifyRequest,
   AxiomifyResponse,
+  SerializerFn,
 } from '@axiomify/core';
 import crypto from 'crypto';
 import fastify, {
@@ -9,6 +10,7 @@ import fastify, {
   FastifyReply,
   FastifyRequest,
 } from 'fastify';
+import { Readable } from 'stream';
 
 export class FastifyAdapter {
   private app: FastifyInstance;
@@ -24,7 +26,11 @@ export class FastifyAdapter {
     // Catch-all route to hijack traffic to the Axiomify Radix Engine
     this.app.all('/*', async (req: FastifyRequest, res: FastifyReply) => {
       const axiomifyReq = this.translateRequest(req);
-      const axiomifyRes = this.translateResponse(res);
+      const axiomifyRes = this.translateResponse(
+        res,
+        this.core.serializer,
+        axiomifyReq,
+      );
 
       await this.core.handle(axiomifyReq, axiomifyRes);
     });
@@ -79,9 +85,17 @@ export class FastifyAdapter {
     };
   }
 
-  private translateResponse(res: FastifyReply): AxiomifyResponse {
+  private translateResponse(
+    res: FastifyReply,
+    serializer: SerializerFn,
+    req: AxiomifyRequest,
+  ): AxiomifyResponse {
+    let statusCode = 200;
+    let isSent = false;
+
     return {
       status(code: number) {
+        statusCode = code;
         res.status(code);
         return this;
       },
@@ -95,29 +109,76 @@ export class FastifyAdapter {
       },
       send<T>(data: T, message = 'Operation successful') {
         const isError = res.statusCode >= 400;
-        res.send({ status: isError ? 'failed' : 'success', message, data });
+        isSent = true;
+        const payload = serializer(data, message, statusCode, isError, req);
+        res.send(payload);
       },
       sendRaw(payload: any, contentType = 'text/plain') {
         res.header('Content-Type', contentType);
-        res.send(payload);
+        res.status(statusCode).send(payload);
       },
       error(err: unknown) {
+        isSent = true;
         const message = err instanceof Error ? err.message : 'Unknown Error';
-        res.status(500).send({ status: 'failed', message, data: null });
+        const payload = serializer(null, message, 500, true, req);
+        res.status(500).send(payload);
       },
+
+      stream(readable: Readable, contentType = 'application/octet-stream') {
+        isSent = true;
+        res.header('Content-Type', contentType);
+        res.status(statusCode).send(readable);
+      },
+
+      // Fastify SSE Init
+      sseInit(sseHeartbeatMs: number = 15_000) {
+        isSent = true;
+        res.raw.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        });
+
+        const heartbeat = setInterval(() => {
+          res.raw.write(': keepalive\n\n');
+        }, sseHeartbeatMs);
+        res.raw.on('close', () => clearInterval(heartbeat));
+      },
+
+      // Fastify SSE Send
+      sseSend(data: any, event?: string) {
+        if (event) res.raw.write(`event: ${event}\n`);
+        res.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+      },
+
+      get statusCode() {
+        return statusCode;
+      },
+
       get raw() {
         return res;
       },
       get headersSent() {
-        return res.sent;
+        return isSent;
       },
     };
   }
 
-  public listen(port: number, callback?: () => void): void {
-    this.app.listen({ port, host: '0.0.0.0' }, (err) => {
-      if (err) throw err;
-      if (callback) callback();
-    });
+  public listen(
+    port: number,
+    callback?: (err: Error | null, address: string) => void,
+  ): void {
+    if (callback) {
+      this.app.listen({ port }, callback);
+    } else {
+      this.app.listen({ port }).catch((err) => {
+        console.error(err);
+        process.exit(1);
+      });
+    }
+  }
+
+  public async close(): Promise<void> {
+    await this.app.close();
   }
 }

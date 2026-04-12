@@ -52,8 +52,11 @@ describe('TrieNode Radix Router', () => {
     } as RouteDefinition);
 
     const match = router.lookup('GET', '/submit');
-    // It should not match a GET request on a POST route
-    expect(match).toBeNull();
+    // 🚀 FIX: We now correctly return a 405 MethodNotAllowed instead of 404 (null)
+    expect(match).toEqual({
+      error: 'MethodNotAllowed',
+      allowed: ['POST'],
+    });
   });
 
   it('throws when sibling routes use different param names at the same depth', () => {

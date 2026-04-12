@@ -1,11 +1,8 @@
-import type {
-  Axiomify,
-  AxiomifyRequest,
-  AxiomifyResponse,
-} from '@axiomify/core';
-import type { Request, ResponseToolkit } from '@hapi/hapi';
+import type { Axiomify, AxiomifyRequest, SerializerFn } from '@axiomify/core';
+import type { Request } from '@hapi/hapi';
 import Hapi from '@hapi/hapi';
 import crypto from 'crypto';
+import { PassThrough, Readable } from 'stream';
 
 export class HapiAdapter {
   private server: Hapi.Server;
@@ -27,18 +24,22 @@ export class HapiAdapter {
     this.server.route({
       method: '*',
       path: '/{any*}',
-      handler: (req: Request, h: ResponseToolkit) => {
+      handler: (req: any, h: any) => {
         return new Promise((resolve, reject) => {
           const axiomifyReq = this.translateRequest(req);
-          const axiomifyRes = this.translateResponse(h, resolve);
+          // Inject the serializer here
+          const axiomifyRes = this.translateResponse(
+            h,
+            resolve,
+            this.core.serializer,
+            axiomifyReq,
+          );
 
           this.core.handle(axiomifyReq, axiomifyRes).catch((err) => {
             axiomifyRes.error(err);
           });
 
-          // Respect framework-level default timeout rather than hardcoding 30s
-          const effectiveTimeout = (this.core as any)._timeout || 30_000;
-
+          const effectiveTimeout = this.core.timeout || 30_000;
           if (effectiveTimeout > 0) {
             setTimeout(() => {
               if (!axiomifyRes.headersSent) {
@@ -103,12 +104,22 @@ export class HapiAdapter {
   }
 
   private translateResponse(
-    h: ResponseToolkit,
-    resolveCallback: (value: any) => void,
-  ): AxiomifyResponse {
+    h: any,
+    resolve: (val: any) => void,
+    serializer: SerializerFn,
+    req: AxiomifyRequest
+  ): any {
     let statusCode = 200;
     let isSent = false;
+    let sseStream: PassThrough | null = null;
     const headers: Record<string, string> = {};
+
+    const applyHeaders = (response: any) => {
+      for (const [key, value] of Object.entries(headers)) {
+        response.header(key, value);
+      }
+      return response;
+    };
 
     return {
       status(code: number) {
@@ -123,44 +134,79 @@ export class HapiAdapter {
         delete headers[key];
         return this;
       },
-
-      send<T>(data: T, message = 'Operation successful') {
-        isSent = true; // 🚀 Flag as sent
+      send(data: any, message?: string) {
+        isSent = true;
         const isError = statusCode >= 400;
-        const response = h
-          .response({ status: isError ? 'failed' : 'success', message, data })
-          .code(statusCode);
-        Object.entries(headers).forEach(([k, v]) => response.header(k, v));
-        resolveCallback(response);
+        const payload = serializer(data, message, statusCode, isError, req);
+        const response = h.response(payload).code(statusCode);
+        resolve(applyHeaders(response));
       },
       sendRaw(payload: any, contentType = 'text/plain') {
-        isSent = true; // 🚀 Flag as sent
+        isSent = true;
         headers['Content-Type'] = contentType;
         const response = h.response(payload).code(statusCode);
-        Object.entries(headers).forEach(([k, v]) => response.header(k, v));
-        resolveCallback(response);
+        resolve(applyHeaders(response));
       },
       error(err: unknown) {
-        isSent = true; // 🚀 Flag as sent
+        isSent = true;
         const message = err instanceof Error ? err.message : 'Unknown Error';
-        const response = h
-          .response({ status: 'failed', message, data: null })
-          .code(500);
-        resolveCallback(response);
+        const payload = serializer(null, message, 500, true, req);
+        const response = h.response(payload).code(500);
+        resolve(applyHeaders(response));
       },
+
+      // Hapi Stream implementation
+      stream(readable: Readable, contentType = 'application/octet-stream') {
+        isSent = true;
+        headers['Content-Type'] = contentType;
+        const response = h.response(readable).code(statusCode);
+        resolve(applyHeaders(response));
+      },
+
+      // Hapi SSE Init (Creates and returns a PassThrough stream)
+      sseInit(sseHeartbeatMs: number = 15_000) {
+        isSent = true;
+        sseStream = new PassThrough();
+
+        headers['Content-Type'] = 'text/event-stream';
+        headers['Cache-Control'] = 'no-cache';
+        headers['Connection'] = 'keep-alive';
+
+        const heartbeat = setInterval(() => {
+          sseStream!.write(': keepalive\n\n');
+        }, sseHeartbeatMs);
+        sseStream.on('close', () => clearInterval(heartbeat));
+
+        const response = h.response(sseStream).code(200);
+        resolve(applyHeaders(response));
+      },
+
+      // Hapi SSE Send (Writes to the PassThrough stream)
+      sseSend(data: any, event?: string) {
+        if (!sseStream) return;
+        if (event) sseStream.write(`event: ${event}\n`);
+        sseStream.write(`data: ${JSON.stringify(data)}\n\n`);
+      },
+
+      get statusCode() {
+        return statusCode;
+      },
+
       get raw() {
         return h;
       },
-
       get headersSent() {
         return isSent;
       },
     };
   }
 
-  public async listen(port: number, callback?: () => void): Promise<void> {
+  public async listen(port: number): Promise<void> {
     this.server.settings.port = port;
     await this.server.start();
-    if (callback) callback();
+  }
+
+  public async close(): Promise<void> {
+    await this.server.stop({ timeout: 10000 }); // Graceful drain
   }
 }

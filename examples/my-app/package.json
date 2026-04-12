@@ -1,6 +1,6 @@
 {
   "name": "axiomify-app",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "private": true,
   "scripts": {
     "dev": "axiomify dev src/index.ts",
@@ -12,7 +12,10 @@
     "@axiomify/core": "*",
     "@axiomify/fastify": "*",
     "@axiomify/openapi": "*",
-    "@axiomify/upload": "*"
+    "@axiomify/upload": "*",
+    "@axiomify/ws": "*",
+    "@axiomify/metrics": "*",
+    "@axiomify/static": "*"
   },
   "devDependencies": {
     "typescript": "^5.0.0",

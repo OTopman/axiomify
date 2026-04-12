@@ -1,15 +1,13 @@
 name: Axiomify CI
 
-on:
-  pull_request:
-    branches: [ main, feature/* ]
+on: [push, pull_request]
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18, 20, 22] 
+        node-version: [18, 20, 22]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -27,4 +25,10 @@ jobs:
         run: npm run build
 
       - name: Run Tests
-        run: npm test 
+        run: npm test
+
+      - name: Security audit
+        run: npm audit --audit-level=high
+
+      - name: Coverage
+        run: npm run coverage

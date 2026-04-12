@@ -3,5 +3,6 @@ export * from './app';
 export * from './errors';
 export * from './lifecycle';
 export * from './router';
+export * from './shutdown';
 export * from './types';
 export * from './validation';

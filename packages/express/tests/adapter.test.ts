@@ -1,6 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { translateRequest, translateResponse } from '../src/translator';
 
+const mockSerializer = (
+  data: any,
+  message?: string,
+  statusCode?: number,
+  isError?: boolean,
+) => ({
+  status: isError || (statusCode && statusCode >= 400) ? 'failed' : 'success',
+  data,
+});
+
 describe('Express Adapter Translators', () => {
   it('maps method, path, ip, body, query, and headers via translateRequest', () => {
     const mockExpressReq: any = {
@@ -33,13 +43,16 @@ describe('Express Adapter Translators', () => {
       setHeader: vi.fn(),
     };
 
-    const res = translateResponse(mockExpressRes);
-    res.status(200).send({ user: 1 }, 'User fetched');
+    const axiomifyRes = translateResponse(
+      mockExpressRes as any,
+      mockSerializer,
+    );
+    axiomifyRes.status(200).send({ id: 1 });
 
+    expect(mockExpressRes.status).toHaveBeenCalledWith(200);
     expect(mockExpressRes.json).toHaveBeenCalledWith({
       status: 'success',
-      message: 'User fetched',
-      data: { user: 1 },
+      data: { id: 1 },
     });
   });
 
@@ -54,13 +67,16 @@ describe('Express Adapter Translators', () => {
       setHeader: vi.fn(),
     };
 
-    const res = translateResponse(mockExpressRes);
-    res.status(400).send({ error: 'Bad Data' }, 'Validation failed');
+    const axiomifyRes = translateResponse(
+      mockExpressRes as any,
+      mockSerializer,
+    );
+    axiomifyRes.status(400).send(null);
 
+    expect(mockExpressRes.status).toHaveBeenCalledWith(400);
     expect(mockExpressRes.json).toHaveBeenCalledWith({
       status: 'failed',
-      message: 'Validation failed',
-      data: { error: 'Bad Data' },
+      data: null,
     });
   });
 
