@@ -34,38 +34,29 @@ export function useCors(app: Axiomify, options: CorsOptions = {}): void {
   const credentials = options.credentials ?? false;
   const maxAge = options.maxAge ?? 86400;
 
-  app.addHook('onRequest', (req: AxiomifyRequest, res: AxiomifyResponse) => {
+  app.addHook('onRequest', (req, res) => {
     const requestOrigin = req.headers['origin'] as string | undefined;
 
-    // Resolve the allowed origin for this request
-    let resolvedOrigin = '*';
+    let resolvedOrigin = '';
     if (Array.isArray(origin)) {
       if (requestOrigin && origin.includes(requestOrigin)) {
         resolvedOrigin = requestOrigin;
-      } else {
-        resolvedOrigin = ''; // Do not set header if mismatch
       }
     } else {
-      resolvedOrigin = origin;
+      resolvedOrigin = origin; // '*' or a single string
     }
 
-    if (resolvedOrigin && resolvedOrigin !== '') {
+    if (resolvedOrigin) {
       res.header('Access-Control-Allow-Origin', resolvedOrigin);
     }
-
     if (resolvedOrigin && resolvedOrigin !== '*') {
       res.header('Vary', 'Origin');
     }
 
-    res.header('Access-Control-Allow-Origin', resolvedOrigin);
     res.header('Access-Control-Allow-Methods', methods.join(', '));
     res.header('Access-Control-Allow-Headers', allowedHeaders.join(', '));
+    if (credentials) res.header('Access-Control-Allow-Credentials', 'true');
 
-    if (credentials) {
-      res.header('Access-Control-Allow-Credentials', 'true');
-    }
-
-    // Handle preflight
     if (req.method === 'OPTIONS') {
       res.header('Access-Control-Max-Age', String(maxAge));
       res.status(204).send(null);

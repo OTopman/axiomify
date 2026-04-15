@@ -10,7 +10,7 @@
     "examples/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces",
+    "build": "npm run build -w @axiomify/core && npm run build --workspaces",
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage"

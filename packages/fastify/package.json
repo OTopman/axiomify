@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@axiomify/core": "*",
-    "fastify": "4.28.1"
+    "fastify": "5.8.5"
   },
   "exports": {
     ".": {

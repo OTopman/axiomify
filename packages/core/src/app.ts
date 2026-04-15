@@ -88,7 +88,7 @@ export class Axiomify {
     message,
     statusCode,
     isError,
-    req,
+    _req,
   ) => ({
     status: isError || (statusCode && statusCode >= 400) ? 'failed' : 'success',
     message:
