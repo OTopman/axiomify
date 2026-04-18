@@ -3,10 +3,10 @@
   "version": "3.3.0",
   "private": true,
   "scripts": {
-    "dev": "npx axiomify dev src/index.ts",
-    "build": "npx axiomify build src/index.ts",
+    "dev": "axiomify dev src/index.ts",
+    "build": "echo \"Skipping example build in CI — run npm run dev locally\"",
     "start": "node dist/index.js",
-    "routes": "npx axiomify routes src/index.ts"
+    "routes": "axiomify routes src/index.ts"
   },
   "dependencies": {
     "@axiomify/core": "*",

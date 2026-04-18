@@ -19,12 +19,16 @@ export class FastifyAdapter {
     this.app = fastify({ logger: false });
 
     // This allows the raw stream to reach Axiomify's Busboy engine
-    this.app.addContentTypeParser('multipart/form-data', (_, payload, done) => {
-      done(null, payload);
-    });
+    // In Fastify v5 the content type parser callback is (request, payload, done)
+    this.app.addContentTypeParser(
+      'multipart/form-data',
+      (_req, payload, done) => {
+        done(null, payload);
+      },
+    );
 
     // Catch-all route to hijack traffic to the Axiomify Radix Engine
-    this.app.all('/*', async (req: FastifyRequest, res: FastifyReply) => {
+    this.app.all('/{*}', async (req: FastifyRequest, res: FastifyReply) => {
       const axiomifyReq = this.translateRequest(req);
       const axiomifyRes = this.translateResponse(
         res,
@@ -54,9 +58,11 @@ export class FastifyAdapter {
         return req.url;
       },
       get path() {
-        return req.routerPath === '/*'
+        // In Fastify v5, req.routeOptions.url replaces the removed req.routerPath
+        const routeUrl = (req as any).routeOptions?.url ?? '/{*}';
+        return routeUrl === '/{*}'
           ? new URL(`http://localhost${req.url}`).pathname
-          : req.routerPath;
+          : routeUrl;
       },
       get ip() {
         return req.ip;
@@ -164,18 +170,16 @@ export class FastifyAdapter {
     };
   }
 
-  public listen(
-    port: number,
-    callback?: (err: Error | null, address: string) => void,
-  ): void {
-    if (callback) {
-      this.app.listen({ port }, callback);
-    } else {
-      this.app.listen({ port }).catch((err) => {
+  public listen(port: number, callback?: () => void): void {
+    this.app
+      .listen({ port })
+      .then(() => {
+        callback?.();
+      })
+      .catch((err) => {
         console.error(err);
         process.exit(1);
       });
-    }
   }
 
   public async close(): Promise<void> {
