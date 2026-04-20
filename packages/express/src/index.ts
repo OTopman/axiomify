@@ -1,31 +1,31 @@
 import type { Axiomify } from '@axiomify/core';
 import type { Express, Request, Response } from 'express';
 import express from 'express';
+import { Server } from 'http';
 import { translateRequest, translateResponse } from './translator';
 
 export class ExpressAdapter {
   private app: Express;
   private core: Axiomify;
+  private server?: Server;
 
   constructor(coreApp: Axiomify) {
     this.core = coreApp;
     this.app = express();
 
-    // Essential Express middleware for parsing
+    // Instantiate memory-heavy parsers ONCE during boot
+    const jsonParser = express.json();
+    const urlencodedParser = express.urlencoded({ extended: true });
+
     this.app.use((req, res, next) => {
-      // This prevents allocating memory for payloads on unmapped/404 routes.
       const match = this.core.router.lookup(req.method as any, req.path);
       if (!match) return next();
 
       const contentType = req.headers['content-type'] || '';
-
-      if (contentType.includes('application/json')) {
-        return express.json()(req, res, next);
-      }
-
-      if (contentType.includes('application/x-www-form-urlencoded')) {
-        return express.urlencoded({ extended: true })(req, res, next);
-      }
+      if (contentType.includes('application/json'))
+        return jsonParser(req, res, next);
+      if (contentType.includes('application/x-www-form-urlencoded'))
+        return urlencodedParser(req, res, next);
 
       next();
     });
@@ -33,7 +33,11 @@ export class ExpressAdapter {
     // The Hijack: Catch all traffic and route it to Axiomify's Radix Engine
     this.app.all('*', async (req: Request, res: Response) => {
       const axiomifyReq = translateRequest(req);
-      const axiomifyRes = translateResponse(res);
+      const axiomifyRes = translateResponse(
+        res,
+        this.core.serializer,
+        axiomifyReq,
+      );
 
       await this.core.handle(axiomifyReq, axiomifyRes);
     });
@@ -42,8 +46,17 @@ export class ExpressAdapter {
   /**
    * Bootstraps the server.
    */
-  public listen(port: number, callback?: () => void): import('http').Server {
-    return this.app.listen(port, callback);
+  public listen(port: number, callback?: () => void): Server {
+    this.server = this.app.listen(port, callback);
+    return this.server;
+  }
+
+  // Graceful Shutdown
+  public async close(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.server) return resolve();
+      this.server.close((err) => (err ? reject(err) : resolve()));
+    });
   }
 
   /**

@@ -1,5 +1,5 @@
 import { Axiomify, z } from '@axiomify/core';
-import { ExpressAdapter } from '@axiomify/express';
+import { HttpAdapter } from '@axiomify/http';
 
 const app = new Axiomify();
 
@@ -22,5 +22,5 @@ app.route({
   },
 });
 
-const adapter = new ExpressAdapter(app);
+const adapter = new HttpAdapter(app);
 adapter.listen(3000);

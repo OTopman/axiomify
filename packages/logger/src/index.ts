@@ -56,23 +56,20 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}) {
     });
   });
 
-  app.addHook('onPreHandler', (req, res) => {
-    const originalSend = res.send.bind(res);
-    res.send = (data: any, message?: string) => {
-      const endTime = process.hrtime.bigint();
-      const durationMs = req.state.startTime
-        ? Number(endTime - req.state.startTime) / 1_000_000
-        : 0;
-      log('info', 'Outgoing Response', {
-        requestId: req.id,
-        method: req.method,
-        path: req.path,
-        durationMs: durationMs.toFixed(3),
-        responseMessage: message,
-        payload: data,
-      });
-      return originalSend(data, message);
-    };
+  app.addHook('onPostHandler', (req, res) => {
+    const endTime = process.hrtime.bigint();
+    const durationMs = req.state.startTime
+      ? Number(endTime - req.state.startTime) / 1_000_000
+      : 0;
+
+    log('info', 'Outgoing Response', {
+      requestId: req.id,
+      method: req.method,
+      path: req.path,
+      durationMs: durationMs.toFixed(3),
+      responseMessage: (res as any).responseMessage,
+      payload: (res as any).payload,
+    });
   });
 
   // 3. Log errors

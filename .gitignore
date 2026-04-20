@@ -66,3 +66,12 @@ coverage/
 .next/
 .nuxt/
 .cache/
+
+
+# Axiomify CLI temporary artifacts
+.axiomify/
+
+# Codecov local binaries and verification files
+codecov
+codecov.SHA256SUM
+codecov.SHA256SUM.sig

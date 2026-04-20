@@ -1,3 +1,4 @@
+import { Readable } from 'stream';
 import { z, ZodTypeAny } from 'zod';
 
 export interface FileConfig {
@@ -16,11 +17,29 @@ export type HttpMethod =
   | 'OPTIONS'
   | 'HEAD';
 
+export type HookType =
+  | 'onRequest'
+  | 'onPreHandler'
+  | 'onPostHandler'
+  | 'onError'
+  | 'onClose';
+
+export type SerializerFn = (
+  data: any,
+  message?: string,
+  statusCode?: number,
+  isError?: boolean,
+  req?: AxiomifyRequest,
+) => any;
+
 /**
  * RequestState is intentionally empty.
  * Packages can extend it without coupling via module augmentation.
  */
-export interface RequestState {}
+export interface RequestState {
+  startTime?: bigint;
+  [key: string]: any; // Allows users to append custom state safely
+}
 
 export interface AxiomifyRequest<
   Body = unknown,
@@ -50,8 +69,24 @@ export interface AxiomifyResponse {
   send<T>(data: T, message?: string): void;
   sendRaw(payload: any, contentType?: string): void;
   error(err: unknown): void;
+
+  stream(readable: Readable, contentType?: string): void;
+  sseInit(sseHeartbeatMs?: number): void;
+  sseSend(data: any, event?: string): void;
+
+  readonly statusCode: number;
   readonly raw: unknown;
   readonly headersSent: boolean;
+}
+
+export interface RouteGroup {
+  route<S extends RouteSchema>(definition: RouteDefinition<S>): this;
+  group(
+    prefix: string,
+    options: RouteGroupOptions,
+    callback: (group: RouteGroup) => void,
+  ): this;
+  group(prefix: string, callback: (group: RouteGroup) => void): this;
 }
 
 /**
@@ -61,7 +96,7 @@ export interface RouteSchema {
   body?: ZodTypeAny;
   query?: ZodTypeAny;
   params?: ZodTypeAny;
-  response?: ZodTypeAny;
+  response?: ZodTypeAny | Record<number, ZodTypeAny>;
   files?: Record<string, FileConfig>;
 }
 
@@ -85,17 +120,16 @@ export type RouteHandler<
   res: AxiomifyResponse,
 ) => Promise<void> | void;
 
-export interface RegisteredPlugins {}
-
-// If the user augments the interface, use their keys. Otherwise, fallback to string.
-export type PluginName = [keyof RegisteredPlugins] extends [never]
-  ? string
-  : keyof RegisteredPlugins;
-
 export type PluginHandler = (
   req: AxiomifyRequest,
   res: AxiomifyResponse,
 ) => void | Promise<void>;
+
+export type RoutePlugin = PluginHandler;
+
+export interface RouteGroupOptions {
+  plugins?: RoutePlugin[];
+}
 
 /**
  * RouteDefinition now automatically infers the generic types directly from the Zod schema.
@@ -109,7 +143,7 @@ export interface RouteDefinition<
   method: HttpMethod;
   path: string;
   schema?: S;
-  plugins?: PluginName[];
+  plugins?: RoutePlugin[];
   timeout?: number; // milliseconds; overrides the global default when set
   handler: RouteHandler<B, Q, P, S['files']>;
 }

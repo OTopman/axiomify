@@ -2,6 +2,7 @@
   "name": "axiomify-workspace",
   "description": "Zero-compromise Node.js framework with Radix routing, Zod-native validation, and a modular plugin ecosystem for building high-performance, type-safe APIs.",
   "private": true,
+  "version": "4.0.0",
   "engines": {
     "node": ">=18.0.0"
   },
@@ -10,13 +11,17 @@
     "examples/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces",
+    "build": "npm run build -w @axiomify/core -w @axiomify/auth -w @axiomify/cli -w @axiomify/cors -w @axiomify/express -w @axiomify/fastify -w @axiomify/hapi -w @axiomify/helmet -w @axiomify/http -w @axiomify/logger -w @axiomify/metrics -w @axiomify/openapi -w @axiomify/rate-limit -w @axiomify/static -w @axiomify/upload -w @axiomify/ws",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage"
   },
   "devDependencies": {
     "@changesets/cli": "^2.30.0",
     "@types/node": "^25.5.2",
+    "@vitest/coverage-v8": "^3.2.4",
+    "fastify-plugin": "^5.1.0",
+    "tsup": "^8.5.1",
     "typescript": "^6.0.2",
     "vitest": "^3.2.4"
   },

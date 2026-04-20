@@ -2,6 +2,7 @@ import type {
   Axiomify,
   AxiomifyRequest,
   AxiomifyResponse,
+  SerializerFn,
 } from '@axiomify/core';
 import crypto from 'crypto';
 import fastify, {
@@ -9,6 +10,24 @@ import fastify, {
   FastifyReply,
   FastifyRequest,
 } from 'fastify';
+import { Readable } from 'stream';
+
+/**
+ * Strip prototype-pollution vectors from a parsed JSON body. Matches the
+ * helpers in `@axiomify/http` and `@axiomify/express`. Without this, a body
+ * like `{"__proto__": {"polluted": true}}` mutates Object.prototype.
+ */
+function sanitize(obj: any): any {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(sanitize);
+  const clean: any = {};
+  for (const key of Object.keys(obj)) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype')
+      continue;
+    clean[key] = sanitize(obj[key]);
+  }
+  return clean;
+}
 
 export class FastifyAdapter {
   private app: FastifyInstance;
@@ -16,15 +35,23 @@ export class FastifyAdapter {
   constructor(private core: Axiomify) {
     this.app = fastify({ logger: false });
 
-    // This allows the raw stream to reach Axiomify's Busboy engine
-    this.app.addContentTypeParser('multipart/form-data', (_, payload, done) => {
-      done(null, payload);
-    });
+    this.app.addContentTypeParser(
+      'multipart/form-data',
+      (_req, payload, done) => {
+        done(null, payload);
+      },
+    );
 
-    // Catch-all route to hijack traffic to the Axiomify Radix Engine
+    // Fastify 5 / find-my-way 9 require the literal `/*`. The `/{*}` syntax
+    // previously used is rejected with "Wildcard must be the last character
+    // in the route" — the adapter couldn't instantiate at all.
     this.app.all('/*', async (req: FastifyRequest, res: FastifyReply) => {
       const axiomifyReq = this.translateRequest(req);
-      const axiomifyRes = this.translateResponse(res);
+      const axiomifyRes = this.translateResponse(
+        res,
+        this.core.serializer,
+        axiomifyReq,
+      );
 
       await this.core.handle(axiomifyReq, axiomifyRes);
     });
@@ -33,6 +60,9 @@ export class FastifyAdapter {
   private translateRequest(req: FastifyRequest): AxiomifyRequest {
     const _params = {};
     const _state = {};
+    // Sanitize once at translation time rather than on every body access.
+    const safeBody = sanitize(req.body);
+
     return {
       get id() {
         return (
@@ -48,9 +78,7 @@ export class FastifyAdapter {
         return req.url;
       },
       get path() {
-        return req.routerPath === '/*'
-          ? new URL(`http://localhost${req.url}`).pathname
-          : req.routerPath;
+        return new URL(`http://localhost${req.url}`).pathname;
       },
       get ip() {
         return req.ip;
@@ -59,7 +87,7 @@ export class FastifyAdapter {
         return req.headers as Record<string, string | string[] | undefined>;
       },
       get body() {
-        return req.body;
+        return safeBody;
       },
       get query() {
         return req.query;
@@ -79,9 +107,17 @@ export class FastifyAdapter {
     };
   }
 
-  private translateResponse(res: FastifyReply): AxiomifyResponse {
+  private translateResponse(
+    res: FastifyReply,
+    serializer: SerializerFn,
+    req: AxiomifyRequest,
+  ): AxiomifyResponse {
+    let statusCode = 200;
+    let isSent = false;
+
     return {
       status(code: number) {
+        statusCode = code;
         res.status(code);
         return this;
       },
@@ -94,30 +130,72 @@ export class FastifyAdapter {
         return this;
       },
       send<T>(data: T, message = 'Operation successful') {
-        const isError = res.statusCode >= 400;
-        res.send({ status: isError ? 'failed' : 'success', message, data });
-      },
-      sendRaw(payload: any, contentType = 'text/plain') {
-        res.header('Content-Type', contentType);
+        const isError = statusCode >= 400;
+        isSent = true;
+        const payload = serializer(data, message, statusCode, isError, req);
         res.send(payload);
       },
+      sendRaw(payload: any, contentType = 'text/plain') {
+        isSent = true;
+        res.header('Content-Type', contentType);
+        res.status(statusCode).send(payload);
+      },
       error(err: unknown) {
+        isSent = true;
         const message = err instanceof Error ? err.message : 'Unknown Error';
-        res.status(500).send({ status: 'failed', message, data: null });
+        const payload = serializer(null, message, 500, true, req);
+        res.status(500).send(payload);
+      },
+
+      stream(readable: Readable, contentType = 'application/octet-stream') {
+        isSent = true;
+        res.header('Content-Type', contentType);
+        res.status(statusCode).send(readable);
+      },
+
+      sseInit(sseHeartbeatMs: number = 15_000) {
+        isSent = true;
+        res.raw.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        });
+        const heartbeat = setInterval(() => {
+          res.raw.write(': keepalive\n\n');
+        }, sseHeartbeatMs);
+        res.raw.on('close', () => clearInterval(heartbeat));
+      },
+
+      sseSend(data: any, event?: string) {
+        if (event) res.raw.write(`event: ${event}\n`);
+        res.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+      },
+
+      get statusCode() {
+        return statusCode;
       },
       get raw() {
         return res;
       },
       get headersSent() {
-        return res.sent;
+        return isSent;
       },
     };
   }
 
   public listen(port: number, callback?: () => void): void {
-    this.app.listen({ port, host: '0.0.0.0' }, (err) => {
-      if (err) throw err;
-      if (callback) callback();
-    });
+    this.app
+      .listen({ port })
+      .then(() => {
+        callback?.();
+      })
+      .catch((err) => {
+        console.error(err);
+        process.exit(1);
+      });
+  }
+
+  public async close(): Promise<void> {
+    await this.app.close();
   }
 }

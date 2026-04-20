@@ -1,9 +1,32 @@
 import fs from 'fs/promises';
+import { existsSync } from 'fs';
 import path from 'path';
 
-export async function initProject(targetDir: string): Promise<void> {
+export async function initProject(
+  targetDir: string,
+  options: { force?: boolean } = {},
+): Promise<void> {
   const dir = path.resolve(process.cwd(), targetDir);
   await fs.mkdir(path.join(dir, 'src'), { recursive: true });
+
+  // Guard against silently trashing work. The previous implementation
+  // overwrote package.json / tsconfig.json / src/index.ts with no warning
+  // if the target directory already held a project — a very easy footgun
+  // to hit by typing `axiomify init` in the wrong shell.
+  const targets = [
+    path.join(dir, 'package.json'),
+    path.join(dir, 'tsconfig.json'),
+    path.join(dir, 'src', 'index.ts'),
+  ];
+  const collisions = targets.filter((p) => existsSync(p));
+  if (collisions.length > 0 && !options.force) {
+    console.error(
+      '❌ Refusing to overwrite existing files:\n' +
+        collisions.map((p) => `   - ${p}`).join('\n') +
+        "\n\nRe-run with '--force' if you really want to replace them.",
+    );
+    process.exit(1);
+  }
 
   const pkgJson = {
     name: 'axiomify-app',
@@ -20,8 +43,11 @@ export async function initProject(targetDir: string): Promise<void> {
       '@axiomify/express': 'latest',
     },
     devDependencies: {
-      typescript: '^5.0.0',
-      '@types/node': '^20.0.0',
+      // Keep scaffolded projects on the same TS major as the workspace
+      // (^6) so types like `satisfies`, `const` type parameters, etc., don't
+      // drift between the framework and user code.
+      typescript: '^6.0.0',
+      '@types/node': '^22.0.0',
     },
   };
 

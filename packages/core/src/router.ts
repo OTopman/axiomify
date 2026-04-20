@@ -5,6 +5,11 @@ interface RouteMatch {
   params: Record<string, string>;
 }
 
+export type RouterLookupResult =
+  | { route: RouteDefinition; params: Record<string, string> }
+  | { error: 'MethodNotAllowed'; allowed: HttpMethod[] }
+  | null;
+
 class TrieNode {
   public children = new Map<string, TrieNode>();
   public paramChild: TrieNode | null = null;
@@ -24,7 +29,9 @@ export class Router {
     const parts = this.splitPath(route.path);
     let currentNode = this.root;
 
-    for (const part of parts) {
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+
       if (part.startsWith(':')) {
         // Handle dynamic parameters (e.g., :id)
         if (!currentNode.paramChild) {
@@ -40,20 +47,18 @@ export class Router {
         }
         currentNode = currentNode.paramChild;
       } else if (part === '*') {
-        // Handle wildcard segments
-        if (!currentNode.wildcardChild) {
-          currentNode.wildcardChild = new TrieNode();
-        }
-        currentNode = currentNode.wildcardChild;
-
-        // Wildcard must be the last segment
-        const remainingParts = parts.slice(parts.indexOf(part) + 1);
-        if (remainingParts.length > 0) {
+        // Wildcard must be the final path segment. Checked against the actual
+        // loop index, not parts.indexOf — indexOf returns the first match
+        // which can mis-report position when '*' appears more than once.
+        if (i !== parts.length - 1) {
           throw new Error(
             `Invalid route "${route.path}": wildcard * must be the final path segment.`,
           );
         }
-        break; // nothing after * is valid
+        if (!currentNode.wildcardChild) {
+          currentNode.wildcardChild = new TrieNode();
+        }
+        currentNode = currentNode.wildcardChild;
       } else {
         // Handle static path segments
         if (!currentNode.children.has(part)) {
@@ -76,41 +81,47 @@ export class Router {
    * High-speed lookup for incoming requests.
    * Returns the matched route and any extracted dynamic parameters.
    */
-  public lookup(method: HttpMethod, path: string): RouteMatch | null {
+  public lookup(method: HttpMethod, path: string): RouterLookupResult {
     let currentNode = this.root;
     const params: Record<string, string> = {};
+    const parts = this.splitPath(path);
 
-    let start = 1; // Skip the leading slash
-    let end = path.indexOf('/', start);
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
 
-    while (start < path.length) {
-      const isLast = end === -1;
-      const part = path.substring(start, isLast ? path.length : end);
-
-      if (part.length > 0) {
-        if (currentNode.children.has(part)) {
-          currentNode = currentNode.children.get(part)!;
-        } else if (currentNode.paramChild) {
-          const paramName = currentNode.paramName!;
-          currentNode = currentNode.paramChild;
-          params[paramName] = part;
-        } else if (currentNode.wildcardChild) {
-          // Capture the rest of the path (current segment onward) as params['*']
-          params['*'] = path.slice(start);
-          currentNode = currentNode.wildcardChild;
-          break; // wildcard consumes the rest
-        } else {
-          return null; // 404
-        }
+      if (currentNode.children.has(part)) {
+        currentNode = currentNode.children.get(part)!;
+      } else if (currentNode.paramChild) {
+        const paramName = currentNode.paramName!;
+        currentNode = currentNode.paramChild;
+        params[paramName] = part;
+      } else if (currentNode.wildcardChild) {
+        params['*'] = parts.slice(i).join('/');
+        currentNode = currentNode.wildcardChild;
+        break;
+      } else {
+        return null; // 404
       }
-
-      if (isLast) break;
-      start = end + 1;
-      end = path.indexOf('/', start);
     }
 
-    const route = currentNode.routes.get(method);
-    if (!route) return null;
+    let route = currentNode.routes.get(method);
+
+    // Auto-handle HEAD requests using GET handlers
+    if (!route && method === 'HEAD') {
+      route = currentNode.routes.get('GET');
+    }
+
+    if (!route) {
+      // 405 Method Not Allowed Support
+      if (currentNode.routes.size > 0) {
+        const allowed = Array.from(currentNode.routes.keys());
+        if (allowed.includes('GET') && !allowed.includes('HEAD')) {
+          allowed.push('HEAD');
+        }
+        return { error: 'MethodNotAllowed', allowed };
+      }
+      return null;
+    }
 
     return { route, params };
   }
