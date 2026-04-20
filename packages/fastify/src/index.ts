@@ -12,14 +12,29 @@ import fastify, {
 } from 'fastify';
 import { Readable } from 'stream';
 
+/**
+ * Strip prototype-pollution vectors from a parsed JSON body. Matches the
+ * helpers in `@axiomify/http` and `@axiomify/express`. Without this, a body
+ * like `{"__proto__": {"polluted": true}}` mutates Object.prototype.
+ */
+function sanitize(obj: any): any {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(sanitize);
+  const clean: any = {};
+  for (const key of Object.keys(obj)) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype')
+      continue;
+    clean[key] = sanitize(obj[key]);
+  }
+  return clean;
+}
+
 export class FastifyAdapter {
   private app: FastifyInstance;
 
   constructor(private core: Axiomify) {
     this.app = fastify({ logger: false });
 
-    // This allows the raw stream to reach Axiomify's Busboy engine
-    // In Fastify v5 the content type parser callback is (request, payload, done)
     this.app.addContentTypeParser(
       'multipart/form-data',
       (_req, payload, done) => {
@@ -27,8 +42,10 @@ export class FastifyAdapter {
       },
     );
 
-    // Catch-all route to hijack traffic to the Axiomify Radix Engine
-    this.app.all('/{*}', async (req: FastifyRequest, res: FastifyReply) => {
+    // Fastify 5 / find-my-way 9 require the literal `/*`. The `/{*}` syntax
+    // previously used is rejected with "Wildcard must be the last character
+    // in the route" — the adapter couldn't instantiate at all.
+    this.app.all('/*', async (req: FastifyRequest, res: FastifyReply) => {
       const axiomifyReq = this.translateRequest(req);
       const axiomifyRes = this.translateResponse(
         res,
@@ -43,6 +60,9 @@ export class FastifyAdapter {
   private translateRequest(req: FastifyRequest): AxiomifyRequest {
     const _params = {};
     const _state = {};
+    // Sanitize once at translation time rather than on every body access.
+    const safeBody = sanitize(req.body);
+
     return {
       get id() {
         return (
@@ -58,10 +78,6 @@ export class FastifyAdapter {
         return req.url;
       },
       get path() {
-        // Always derive from the actual request URL. Using req.routeOptions.url
-        // would return the catch-all pattern ("/{*}") which is useless to our
-        // router, and for any non-catch-all Fastify route it would hand back
-        // the pattern (e.g. "/users/:id") instead of the real path.
         return new URL(`http://localhost${req.url}`).pathname;
       },
       get ip() {
@@ -71,7 +87,7 @@ export class FastifyAdapter {
         return req.headers as Record<string, string | string[] | undefined>;
       },
       get body() {
-        return req.body;
+        return safeBody;
       },
       get query() {
         return req.query;
@@ -120,9 +136,6 @@ export class FastifyAdapter {
         res.send(payload);
       },
       sendRaw(payload: any, contentType = 'text/plain') {
-        // Every other exit path flips isSent — sendRaw was the one that
-        // didn't, which made `headersSent` lie and broke the core's
-        // short-circuit guards in `app.handle`.
         isSent = true;
         res.header('Content-Type', contentType);
         res.status(statusCode).send(payload);
@@ -140,7 +153,6 @@ export class FastifyAdapter {
         res.status(statusCode).send(readable);
       },
 
-      // Fastify SSE Init
       sseInit(sseHeartbeatMs: number = 15_000) {
         isSent = true;
         res.raw.writeHead(200, {
@@ -148,14 +160,12 @@ export class FastifyAdapter {
           'Cache-Control': 'no-cache',
           Connection: 'keep-alive',
         });
-
         const heartbeat = setInterval(() => {
           res.raw.write(': keepalive\n\n');
         }, sseHeartbeatMs);
         res.raw.on('close', () => clearInterval(heartbeat));
       },
 
-      // Fastify SSE Send
       sseSend(data: any, event?: string) {
         if (event) res.raw.write(`event: ${event}\n`);
         res.raw.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -164,7 +174,6 @@ export class FastifyAdapter {
       get statusCode() {
         return statusCode;
       },
-
       get raw() {
         return res;
       },

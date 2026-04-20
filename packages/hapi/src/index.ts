@@ -3,6 +3,7 @@ import type { Request } from '@hapi/hapi';
 import Hapi from '@hapi/hapi';
 import crypto from 'crypto';
 import { PassThrough, Readable } from 'stream';
+import { sanitize } from './utils';
 
 export class HapiAdapter {
   private server: Hapi.Server;
@@ -86,7 +87,7 @@ export class HapiAdapter {
         const body = Buffer.concat(chunks).toString('utf8');
         if (contentType.includes('application/json')) {
           try {
-            resolve(JSON.parse(body));
+            resolve(sanitize(JSON.parse(body)));
           } catch {
             resolve(body);
           }
