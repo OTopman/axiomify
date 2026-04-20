@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryStore, useRateLimit } from '../src/index';
+import { createRateLimitPlugin, MemoryStore, useRateLimit } from '../src/index';
 
 describe('Rate Limit MemoryStore', () => {
   beforeEach(() => {
@@ -101,5 +101,34 @@ describe('useRateLimit Plugin hook', () => {
     }
 
     expect(mockRes.status).not.toHaveBeenCalled();
+  });
+});
+
+describe('createRateLimitPlugin aliases', () => {
+  it('accepts documented maxRequests and keyExtractor aliases', async () => {
+    const limiter = createRateLimitPlugin({
+      windowMs: 1000,
+      maxRequests: 1,
+      keyExtractor: (req) => req.headers['x-client-id'] as string,
+    });
+
+    const headers: Record<string, string> = {};
+    const req = {
+      ip: '127.0.0.1',
+      headers: { 'x-client-id': 'client-1' },
+    } as any;
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      send: vi.fn(),
+      header: vi.fn().mockImplementation((key: string, value: string) => {
+        headers[key] = value;
+      }),
+    } as any;
+
+    await limiter(req, res);
+    await limiter(req, res);
+
+    expect(headers['X-RateLimit-Limit']).toBe('1');
+    expect(res.status).toHaveBeenCalledWith(429);
   });
 });

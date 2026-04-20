@@ -1,7 +1,7 @@
-// examples/openapi-server.ts
 import { Axiomify, z } from '@axiomify/core';
 import { ExpressAdapter } from '@axiomify/express';
 import { useOpenAPI } from '@axiomify/openapi';
+import { randomUUID } from 'crypto';
 
 const app = new Axiomify();
 
@@ -21,9 +21,7 @@ app.route({
   },
   handler: async (req, res) => {
     // req.body is strongly typed, validated, and automatically documented!
-    res
-      .status(201)
-      .send({ id: crypto.randomUUID(), username: req.body.username });
+    res.status(201).send({ id: randomUUID(), username: req.body.username });
   },
 });
 

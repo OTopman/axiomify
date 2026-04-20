@@ -1,13 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Axiomify } from '@axiomify/core';
 import jwt from 'jsonwebtoken';
-import { createRefreshHandler, useAuth } from '../src/index';
+import {
+  createAuthPlugin,
+  createRefreshHandler,
+} from '../src/index';
 
 /**
  * These tests cover the paths the original suite missed:
  *   - `createRefreshHandler` in all branches (valid, missing token, invalid
  *     signature, payload without id)
- *   - `useAuth` plugin's happy path (req.user is populated)
+ *   - auth plugin happy path (req.user is populated)
  *   - Case-insensitive Bearer scheme extraction (RFC 6750 §2.1)
  *   - Authorization header arriving as an array (Node allows this)
  */
@@ -106,16 +109,16 @@ describe('Auth — refresh handler', () => {
   });
 });
 
-describe('Auth — useAuth plugin Bearer extraction', () => {
+describe('Auth — route plugin Bearer extraction', () => {
   const secret = 'plugin-secret-that-is-at-least-32-chars-0';
 
   const runRequest = async (authHeader: string | string[] | undefined) => {
     const app = new Axiomify();
-    useAuth(app, { secret });
+    const requireAuth = createAuthPlugin({ secret });
     app.route({
       method: 'GET',
       path: '/',
-      plugins: ['requireAuth'],
+      plugins: [requireAuth],
       handler: async (req, res) => res.send({ id: req.user?.id }),
     });
 

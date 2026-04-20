@@ -7,21 +7,21 @@ describe('Route-level Plugin System', () => {
     const app = new Axiomify();
     const order: number[] = [];
 
-    app.registerPlugin('first', async () => {
-      order.push(1);
-    });
-    app.registerPlugin('second', async () => {
-      order.push(2);
-    });
-    app.registerPlugin('third', async () => {
-      order.push(3);
-    });
-
     app.route({
       method: 'GET',
       path: '/ordered',
-      plugins: ['first', 'second', 'third'],
-      handler: async (req, res) => {
+      plugins: [
+        async () => {
+          order.push(1);
+        },
+        async () => {
+          order.push(2);
+        },
+        async () => {
+          order.push(3);
+        },
+      ],
+      handler: async (_req, res) => {
         res.status(200).send(null);
       },
     });
@@ -44,7 +44,7 @@ describe('Route-level Plugin System', () => {
     expect(order).toEqual([1, 2, 3]);
   });
 
-  it('executes registered plugins before the route handler', async () => {
+  it('executes inline route plugins before the route handler', async () => {
     const app = new Axiomify();
     const mockReq = {
       method: 'GET',
@@ -61,16 +61,49 @@ describe('Route-level Plugin System', () => {
     } as unknown as AxiomifyResponse;
     const pluginSpy = vi.fn();
 
-    app.registerPlugin('testPlugin', async (req, res) => {
-      pluginSpy();
-    });
-
     app.route({
       method: 'GET',
       path: '/test',
-      plugins: ['testPlugin'],
+      plugins: [
+        async () => {
+          pluginSpy();
+        },
+      ],
       handler: () => {
         expect(pluginSpy).toHaveBeenCalled();
+      },
+    });
+
+    await app.handle(mockReq, mockRes);
+  });
+
+  it('supports route plugins defined inline', async () => {
+    const app = new Axiomify();
+    const pluginSpy = vi.fn();
+    const mockReq = {
+      method: 'GET',
+      path: '/inline',
+      params: {},
+      headers: {},
+      id: 'test-req',
+    } as AxiomifyRequest;
+    const mockRes = {
+      status: vi.fn().mockReturnThis(),
+      send: vi.fn(),
+      header: vi.fn().mockReturnThis(),
+      headersSent: false,
+    } as unknown as AxiomifyResponse;
+
+    app.route({
+      method: 'GET',
+      path: '/inline',
+      plugins: [
+        async () => {
+          pluginSpy();
+        },
+      ],
+      handler: () => {
+        expect(pluginSpy).toHaveBeenCalledTimes(1);
       },
     });
 
@@ -99,17 +132,17 @@ describe('Route-level Plugin System', () => {
     const handlerSpy = vi.fn();
     const secondPluginSpy = vi.fn();
 
-    app.registerPlugin('rejecter', async (req, res) => {
-      res.status(401).send(null, 'Unauthorized');
-    });
-    app.registerPlugin('secondPlugin', async () => {
-      secondPluginSpy();
-    });
-
     app.route({
       method: 'GET',
       path: '/auth',
-      plugins: ['rejecter', 'secondPlugin'],
+      plugins: [
+        async (_req, res) => {
+          res.status(401).send(null, 'Unauthorized');
+        },
+        async () => {
+          secondPluginSpy();
+        },
+      ],
       handler: handlerSpy,
     });
 
@@ -117,41 +150,5 @@ describe('Route-level Plugin System', () => {
     expect(sendSpy).toHaveBeenCalled();
     expect(secondPluginSpy).not.toHaveBeenCalled();
     expect(handlerSpy).not.toHaveBeenCalled();
-  });
-
-  it('throws an error if an unregistered plugin is referenced', async () => {
-    const app = new Axiomify();
-    const mockReq = {
-      method: 'GET',
-      path: '/fail',
-      params: {},
-      headers: {},
-      id: 'test-req',
-    } as AxiomifyRequest;
-    const mockRes = {
-      status: vi.fn().mockReturnThis(),
-      send: vi.fn(),
-      header: vi.fn().mockReturnThis(),
-      headersSent: false,
-    } as unknown as AxiomifyResponse;
-
-    app.route({
-      method: 'GET',
-      path: '/fail',
-      plugins: ['missingPlugin'],
-      handler: () => {},
-    });
-
-    await app.handle(mockReq, mockRes);
-    // Framework handleError catches and sends 500
-    expect(mockRes.status).toHaveBeenCalledWith(500);
-  });
-
-  it('throws an error if registering a plugin name twice', () => {
-    const app = new Axiomify();
-    app.registerPlugin('dup', () => {});
-    expect(() => app.registerPlugin('dup', () => {})).toThrow(
-      'is already registered',
-    );
   });
 });

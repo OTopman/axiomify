@@ -4,10 +4,10 @@ import type {
   AxiomifyRequest,
   AxiomifyResponse,
   HookType,
-  PluginHandler,
-  PluginName,
   RouteDefinition,
   RouteGroup,
+  RouteGroupOptions,
+  RoutePlugin,
   RouteSchema,
   SerializerFn,
 } from './types';
@@ -23,6 +23,21 @@ export interface AxiomifyOptions {
   };
 }
 
+export type AppPlugin = (app: Axiomify) => void;
+
+function joinRoutePath(prefix: string, path: string): string {
+  return (prefix + path).replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+}
+
+function mergePlugins(
+  inherited: RoutePlugin[] | undefined,
+  local: RoutePlugin[] | undefined,
+): RoutePlugin[] | undefined {
+  if (!inherited?.length) return local;
+  if (!local?.length) return [...inherited];
+  return [...inherited, ...local];
+}
+
 export class Axiomify {
   public router = new Router();
   public engine = new ExecutionEngine();
@@ -32,7 +47,6 @@ export class Axiomify {
   public readonly hooks = new HookManager();
 
   private readonly _routes: RouteDefinition[] = [];
-  private readonly _plugins = new Map<string, PluginHandler>();
   private readonly _timeout: number;
   private readonly _telemetry?: AxiomifyOptions['telemetry'];
 
@@ -54,11 +68,8 @@ export class Axiomify {
     });
   }
 
-  public registerPlugin(name: PluginName, handler: PluginHandler): this {
-    if (this._plugins.has(name)) {
-      throw new Error(`Plugin "${name}" is already registered.`);
-    }
-    this._plugins.set(name, handler);
+  public use(plugin: AppPlugin): this {
+    plugin(this);
     return this;
   }
 
@@ -105,17 +116,60 @@ export class Axiomify {
   }
 
   // Route Grouping
-  public group(prefix: string, callback: (group: RouteGroup) => void): this {
+  public group(prefix: string, callback: (group: RouteGroup) => void): this;
+  public group(
+    prefix: string,
+    options: RouteGroupOptions,
+    callback: (group: RouteGroup) => void,
+  ): this;
+  public group(
+    prefix: string,
+    optionsOrCallback:
+      | RouteGroupOptions
+      | ((group: RouteGroup) => void),
+    maybeCallback?: (group: RouteGroup) => void,
+  ): this {
+    const options =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+    const callback =
+      typeof optionsOrCallback === 'function'
+        ? optionsOrCallback
+        : maybeCallback;
+
+    if (!callback) {
+      throw new Error(
+        'A route group callback is required when registering a group.',
+      );
+    }
+
+    const inheritedPlugins = options.plugins ?? [];
     const groupProxy: RouteGroup = {
       route: <S extends RouteSchema>(def: RouteDefinition<S>) => {
-        const scopedPath =
-          (prefix + def.path).replace(/\/+/g, '/').replace(/\/$/, '') || '/';
-        return this.route({ ...def, path: scopedPath });
+        return this.route({
+          ...def,
+          path: joinRoutePath(prefix, def.path),
+          plugins: mergePlugins(inheritedPlugins, def.plugins),
+        });
       },
-      group: (subPrefix, subCallback) => {
-        this.group((prefix + subPrefix).replace(/\/+/g, '/'), subCallback);
+      group: ((subPrefix, subOptionsOrCallback, subMaybeCallback) => {
+        const subOptions =
+          typeof subOptionsOrCallback === 'function'
+            ? {}
+            : subOptionsOrCallback;
+        const subCallback =
+          typeof subOptionsOrCallback === 'function'
+            ? subOptionsOrCallback
+            : subMaybeCallback;
+
+        this.group(
+          joinRoutePath(prefix, subPrefix),
+          {
+            plugins: mergePlugins(inheritedPlugins, subOptions.plugins),
+          },
+          subCallback!,
+        );
         return groupProxy;
-      },
+      }) as RouteGroup['group'],
     };
     callback(groupProxy);
     return this;
@@ -202,11 +256,8 @@ export class Axiomify {
       }
 
       const routePlugins = route.plugins ?? [];
-      for (const name of routePlugins) {
-        const plugin = this._plugins.get(name as string);
-        if (!plugin)
-          throw new Error(`Plugin "${name as string}" is not registered.`);
-        await plugin(req, res);
+      for (const routePlugin of routePlugins) {
+        await routePlugin(req, res);
         if (res.headersSent) {
           await this.hooks.run('onPostHandler', req, res, match);
           return;

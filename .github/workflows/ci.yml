@@ -24,11 +24,18 @@ jobs:
       - name: Security audit
         run: npm audit --audit-level=high
 
-      - name: Typecheck
+      - name: Typecheck & Build
         run: npm run build
 
-      - name: Run Tests
-        run: npm test
-
-      - name: Coverage
+      - name: Run Tests & Coverage
         run: npm run coverage
+
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/coverage-final.json
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

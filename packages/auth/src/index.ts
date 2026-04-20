@@ -1,7 +1,7 @@
 import type {
-  Axiomify,
   AxiomifyRequest,
   AxiomifyResponse,
+  PluginHandler,
 } from '@axiomify/core';
 import * as jwt from 'jsonwebtoken';
 
@@ -42,6 +42,21 @@ function extractBearer(header: string): string | null {
   return match ? match[1] : null;
 }
 
+function buildGetToken(options: AuthOptions) {
+  return (
+    options.getToken ??
+    ((req: AxiomifyRequest) => {
+      let authHeader = req.headers['authorization'];
+
+      if (Array.isArray(authHeader)) {
+        authHeader = authHeader[0];
+      }
+
+      return authHeader ? extractBearer(authHeader) : null;
+    })
+  );
+}
+
 export function createRefreshHandler(options: RefreshOptions) {
   return async (req: any, res: any) => {
     const authHeader = Array.isArray(req.headers.authorization)
@@ -75,7 +90,7 @@ export function createRefreshHandler(options: RefreshOptions) {
   };
 }
 
-export function useAuth(app: Axiomify, options: AuthOptions): void {
+export function createAuthPlugin(options: AuthOptions): PluginHandler {
   if (options.secret.length < 32) {
     console.warn(
       '[axiomify/auth] JWT secret is shorter than 32 characters. ' +
@@ -83,39 +98,26 @@ export function useAuth(app: Axiomify, options: AuthOptions): void {
     );
   }
 
-  const getToken =
-    options.getToken ??
-    ((req) => {
-      let authHeader = req.headers['authorization'];
+  const getToken = buildGetToken(options);
 
-      // Safely unwrap it if it's an array
-      if (Array.isArray(authHeader)) {
-        authHeader = authHeader[0];
-      }
+  return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
+    const token = getToken(req);
 
-      return authHeader ? extractBearer(authHeader) : null;
-    });
+    if (!token) {
+      return res.status(401).send(null, 'Unauthorized: Missing token');
+    }
 
-  // The core authentication plugin
-  app.registerPlugin(
-    'requireAuth',
-    async (req: AxiomifyRequest, res: AxiomifyResponse) => {
-      const token = getToken(req);
-
-      if (!token) {
-        return res.status(401).send(null, 'Unauthorized: Missing token');
-      }
-
-      try {
-        const decoded = jwt.verify(token, options.secret, {
-          algorithms: options.algorithms ?? ['HS256'],
-        }) as AuthUser;
-        req.user = decoded; // Type-safe assignment
-      } catch (err) {
-        return res
-          .status(401)
-          .send(null, 'Unauthorized: Invalid or expired token');
-      }
-    },
-  );
+    try {
+      const decoded = jwt.verify(token, options.secret, {
+        algorithms: options.algorithms ?? ['HS256'],
+      }) as AuthUser;
+      req.user = decoded;
+    } catch {
+      return res
+        .status(401)
+        .send(null, 'Unauthorized: Invalid or expired token');
+    }
+  };
 }
+
+export const useAuth = createAuthPlugin;

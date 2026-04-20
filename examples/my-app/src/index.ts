@@ -1,11 +1,8 @@
-import { useAuth } from '@axiomify/auth';
+import { createAuthPlugin } from '@axiomify/auth';
 import { Axiomify, UnauthorizedError, z } from '@axiomify/core';
 import { ExpressAdapter } from '@axiomify/express';
-import { useLogger } from '@axiomify/logger';
-import { useMetrics } from '@axiomify/metrics';
+import { useHelmet } from '@axiomify/helmet';
 import { useOpenAPI } from '@axiomify/openapi';
-import { useRateLimit } from '@axiomify/rate-limit';
-import { serveStatic } from '@axiomify/static';
 import { useUpload } from '@axiomify/upload';
 import { useWebSockets, WsManager } from '@axiomify/ws';
 import { randomUUID } from 'crypto';
@@ -13,23 +10,27 @@ import { createReadStream } from 'fs';
 import path from 'path';
 
 export const app = new Axiomify();
-
-useLogger(app);
-useMetrics(app);
-
-serveStatic(app, {
-  prefix: '/assets',
-  root: path.join(process.cwd(), 'public'),
-});
-
-useRateLimit(app, { max: 5, windowMs: 60_000 });
-useAuth(app, {
+const requireAuth = createAuthPlugin({
   secret:
     process.env.JWT_SECRET ??
     (() => {
       throw new Error('JWT_SECRET env var is required');
     })(),
 });
+
+useHelmet(app, {
+  contentSecurityPolicy: '',
+});
+
+// useLogger(app);
+// useMetrics(app);
+
+// serveStatic(app, {
+//   prefix: '/assets',
+//   root: path.join(process.cwd(), 'public'),
+// });
+
+// useRateLimit(app, { max: 5, windowMs: 60_000 });
 
 app.route({
   method: 'POST',
@@ -92,7 +93,7 @@ app.route({
 app.route({
   method: 'GET',
   path: '/protected/data',
-  plugins: ['requireAuth'],
+  plugins: [requireAuth],
   handler: async (req, res) => {
     res.send({ accessedBy: req.user?.id });
   },
@@ -107,6 +108,16 @@ app.route({
   handler: async (_req, res) => {
     res.status(200).send({ message: 'pong' });
   },
+});
+
+app.group('/api', (admin) => {
+  admin.route({
+    path: '/login',
+    method: 'GET',
+    handler: (_req, res) => {
+      res.status(200).send({ status: 'success' });
+    },
+  });
 });
 
 app.route({

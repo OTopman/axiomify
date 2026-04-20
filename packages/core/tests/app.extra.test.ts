@@ -52,6 +52,110 @@ describe('Axiomify.group', () => {
 
     expect(app.registeredRoutes[0].path).toBe('/api/users');
   });
+
+  it('inherits plugins across a group and preserves route-specific plugins', async () => {
+    const app = new Axiomify();
+    const order: string[] = [];
+
+    app.group(
+      '/api',
+      {
+        plugins: [
+          async () => {
+            order.push('auth');
+          },
+        ],
+      },
+      (g) => {
+        g.route({
+          method: 'GET',
+          path: '/users',
+          plugins: [
+            async () => {
+              order.push('audit');
+            },
+          ],
+          handler: async (_req, res) => res.send({ ok: true }),
+        });
+      },
+    );
+
+    const req = {
+      method: 'GET',
+      path: '/api/users',
+      params: {},
+      headers: {},
+      id: 'group-plugins',
+    } as any;
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      send: vi.fn(),
+      header: vi.fn().mockReturnThis(),
+      headersSent: false,
+    } as any;
+
+    await app.handle(req, res);
+
+    expect(order).toEqual(['auth', 'audit']);
+  });
+
+  it('merges plugins across nested groups in declaration order', async () => {
+    const app = new Axiomify();
+    const order: string[] = [];
+
+    app.group(
+      '/api',
+      {
+        plugins: [
+          async () => {
+            order.push('auth');
+          },
+        ],
+      },
+      (g) => {
+        g.group(
+          '/admin',
+          {
+            plugins: [
+              async () => {
+                order.push('scope');
+              },
+            ],
+          },
+          (g2) => {
+            g2.route({
+              method: 'GET',
+              path: '/users',
+              plugins: [
+                async () => {
+                  order.push('audit');
+                },
+              ],
+              handler: async (_req, res) => res.send({ ok: true }),
+            });
+          },
+        );
+      },
+    );
+
+    const req = {
+      method: 'GET',
+      path: '/api/admin/users',
+      params: {},
+      headers: {},
+      id: 'group-plugin-order',
+    } as any;
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      send: vi.fn(),
+      header: vi.fn().mockReturnThis(),
+      headersSent: false,
+    } as any;
+
+    await app.handle(req, res);
+
+    expect(order).toEqual(['auth', 'scope', 'audit']);
+  });
 });
 
 describe('Axiomify.healthCheck', () => {
@@ -189,6 +293,46 @@ describe('Axiomify.setSerializer', () => {
   });
 });
 
+describe('Axiomify.use', () => {
+  it('installs a global plugin through app.use()', async () => {
+    const app = new Axiomify();
+    const installer = vi.fn((instance: Axiomify) => {
+      instance.addHook('onRequest', (req) => {
+        req.state.installed = true;
+      });
+    });
+
+    app.use(installer);
+
+    expect(installer).toHaveBeenCalledWith(app);
+
+    app.route({
+      method: 'GET',
+      path: '/used',
+      handler: async (req, res) => res.send({ installed: req.state.installed }),
+    });
+
+    const req = {
+      method: 'GET',
+      path: '/used',
+      params: {},
+      headers: {},
+      state: {},
+      id: 'use-test',
+    } as any;
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      send: vi.fn(),
+      header: vi.fn().mockReturnThis(),
+      headersSent: false,
+    } as any;
+
+    await app.handle(req, res);
+
+    expect((res as any).payload).toEqual({ installed: true });
+  });
+});
+
 describe('HEAD request handling', () => {
   it('auto-routes HEAD to a GET handler and strips the body', async () => {
     const app = new Axiomify();
@@ -239,13 +383,6 @@ describe('Route registration guards', () => {
     ).toThrow(/already registered/);
   });
 
-  it('throws when registering the same plugin name twice', () => {
-    const app = new Axiomify();
-    app.registerPlugin('p', () => {});
-    expect(() => app.registerPlugin('p', () => {})).toThrow(
-      /is already registered/,
-    );
-  });
 });
 
 describe('404 / 405 dispatch', () => {

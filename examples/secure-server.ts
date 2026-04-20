@@ -1,6 +1,7 @@
 import { Axiomify, z } from '@axiomify/core';
 import { FastifyAdapter } from '@axiomify/fastify';
 import { useLogger } from '@axiomify/logger';
+import { randomUUID } from 'crypto';
 
 const app = new Axiomify();
 
@@ -27,7 +28,7 @@ app.route({
     const { userId, amount, cardNumber } = req.body;
 
     const transactionRecord = {
-      transactionId: crypto.randomUUID(),
+      transactionId: randomUUID(),
       userId,
       amount,
       cardNumber, // Intentionally sending it back to prove the mask works

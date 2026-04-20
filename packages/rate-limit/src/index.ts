@@ -106,8 +106,10 @@ export class MemoryStore implements RateLimitStore {
 export interface RateLimitOptions {
   windowMs?: number; // Default: 60000 (1 minute)
   max?: number; // Default: 100 requests per window
+  maxRequests?: number; // Alias for max
   store?: RateLimitStore;
   keyGenerator?: (req: AxiomifyRequest) => string;
+  keyExtractor?: (req: AxiomifyRequest) => string; // Alias for keyGenerator
   skip?: (req: AxiomifyRequest) => boolean;
 }
 
@@ -118,10 +120,12 @@ export interface RateLimitOptions {
  */
 function buildLimiter(options: RateLimitOptions = {}) {
   const windowMs = options.windowMs ?? 60_000;
-  const max = options.max ?? 100;
+  const max = options.max ?? options.maxRequests ?? 100;
   const store = options.store ?? new MemoryStore();
   const keyGenerator =
-    options.keyGenerator ?? ((req: AxiomifyRequest) => req.ip || '127.0.0.1');
+    options.keyGenerator ??
+    options.keyExtractor ??
+    ((req: AxiomifyRequest) => req.ip || '127.0.0.1');
 
   return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
     if (options.skip?.(req)) return;

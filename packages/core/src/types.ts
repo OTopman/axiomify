@@ -81,6 +81,11 @@ export interface AxiomifyResponse {
 
 export interface RouteGroup {
   route<S extends RouteSchema>(definition: RouteDefinition<S>): this;
+  group(
+    prefix: string,
+    options: RouteGroupOptions,
+    callback: (group: RouteGroup) => void,
+  ): this;
   group(prefix: string, callback: (group: RouteGroup) => void): this;
 }
 
@@ -115,17 +120,16 @@ export type RouteHandler<
   res: AxiomifyResponse,
 ) => Promise<void> | void;
 
-export interface RegisteredPlugins {}
-
-// If the user augments the interface, use their keys. Otherwise, fallback to string.
-export type PluginName = [keyof RegisteredPlugins] extends [never]
-  ? string
-  : keyof RegisteredPlugins;
-
 export type PluginHandler = (
   req: AxiomifyRequest,
   res: AxiomifyResponse,
 ) => void | Promise<void>;
+
+export type RoutePlugin = PluginHandler;
+
+export interface RouteGroupOptions {
+  plugins?: RoutePlugin[];
+}
 
 /**
  * RouteDefinition now automatically infers the generic types directly from the Zod schema.
@@ -139,7 +143,7 @@ export interface RouteDefinition<
   method: HttpMethod;
   path: string;
   schema?: S;
-  plugins?: PluginName[];
+  plugins?: RoutePlugin[];
   timeout?: number; // milliseconds; overrides the global default when set
   handler: RouteHandler<B, Q, P, S['files']>;
 }

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Axiomify } from '@axiomify/core';
-import { useAuth, createRefreshHandler } from '../src/index';
+import {
+  createAuthPlugin,
+  createRefreshHandler,
+  useAuth,
+} from '../src/index';
 import jwt from 'jsonwebtoken';
 
 describe('Auth Plugin & Refresh', () => {
@@ -8,15 +12,18 @@ describe('Auth Plugin & Refresh', () => {
   
   it('warns on short secret', () => {
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    useAuth(new Axiomify(), { secret: 'short' });
+    createAuthPlugin({ secret: 'short' });
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('shorter than 32 characters'));
     spy.mockRestore();
   });
 
   it('uses custom getToken', async () => {
     const app = new Axiomify();
-    useAuth(app, { secret, getToken: (req) => req.headers['x-token'] as string });
-    app.route({ method: 'GET', path: '/', plugins: ['requireAuth'], handler: async (req, res) => res.send({ id: req.user?.id }) });
+    const requireAuth = createAuthPlugin({
+      secret,
+      getToken: (req) => req.headers['x-token'] as string,
+    });
+    app.route({ method: 'GET', path: '/', plugins: [requireAuth], handler: async (req, res) => res.send({ id: req.user?.id }) });
     
     const token = jwt.sign({ id: 123 }, secret);
     const req = { method: 'GET', path: '/', headers: { 'x-token': token }, id: '1', params: {} } as any;
@@ -28,8 +35,8 @@ describe('Auth Plugin & Refresh', () => {
 
   it('returns 401 on wrong secret or expired token', async () => {
     const app = new Axiomify();
-    useAuth(app, { secret });
-    app.route({ method: 'GET', path: '/', plugins: ['requireAuth'], handler: async () => {} });
+    const requireAuth = useAuth({ secret });
+    app.route({ method: 'GET', path: '/', plugins: [requireAuth], handler: async () => {} });
     
     const badToken = jwt.sign({ id: 1 }, 'wrong-secret');
     const req1 = { method: 'GET', path: '/', headers: { authorization: `Bearer ${badToken}` }, id: '2', params: {} } as any;

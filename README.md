@@ -1,12 +1,17 @@
 # 🌌 Axiomify
 
+
+[![npm version](https://img.shields.io/npm/v/@axiomify/core.svg)](https://npmjs.com/package/@axiomify/core)
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg?token=QSI2WR3YWZ)](https://codecov.io/github/otopman/axiomify)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 
 **Fastify-level speed. NestJS-level structure. Zero compromises.**
 
 Axiomify is a high-performance, schema-first Node.js framework engineered for strict type safety and minimal runtime overhead. By unifying routing, validation, and request handling into a single declarative source of truth, Axiomify eliminates middleware fragmentation. 
 
-Built on a modular, adapter-driven architecture, Axiomify allows you to write your business logic once and deploy it across Express, Fastify, Hapi, or Native HTTP interchangeably.
+Built on a modular, adapter-driven architecture, Axiomify allows you to write your business logic once and deploy it across Express, Fastify, Hapi, or Native HTTP interchangeably. v4.0.0 adds enterprise-grade plugins (authentication, rate limiting, metrics, WebSockets) and comprehensive security hardening across all adapters.
 
 ---
 
@@ -21,7 +26,9 @@ Built on a modular, adapter-driven architecture, Axiomify allows you to write yo
 
 ## 📦 The Workspace Ecosystem
 
-Axiomify is distributed as a suite of interoperable packages. Install only what you need:
+Axiomify is distributed as a suite of 16 interoperable packages. Install only what you need:
+
+### Core & Adapters
 
 | Package | Description |
 | :--- | :--- |
@@ -31,9 +38,26 @@ Axiomify is distributed as a suite of interoperable packages. Install only what 
 | **`@axiomify/fastify`** | The Fastify adapter for maximum throughput. |
 | **`@axiomify/http`** | Native Node.js `http` module adapter for zero-dependency deployments. |
 | **`@axiomify/hapi`** | The Hapi.js adapter. |
+
+### Security & Production Plugins
+
+| Package | Description |
+| :--- | :--- |
+| **`@axiomify/auth`** | JWT-based authentication with automatic `req.user` population and secure token rotation via `createRefreshHandler`. |
+| **`@axiomify/cors`** | Framework-agnostic CORS middleware with automatic `OPTIONS` preflight, strict validation of dangerous configurations, and proper cache headers. |
+| **`@axiomify/helmet`** | Configurable HTTP security headers (HSTS, CSP, X-Frame-Options, etc.) for defense-in-depth. |
+| **`@axiomify/rate-limit`** | Sliding-window rate limiting with in-memory or Redis backing. Supports distributed clustering via RedisStore. |
+
+### Observability & Content
+
+| Package | Description |
+| :--- | :--- |
+| **`@axiomify/metrics`** | Prometheus-compatible observability exporting per-route request counts and total latency, with bounded label cardinality via matched route patterns. |
+| **`@axiomify/logger`** | Zero-dependency, colorized terminal logging with PII masking via `maskify-ts`. |
 | **`@axiomify/openapi`** | Auto-generates Swagger/OpenAPI documentation derived directly from your Zod schemas. |
-| **`@axiomify/upload`** | RAM-safe, stream-based multipart/form-data parsing for secure file uploads. |
-| **`@axiomify/cors`** | Framework-agnostic CORS plugin with preflight support. |
+| **`@axiomify/upload`** | RAM-safe, stream-based multipart/form-data parsing with secure filename handling and path traversal protection. |
+| **`@axiomify/static`** | Secure static file serving with directory traversal protection, streaming responses, and 304 Not Modified support. |
+| **`@axiomify/ws`** | Schema-first WebSocket management with Zod validation, room/broadcast support, and per-client heartbeat. |
 
 ---
 
@@ -55,276 +79,527 @@ npm install
 
 The CLI ships with an ultra-fast esbuild development server and route visualization:
 
-```npm run dev``` — Starts the high-speed hot-reloading dev server.
+```bash
+npm run dev       # Starts the high-speed hot-reloading dev server
+npm run build     # Compiles the TypeScript application for production
+npm run routes    # Visualizes all registered routes and their plugins
+```
 
-```npm run build``` — Compiles the TypeScript application for production.
+---
 
-```npm run routes``` — Prints a beautiful terminal table of all registered routes and their schema validations.
+### 2. Basic Routing & Schema Validation
 
-### 2. The Declarative Route (Native Zod Server)
-
-Axiomify utilizes a strict, declarative syntax. Your schema *is* your contract. Define your route, schema, and handler in a single configuration block. 
+Axiomify routes are declarative, schema-first, and fully type-safe:
 
 ```typescript
-// src/index.ts
-import { Axiomify, z } from '@axiomify/core';
-import { ExpressAdapter } from '@axiomify/express';
+import { Axiomify } from '@axiomify/core';
+import { z } from 'zod';
 
 const app = new Axiomify();
 
+// Define your route with inline Zod schemas
 app.route({
   method: 'POST',
-  path: '/products',
+  path: '/users/:id/profile',
+  
+  // TypeScript automatically infers req.params, req.body, req.query types
   schema: {
-    body: z.object({
-      name: z.string().min(2),
-      price: z.number().positive(),
-      tags: z.array(z.string()).default([]),
-    }),
+    params: z.object({ id: z.string() }),
+    body: z.object({ name: z.string().min(1), email: z.string().email() }),
+    response: z.object({ ok: z.boolean() }),
   },
+  
   handler: async (req, res) => {
-    // 🛡️ Type Safety: req.body is immediately typed as: 
-    // { name: string, price: number, tags: string[] }
-    // The validation layer has already executed before this line.
-    const product = req.body;
-
-    // Utilize Axiomify's rigid response interface
-    res.status(201).send(product, 'Product created');
+    // ✅ req.params, req.body are type-safe
+    const { id } = req.params;
+    const { name, email } = req.body;
+    
+    // Your business logic here...
+    
+    return res.send({ ok: true });
   },
 });
 
-const adapter = new ExpressAdapter(app);
-adapter.listen(3000, () => {
-  console.log('🌌 Axiomify engine listening on port 3000');
+// Serve on Fastify (or Express, Hapi, HTTP)
+import { FastifyAdapter } from '@axiomify/fastify';
+new FastifyAdapter(app).listen(3000);
+
+// Swap adapters without touching route definitions:
+// import { ExpressAdapter } from '@axiomify/express';
+// import { HapiAdapter } from '@axiomify/hapi';
+// import { HttpAdapter } from '@axiomify/http';
+```
+
+---
+
+### 3. Plugins: Authentication, Rate Limiting, CORS
+
+Plugins allow you to add cross-cutting concerns to specific routes:
+
+```typescript
+import { createAuthPlugin, createRefreshHandler } from '@axiomify/auth';
+import { useCors } from '@axiomify/cors';
+import { createRateLimitPlugin } from '@axiomify/rate-limit';
+
+const requireAuth = createAuthPlugin({
+  secret: process.env.JWT_SECRET!, // min 32 chars; a shorter secret emits a runtime warning
+  algorithms: ['HS256'], // algorithm is pinned — tokens signed with another alg are rejected
+  // getToken: (req) => req.cookies?.access_token ?? null, // override default Bearer extraction
+});
+
+// Dedicated refresh-token endpoint: exchanges a valid refresh token for a fresh access token.
+const refreshTokens = createRefreshHandler({
+  secret: process.env.JWT_SECRET!,
+  refreshSecret: process.env.JWT_REFRESH_SECRET!,
+  accessTokenTtl: 900,          // 15 minutes, seconds
+  refreshTokenTtl: 60 * 60 * 24 * 30, // 30 days
+});
+
+app.route({ method: 'POST', path: '/auth/refresh', handler: refreshTokens });
+
+// Register CORS for all routes
+useCors(app, { origin: ['https://trusted.example.com'] });
+
+// Create a rate limiter: 100 requests per 15 minutes
+const rateLimitByIP = createRateLimitPlugin({
+  windowMs: 15 * 60 * 1000,
+  maxRequests: 100,
+  keyExtractor: (req) => {
+    const fwd = req.headers['x-forwarded-for'];
+    const raw = Array.isArray(fwd) ? fwd[0] : fwd;
+    return raw?.split(',')[0].trim() || req.ip;
+  },
+});
+
+// Apply rate limiting to a specific route
+app.route({
+  method: 'POST',
+  path: '/auth/login',
+  plugins: [rateLimitByIP, requireAuth],
+  schema: { /* ... */ },
+  handler: async (req, res) => {
+    // req.user is automatically populated if auth middleware passes
+    return res.send({ user: req.user });
+  },
 });
 ```
 
-**Wildcard routes**
-
-Use `*` as the final path segment to match any remainder. The captured
-portion is available as `req.params['*']`:
-
-```typescript
-app.route({
-  method: 'GET',
-  path: '/files/*',
-  handler: async (req, res) => {
-    const filePath = req.params['*']; // e.g. 'images/logo.png'
-    res.status(200).send({ path: filePath });
-  },
-});
-
 ---
-**Response schema validation**
 
-When a `response` schema is defined, Axiomify validates the payload passed to
-`res.send()` after your handler returns.
+### 4. File Uploads: Stream-Based, RAM-Safe
 
-- In **development** (`NODE_ENV !== 'production'`): a mismatch throws a
-  `ValidationError` and logs the field errors to stderr. Your HTTP response
-  is already sent — this is a developer-visible signal only, not a client error.
-- In **production**: a mismatch logs a `console.warn` to stderr and does not
-  affect the response in any way.
+Traditional Node.js frameworks buffer file uploads into RAM, causing massive memory spikes and crashes under load. Axiomify's `@axiomify/upload` package uses a native Busboy stream pipeline to pipe multipart data directly to the hard drive, bypassing RAM entirely:
 
-The response schema is also used by `@axiomify/openapi` to generate the OpenAPI
-response body definition — so defining it serves both validation and documentation.
-
-```typescript
-app.route({
-  method: 'GET',
-  path: '/users/:id',
-  schema: {
-    params: z.object({ id: z.string().uuid() }),
-    response: z.object({ id: z.string(), name: z.string() }),
-  },
-  handler: async (req, res) => {
-    res.status(200).send({ id: req.params.id, name: 'Alice' });
-  },
-});
-
-### 3. RAM-Safe File Uploads (The Streaming Engine)
-Traditional Node.js frameworks buffer file uploads into RAM, causing massive memory spikes and crashes under load. Axiomify's @axiomify/upload package uses a native Busboy stream pipeline to pipe multipart data directly to the hard drive, bypassing RAM entirely.
-
-It integrates flawlessly with your route configuration:
 ```typescript
 import { useUpload } from '@axiomify/upload';
-import path from 'path';
 
-// Inject the plugin globally
+const app = new Axiomify();
+
+// Register the upload hook once — it activates for any route that declares a `files` schema.
 useUpload(app);
 
 app.route({
   method: 'POST',
-  path: '/upload-avatar',
+  path: '/avatar',
+  plugins: [requireAuth],
   schema: {
-    // Files are validated before the handler executes
     files: {
       avatar: {
-        accept: ['image/png', 'image/jpeg'],
-        maxSize: 5 * 1024 * 1024, // 5MB limit
-        autoSaveTo: path.join(__dirname, '../uploads'),
-        rename: async (originalName) => `${Date.now()}-${originalName}`,
+        autoSaveTo: './uploads/avatars',
+        accept: ['image/jpeg', 'image/png'],
+        maxSize: 5 * 1024 * 1024, // 5MB
+        // Optional: rename uploaded files deterministically.
+        // rename: (original, mimetype) => `${Date.now()}-${original}`,
       },
     },
   },
   handler: async (req, res) => {
-    // The file is already securely saved to disk by the time the handler runs.
-    // If the file exceeded 5MB, the request would have short-circuited safely.
-    const uploadedFile = req.files.avatar;
-
-    res.status(200).send({
-      savedName: uploadedFile.savedName,
-      path: uploadedFile.path,
-      size: uploadedFile.size,
-    });
-  },
-});
-```
-_**Note**: If an error is thrown anywhere in the handler or validation layer, the built-in onError hook automatically scrubs the filesystem of any orphaned/partially uploaded files._
-
-### 4. Auto-Generated OpenAPI Documentation
-
-Stop maintaining disconnected Swagger files. Axiomify reads your registered route schemas and generates documentation on the fly.
-
-```typescript
-import { useOpenAPI } from '@axiomify/openapi';
-
-// Inject the OpenAPI System
-useOpenAPI(app, {
-  routePrefix: '/docs',
-  info: {
-    title: 'Axiomify Production API',
-    version: '1.0.0',
-    description: 'Auto-generated high-performance API documentation',
+    const file = req.files!.avatar;
+    console.log(`Saved ${file.originalName} to ${file.path}`);
+    return res.send({ ok: true });
   },
 });
 ```
 
-### 5. Hook Engine & Lifecycle Management
+Filenames are automatically sanitized and validated; path traversal attempts (`../../../etc/passwd`) are rejected with a 400 error.
 
-Axiomify exposes an execution lifecycle allowing you to intercept requests predictably. Hooks are executed *before* validation, allowing plugins (like file upload streams) to populate the request object.
+---
 
-```typescript
-app.addHook('onPreHandler', async (req, res, match) => {
-  console.log(`[ENGINE] Request arrived for: ${match.route.path}`);
-  
-  // Custom authentication logic can be injected here
-  const token = req.headers['authorization'];
-  if (!token) {
-    throw { statusCode: 401, message: 'Unauthorized' };
-  }
-});
+### 5. CORS: Strict Preflight Handling
 
-app.addHook('onError', (err, req, res) => {
-  console.error(`[CRITICAL] Error at ${req.path}:`, err);
-});
-```
+CORS misconfiguration is a common source of production bugs. Axiomify's `@axiomify/cors` prevents the most dangerous mistakes:
 
-### 6. Seamless Server Adapters
-
-Axiomify decouples the routing logic from the HTTP server implementation. You can hot-swap your underlying web server without changing a single line of your business logic or route configurations.
-
-```typescript
-// Using Express
-import { ExpressAdapter } from '@axiomify/express';
-new ExpressAdapter(app).listen(3000);
-
-// Using Fastify
-import { FastifyAdapter } from '@axiomify/fastify';
-new FastifyAdapter(app).listen(3000);
-
-// Using Native Node HTTP
-import { HttpAdapter } from '@axiomify/http';
-new HttpAdapter(app).listen(3000);
-```
-
-### 7. Error Handling Architecture
-
-Errors thrown inside handlers or hooks are automatically caught by Axiomify's centralized error dispatcher. 
-
-If Zod schema validation fails during the `validator.execute()` phase, Axiomify automatically short-circuits the request and returns the parsed Zod issues directly to the client, mapped safely against your environment variables (hiding stack traces in production automatically).
-
-### 8. Route-specific plugins
-
-Axiomify allows execution of specific middleware plugins per-route. Route plugins run in array order after global `onPreHandler` hooks but before schema validation.
-
-**💡 Pro-Tip: Enable IntelliSense**
-To get strict TypeScript autocomplete for your plugin names, augment the `@axiomify/core` module anywhere in your project:
-
-```typescript
-declare module '@axiomify/core' {
-  interface RegisteredPlugins {
-    requireAuth: void;
-    requireAdmin: void;
-  }
-}
-```
-
-```typescript
-// 1. Register the plugins globally before defining routes
-app.registerPlugin('requireAuth', async (req, res) => {
-  const token = req.headers['authorization'];
-  if (!token) {
-    res.status(401).send(null, 'Unauthorized');
-    // Returning after sending — the framework checks res.headersSent
-    // and will not call subsequent plugins or the handler
-  }
-});
-
-app.registerPlugin('requireAdmin', async (req, res) => {
-  const role = (req.state as any).role;
-  if (role !== 'admin') {
-    res.status(403).send(null, 'Forbidden');
-  }
-});
-
-// 2. Attach named plugins to specific routes
-app.route({
-  method: 'DELETE',
-  path: '/users/:id',
-  plugins: ['requireAuth', 'requireAdmin'], // Runs in this order
-  handler: async (req, res) => {
-    res.status(200).send(null, 'User deleted');
-  },
-});
-```
-
-### 9. Request Timeouts
-
-Set a global timeout in milliseconds via the Axiomify constructor. Any handler
-that does not call res.send() within the window automatically receives a 503:
-
-```typescript
-const app = new Axiomify({ timeout: 5000 }); // 5 seconds global default
-```
-
-Override per-route with the timeout field on any route definition:
-
-```typescript
-app.route({
-  method: 'POST',
-  path: '/heavy-job',
-  timeout: 30_000, // 30 seconds for this route only
-  handler: async (req, res) => { ... },
-});
-```
-Set timeout: 0 (the default) to disable timeouts entirely.
-
-### 10. CORS
 ```typescript
 import { useCors } from '@axiomify/cors';
 
 useCors(app, {
-  origin: ['[https://myapp.com](https://myapp.com)', '[https://staging.myapp.com](https://staging.myapp.com)'],
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true,
+  origin: 'https://trusted.example.com', // Single origin
+  credentials: true,                       // Include cookies
+  exposedHeaders: ['X-RateLimit-Remaining'],
+  maxAge: 86400, // 1 day
+});
+
+// ❌ This throws at startup (credentials + wildcard is spec-violating):
+// useCors(app, { origin: '*', credentials: true }); // ERROR!
+```
+
+Axiomify automatically:
+- Sends `OPTIONS 204 No Content` for preflight requests
+- Emits `Vary: Origin` whenever the resolved origin is not `*` (critical for CDN caching)
+- Echoes only allow-listed origins — requests from other origins receive no `Access-Control-Allow-Origin` header, so browsers block them per the spec
+- Throws at startup on spec-violating combinations (`credentials: true` with `origin: '*'`)
+
+---
+
+### 6. Rate Limiting: Distributed & Flexible
+
+```typescript
+import { createRateLimitPlugin, MemoryStore, RedisStore } from '@axiomify/rate-limit';
+
+// In-memory store (single process)
+const memoryStore = new MemoryStore();
+
+// Redis store (multi-process, PM2 clustering)
+const redis = require('redis').createClient();
+const redisStore = new RedisStore(redis);
+
+const limiter = createRateLimitPlugin({
+  store: memoryStore, // or redisStore for distributed apps
+  windowMs: 1000, // 1 second
+  maxRequests: 10,
+  keyExtractor: (req) => req.user?.id || req.ip, // Rate limit by user ID or IP
+});
+
+app.route({
+  method: 'GET',
+  path: '/api/search',
+  plugins: [limiter],
+  handler: async (req, res) => {
+    return res.send({ results: [] });
+  },
 });
 ```
-Call useCors() before registering routes. Options default to open
-(origin: '*', no credentials). For preflight requests (OPTIONS),
-the plugin automatically responds with 204 and bypasses your handlers.
-## Production Readiness (v3.3.0+)
-Axiomify ships with built-in primitives for enterprise environments:
-- **Telemetry**: Hook into `@opentelemetry/api` via `options.telemetry`.
-- **Resilience**: Wire `gracefulShutdown(server)` to guarantee zero-downtime deploys.
-- **Security**: Use `@axiomify/helmet` and strict body limits to harden against malicious payloads.
+
+---
+
+### 7. WebSockets: Schema-First with Zod
+
+WebSockets in Axiomify are schema-validated and room-aware:
+
+```typescript
+import { Axiomify } from '@axiomify/core';
+import { HttpAdapter } from '@axiomify/http';
+import { useWebSockets, type WsManager } from '@axiomify/ws';
+import { z } from 'zod';
+
+const app = new Axiomify();
+const adapter = new HttpAdapter(app);
+const server = adapter.listen(3000);
+
+useWebSockets(app, {
+  server, // An http.Server — useWebSockets hooks into its 'upgrade' event
+  path: '/ws', // Optional: only upgrade requests hitting this path
+  heartbeatIntervalMs: 30_000,
+  maxMessageBytes: 65_536,
+  // Optional: reject upgrade unless authenticate() returns a user
+  // authenticate: async (req) => verifyJwtFromHeader(req.headers.authorization),
+});
+
+const ws = (app as any).ws as WsManager;
+
+// Register a message type with automatic validation
+ws.on(
+  'chat:message',
+  z.object({ text: z.string().min(1).max(1000) }),
+  (client, data) => {
+    // data is type-safe: { text: string }
+    ws.broadcastToRoom('chat', 'chat:message', {
+      userId: client.user?.id,
+      text: data.text,
+    });
+  },
+);
+
+// Events without a schema — pass `null`
+ws.on('user:typing', null, (client) => {
+  ws.broadcastToRoom('chat', 'user:typing', { userId: client.user?.id });
+});
+```
+
+---
+
+### 8. Metrics & Observability
+
+```typescript
+import { useMetrics } from '@axiomify/metrics';
+
+useMetrics(app, {
+  path: '/metrics', // default
+  // Optional: guard the endpoint. Return false to respond with 403.
+  // protect: async (req) => req.headers['x-internal-token'] === process.env.METRICS_TOKEN,
+  // Optional: pass your WsManager to include `ws_connected_clients` gauge.
+  // wsManager: (app as any).ws,
+});
+```
+
+The exporter uses matched **route patterns** (e.g. `/users/:id`) — never concrete URLs — to keep Prometheus cardinality bounded. Point any Prometheus scrape config at `http://localhost:3000/metrics`.
+
+---
+
+### 9. Graceful Shutdown & Health Checks
+
+```typescript
+import { gracefulShutdown } from '@axiomify/core';
+import { HttpAdapter } from '@axiomify/http';
+
+// Health check endpoint with distributed readiness probes.
+// Each check must resolve to `true` (pass) or `false` (fail / 503).
+app.healthCheck('/health', {
+  database: async () => db.ping(),
+  redis: async () => redis.ping(),
+  external: async () => !!(await fetch('https://api.example.com')).ok,
+});
+
+// Graceful shutdown: handle SIGTERM/SIGINT, drain pending requests,
+// force-exit after timeoutMs if draining stalls.
+const server = new HttpAdapter(app).listen(3000);
+gracefulShutdown(server, {
+  timeoutMs: 10_000,
+  onShutdown: async () => {
+    await db.disconnect();
+  },
+});
+```
+
+Kubernetes health checks:
+```bash
+curl http://localhost:3000/health # 200 OK if all pass, 503 if any fail
+```
+
+---
+
+### 10. OpenAPI / Swagger Documentation
+
+Auto-generate interactive Swagger docs from your Zod schemas:
+
+```typescript
+import { useOpenAPI } from '@axiomify/openapi';
+
+useOpenAPI(app, {
+  routePrefix: '/docs', // defaults to '/docs'
+  info: {
+    title: 'My API',
+    version: '1.0.0',
+    description: 'Auto-generated from Zod schemas.',
+  },
+});
+
+// Swagger UI is now available at /docs
+// Raw OpenAPI 3.0.3 JSON at /docs/openapi.json
+```
+
+No separate schema files — your Zod definitions *are* your spec.
+
+---
+
+### 11. Security Headers with Helmet
+
+```typescript
+import { useHelmet } from '@axiomify/helmet';
+
+useHelmet(app, {
+  // Pass a full CSP string — or `false` to omit the header.
+  contentSecurityPolicy: "default-src 'self'; script-src 'self' cdn.example.com",
+  hsts: true,
+  hstsMaxAge: 31_536_000, // 1 year (seconds); defaults to 15552000 (180 days)
+  hstsIncludeSubDomains: true,
+  xFrameOptions: 'DENY',                 // string or false
+  xContentTypeOptions: 'nosniff',        // string or false
+  xXssProtection: '0',                   // string or false (OWASP recommends '0')
+  referrerPolicy: 'strict-origin-when-cross-origin',
+  permissionsPolicy: 'geolocation=(), microphone=(), camera=()',
+});
+```
+
+Every header defaults to a safe value — pass `false` on any field to opt out. HSTS is off by default (opt-in via `hsts: true`) to avoid breaking local HTTP development.
+
+---
+
+### 12. Structured Logging with PII Masking
+
+```typescript
+import { useLogger } from '@axiomify/logger';
+
+useLogger(app, {
+  level: 'info', // 'debug' | 'info' | 'warn' | 'error'
+  sensitiveFields: ['password', 'authorization', 'cardNumber', 'cvv'],
+});
+```
+
+`useLogger` emits one JSON line per request (on `onRequest` / `onPostHandler` / `onError`), automatically masking any header or payload field whose key matches `sensitiveFields`. Request duration is tracked via `req.state.startTime` and included on every response log.
+
+---
+
+### 13. Static File Serving
+
+```typescript
+import { serveStatic } from '@axiomify/static';
+import path from 'path';
+
+serveStatic(app, {
+  prefix: '/public',                          // URL prefix
+  root: path.join(__dirname, '..', 'public'), // absolute filesystem root
+});
+```
+
+Streams responses (never buffers full files into RAM), resolves MIME types from extension, and containment-checks every resolved path against `root` — traversal attempts like `/public/../../etc/passwd` return 404.
+
+---
+
+### 14. Lifecycle Hooks
+
+Hooks run globally across every route. They are the extension point behind every plugin in this document:
+
+```typescript
+app.addHook('onRequest',     (req, res) => { /* runs before routing */ });
+app.addHook('onPreHandler',  (req, res, match) => { /* route is matched; validation hasn't run yet */ });
+app.addHook('onPostHandler', (req, res, match) => { /* handler has sent a response */ });
+app.addHook('onError',       (err, req, res) => { /* handler / hook threw */ });
+app.addHook('onClose',       (req, res) => { /* always fires last, even on error */ });
+```
+
+If any hook or plugin calls `res.send()` before the handler runs, the handler is skipped and `onPostHandler` still fires so logging and metrics see the response.
+
+---
+
+### 15. Route Groups & Global Rate Limiting
+
+```typescript
+import { useRateLimit } from '@axiomify/rate-limit';
+
+// Apply rate limiting to *every* route via the onPreHandler hook.
+useRateLimit(app, { windowMs: 60_000, max: 1000 });
+
+// Share prefix + plugins across a cluster of routes.
+app.group('/api/v1', { plugins: [requireAuth] }, (v1) => {
+  v1.route({ method: 'GET', path: '/me', handler: async (req, res) => res.send(req.user) });
+
+  v1.group('/admin', { plugins: [requireAdmin] }, (admin) => {
+    admin.route({ method: 'DELETE', path: '/users/:id', handler: deleteUser });
+  });
+});
+```
+
+Group prefixes are normalised (no double slashes, no trailing slash), and plugins inherit through every level of nesting.
+
+---
+
+### 16. Custom Response Envelope
+
+By default every `res.send(data, message?)` is wrapped in `{ status, message, data }`. Override the envelope globally:
+
+```typescript
+app.setSerializer((data, message, statusCode, isError, req) => ({
+  ok: !isError,
+  requestId: req?.id,
+  data,
+  ...(message ? { message } : {}),
+}));
+```
+
+`sendRaw(payload, contentType?)` bypasses the serializer and writes the payload verbatim — use it for HTML, binary, or already-encoded JSON.
+
+---
+
+## 🔒 Security by Default
+
+Axiomify v4.0.0 hardens all adapters against common Node.js vulnerabilities:
+
+- **Prototype Pollution Prevention**: All JSON payloads are sanitized to strip `__proto__`, `constructor`, and `prototype` keys
+- **Path Traversal Defense**: Filenames and file paths use `path.resolve()` + `startsWith()` containment
+- **CORS Spec Compliance**: Dangerous configurations (e.g., `credentials: true` + `origin: '*'`) throw at startup instead of silently failing
+- **JWT Algorithm Pinning**: Auth plugin enforces a single algorithm and warns on weak secrets
+- **Multibyte UTF-8 Safety**: HTTP adapter uses proper Buffer concatenation, never mixes strings and buffers
+- **Type Safety**: All route handlers are fully type-safe by default; no implicit `any`
+
+---
+
+## 📊 Testing & Coverage
+
+Axiomify ships with comprehensive test coverage:
+
+```bash
+npm test                  # Run all tests (121 tests across 26 files)
+npm run coverage          # Generate a V8 coverage report
+```
+
+All tests are written in Vitest and run in parallel.
+
+---
+
+## 🚀 Performance
+
+Axiomify's custom Radix Tree router and AoT Zod compilation make it competitive with Fastify:
+
+- **Route resolution**: O(k) where k = path depth (not O(n) like traditional routers)
+- **Validation**: Zero overhead — schemas compiled at startup
+- **Memory**: Minimal allocations in the hot path; streaming uploads bypass RAM entirely
+- **Throughput**: Comparable to Fastify, beats Express and Hapi on typical workloads
+
+---
+
+## 📚 Examples
+
+See `/examples` for complete runnable applications:
+
+- `examples/native-zod-server.ts` — Minimal zero-dependency server on the native HTTP adapter
+- `examples/express-server.ts` — Express adapter with lifecycle hooks
+- `examples/secure-server.ts` — Structured logging + PII masking via `@axiomify/logger`
+- `examples/openapi-server.ts` — Auto-generated Swagger UI over the Express adapter
+- `examples/my-app/` — Full scaffolded CLI project (output of `axiomify init`)
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+
+All code is subject to:
+- Strict TypeScript (`strict: true`)
+- Test coverage requirements (80%+ threshold)
+- ESLint + Prettier formatting
+- Conventional commit messages
+
+---
+
+## 📄 License
+
+MIT — see [LICENSE](./LICENSE) for details.
+
+---
+
+## ❓ FAQ
+
+**Q: Can I use Axiomify with my existing Express app?**
+
+A: Yes! Axiomify routes work seamlessly with Express via `@axiomify/express`. You can incrementally migrate routes.
+
+**Q: Do I have to use Zod?**
+
+A: Axiomify is schema-first and Zod is the recommended validation library. However, you can bring your own validator by implementing the `ValidationCompiler` interface.
+
+**Q: How do I handle streaming responses?**
+
+A: Use `res.stream(readable)` or `res.sseInit()` / `res.sseSend()` — they're available across all adapters.
+
+**Q: What about database integration?**
+
+A: Axiomify is database-agnostic. Your route handlers can use any ORM (Prisma, TypeORM, etc.) or raw queries.
+
+**Q: Is there an admin panel or ORM included?**
+
+A: No — Axiomify is a low-level framework. We recommend Prisma for ORM and maintain compatibility with all ORMs.
+
+---
+
+**Made with ❤️ by the Axiomify team.**
