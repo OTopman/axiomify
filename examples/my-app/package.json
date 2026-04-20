@@ -1,6 +1,6 @@
 {
   "name": "axiomify-app",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "private": true,
   "scripts": {
     "dev": "JWT_SECRET=so+DlSN8Bepg9HPDugODb26wo4X02UuMWHktI3JetVo= axiomify dev src/index.ts",
