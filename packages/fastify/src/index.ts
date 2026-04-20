@@ -58,11 +58,11 @@ export class FastifyAdapter {
         return req.url;
       },
       get path() {
-        // In Fastify v5, req.routeOptions.url replaces the removed req.routerPath
-        const routeUrl = (req as any).routeOptions?.url ?? '/{*}';
-        return routeUrl === '/{*}'
-          ? new URL(`http://localhost${req.url}`).pathname
-          : routeUrl;
+        // Always derive from the actual request URL. Using req.routeOptions.url
+        // would return the catch-all pattern ("/{*}") which is useless to our
+        // router, and for any non-catch-all Fastify route it would hand back
+        // the pattern (e.g. "/users/:id") instead of the real path.
+        return new URL(`http://localhost${req.url}`).pathname;
       },
       get ip() {
         return req.ip;
@@ -114,12 +114,16 @@ export class FastifyAdapter {
         return this;
       },
       send<T>(data: T, message = 'Operation successful') {
-        const isError = res.statusCode >= 400;
+        const isError = statusCode >= 400;
         isSent = true;
         const payload = serializer(data, message, statusCode, isError, req);
         res.send(payload);
       },
       sendRaw(payload: any, contentType = 'text/plain') {
+        // Every other exit path flips isSent — sendRaw was the one that
+        // didn't, which made `headersSent` lie and broke the core's
+        // short-circuit guards in `app.handle`.
+        isSent = true;
         res.header('Content-Type', contentType);
         res.status(statusCode).send(payload);
       },

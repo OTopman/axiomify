@@ -8,7 +8,11 @@ export class HapiAdapter {
   private server: Hapi.Server;
 
   constructor(private core: Axiomify, config: Hapi.ServerOptions = {}) {
-    // Merge the user configuration but force routes.payload options
+    // We keep `parse: false, output: 'stream'` so that @axiomify/upload can
+    // pipe the raw request into Busboy. That means JSON / urlencoded bodies
+    // arrive here as an unread stream — we parse them ourselves per-request
+    // below so route handlers see a plain object like they do on every other
+    // adapter.
     this.server = Hapi.server({
       ...config,
       routes: {
@@ -24,9 +28,10 @@ export class HapiAdapter {
     this.server.route({
       method: '*',
       path: '/{any*}',
-      handler: (req: any, h: any) => {
+      handler: async (req: any, h: any) => {
+        const parsedBody = await this.parseBody(req);
         return new Promise((resolve, reject) => {
-          const axiomifyReq = this.translateRequest(req);
+          const axiomifyReq = this.translateRequest(req, parsedBody);
           // Inject the serializer here
           const axiomifyRes = this.translateResponse(
             h,
@@ -56,7 +61,46 @@ export class HapiAdapter {
     });
   }
 
-  private translateRequest(req: Request): AxiomifyRequest {
+  /**
+   * Parses the request payload stream for non-multipart content types.
+   * Multipart is left untouched so @axiomify/upload can drive it; GET/HEAD/
+   * OPTIONS never have a body to parse.
+   */
+  private async parseBody(req: any): Promise<unknown> {
+    const method = (req.method || '').toUpperCase();
+    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+      return undefined;
+    }
+
+    const contentType = (req.headers['content-type'] || '').toLowerCase();
+    if (contentType.includes('multipart/form-data')) return undefined;
+
+    const stream = req.payload;
+    if (!stream || typeof stream.on !== 'function') return undefined;
+
+    return new Promise<unknown>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+      stream.on('end', () => {
+        if (chunks.length === 0) return resolve(undefined);
+        const body = Buffer.concat(chunks).toString('utf8');
+        if (contentType.includes('application/json')) {
+          try {
+            resolve(JSON.parse(body));
+          } catch {
+            resolve(body);
+          }
+        } else if (contentType.includes('application/x-www-form-urlencoded')) {
+          resolve(Object.fromEntries(new URLSearchParams(body)));
+        } else {
+          resolve(body);
+        }
+      });
+      stream.on('error', reject);
+    });
+  }
+
+  private translateRequest(req: Request, parsedBody: unknown): AxiomifyRequest {
     const _params = {};
     const _state = {};
     return {
@@ -83,7 +127,7 @@ export class HapiAdapter {
         return req.headers;
       },
       get body() {
-        return req.payload;
+        return parsedBody;
       },
       get query() {
         return req.query;
@@ -107,7 +151,7 @@ export class HapiAdapter {
     h: any,
     resolve: (val: any) => void,
     serializer: SerializerFn,
-    req: AxiomifyRequest
+    req: AxiomifyRequest,
   ): any {
     let statusCode = 200;
     let isSent = false;

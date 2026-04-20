@@ -3,7 +3,7 @@
   "version": "3.3.0",
   "private": true,
   "scripts": {
-    "dev": "axiomify dev src/index.ts",
+    "dev": "JWT_SECRET=so+DlSN8Bepg9HPDugODb26wo4X02UuMWHktI3JetVo= axiomify dev src/index.ts",
     "build": "echo \"Skipping example build in CI — run npm run dev locally\"",
     "start": "node dist/index.js",
     "routes": "axiomify routes src/index.ts"
@@ -18,7 +18,7 @@
     "@axiomify/static": "*"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
+    "typescript": "^6.0.2",
     "@types/node": "^20.0.0"
   }
 }

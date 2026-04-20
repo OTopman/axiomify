@@ -39,7 +39,7 @@ export async function devServer(entry: string): Promise<void> {
     },
   };
 
-  const userExternals = await getUserExternals(process.cwd());
+  const userExternals = getUserExternals(process.cwd());
 
   const ctx = await esbuild.context({
     entryPoints: [entryPath],
@@ -49,6 +49,36 @@ export async function devServer(entry: string): Promise<void> {
     external: [...new Set([...userExternals, 'node:*'])],
     plugins: [watchPlugin],
   });
+
+  // On Ctrl-C / SIGTERM, tear everything down. Without this the spawned
+  // server child survives after the CLI exits — a classic "why is port
+  // 3000 still in use?" leak.
+  let shuttingDown = false;
+  const shutdown = async (signal: NodeJS.Signals) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`\n👋 Received ${signal}, shutting down dev server...`);
+
+    if (child) {
+      child.removeAllListeners('exit');
+      child.kill('SIGTERM');
+      // Give it 2s to exit gracefully, then SIGKILL.
+      setTimeout(() => {
+        if (child && !child.killed) child.kill('SIGKILL');
+      }, 2000).unref();
+    }
+
+    try {
+      await ctx.dispose();
+    } catch {
+      // ignore cleanup errors
+    }
+
+    process.exit(0);
+  };
+
+  process.once('SIGINT', () => shutdown('SIGINT'));
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
 
   console.log(`👀 Axiomify Dev Engine watching for changes...`);
   await ctx.watch();

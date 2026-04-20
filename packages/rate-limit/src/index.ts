@@ -53,35 +53,6 @@ export class RedisStore {
   }
 }
 
-/**
- * @example
- * keyGenerator: (req) => (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ?? req.ip
- */
-export function createRateLimitPlugin(options: RateLimitOptions = {}) {
-  const windowMs = options.windowMs ?? 60_000;
-  const max = options.max ?? 100;
-  const store = options.store ?? new MemoryStore();
-  const keyGenerator = options.keyGenerator ?? ((req) => req.ip || '127.0.0.1');
-
-  // Returns identical handler logic as useRateLimit, bound to route.plugins
-  return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
-    if (options.skip?.(req)) return;
-
-    const key = keyGenerator(req);
-    const { count, resetTime } = await store.increment(key, windowMs);
-    const remaining = Math.max(0, max - count);
-
-    res.header('X-RateLimit-Limit', String(max));
-    res.header('X-RateLimit-Remaining', String(remaining));
-    res.header('X-RateLimit-Reset', String(resetTime));
-
-    if (count > max) {
-      res.header('Retry-After', String(Math.ceil(windowMs / 1000)));
-      res.status(429).send(null, 'Too Many Requests');
-    }
-  };
-}
-
 export class MemoryStore implements RateLimitStore {
   private hits = new Map<string, { timestamps: number[]; windowMs: number }>();
   private timer: NodeJS.Timeout;
@@ -112,15 +83,22 @@ export class MemoryStore implements RateLimitStore {
     const now = Date.now();
     const windowStart = now - windowMs;
 
-    let data = this.hits.get(key) || { timestamps: [], windowMs };
-    let timestamps = data.timestamps.filter((time) => time > windowStart);
+    const data = this.hits.get(key) || { timestamps: [], windowMs };
+    const timestamps = data.timestamps.filter((time) => time > windowStart);
     timestamps.push(now);
 
     this.hits.set(key, { timestamps, windowMs });
 
+    // resetTime is when the *oldest* request in the current window ages out.
+    // The previous implementation used `windowStart + windowMs`, which
+    // algebraically simplifies to `now` — i.e. "right now" — and was
+    // therefore meaningless. When the map is empty, fall back to now+window.
+    const oldest = timestamps[0] ?? now;
+    const resetTime = Math.ceil((oldest + windowMs) / 1000);
+
     return {
       count: timestamps.length,
-      resetTime: Math.ceil((windowStart + windowMs) / 1000),
+      resetTime,
     };
   }
 }
@@ -133,35 +111,52 @@ export interface RateLimitOptions {
   skip?: (req: AxiomifyRequest) => boolean;
 }
 
+/**
+ * Shared handler used by both `useRateLimit` (global onPreHandler) and
+ * `createRateLimitPlugin` (per-route). Keeps a single source of truth for
+ * limit enforcement, headers, and response short-circuiting.
+ */
+function buildLimiter(options: RateLimitOptions = {}) {
+  const windowMs = options.windowMs ?? 60_000;
+  const max = options.max ?? 100;
+  const store = options.store ?? new MemoryStore();
+  const keyGenerator =
+    options.keyGenerator ?? ((req: AxiomifyRequest) => req.ip || '127.0.0.1');
+
+  return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
+    if (options.skip?.(req)) return;
+
+    const key = keyGenerator(req);
+    const { count, resetTime } = await store.increment(key, windowMs);
+    const remaining = Math.max(0, max - count);
+
+    res.header('X-RateLimit-Limit', String(max));
+    res.header('X-RateLimit-Remaining', String(remaining));
+    res.header('X-RateLimit-Reset', String(resetTime));
+
+    if (count > max) {
+      res.header('Retry-After', String(Math.ceil(windowMs / 1000)));
+      res.status(429).send(null, 'Too Many Requests');
+      return;
+    }
+  };
+}
+
+/**
+ * @example
+ * keyGenerator: (req) => (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ?? req.ip
+ */
+export function createRateLimitPlugin(options: RateLimitOptions = {}) {
+  return buildLimiter(options);
+}
+
 export function useRateLimit(
   app: Axiomify,
   options: RateLimitOptions = {},
 ): void {
-  const windowMs = options.windowMs ?? 60_000;
-  const max = options.max ?? 100;
-  const store = options.store ?? new MemoryStore();
-
-  // Default key generator uses IP. If behind a proxy, ensure req.ip resolves correctly.
-  const keyGenerator = options.keyGenerator ?? ((req) => req.ip || '127.0.0.1');
-
+  const limiter = buildLimiter(options);
   // We use onPreHandler so we can eventually read route-specific metadata if needed
-  app.addHook(
-    'onPreHandler',
-    async (req: AxiomifyRequest, res: AxiomifyResponse) => {
-      if (options.skip?.(req)) return;
-
-      const key = keyGenerator(req);
-      const { count, resetTime } = await store.increment(key, windowMs);
-      const remaining = Math.max(0, max - count);
-
-      res.header('X-RateLimit-Limit', String(max));
-      res.header('X-RateLimit-Remaining', String(remaining));
-      res.header('X-RateLimit-Reset', String(resetTime));
-
-      if (count > max) {
-        res.header('Retry-After', String(Math.ceil(windowMs / 1000)));
-        res.status(429).send(null, 'Too Many Requests');
-      }
-    },
-  );
+  app.addHook('onPreHandler', async (req, res) => {
+    await limiter(req, res);
+  });
 }

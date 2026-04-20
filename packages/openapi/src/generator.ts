@@ -9,6 +9,19 @@ export interface OpenApiOptions {
   };
 }
 
+/**
+ * Duck-types a value as a Zod schema without reaching into `_def` (internal,
+ * unstable across Zod majors). Anything exposing `safeParse` is treated as a
+ * single validator; otherwise we assume a `Record<statusCode, ZodTypeAny>`.
+ */
+function isZodSchema(value: unknown): boolean {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as any).safeParse === 'function'
+  );
+}
+
 export class OpenApiGenerator {
   constructor(private app: Axiomify, private options: OpenApiOptions) {}
 
@@ -56,7 +69,10 @@ export class OpenApiGenerator {
         parameters.push({
           name: key,
           in: 'path',
-          required: paramSchema.required?.includes(key) || true,
+          // OpenAPI 3 requires `required: true` for every path parameter.
+          // The previous expression was `paramSchema.required?.includes(key) || true`
+          // — the trailing `|| true` made the whole left side dead code.
+          required: true,
           schema: prop,
         });
       }
@@ -70,7 +86,7 @@ export class OpenApiGenerator {
         parameters.push({
           name: key,
           in: 'query',
-          required: querySchema.required?.includes(key) || false,
+          required: querySchema.required?.includes(key) ?? false,
           schema: prop,
         });
       }
@@ -145,24 +161,9 @@ export class OpenApiGenerator {
 
     const responseSchema = route.schema.response;
 
-    // Cast to any to safely check the signature without TS complaining
-    const isZodSchema = (responseSchema as any)._def !== undefined;
-
     const responses: any = {};
 
-    if (!isZodSchema && typeof responseSchema === 'object') {
-      // Handle custom Record mapping (e.g., { 200: z.object, 400: z.object })
-      for (const [code, schema] of Object.entries(responseSchema)) {
-        responses[code] = {
-          description: `Response ${code}`,
-          content: {
-            'application/json': {
-              schema: zodToJsonSchema(schema as any, { target: 'openApi3' }),
-            },
-          },
-        };
-      }
-    } else {
+    if (isZodSchema(responseSchema)) {
       // Single schema defaults to 200
       responses['200'] = {
         description: 'Successful response',
@@ -174,6 +175,18 @@ export class OpenApiGenerator {
           },
         },
       };
+    } else if (typeof responseSchema === 'object' && responseSchema !== null) {
+      // Handle custom Record mapping (e.g., { 200: z.object, 400: z.object })
+      for (const [code, schema] of Object.entries(responseSchema)) {
+        responses[code] = {
+          description: `Response ${code}`,
+          content: {
+            'application/json': {
+              schema: zodToJsonSchema(schema as any, { target: 'openApi3' }),
+            },
+          },
+        };
+      }
     }
 
     return responses;

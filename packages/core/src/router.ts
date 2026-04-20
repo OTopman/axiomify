@@ -29,7 +29,9 @@ export class Router {
     const parts = this.splitPath(route.path);
     let currentNode = this.root;
 
-    for (const part of parts) {
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+
       if (part.startsWith(':')) {
         // Handle dynamic parameters (e.g., :id)
         if (!currentNode.paramChild) {
@@ -45,20 +47,18 @@ export class Router {
         }
         currentNode = currentNode.paramChild;
       } else if (part === '*') {
-        // Handle wildcard segments
-        if (!currentNode.wildcardChild) {
-          currentNode.wildcardChild = new TrieNode();
-        }
-        currentNode = currentNode.wildcardChild;
-
-        // Wildcard must be the last segment
-        const remainingParts = parts.slice(parts.indexOf(part) + 1);
-        if (remainingParts.length > 0) {
+        // Wildcard must be the final path segment. Checked against the actual
+        // loop index, not parts.indexOf — indexOf returns the first match
+        // which can mis-report position when '*' appears more than once.
+        if (i !== parts.length - 1) {
           throw new Error(
             `Invalid route "${route.path}": wildcard * must be the final path segment.`,
           );
         }
-        break; // nothing after * is valid
+        if (!currentNode.wildcardChild) {
+          currentNode.wildcardChild = new TrieNode();
+        }
+        currentNode = currentNode.wildcardChild;
       } else {
         // Handle static path segments
         if (!currentNode.children.has(part)) {
@@ -92,9 +92,9 @@ export class Router {
       if (currentNode.children.has(part)) {
         currentNode = currentNode.children.get(part)!;
       } else if (currentNode.paramChild) {
-       const paramName = currentNode.paramName!;
-       currentNode = currentNode.paramChild;
-       params[paramName] = part;
+        const paramName = currentNode.paramName!;
+        currentNode = currentNode.paramChild;
+        params[paramName] = part;
       } else if (currentNode.wildcardChild) {
         params['*'] = parts.slice(i).join('/');
         currentNode = currentNode.wildcardChild;

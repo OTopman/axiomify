@@ -58,7 +58,11 @@ export class HttpAdapter {
     if (req.method === 'GET' || req.method === 'HEAD') return undefined;
 
     return new Promise((resolve, reject) => {
-      let body = '';
+      // Collect Buffer chunks instead of concatenating strings. `chunk.toString()`
+      // on each chunk decodes as UTF-8 at the chunk boundary and corrupts
+      // multi-byte characters that get split across packets. Decoding once,
+      // after all chunks have arrived, is both faster and byte-correct.
+      const chunks: Buffer[] = [];
       let receivedBytes = 0;
       let settled = false; // 🚀 State lock
 
@@ -73,13 +77,14 @@ export class HttpAdapter {
             Object.assign(new Error('Payload Too Large'), { statusCode: 413 }),
           );
         }
-        body += chunk.toString();
+        chunks.push(chunk);
       });
 
       req.on('end', () => {
         if (settled) return;
         settled = true;
-        if (!body) return resolve(undefined);
+        if (chunks.length === 0) return resolve(undefined);
+        const body = Buffer.concat(chunks).toString('utf8');
         try {
           resolve(sanitize(JSON.parse(body)));
         } catch {

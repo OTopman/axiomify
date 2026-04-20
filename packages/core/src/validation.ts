@@ -18,6 +18,19 @@ type ValidateFunction = (data: unknown) => {
   errors?: Record<string, string>;
 };
 
+/**
+ * Duck-types a value as a Zod schema. Avoids reaching into `_def` which is an
+ * internal field that has changed across Zod majors. Any object exposing
+ * `safeParse` is treated as a validator.
+ */
+function isZodSchema(value: unknown): value is ZodTypeAny {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as any).safeParse === 'function'
+  );
+}
+
 export class ValidationCompiler {
   private compiledSchemas = new Map<
     string,
@@ -42,11 +55,8 @@ export class ValidationCompiler {
     if (schema.params) compiled.params = this.createZodValidator(schema.params);
 
     if (schema.response) {
-      // Check if it's a direct Zod schema via its internal _def property
-      if ((schema.response as any)._def !== undefined) {
-        compiled.response = this.createZodValidator(
-          schema.response as ZodTypeAny,
-        );
+      if (isZodSchema(schema.response)) {
+        compiled.response = this.createZodValidator(schema.response);
       } else {
         // It's a Record<number, ZodTypeAny> map
         const responseMap: Record<number, ValidateFunction> = {};

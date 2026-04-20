@@ -14,10 +14,27 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * Escape a value for interpolation into a single-quoted JS string literal
+ * inside the inline Swagger bootstrap script. Defence in depth: the prefix is
+ * developer-controlled, but a stray apostrophe would otherwise break the UI.
+ */
+function escapeJsString(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
-  const prefix = options.routePrefix?.endsWith('/')
-    ? options.routePrefix.slice(0, -1)
-    : options.routePrefix;
+  // Default the prefix so an omitted `routePrefix` doesn't register routes
+  // at the literal path "undefined/openapi.json". Also normalise trailing
+  // slashes so "/docs" and "/docs/" behave identically.
+  const rawPrefix = options.routePrefix ?? '/docs';
+  const normalisedPrefix = rawPrefix.startsWith('/')
+    ? rawPrefix
+    : `/${rawPrefix}`;
+  const prefix = normalisedPrefix.endsWith('/')
+    ? normalisedPrefix.slice(0, -1)
+    : normalisedPrefix;
+
   const generator = new OpenApiGenerator(app, options);
 
   let cachedSpec: any = null;
@@ -26,11 +43,10 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
   app.route({
     method: 'GET',
     path: `${prefix}/openapi.json`,
-    handler: async (req, res) => {
+    handler: async (_req, res) => {
       if (!cachedSpec) {
         cachedSpec = generator.generate();
       }
-      // FIX: Use sendRaw and stringify the JSON
       res.status(200).sendRaw(JSON.stringify(cachedSpec), 'application/json');
     },
   });
@@ -39,10 +55,8 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
   app.route({
     method: 'GET',
     path: `${prefix}`,
-    handler: async (req, res) => {
-      // FIX: Use the clean prefix instead of req.url to avoid trailing slash bugs
-      const cleanPrefix = prefix?.endsWith('/') ? prefix.slice(0, -1) : prefix;
-      const specUrl = `${cleanPrefix}/openapi.json`;
+    handler: async (_req, res) => {
+      const specUrl = `${prefix}/openapi.json`;
 
       const html = `
         <!DOCTYPE html>
@@ -59,7 +73,7 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
           <script>
             window.onload = () => {
               window.ui = SwaggerUIBundle({
-                url: '${specUrl}',
+                url: '${escapeJsString(specUrl)}',
                 dom_id: '#swagger-ui',
               });
             };

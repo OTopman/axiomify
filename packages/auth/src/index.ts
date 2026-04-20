@@ -31,19 +31,41 @@ export interface RefreshOptions {
   algorithms?: jwt.Algorithm[];
 }
 
+/**
+ * Extracts a bearer token from an Authorization header. Per RFC 6750 §2.1 the
+ * scheme name is case-insensitive, so "bearer xyz" and "BEARER xyz" must work
+ * the same as "Bearer xyz". Also tolerates extra whitespace between scheme
+ * and credential.
+ */
+function extractBearer(header: string): string | null {
+  const match = /^\s*Bearer\s+(\S+)\s*$/i.exec(header);
+  return match ? match[1] : null;
+}
+
 export function createRefreshHandler(options: RefreshOptions) {
   return async (req: any, res: any) => {
-    const token = req.headers.authorization?.split(' ')[1];
+    const authHeader = Array.isArray(req.headers.authorization)
+      ? req.headers.authorization[0]
+      : req.headers.authorization;
+
+    const token = authHeader ? extractBearer(authHeader) : null;
     if (!token) return res.status(401).send(null, 'Missing refresh token');
+
     try {
       const decoded = jwt.verify(token, options.refreshSecret, {
         algorithms: options.algorithms ?? ['HS256'],
+      }) as any;
+
+      // A valid signature over an empty / malformed payload shouldn't mint an
+      // access token with `id: undefined`. Require an explicit subject id.
+      const id = decoded?.id ?? decoded?.sub;
+      if (typeof id !== 'string' || id.length === 0) {
+        return res.status(401).send(null, 'Invalid refresh token payload');
+      }
+
+      const accessToken = jwt.sign({ id }, options.secret, {
+        expiresIn: options.accessTokenTtl ?? 900,
       });
-      const accessToken = jwt.sign(
-        { id: (decoded as any).id },
-        options.secret,
-        { expiresIn: options.accessTokenTtl ?? 900 },
-      );
       res
         .status(200)
         .send({ accessToken, expiresIn: options.accessTokenTtl ?? 900 });
@@ -71,10 +93,7 @@ export function useAuth(app: Axiomify, options: AuthOptions): void {
         authHeader = authHeader[0];
       }
 
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        return authHeader.substring(7);
-      }
-      return null;
+      return authHeader ? extractBearer(authHeader) : null;
     });
 
   // The core authentication plugin

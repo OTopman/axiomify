@@ -16,6 +16,13 @@ export interface WsOptions {
   heartbeatIntervalMs?: number; // default 30_000
   maxMessageBytes?: number; // default 65_536
   authenticate?: (req: IncomingMessage) => Promise<any | null>;
+  /**
+   * Optional handler for binary frames. If omitted, binary frames are
+   * silently ignored instead of being run through JSON.parse (which
+   * incorrectly produced a "Malformed payload" error for perfectly valid
+   * binary data).
+   */
+  onBinary?: (client: WsClient, data: Buffer) => void;
 }
 
 export interface WsEventSchema {
@@ -96,17 +103,22 @@ export class WsManager {
             }, options.heartbeatIntervalMs ?? 30_000)
           : null;
 
-      client.on('message', (rawData) => {
-        if (
-          Buffer.byteLength(rawData as Buffer) >
-          (options.maxMessageBytes ?? 65_536)
-        ) {
+      // `ws` emits `message(data, isBinary)` in v8+. We branch on `isBinary`
+      // so binary frames are routed to `onBinary` (or ignored) rather than
+      // being fed through JSON.parse and rejected as "Malformed payload".
+      client.on('message', (rawData: Buffer, isBinary: boolean) => {
+        if (Buffer.byteLength(rawData) > (options.maxMessageBytes ?? 65_536)) {
           client.send(JSON.stringify({ error: 'Message too large' }));
           return client.close(1009); // RFC 6455
         }
 
+        if (isBinary) {
+          if (options.onBinary) options.onBinary(client, rawData);
+          return;
+        }
+
         try {
-          const message = rawData.toString();
+          const message = rawData.toString('utf8');
           const parsed = JSON.parse(message);
           const { event, data } = parsed;
 

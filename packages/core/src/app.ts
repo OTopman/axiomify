@@ -159,8 +159,16 @@ export class Axiomify {
     req: AxiomifyRequest,
     res: AxiomifyResponse,
   ): Promise<void> {
+    let matched: {
+      route: RouteDefinition;
+      params: Record<string, string>;
+    } | null = null;
+
     try {
       await this.hooks.run('onRequest', req, res);
+      // If an onRequest hook sent the response (e.g. CORS preflight), stop here.
+      // No match is known yet, so onPostHandler is skipped — its contract is
+      // that `match` is always defined.
       if (res.headersSent) return;
 
       const match = this.router.lookup(req.method, req.path);
@@ -177,6 +185,7 @@ export class Axiomify {
       }
 
       // 3. TypeScript now mathematically GUARANTEES match is `{ route, params }`
+      matched = match;
       const { route, params } = match;
 
       Object.assign(req.params as any, params);
@@ -185,8 +194,12 @@ export class Axiomify {
       // This is now 100% type-safe
       await this.hooks.run('onPreHandler', req, res, match);
 
-      // Halt execution if a global hook (like Rate Limit) sends a response!
-      if (res.headersSent) return;
+      // Halt if a global hook short-circuited (rate limit, auth, etc.).
+      // We still fire onPostHandler so logging/metrics see the response.
+      if (res.headersSent) {
+        await this.hooks.run('onPostHandler', req, res, match);
+        return;
+      }
 
       const routePlugins = route.plugins ?? [];
       for (const name of routePlugins) {
@@ -194,16 +207,21 @@ export class Axiomify {
         if (!plugin)
           throw new Error(`Plugin "${name as string}" is not registered.`);
         await plugin(req, res);
-        if (res.headersSent) return;
+        if (res.headersSent) {
+          await this.hooks.run('onPostHandler', req, res, match);
+          return;
+        }
       }
 
       this.validator.execute(routeId, req);
 
       let responsePayload: unknown = undefined;
+      let responseSent = false;
       const originalSend = res.send;
 
       res.send = (data: any, message?: string) => {
         responsePayload = data;
+        responseSent = true;
         // Expose payload directly on the response object for the Logger plugin
         (res as any).payload = data;
         (res as any).responseMessage = message;
@@ -226,7 +244,7 @@ export class Axiomify {
 
       try {
         if (effectiveTimeout > 0) {
-          let timeoutId: NodeJS.Timeout;
+          let timeoutId: NodeJS.Timeout | undefined;
           const timeoutPromise = new Promise<never>((_, reject) => {
             timeoutId = setTimeout(() => {
               reject(
@@ -243,7 +261,7 @@ export class Axiomify {
               timeoutPromise,
             ]);
           } finally {
-            clearTimeout(timeoutId!);
+            if (timeoutId !== undefined) clearTimeout(timeoutId);
           }
         } else {
           await this.engine.run(req, res, route.handler);
@@ -252,15 +270,23 @@ export class Axiomify {
         if (span) span.end();
       }
 
-      try {
-        this.validator.validateResponse(routeId, responsePayload);
-      } catch (validationErr: any) {
-        // Prevent double-logging by letting the framework handle it natively
-        if (process.env.NODE_ENV === 'development') {
-          console.error(
-            `[Axiomify] Response schema mismatch on ${routeId}:`,
-            validationErr.errors ?? validationErr.message,
+      // Only validate the response schema when the handler actually sent a
+      // payload. Skipping on non-send avoids comparing `undefined` to a schema
+      // that never expected to run (e.g. the handler threw after our patch).
+      if (responseSent) {
+        try {
+          this.validator.validateResponse(
+            routeId,
+            responsePayload,
+            res.statusCode,
           );
+        } catch (validationErr: any) {
+          if (process.env.NODE_ENV === 'development') {
+            console.error(
+              `[Axiomify] Response schema mismatch on ${routeId}:`,
+              validationErr.errors ?? validationErr.message,
+            );
+          }
         }
       }
 

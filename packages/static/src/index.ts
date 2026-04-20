@@ -27,6 +27,9 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
     : `/${options.prefix}`;
   const routePath = prefix === '/' ? '/*' : `${prefix}/*`;
 
+  // Resolve the root once up-front so the containment check is cheap per-request.
+  const rootResolved = path.resolve(options.root);
+
   app.route({
     method: 'GET',
     path: routePath,
@@ -35,11 +38,23 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
         // Extract the requested file path from the wildcard parameter
         const reqPath = (req.params as any)['*'] || '';
 
-        // Secure the path to prevent directory traversal attacks (e.g., ../../etc/passwd)
+        // First pass: normalize and strip a leading "../" run. This keeps the
+        // behaviour documented in the existing tests (traversal attempts
+        // resolve to a missing path inside root rather than 403).
         const safeSuffix = path
           .normalize(reqPath)
           .replace(/^(\.\.[\/\\])+/, '');
-        const absolutePath = path.join(options.root, safeSuffix);
+        const absolutePath = path.resolve(rootResolved, safeSuffix);
+
+        // Second pass (defense in depth): after resolving, the final path MUST
+        // be inside rootResolved. Covers Windows-style '..\..\' inputs, mixed
+        // separators, and anything the regex missed.
+        if (
+          absolutePath !== rootResolved &&
+          !absolutePath.startsWith(rootResolved + path.sep)
+        ) {
+          return res.status(403).send(null, 'Forbidden');
+        }
 
         // Check if file exists and is not a directory
         const stat = await fs.promises.stat(absolutePath);
@@ -53,8 +68,18 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
           .toString(16)}"`;
         res.header('ETag', etag);
 
-        // Check If-None-Match for 304 Not Modified
+        // Check If-None-Match for 304 Not Modified. Per RFC 7232, a 304
+        // response must not include a message body or Content-Type — only
+        // validators. `sendRaw('')` would still set Content-Type, so poke
+        // res.raw directly for a clean 304.
         if (req.headers['if-none-match'] === etag) {
+          const rawRes = (res as any).raw;
+          if (rawRes && typeof rawRes.writeHead === 'function') {
+            rawRes.writeHead(304, { ETag: etag });
+            rawRes.end();
+            return;
+          }
+          // Fallback if the raw response isn't a Node ServerResponse shape.
           return res.status(304).sendRaw('');
         }
 
