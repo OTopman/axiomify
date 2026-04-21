@@ -1,6 +1,6 @@
 {
-  "name": "@axiomify/logger",
-  "version": "4.1.0",
+  "name": "@axiomify/security",
+  "version": "1.0.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -14,8 +14,7 @@
   },
   "dependencies": {
     "@axiomify/core": "*",
-    "maskify-ts": "^4.0.0",
-    "picocolors": "^1.1.1"
+    "xss": "^1.0.15"
   },
   "exports": {
     ".": {

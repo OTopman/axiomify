@@ -1,37 +1,71 @@
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
+import { prompt } from 'enquirer';
+import pc from 'picocolors';
+import { execa } from 'execa';
 
 export async function initProject(
-  targetDir: string,
+  targetDir?: string,
   options: { force?: boolean } = {},
 ): Promise<void> {
-  const dir = path.resolve(process.cwd(), targetDir);
-  await fs.mkdir(path.join(dir, 'src'), { recursive: true });
+  console.log(pc.cyan(pc.bold('\n🚀 Axiomify Project Initializer\n')));
 
-  // Guard against silently trashing work. The previous implementation
-  // overwrote package.json / tsconfig.json / src/index.ts with no warning
-  // if the target directory already held a project — a very easy footgun
-  // to hit by typing `axiomify init` in the wrong shell.
-  const targets = [
-    path.join(dir, 'package.json'),
-    path.join(dir, 'tsconfig.json'),
-    path.join(dir, 'src', 'index.ts'),
-  ];
-  const collisions = targets.filter((p) => existsSync(p));
-  if (collisions.length > 0 && !options.force) {
-    console.error(
-      '❌ Refusing to overwrite existing files:\n' +
-        collisions.map((p) => `   - ${p}`).join('\n') +
-        "\n\nRe-run with '--force' if you really want to replace them.",
-    );
-    process.exit(1);
+  const questions: any[] = [];
+
+  if (!targetDir) {
+    questions.push({
+      type: 'input',
+      name: 'projectName',
+      message: 'What is your project name?',
+      initial: 'my-axiomify-app',
+    });
   }
 
-  const pkgJson = {
-    name: 'axiomify-app',
+  questions.push(
+    {
+      type: 'confirm',
+      name: 'useEslint',
+      message: 'Add ESLint and Prettier for code quality?',
+      initial: true,
+    },
+    {
+      type: 'confirm',
+      name: 'installDeps',
+      message: 'Install dependencies automatically?',
+      initial: true,
+    }
+  );
+
+  const answers: any = await prompt(questions);
+  const projectName = targetDir || answers.projectName;
+  const dir = path.resolve(process.cwd(), projectName);
+
+  if (existsSync(dir) && !options.force && targetDir) {
+    // Only check if targetDir was explicitly provided and exists
+    const targets = [
+      path.join(dir, 'package.json'),
+      path.join(dir, 'tsconfig.json'),
+      path.join(dir, 'src', 'index.ts'),
+    ];
+    const collisions = targets.filter((p) => existsSync(p));
+    if (collisions.length > 0) {
+      console.error(
+        pc.red('❌ Refusing to overwrite existing files:\n') +
+          collisions.map((p) => `   - ${p}`).join('\n') +
+          pc.yellow("\n\nRe-run with '--force' if you really want to replace them.")
+      );
+      process.exit(1);
+    }
+  }
+
+  await fs.mkdir(path.join(dir, 'src'), { recursive: true });
+
+  const pkgJson: any = {
+    name: projectName,
     version: '1.0.0',
     private: true,
+    type: 'module',
     scripts: {
       dev: 'axiomify dev src/index.ts',
       build: 'axiomify build src/index.ts',
@@ -41,20 +75,60 @@ export async function initProject(
     dependencies: {
       '@axiomify/core': 'latest',
       '@axiomify/express': 'latest',
+      '@axiomify/helmet': 'latest',
+      '@axiomify/cors': 'latest',
+      '@axiomify/logger': 'latest',
+      '@axiomify/security': 'latest',
     },
     devDependencies: {
-      // Keep scaffolded projects on the same TS major as the workspace
-      // (^6) so types like `satisfies`, `const` type parameters, etc., don't
-      // drift between the framework and user code.
       typescript: '^6.0.0',
       '@types/node': '^22.0.0',
+      '@axiomify/cli': 'latest',
     },
   };
+
+  if (answers.useEslint) {
+    pkgJson.devDependencies = {
+      ...pkgJson.devDependencies,
+      eslint: '^9.0.0',
+      prettier: '^3.0.0',
+      'eslint-config-prettier': '^9.0.0',
+      'eslint-plugin-prettier': '^5.0.0',
+      '@typescript-eslint/eslint-plugin': '^7.0.0',
+      '@typescript-eslint/parser': '^7.0.0',
+    };
+    pkgJson.scripts.lint = 'eslint . --ext .ts';
+    pkgJson.scripts.format = 'prettier --write "src/**/*.ts"';
+
+    const eslintConfig = `module.exports = {
+  parser: '@typescript-eslint/parser',
+  extends: [
+    'plugin:@typescript-eslint/recommended',
+    'plugin:prettier/recommended',
+  ],
+  parserOptions: {
+    ecmaVersion: 2022,
+    sourceType: 'module',
+  },
+  rules: {},
+};`;
+
+    const prettierConfig = `{
+  "semi": true,
+  "trailingComma": "all",
+  "singleQuote": true,
+  "printWidth": 100,
+  "tabWidth": 2
+}`;
+
+    await fs.writeFile(path.join(dir, '.eslintrc.js'), eslintConfig);
+    await fs.writeFile(path.join(dir, '.prettierrc'), prettierConfig);
+  }
 
   const tsConfig = {
     compilerOptions: {
       target: 'ES2022',
-      module: 'CommonJS',
+      module: 'ESNext',
       moduleResolution: 'node',
       strict: true,
       esModuleInterop: true,
@@ -65,11 +139,20 @@ export async function initProject(
     include: ['src/**/*'],
   };
 
-  const indexTs = `import { Axiomify, z } from '@axiomify/core';
+  const indexTs = `import { Axiomify } from '@axiomify/core';
 import { ExpressAdapter } from '@axiomify/express';
+import { useHelmet } from '@axiomify/helmet';
+import { useCors } from '@axiomify/cors';
+import { useLogger } from '@axiomify/logger';
+import { useSecurity } from '@axiomify/security';
 
-// Exporting the app instance is required for the 'axiomify routes' CLI command
 export const app = new Axiomify();
+
+// Security Hardening
+useHelmet(app);
+useCors(app);
+useSecurity(app);
+useLogger(app);
 
 app.route({
   method: 'GET',
@@ -79,23 +162,29 @@ app.route({
   }
 });
 
-// Prevent listening during CLI inspection
 if (require.main === module) {
   const adapter = new ExpressAdapter(app);
   adapter.listen(3000, () => console.log('🚀 Axiomify engine online on port 3000'));
 }
 `;
 
-  await fs.writeFile(
-    path.join(dir, 'package.json'),
-    JSON.stringify(pkgJson, null, 2),
-  );
-  await fs.writeFile(
-    path.join(dir, 'tsconfig.json'),
-    JSON.stringify(tsConfig, null, 2),
-  );
+  await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify(pkgJson, null, 2));
+  await fs.writeFile(path.join(dir, 'tsconfig.json'), JSON.stringify(tsConfig, null, 2));
   await fs.writeFile(path.join(dir, 'src', 'index.ts'), indexTs);
 
-  console.log(`✅ Axiomify project initialized in ${dir}`);
-  console.log(`📦 Run 'npm install' to install dependencies.`);
+  console.log(pc.green(`\n✅ Axiomify project initialized in ${pc.bold(dir)}`));
+
+  if (answers.installDeps) {
+    console.log(pc.cyan('📦 Installing dependencies...'));
+    try {
+      await execa('npm', ['install'], { cwd: dir, stdio: 'inherit' });
+      console.log(pc.green('✅ Dependencies installed successfully!'));
+    } catch (error) {
+      console.error(pc.red('❌ Failed to install dependencies. Please run "npm install" manually.'));
+    }
+  } else {
+    console.log(pc.yellow(`\n📦 Run "cd ${projectName} && npm install" to get started.`));
+  }
+
+  console.log(pc.cyan(`\n🔥 Run "npm run dev" to start your development server!`));
 }
