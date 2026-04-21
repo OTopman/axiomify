@@ -8,6 +8,7 @@ This index lists every Axiomify package alphabetically.
 - [@axiomify/cors](./cors.md)
 - [@axiomify/express](./express.md)
 - [@axiomify/fastify](./fastify.md)
+- [@axiomify/graphql](./graphql.md)
 - [@axiomify/hapi](./hapi.md)
 - [@axiomify/helmet](./helmet.md)
 - [@axiomify/http](./http.md)

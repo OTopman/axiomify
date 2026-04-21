@@ -7,6 +7,8 @@ import { useUpload } from '@axiomify/upload';
 import { useWebSockets, WsManager } from '@axiomify/ws';
 import { randomUUID } from 'crypto';
 import { createReadStream } from 'fs';
+import { GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
+import { useGraphQL } from '@axiomify/graphql';
 import path from 'path';
 
 export const app = new Axiomify();
@@ -21,6 +23,23 @@ const requireAuth = createAuthPlugin({
 useHelmet(app, {
   contentSecurityPolicy: '',
 });
+
+
+
+const schema = new GraphQLSchema({
+  query: new GraphQLObjectType({
+    name: 'Query',
+    fields: {
+      hello: {
+        type: GraphQLString,
+        resolve: (_root, _args, ctx) =>
+          `Hello, ${ctx.user?.name ?? 'stranger'}`,
+      },
+    },
+  }),
+});
+useGraphQL(app, { schema });
+
 
 // useLogger(app);
 // useMetrics(app);
@@ -145,6 +164,8 @@ if (require.main === module) {
   const adapter = new ExpressAdapter(app);
   const server = adapter.listen(3000, () => {
     console.log('🚀 Axiomify engine online on port 3000');
+    console.log('GraphQL ready at http://localhost:3000/graphql');
+    console.log('Playground at   http://localhost:3000/graphql/playground');
   });
 
   // Note: two arguments. `useWebSockets` returns void; the manager is

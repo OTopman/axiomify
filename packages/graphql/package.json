@@ -1,9 +1,9 @@
 {
-  "name": "@axiomify/cli",
+  "name": "@axiomify/graphql",
   "version": "4.1.0",
-  "bin": {
-    "axiomify": "./dist/index.js"
-  },
+  "description": "GraphQL plugin for Axiomify — schema-first, zero-boilerplate GraphQL endpoint with built-in GraphiQL playground.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "files": [
     "dist"
   ],
@@ -15,8 +15,10 @@
   },
   "dependencies": {
     "@axiomify/core": "*",
-    "commander": "12.0.0",
-    "esbuild": "0.20.1"
+    "graphql": "^16.8.1"
+  },
+  "peerDependencies": {
+    "graphql": "^16.0.0"
   },
   "exports": {
     ".": {

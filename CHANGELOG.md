@@ -1,5 +1,44 @@
 # Changelog
 
+## [4.1.0] - 2026-04-21
+
+### ✨ New Packages
+
+- **`@axiomify/graphql`** — Drop-in GraphQL endpoint plugin. Mounts a
+  spec-compliant POST + GET endpoint and an optional GraphiQL 3 playground
+  on any `Axiomify` instance via `useGraphQL(app, options)`.
+
+  Key features:
+  - **Per-request context factory** — `context: (req, res) => ({...})` runs
+    before every resolver, allowing auth tokens, DB handles, and user objects
+    to be injected cleanly.
+  - **Depth limiting** — `maxDepth` rejects deeply nested queries before they
+    reach the schema, defending against query complexity abuse.
+  - **Alias limiting** — `maxAliases` rejects alias-batching attacks at the
+    same pre-execution stage.
+  - **Custom validation rules** — `validationRules` accepts additional rules
+    alongside the GraphQL spec defaults (e.g. `NoSchemaIntrospectionCustomRule`
+    for production lockdown).
+  - **GraphiQL playground** — served at `{path}/playground`, fully customisable
+    path, opt-out with `playground: false`.
+  - **GraphQL spec error handling** — resolver errors return HTTP 200 with
+    `{ errors: [...] }` per spec; only parse/validation failures return 4xx.
+  - `graphql ^16.0.0` peer dependency.
+
+### 📖 Documentation & Examples
+
+- `docs/packages/graphql.md` — Full reference page: install, all options,
+  endpoint descriptions, context factory, depth/alias limiting, custom
+  validation rules, and error handling behaviour.
+- `docs/packages/README.md` — `@axiomify/graphql` added alphabetically.
+- `examples/graphql-server.ts` — Runnable example showing GraphQL alongside
+  REST routes, with context injection, depth limits, and a `curl` quickstart.
+- `README.md` — Package table entry, new §11 GraphQL guide section with
+  annotated code sample, examples list entry. Sections §11–§16 renumbered
+  to §12–§17 accordingly.
+
+---
+
 ## [4.0.0] - 2026-04-20
 
 ### ⚠️ BREAKING CHANGES

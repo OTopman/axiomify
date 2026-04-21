@@ -55,6 +55,7 @@ Axiomify is distributed as a suite of 16 interoperable packages. Install only wh
 | **`@axiomify/metrics`** | Prometheus-compatible observability exporting per-route request counts and total latency, with bounded label cardinality via matched route patterns. |
 | **`@axiomify/logger`** | Zero-dependency, colorized terminal logging with PII masking via `maskify-ts`. |
 | **`@axiomify/openapi`** | Auto-generates Swagger/OpenAPI documentation derived directly from your Zod schemas. |
+| **`@axiomify/graphql`** | Drop-in GraphQL endpoint with context factory, depth/alias limits, and a built-in GraphiQL playground. |
 | **`@axiomify/upload`** | RAM-safe, stream-based multipart/form-data parsing with secure filename handling and path traversal protection. |
 | **`@axiomify/static`** | Secure static file serving with directory traversal protection, streaming responses, and 304 Not Modified support. |
 | **`@axiomify/ws`** | Schema-first WebSocket management with Zod validation, room/broadcast support, and per-client heartbeat. |
@@ -402,7 +403,45 @@ No separate schema files — your Zod definitions *are* your spec.
 
 ---
 
-### 11. Security Headers with Helmet
+### 11. GraphQL
+
+Mount a fully-featured GraphQL endpoint alongside your REST routes:
+
+```typescript
+import { buildSchema } from 'graphql';
+import { useGraphQL } from '@axiomify/graphql';
+
+const schema = buildSchema(`
+  type Query {
+    hello: String
+    user(id: ID!): User
+  }
+  type User {
+    id: ID!
+    name: String
+  }
+`);
+
+useGraphQL(app, {
+  schema,
+  path: '/graphql',          // default
+  playground: true,          // GraphiQL UI at /graphql/playground
+  maxDepth: 8,               // reject deeply-nested queries
+  maxAliases: 15,            // reject alias-batching abuse
+  context: (req) => ({
+    userId: req.headers['x-user-id'],
+  }),
+});
+```
+
+- **POST `/graphql`** — primary query endpoint (`{ query, variables, operationName }`)
+- **GET `/graphql`** — query-string queries for introspection and tooling
+- **GET `/graphql/playground`** — GraphiQL 3 UI (disable with `playground: false`)
+- Resolver errors follow the GraphQL spec: HTTP 200 with `{ errors: [...] }`
+
+---
+
+### 13. Security Headers with Helmet
 
 ```typescript
 import { useHelmet } from '@axiomify/helmet';
@@ -425,7 +464,7 @@ Every header defaults to a safe value — pass `false` on any field to opt out. 
 
 ---
 
-### 12. Structured Logging with PII Masking
+### 14. Structured Logging with PII Masking
 
 ```typescript
 import { useLogger } from '@axiomify/logger';
@@ -440,7 +479,7 @@ useLogger(app, {
 
 ---
 
-### 13. Static File Serving
+### 15. Static File Serving
 
 ```typescript
 import { serveStatic } from '@axiomify/static';
@@ -456,7 +495,7 @@ Streams responses (never buffers full files into RAM), resolves MIME types from 
 
 ---
 
-### 14. Lifecycle Hooks
+### 16. Lifecycle Hooks
 
 Hooks run globally across every route. They are the extension point behind every plugin in this document:
 
@@ -472,7 +511,7 @@ If any hook or plugin calls `res.send()` before the handler runs, the handler is
 
 ---
 
-### 15. Route Groups & Global Rate Limiting
+### 17. Route Groups & Global Rate Limiting
 
 ```typescript
 import { useRateLimit } from '@axiomify/rate-limit';
@@ -490,11 +529,11 @@ app.group('/api/v1', { plugins: [requireAuth] }, (v1) => {
 });
 ```
 
-Group prefixes are normalised (no double slashes, no trailing slash), and plugins inherit through every level of nesting.
+Group prefixes are normalized (no double slashes, no trailing slash), and plugins inherit through every level of nesting.
 
 ---
 
-### 16. Custom Response Envelope
+### 18. Custom Response Envelope
 
 By default every `res.send(data, message?)` is wrapped in `{ status, message, data }`. Override the envelope globally:
 
