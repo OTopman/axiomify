@@ -180,6 +180,8 @@ export async function initProject(
       skipLibCheck: true,
       forceConsistentCasingInFileNames: true,
       outDir: './dist',
+      rootDir: './src',
+      types: ['node'],
     },
     include: ['src/**/*'],
   };
