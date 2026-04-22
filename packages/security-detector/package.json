@@ -1,5 +1,5 @@
 {
-  "name": "@axiomify/security",
+  "name": "@axiomify/security-detector",
   "version": "1.0.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -11,11 +11,6 @@
   },
   "scripts": {
     "build": "tsup"
-  },
-  "dependencies": {
-    "@axiomify/core": "*",
-    "@axiomify/security-detector": "*",
-    "@axiomify/security-sanitizer": "*"
   },
   "exports": {
     ".": {

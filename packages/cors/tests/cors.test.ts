@@ -20,7 +20,7 @@ describe('CORS Plugin', () => {
     useCors(app, { origin: 'http://safe.com' });
     app.route({ method: 'GET', path: '/', handler: async (r, res) => res.send('ok') });
     
-    const req = { method: 'GET', path: '/', headers: {}, id: '1', params: {} } as any;
+    const req = { method: 'GET', path: '/', headers: { origin: 'http://safe.com' }, id: '1', params: {} } as any;
     const res = { status: vi.fn().mockReturnThis(), send: vi.fn(), header: vi.fn().mockReturnThis(), headersSent: false } as any;
     
     await app.handle(req, res);

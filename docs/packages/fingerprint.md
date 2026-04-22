@@ -2,6 +2,9 @@
 
 Client/request fingerprinting middleware.
 
+This package fingerprints server-observable request signals. For advanced browser/device
+intelligence and anti-fraud telemetry, pair this with a client SDK.
+
 ## Install
 
 ```bash
@@ -19,6 +22,7 @@ npm install @axiomify/fingerprint
 - `includeIp`
 - `includePath`
 - `additionalHeaders`
+- `trustProxyHeaders`
 
 ## Example
 

@@ -1,6 +1,20 @@
 import { defineConfig } from 'vitest/config';
+import { resolve } from 'node:path';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@axiomify/core': resolve(__dirname, 'packages/core/src/index.ts'),
+      '@axiomify/security-detector': resolve(
+        __dirname,
+        'packages/security-detector/src/index.ts',
+      ),
+      '@axiomify/security-sanitizer': resolve(
+        __dirname,
+        'packages/security-sanitizer/src/index.ts',
+      ),
+    },
+  },
   test: {
     coverage: {
       provider: 'v8',

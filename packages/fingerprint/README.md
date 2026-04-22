@@ -2,6 +2,9 @@
 
 Client/request fingerprinting middleware for Axiomify.
 
+> Note: this is a server-side request fingerprint utility. It is **not** a replacement
+> for full client-side anti-fraud platforms such as Fingerprint Pro.
+
 ## Install
 
 ```bash
@@ -24,7 +27,7 @@ For each request, the plugin stores:
 
 - `req.state.fingerprint`
 - `req.state.fingerprintData`
-- `req.state.fingerprintConfidence` (0-98)
+- `req.state.fingerprintConfidence` (0-98 weighted score)
 
 ## Options
 
@@ -33,3 +36,4 @@ For each request, the plugin stores:
 - `includeIp?: boolean`
 - `includePath?: boolean`
 - `additionalHeaders?: string[]`
+- `trustProxyHeaders?: boolean`

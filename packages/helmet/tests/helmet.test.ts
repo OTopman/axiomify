@@ -16,7 +16,10 @@ describe('Helmet Plugin', () => {
     
     expect(mockRes.header).toHaveBeenCalledWith('X-Content-Type-Options', 'nosniff');
     expect(mockRes.header).toHaveBeenCalledWith('X-Frame-Options', 'DENY');
-    expect(mockRes.header).not.toHaveBeenCalledWith('Strict-Transport-Security', expect.any(String));
+    expect(mockRes.header).toHaveBeenCalledWith(
+      'Strict-Transport-Security',
+      'max-age=15552000; includeSubDomains',
+    );
   });
 
   it('allows disabling specific headers', async () => {

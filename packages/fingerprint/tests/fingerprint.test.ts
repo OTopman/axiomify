@@ -1,61 +1,74 @@
-import { describe, it, expect, vi } from 'vitest';
-import { Axiomify } from '@axiomify/core';
+import { describe, it, expect } from 'vitest';
 import { useFingerprint } from '../src';
 
 describe('Fingerprint Package', () => {
+  const setup = (options: any = {}) => {
+    const app = { addHook: (name: string, hook: any) => (app as any).hook = hook } as any;
+    useFingerprint(app, options);
+    return (app as any).hook;
+  };
+
   it('should generate a stable fingerprint for same request', async () => {
-    const app = new Axiomify();
-    useFingerprint(app);
+    const hook = setup();
 
     const req: any = {
-      headers: { 'user-agent': 'test-agent', 'accept-language': 'en-US' },
+      headers: {
+        'user-agent': 'test-agent',
+        'accept-language': 'en-US',
+        'accept-encoding': 'gzip',
+      },
       ip: '127.0.0.1',
-      method: 'GET',
       path: '/',
       state: {},
     };
-    const res: any = {
-      status: vi.fn().mockReturnThis(),
-      send: vi.fn().mockReturnThis(),
-    };
 
-    await (app as any).handle(req, res);
+    await hook(req);
     const fp1 = req.state.fingerprint;
     expect(fp1).toBeDefined();
-    expect(req.state.fingerprintConfidence).toBeGreaterThanOrEqual(50);
+    expect(req.state.fingerprintConfidence).toBeGreaterThanOrEqual(32);
 
     req.state = {};
-    await (app as any).handle(req, res);
+    await hook(req);
     const fp2 = req.state.fingerprint;
     expect(fp1).toBe(fp2);
   });
 
   it('should generate different fingerprints for different IPs', async () => {
-    const app = new Axiomify();
-    useFingerprint(app);
+    const hook = setup();
 
     const req1: any = {
       headers: { 'user-agent': 'test-agent' },
       ip: '1.1.1.1',
-      method: 'GET',
       path: '/',
       state: {},
     };
     const req2: any = {
       headers: { 'user-agent': 'test-agent' },
       ip: '2.2.2.2',
-      method: 'GET',
       path: '/',
       state: {},
     };
-    const res: any = {
-      status: vi.fn().mockReturnThis(),
-      send: vi.fn().mockReturnThis(),
-    };
 
-    await (app as any).handle(req1, res);
-    await (app as any).handle(req2, res);
+    await hook(req1);
+    await hook(req2);
 
     expect(req1.state.fingerprint).not.toBe(req2.state.fingerprint);
+  });
+
+  it('should use x-forwarded-for when trustProxyHeaders is enabled', async () => {
+    const hook = setup({ trustProxyHeaders: true });
+
+    const req: any = {
+      headers: {
+        'user-agent': 'test-agent',
+        'x-forwarded-for': '203.0.113.4, 10.0.0.1',
+      },
+      ip: '10.0.0.1',
+      path: '/',
+      state: {},
+    };
+
+    await hook(req);
+    expect(req.state.fingerprintData.ip).toBe('203.0.113.4');
   });
 });

@@ -1,6 +1,11 @@
 # @axiomify/security
 
-Security hardening middleware for Axiomify apps.
+Composed security middleware for Axiomify apps.
+
+This package now composes two lower-level packages for simpler maintenance:
+
+- `@axiomify/security-detector` (attack pattern and user-agent detection)
+- `@axiomify/security-sanitizer` (XSS/null-byte/prototype + HPP helpers)
 
 ## Install
 
@@ -24,16 +29,6 @@ useSecurity(app, {
 });
 ```
 
-## Main protections
-
-- Request body size guard via `content-length`
-- SQL / NoSQL payload heuristics
-- HTTP parameter pollution normalization
-- XSS sanitization of body/query/params
-- Prototype pollution key stripping
-- Null-byte sanitization
-- Suspicious scanner user-agent blocking
-
 ## Options
 
 - `xssProtection?: boolean`
@@ -45,3 +40,5 @@ useSecurity(app, {
 - `nullByteProtection?: boolean`
 - `botProtection?: boolean`
 - `blockedUserAgentPatterns?: RegExp[]`
+- `sqlPatterns?: RegExp[]`
+- `noSqlPatterns?: RegExp[]`

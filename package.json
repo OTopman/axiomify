@@ -11,7 +11,7 @@
     "examples/*"
   ],
   "scripts": {
-    "build": "npm run build -w @axiomify/core -w @axiomify/auth -w @axiomify/cli -w @axiomify/cors -w @axiomify/express -w @axiomify/fastify -w @axiomify/graphql -w @axiomify/hapi -w @axiomify/helmet -w @axiomify/http -w @axiomify/logger -w @axiomify/metrics -w @axiomify/openapi -w @axiomify/rate-limit -w @axiomify/static -w @axiomify/upload -w @axiomify/ws",
+    "build": "npm run build -w @axiomify/core -w @axiomify/auth -w @axiomify/cli -w @axiomify/cors -w @axiomify/express -w @axiomify/fastify -w @axiomify/fingerprint -w @axiomify/graphql -w @axiomify/hapi -w @axiomify/helmet -w @axiomify/http -w @axiomify/logger -w @axiomify/metrics -w @axiomify/openapi -w @axiomify/rate-limit -w @axiomify/security-detector -w @axiomify/security-sanitizer -w @axiomify/security -w @axiomify/static -w @axiomify/upload -w @axiomify/ws",
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage"

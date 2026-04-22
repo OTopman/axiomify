@@ -2,7 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src"
+    "paths": {
+      "@axiomify/security-detector": ["../security-detector/src/index.ts"],
+      "@axiomify/security-sanitizer": ["../security-sanitizer/src/index.ts"]
+    }
   },
   "include": ["src/**/*"]
 }
