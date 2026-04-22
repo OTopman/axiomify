@@ -15,22 +15,26 @@ npm install -D @axiomify/cli
 - `axiomify build [entry]`
 - `axiomify routes [entry]`
 
+## `init` prompts
+
+`axiomify init` now supports:
+- project name (if no target directory is supplied)
+- project description
+- optional ESLint + Prettier + EditorConfig files
+- package manager choice (`npm`, `pnpm`, `yarn`)
+- optional git initialization
+- optional dependency installation
+
+## Scaffolding output
+
+Generated project includes:
+- baseline scripts (`dev`, `build`, `start`, `routes`, `typecheck`)
+- optional lint scripts (`lint`, `lint:fix`, `format`)
+- optional `.eslintrc.cjs`, `.prettierrc`, `.prettierignore`, `.editorconfig`
+- starter integrations for `helmet`, `cors`, `security`, `rate-limit`, `fingerprint`, and `logger`
+
 ## Notes
 
 - `init` refuses to overwrite key files unless you pass `--force`
-- `dev` bundles to `.axiomify/dev.js` and restarts on rebuild
-- `build` outputs `dist/index.js`
-- `routes` expects your entry file to export the app instance
-
-## Recommended Scripts
-
-```json
-{
-  "scripts": {
-    "dev": "axiomify dev src/index.ts",
-    "build": "axiomify build src/index.ts",
-    "start": "node dist/index.js",
-    "routes": "axiomify routes src/index.ts"
-  }
-}
-```
+- install command uses the selected package manager
+- final startup hint uses package-manager-specific dev command

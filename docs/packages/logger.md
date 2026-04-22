@@ -15,13 +15,19 @@ npm install @axiomify/logger maskify-ts
 ## Options
 
 - `sensitiveFields`
-- `level`
+- `level` (`debug` | `info` | `warn` | `error`)
+- `beautify`
+- `includeHeaders`
+- `includePayload`
 
 ## Example
 
 ```ts
 useLogger(app, {
   level: 'info',
+  beautify: true,
+  includeHeaders: true,
+  includePayload: false,
   sensitiveFields: ['password', 'token', 'authorization'],
 });
 ```
@@ -29,6 +35,6 @@ useLogger(app, {
 ## Behavior
 
 - logs incoming requests in `onRequest`
-- logs outgoing responses in `onPostHandler`
-- logs thrown errors in `onError`
-- uses `maskify-ts` to redact sensitive fields
+- logs outgoing responses + latency in `onPostHandler`
+- logs normalized errors in `onError`
+- masks sensitive fields using `maskify-ts`
