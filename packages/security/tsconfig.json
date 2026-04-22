@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "rootDir": "./src",
     "outDir": "./dist",
     "paths": {
       "@axiomify/detector": ["../detector/src/index.ts"],
