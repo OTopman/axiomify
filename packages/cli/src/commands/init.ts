@@ -127,7 +127,7 @@ export async function initProject(
   if (answers.useEslint) {
     pkgJson.devDependencies = {
       ...pkgJson.devDependencies,
-      eslint: '^9.0.0',
+      eslint: '^8.57.0',
       prettier: '^3.0.0',
       'eslint-config-prettier': '^9.0.0',
       'eslint-plugin-prettier': '^5.0.0',
