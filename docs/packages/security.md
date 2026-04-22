@@ -2,10 +2,6 @@
 
 Security hardening middleware for Axiomify.
 
-Built on top of:
-- `@axiomify/detector`
-- `@axiomify/sanitizer`
-
 ## Install
 
 ```bash

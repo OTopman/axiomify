@@ -2,11 +2,6 @@
 
 Composed security middleware for Axiomify apps.
 
-This package now composes two lower-level packages for simpler maintenance:
-
-- `@axiomify/detector` (attack pattern and user-agent detection)
-- `@axiomify/sanitizer` (XSS/null-byte/prototype + HPP helpers)
-
 ## Install
 
 ```bash

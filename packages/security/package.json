@@ -13,9 +13,7 @@
     "build": "tsup"
   },
   "dependencies": {
-    "@axiomify/core": "*",
-    "@axiomify/detector": "*",
-    "@axiomify/sanitizer": "*"
+    "@axiomify/core": "*"
   },
   "exports": {
     ".": {
