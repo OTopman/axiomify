@@ -4,6 +4,7 @@ import { ExpressAdapter } from '@axiomify/express';
 import { useHelmet } from '@axiomify/helmet';
 import { useOpenAPI } from '@axiomify/openapi';
 import { useUpload } from '@axiomify/upload';
+import { useLogger } from '@axiomify/logger';
 import { useWebSockets, WsManager } from '@axiomify/ws';
 import { randomUUID } from 'crypto';
 import { createReadStream } from 'fs';
@@ -24,7 +25,7 @@ useHelmet(app, {
   contentSecurityPolicy: '',
 });
 
-
+useLogger(app);
 
 const schema = new GraphQLSchema({
   query: new GraphQLObjectType({

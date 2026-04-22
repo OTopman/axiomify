@@ -98,7 +98,6 @@ export async function initProject(
     name: projectName,
     version: '1.0.0',
     private: true,
-    type: 'module',
     description: answers.description,
     scripts: {
       dev: 'axiomify dev src/index.ts',
@@ -185,7 +184,7 @@ export async function initProject(
     include: ['src/**/*'],
   };
 
-  const indexTs = `import { fileURLToPath } from 'node:url';
+  const indexTs = `
 import { Axiomify } from '@axiomify/core';
 import { ExpressAdapter } from '@axiomify/express';
 import { useHelmet } from '@axiomify/helmet';
@@ -212,8 +211,7 @@ app.route({
   },
 });
 
-const __filename = fileURLToPath(import.meta.url);
-if (process.argv[1] === __filename) {
+if (require.main === module) {
   const adapter = new ExpressAdapter(app);
   adapter.listen(3000, () => console.log('🚀 Axiomify online on port 3000'));
 }
