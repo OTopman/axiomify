@@ -9,15 +9,23 @@ declare module '@axiomify/core' {
 }
 
 export interface LoggerOptions {
-  /** Fields to mask in logs. Default: common sensitive fields */
   sensitiveFields?: string[];
-  /** Log level. Default: 'info' */
   level?: 'debug' | 'info' | 'warn' | 'error';
-  /** Whether to beautify console output. Default: true (if TTY) */
   beautify?: boolean;
+  includeHeaders?: boolean;
+  includePayload?: boolean;
 }
 
-export function useLogger(app: Axiomify, options: LoggerOptions = {}) {
+type LogLevel = NonNullable<LoggerOptions['level']>;
+
+const LEVEL_RANK: Record<LogLevel, number> = {
+  debug: 0,
+  info: 1,
+  warn: 2,
+  error: 3,
+};
+
+export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
   const sensitiveFields = options.sensitiveFields || [
     'password',
     'token',
@@ -25,62 +33,56 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}) {
     'credit_card',
     'ssn',
     'cookie',
-    'set-cookie'
+    'set-cookie',
   ];
-  const logLevel = options.level || 'info';
+  const logLevel = options.level ?? 'info';
   const beautify = options.beautify ?? process.stdout.isTTY ?? true;
-  
-  const levels = { debug: 0, info: 1, warn: 2, error: 3 };
-  const currentLevelInt = levels[logLevel];
+  const includeHeaders = options.includeHeaders ?? true;
+  const includePayload = options.includePayload ?? true;
 
   const maskify = new Maskify({
     sensitiveKeys: sensitiveFields,
     maskChar: '*',
-    visibleStart: 0,
+    visibleStart: 1,
     visibleEnd: 2,
   });
 
-  const log = (
-    level: keyof typeof levels,
-    message: string,
-    meta: Record<string, any>,
-  ) => {
-    if (levels[level] < currentLevelInt) return;
+  const emit = (level: LogLevel, message: string, meta: Record<string, any> = {}) => {
+    if (LEVEL_RANK[level] < LEVEL_RANK[logLevel]) return;
 
     const timestamp = new Date().toISOString();
     const maskedMeta = maskify.mask(meta);
 
     if (beautify) {
-      const levelColors = {
+      const colorMap = {
         debug: pc.gray,
-        info: pc.blue,
+        info: pc.cyan,
         warn: pc.yellow,
         error: pc.red,
-      };
-      const color = levelColors[level];
-      
-      console.log(
-        `${pc.gray(`[${timestamp}]`)} ${color(level.toUpperCase().padEnd(5))} ${pc.bold(message)}`,
-        Object.keys(maskedMeta).length > 0 ? pc.cyan(JSON.stringify(maskedMeta, null, 2)) : ''
-      );
-    } else {
-      process.stdout.write(
-        JSON.stringify({
-          timestamp,
-          level: level.toUpperCase(),
-          message,
-          ...maskedMeta,
-        }) + '\n',
-      );
+      } as const;
+      const color = colorMap[level];
+      const summary = `${pc.gray(timestamp)} ${color(level.toUpperCase())} ${pc.bold(message)}`;
+      const details = Object.keys(maskedMeta).length
+        ? `\n${pc.dim(JSON.stringify(maskedMeta, null, 2))}`
+        : '';
+      console.log(`${summary}${details}`);
+      return;
     }
+
+    process.stdout.write(
+      `${JSON.stringify({ timestamp, level: level.toUpperCase(), message, ...maskedMeta })}\n`,
+    );
   };
 
-  app.addHook('onRequest', (req, res) => {
+  app.addHook('onRequest', (req) => {
     req.state.startTime = process.hrtime.bigint();
-    log('info', `Incoming ${req.method} ${req.path}`, {
+
+    emit('info', 'Incoming Request', {
       requestId: req.id,
+      method: req.method,
+      path: req.path,
       ip: req.ip,
-      headers: req.headers,
+      ...(includeHeaders ? { headers: req.headers } : {}),
     });
   });
 
@@ -90,15 +92,13 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}) {
       ? Number(endTime - req.state.startTime) / 1_000_000
       : 0;
 
-    const status = res.status();
-    const statusColor = status >= 500 ? pc.red : status >= 400 ? pc.yellow : pc.green;
-
-    log('info', `Outgoing Response ${statusColor(status)}`, {
+    emit('info', 'Outgoing Response', {
       requestId: req.id,
       method: req.method,
       path: req.path,
       durationMs: durationMs.toFixed(3),
-      payload: (res as any).payload,
+      statusCode: res.statusCode,
+      ...(includePayload ? { payload: (res as any).payload } : {}),
     });
   });
 
@@ -107,13 +107,13 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}) {
     const durationMs = req.state.startTime
       ? Number(endTime - req.state.startTime) / 1_000_000
       : 0;
-      
+
     const errorObj =
       err instanceof Error
         ? { name: err.name, message: err.message, stack: err.stack }
-        : { err };
+        : { message: String(err), value: err };
 
-    log('error', `Request Failed: ${errorObj.message}`, {
+    emit('error', 'Request Failed', {
       requestId: req.id,
       method: req.method,
       path: req.path,

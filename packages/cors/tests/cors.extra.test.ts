@@ -105,6 +105,33 @@ describe('CORS Plugin — extended', () => {
     expect(res.status).toHaveBeenCalledWith(204);
   });
 
+  it('appends Access-Control-Request-Headers to existing Vary values', async () => {
+    const app = new Axiomify();
+    useCors(app, { origin: 'http://trusted.example' });
+
+    const res = makeRes();
+    res._headers.Vary = 'Origin';
+
+    await app.handle(
+      {
+        method: 'OPTIONS',
+        path: '/',
+        headers: {
+          origin: 'http://trusted.example',
+          'access-control-request-headers': 'x-custom-header',
+        },
+        id: 'c',
+        params: {},
+      } as any,
+      res,
+    );
+
+    expect(res.header).toHaveBeenCalledWith(
+      'Vary',
+      'Origin, Access-Control-Request-Headers',
+    );
+  });
+
   it('emits Access-Control-Allow-Credentials when credentials:true and origin is specific', async () => {
     const app = new Axiomify();
     useCors(app, {

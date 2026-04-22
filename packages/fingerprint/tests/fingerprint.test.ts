@@ -8,7 +8,7 @@ describe('Fingerprint Package', () => {
     useFingerprint(app);
 
     const req: any = {
-      headers: { 'user-agent': 'test-agent' },
+      headers: { 'user-agent': 'test-agent', 'accept-language': 'en-US' },
       ip: '127.0.0.1',
       method: 'GET',
       path: '/',
@@ -22,8 +22,8 @@ describe('Fingerprint Package', () => {
     await (app as any).handle(req, res);
     const fp1 = req.state.fingerprint;
     expect(fp1).toBeDefined();
+    expect(req.state.fingerprintConfidence).toBeGreaterThanOrEqual(50);
 
-    // Reset state and run again
     req.state = {};
     await (app as any).handle(req, res);
     const fp2 = req.state.fingerprint;
@@ -55,7 +55,7 @@ describe('Fingerprint Package', () => {
 
     await (app as any).handle(req1, res);
     await (app as any).handle(req2, res);
-    
+
     expect(req1.state.fingerprint).not.toBe(req2.state.fingerprint);
   });
 });

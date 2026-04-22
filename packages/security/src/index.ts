@@ -1,17 +1,90 @@
-import type { Axiomify, AxiomifyRequest, AxiomifyResponse } from '@axiomify/core';
+import type { Axiomify, AxiomifyRequest } from '@axiomify/core';
 import filterXSS from 'xss';
 
 export interface SecurityOptions {
   /** Enable XSS protection for body, query, and params. Default: true */
   xssProtection?: boolean;
-  /** Enable Parameter Pollution protection. Default: true */
+  /** Enable HTTP parameter pollution mitigation. Default: true */
   hppProtection?: boolean;
   /** Max request body size in bytes. Default: 1mb */
   maxBodySize?: number;
-  /** SQL Injection detection (Basic pattern matching). Default: true */
+  /** SQL Injection detection (heuristics). Default: true */
   sqlInjectionProtection?: boolean;
-  /** Content-Encoding support (compression). Default: true */
-  compression?: boolean;
+  /** Basic NoSQL injection detection (Mongo operators). Default: true */
+  noSqlInjectionProtection?: boolean;
+  /** Strip prototype pollution keys such as __proto__, constructor, prototype. Default: true */
+  prototypePollutionProtection?: boolean;
+  /** Reject requests with null bytes in input. Default: true */
+  nullByteProtection?: boolean;
+  /** Block suspicious user-agent signatures. Default: true */
+  botProtection?: boolean;
+  /** Custom UA deny-list patterns for botProtection. */
+  blockedUserAgentPatterns?: RegExp[];
+}
+
+const SQL_PATTERNS = [
+  /(?:\bunion\b\s+\bselect\b)/i,
+  /(?:\bor\b\s+\d+\s*=\s*\d+)/i,
+  /(?:--|\/\*|\*\/|;\s*drop\s+table|\bexec\b\s*\()/i,
+  /(?:\bselect\b.+\bfrom\b)/i,
+];
+
+const NOSQL_PATTERNS = [/\$(?:ne|gt|gte|lt|lte|regex|where|expr|jsonSchema)/i, /\{\s*\$where/i];
+
+const PROTOTYPE_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
+const DEFAULT_BLOCKED_UA_PATTERNS = [
+  /sqlmap/i,
+  /nikto/i,
+  /acunetix/i,
+  /nessus/i,
+  /nmap/i,
+  /masscan/i,
+  /zgrab/i,
+];
+
+function hasPatternMatch(input: unknown, patterns: RegExp[]): boolean {
+  if (typeof input === 'string') return patterns.some((pattern) => pattern.test(input));
+  if (Array.isArray(input)) return input.some((value) => hasPatternMatch(value, patterns));
+  if (input && typeof input === 'object') {
+    return Object.entries(input).some(
+      ([key, value]) =>
+        patterns.some((pattern) => pattern.test(key)) || hasPatternMatch(value, patterns),
+    );
+  }
+  return false;
+}
+
+function sanitizeAndProtect(input: unknown, options: Pick<SecurityOptions, 'xssProtection' | 'prototypePollutionProtection' | 'nullByteProtection'>): unknown {
+  if (typeof input === 'string') {
+    const withoutNullBytes = options.nullByteProtection ? input.replace(/\0/g, '') : input;
+    return options.xssProtection ? filterXSS(withoutNullBytes) : withoutNullBytes;
+  }
+
+  if (Array.isArray(input)) {
+    return input.map((value) => sanitizeAndProtect(value, options));
+  }
+
+  if (input && typeof input === 'object') {
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(input)) {
+      if (options.prototypePollutionProtection && PROTOTYPE_KEYS.has(key)) continue;
+      sanitized[key] = sanitizeAndProtect(value, options);
+    }
+    return sanitized;
+  }
+
+  return input;
+}
+
+function normalizeHpp(input: unknown): unknown {
+  if (!input || typeof input !== 'object') return input;
+
+  const normalized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    normalized[key] = Array.isArray(value) ? value[value.length - 1] : value;
+  }
+  return normalized;
 }
 
 /**
@@ -21,76 +94,50 @@ export function useSecurity(app: Axiomify, options: SecurityOptions = {}): void 
   const {
     xssProtection = true,
     hppProtection = true,
-    maxBodySize = 1024 * 1024, // 1MB
+    maxBodySize = 1024 * 1024,
     sqlInjectionProtection = true,
+    noSqlInjectionProtection = true,
+    prototypePollutionProtection = true,
+    nullByteProtection = true,
+    botProtection = true,
+    blockedUserAgentPatterns = DEFAULT_BLOCKED_UA_PATTERNS,
   } = options;
 
-  app.addHook('onRequest', async (req, res) => {
-    // 1. Request Size Guard
+  app.addHook('onRequest', async (req: AxiomifyRequest, res) => {
     const contentLength = req.headers['content-length'];
-    if (contentLength && parseInt(contentLength as string, 10) > maxBodySize) {
+    const parsedContentLength = typeof contentLength === 'string' ? Number.parseInt(contentLength, 10) : NaN;
+    if (Number.isFinite(parsedContentLength) && parsedContentLength > maxBodySize) {
       res.status(413).send({ error: 'Payload Too Large' });
       return;
     }
 
-    // 2. Parameter Pollution Protection (HPP)
-    if (hppProtection && req.query) {
-      for (const key in req.query) {
-        if (Array.isArray(req.query[key])) {
-          // Keep only the last value to prevent pollution
-          req.query[key] = (req.query[key] as any[]).pop();
-        }
-      }
-    }
-
-    // 3. SQL Injection Detection (Basic Heuristics)
-    if (sqlInjectionProtection) {
-      const sqlPatterns = [
-        /(\%27)|(\')|(\-\-)|(\%23)|(#)/i,
-        /((\%3D)|(=))[^\n]*((\%27)|(\')|(\-\-)|(\%3B)|(;))/i,
-        /\w*((\%27)|(\'))((\%6F)|o|(\%4F))((\%72)|r|(\%52))/i,
-        /((\%27)|(\'))union/i,
-        /exec(\s|\+)+(s|x)p\w+/i,
-      ];
-
-      const checkSqlInjection = (data: any): boolean => {
-        if (typeof data === 'string') {
-          return sqlPatterns.some((pattern) => pattern.test(data));
-        }
-        if (typeof data === 'object' && data !== null) {
-          return Object.values(data).some((val) => checkSqlInjection(val));
-        }
-        return false;
-      };
-
-      if (checkSqlInjection(req.query) || checkSqlInjection(req.params) || checkSqlInjection(req.body)) {
-        res.status(403).send({ error: 'Potential SQL Injection Detected' });
+    if (botProtection) {
+      const userAgent = String(req.headers['user-agent'] ?? '');
+      if (blockedUserAgentPatterns.some((pattern) => pattern.test(userAgent))) {
+        res.status(403).send({ error: 'Suspicious user agent detected' });
         return;
       }
     }
 
-    // 4. XSS Protection
-    if (xssProtection) {
-      const sanitize = (data: any): any => {
-        if (typeof data === 'string') {
-          return filterXSS(data);
-        }
-        if (Array.isArray(data)) {
-          return data.map(sanitize);
-        }
-        if (typeof data === 'object' && data !== null) {
-          const sanitized: any = {};
-          for (const key in data) {
-            sanitized[key] = sanitize(data[key]);
-          }
-          return sanitized;
-        }
-        return data;
-      };
+    if (sqlInjectionProtection && (hasPatternMatch(req.query, SQL_PATTERNS) || hasPatternMatch(req.params, SQL_PATTERNS) || hasPatternMatch(req.body, SQL_PATTERNS))) {
+      res.status(403).send({ error: 'Potential SQL Injection Detected' });
+      return;
+    }
 
-      if (req.body) req.body = sanitize(req.body);
-      if (req.query) req.query = sanitize(req.query);
-      if (req.params) req.params = sanitize(req.params);
+    if (noSqlInjectionProtection && (hasPatternMatch(req.query, NOSQL_PATTERNS) || hasPatternMatch(req.params, NOSQL_PATTERNS) || hasPatternMatch(req.body, NOSQL_PATTERNS))) {
+      res.status(403).send({ error: 'Potential NoSQL Injection Detected' });
+      return;
+    }
+
+    if (hppProtection && req.query && typeof req.query === 'object') {
+      (req as any).query = normalizeHpp(req.query);
+    }
+
+    if (xssProtection || prototypePollutionProtection || nullByteProtection) {
+      const sanitizeOptions = { xssProtection, prototypePollutionProtection, nullByteProtection };
+      if (req.body) (req as any).body = sanitizeAndProtect(req.body, sanitizeOptions);
+      if (req.query) (req as any).query = sanitizeAndProtect(req.query, sanitizeOptions);
+      if (req.params) (req as any).params = sanitizeAndProtect(req.params, sanitizeOptions);
     }
   });
 }
