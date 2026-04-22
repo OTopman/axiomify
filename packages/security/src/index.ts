@@ -6,8 +6,8 @@ import {
   detectNoSqlInjection,
   detectSqlInjection,
   isSuspiciousUserAgent,
-} from '@axiomify/detector';
-import { normalizeHpp, sanitizeInput } from '@axiomify/sanitizer';
+} from './utils/detector';
+import { normalizeHpp, sanitizeInput } from './utils/sanitizer';
 
 export interface SecurityOptions {
   xssProtection?: boolean;
@@ -23,7 +23,10 @@ export interface SecurityOptions {
   noSqlPatterns?: RegExp[];
 }
 
-export function useSecurity(app: Axiomify, options: SecurityOptions = {}): void {
+export function useSecurity(
+  app: Axiomify,
+  options: SecurityOptions = {},
+): void {
   const {
     xssProtection = true,
     hppProtection = true,
@@ -41,9 +44,14 @@ export function useSecurity(app: Axiomify, options: SecurityOptions = {}): void 
   app.addHook('onRequest', async (req: AxiomifyRequest, res) => {
     const contentLength = req.headers['content-length'];
     const parsedContentLength =
-      typeof contentLength === 'string' ? Number.parseInt(contentLength, 10) : NaN;
+      typeof contentLength === 'string'
+        ? Number.parseInt(contentLength, 10)
+        : NaN;
 
-    if (Number.isFinite(parsedContentLength) && parsedContentLength > maxBodySize) {
+    if (
+      Number.isFinite(parsedContentLength) &&
+      parsedContentLength > maxBodySize
+    ) {
       res.status(413).send({ error: 'Payload Too Large' });
       return;
     }
@@ -87,9 +95,12 @@ export function useSecurity(app: Axiomify, options: SecurityOptions = {}): void 
         nullByteProtection,
       };
 
-      if (req.body) (req as any).body = sanitizeInput(req.body, sanitizeOptions);
-      if (req.query) (req as any).query = sanitizeInput(req.query, sanitizeOptions);
-      if (req.params) (req as any).params = sanitizeInput(req.params, sanitizeOptions);
+      if (req.body)
+        (req as any).body = sanitizeInput(req.body, sanitizeOptions);
+      if (req.query)
+        (req as any).query = sanitizeInput(req.query, sanitizeOptions);
+      if (req.params)
+        (req as any).params = sanitizeInput(req.params, sanitizeOptions);
     }
   });
 }

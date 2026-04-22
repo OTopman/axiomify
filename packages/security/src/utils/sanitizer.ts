@@ -22,8 +22,12 @@ export function sanitizeInput(
   },
 ): unknown {
   if (typeof input === 'string') {
-    const withoutNullBytes = options.nullByteProtection ? input.replace(/\0/g, '') : input;
-    return options.xssProtection ? sanitizeXss(withoutNullBytes) : withoutNullBytes;
+    const withoutNullBytes = options.nullByteProtection
+      ? input.replace(/\0/g, '')
+      : input;
+    return options.xssProtection
+      ? sanitizeXss(withoutNullBytes)
+      : withoutNullBytes;
   }
 
   if (Array.isArray(input)) {
@@ -33,7 +37,8 @@ export function sanitizeInput(
   if (input && typeof input === 'object') {
     const sanitized: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(input)) {
-      if (options.prototypePollutionProtection && PROTOTYPE_KEYS.has(key)) continue;
+      if (options.prototypePollutionProtection && PROTOTYPE_KEYS.has(key))
+        continue;
       sanitized[key] = sanitizeInput(value, options);
     }
     return sanitized;

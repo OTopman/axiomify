@@ -1,20 +1,19 @@
 import { defineConfig } from 'vitest/config';
-import { resolve } from 'node:path';
 
 export default defineConfig({
-  resolve: {
-    alias: {
-      '@axiomify/core': resolve(__dirname, 'packages/core/src/index.ts'),
-      '@axiomify/detector': resolve(
-        __dirname,
-        'packages/detector/src/index.ts',
-      ),
-      '@axiomify/sanitizer': resolve(
-        __dirname,
-        'packages/sanitizer/src/index.ts',
-      ),
-    },
-  },
+  // resolve: {
+  //   alias: {
+  //     '@axiomify/core': resolve(__dirname, 'packages/core/src/index.ts'),
+  //     '@axiomify/detector': resolve(
+  //       __dirname,
+  //       'packages/detector/src/index.ts',
+  //     ),
+  //     '@axiomify/sanitizer': resolve(
+  //       __dirname,
+  //       'packages/sanitizer/src/index.ts',
+  //     ),
+  //   },
+  // },
   test: {
     coverage: {
       provider: 'v8',

@@ -4,9 +4,9 @@
     "rootDir": "./src",
     "outDir": "./dist",
     "paths": {
-      "@axiomify/detector": ["../detector/src/index.ts"],
-      "@axiomify/sanitizer": ["../sanitizer/src/index.ts"]
+      "@axiomify/detector": ["../detector/src", "../detector/dist"],
+      "@axiomify/sanitizer": ["../sanitizer/src", "../detector/dist"]
     }
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "../detector/src",]
 }
