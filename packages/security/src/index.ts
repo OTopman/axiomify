@@ -85,7 +85,12 @@ export function useSecurity(
     }
 
     if (hppProtection && req.query && typeof req.query === 'object') {
-      (req as any).query = normalizeHpp(req.query);
+      Object.defineProperty(req, 'query', {
+        value: normalizeHpp(req.query),
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
     }
 
     if (xssProtection || prototypePollutionProtection || nullByteProtection) {
@@ -96,11 +101,26 @@ export function useSecurity(
       };
 
       if (req.body)
-        (req as any).body = sanitizeInput(req.body, sanitizeOptions);
+        Object.defineProperty(req, 'body', {
+          value: sanitizeInput(req.body, sanitizeOptions),
+          writable: true,
+          configurable: true,
+          enumerable: true,
+        });
       if (req.query)
-        (req as any).query = sanitizeInput(req.query, sanitizeOptions);
+        Object.defineProperty(req, 'query', {
+          value: sanitizeInput(req.query, sanitizeOptions),
+          writable: true,
+          configurable: true,
+          enumerable: true,
+        });
       if (req.params)
-        (req as any).params = sanitizeInput(req.params, sanitizeOptions);
+        Object.defineProperty(req, 'params', {
+          value: sanitizeInput(req.params, sanitizeOptions),
+          writable: true,
+          configurable: true,
+          enumerable: true,
+        });
     }
   });
 }
