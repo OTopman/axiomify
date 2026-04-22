@@ -5,7 +5,7 @@ import { getUserExternals } from '../utils/externals';
 
 export async function devServer(entry: string): Promise<void> {
   const entryPath = path.resolve(process.cwd(), entry);
-  const outPath = path.resolve(process.cwd(), '.axiomify/dev.mjs');
+  const outPath = path.resolve(process.cwd(), '.axiomify/dev.js');
   let child: ChildProcess | null = null;
 
   const restartServer = () => {
@@ -39,7 +39,7 @@ export async function devServer(entry: string): Promise<void> {
     entryPoints: [entryPath],
     bundle: true,
     platform: 'node',
-    format: 'esm', 
+    format: 'cjs',
     outfile: outPath,
     external: [...new Set([...userExternals, 'node:*'])],
     plugins: [watchPlugin],
