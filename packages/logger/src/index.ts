@@ -35,17 +35,20 @@ function fallbackMaskObject(
 
   if (!input || typeof input !== 'object') return input;
 
-  return Object.entries(input).reduce<Record<string, unknown>>((acc, [key, value]) => {
-    const isSensitive = sensitiveFields.has(key.toLowerCase());
-    if (isSensitive && typeof value === 'string') {
-      const visibleEnd = value.slice(-2);
-      acc[key] = `${'*'.repeat(Math.max(3, value.length - 2))}${visibleEnd}`;
-      return acc;
-    }
+  return Object.entries(input).reduce<Record<string, unknown>>(
+    (acc, [key, value]) => {
+      const isSensitive = sensitiveFields.has(key.toLowerCase());
+      if (isSensitive && typeof value === 'string') {
+        const visibleEnd = value.slice(-2);
+        acc[key] = `${'*'.repeat(Math.max(3, value.length - 2))}${visibleEnd}`;
+        return acc;
+      }
 
-    acc[key] = fallbackMaskObject(value, sensitiveFields);
-    return acc;
-  }, {});
+      acc[key] = fallbackMaskObject(value, sensitiveFields);
+      return acc;
+    },
+    {},
+  );
 }
 
 export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
@@ -63,26 +66,21 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
   const includeHeaders = options.includeHeaders ?? true;
   const includePayload = options.includePayload ?? true;
 
-  const sensitiveFieldSet = new Set(sensitiveFields.map((field) => field.toLowerCase()));
-  let maskify: { mask?: (value: unknown) => unknown } = {};
-  try {
-    maskify = new (Maskify as any)({
-      sensitiveKeys: sensitiveFields,
-      maskChar: '*',
-      visibleStart: 1,
-      visibleEnd: 2,
-    });
-  } catch {
-    maskify = {};
-  }
+  const sensitiveFieldSet = new Set(
+    sensitiveFields.map((field) => field.toLowerCase()),
+  );
 
-  const emit = (level: LogLevel, message: string, meta: Record<string, any> = {}) => {
+  const emit = (
+    level: LogLevel,
+    message: string,
+    meta: Record<string, any> = {},
+  ) => {
     if (LEVEL_RANK[level] < LEVEL_RANK[logLevel]) return;
 
     const timestamp = new Date().toISOString();
     const maskedMeta =
-      typeof (maskify as any)?.mask === 'function'
-        ? (maskify as any).mask(meta)
+      typeof Maskify.mask === 'function'
+        ? Maskify.autoMask(meta)
         : fallbackMaskObject(meta, sensitiveFieldSet);
 
     if (beautify) {
@@ -93,7 +91,9 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
         error: pc.red,
       } as const;
       const color = colorMap[level];
-      const summary = `${pc.gray(timestamp)} ${color(level.toUpperCase())} ${pc.bold(message)}`;
+      const summary = `${pc.gray(timestamp)} ${color(
+        level.toUpperCase(),
+      )} ${pc.bold(message)}`;
       const details = Object.keys(maskedMeta).length
         ? `\n${pc.dim(JSON.stringify(maskedMeta, null, 2))}`
         : '';
@@ -102,7 +102,12 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
     }
 
     process.stdout.write(
-      `${JSON.stringify({ timestamp, level: level.toUpperCase(), message, ...maskedMeta })}\n`,
+      `${JSON.stringify({
+        timestamp,
+        level: level.toUpperCase(),
+        message,
+        ...maskedMeta,
+      })}\n`,
     );
   };
 
