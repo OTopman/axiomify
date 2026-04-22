@@ -14,8 +14,8 @@
   },
   "dependencies": {
     "@axiomify/core": "*",
-    "@axiomify/security-detector": "*",
-    "@axiomify/security-sanitizer": "*"
+    "@axiomify/detector": "*",
+    "@axiomify/sanitizer": "*"
   },
   "exports": {
     ".": {

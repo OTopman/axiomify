@@ -3,8 +3,8 @@
   "compilerOptions": {
     "outDir": "./dist",
     "paths": {
-      "@axiomify/security-detector": ["../security-detector/src/index.ts"],
-      "@axiomify/security-sanitizer": ["../security-sanitizer/src/index.ts"]
+      "@axiomify/detector": ["../detector/src/index.ts"],
+      "@axiomify/sanitizer": ["../sanitizer/src/index.ts"]
     }
   },
   "include": ["src/**/*"]

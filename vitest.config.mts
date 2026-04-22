@@ -5,13 +5,13 @@ export default defineConfig({
   resolve: {
     alias: {
       '@axiomify/core': resolve(__dirname, 'packages/core/src/index.ts'),
-      '@axiomify/security-detector': resolve(
+      '@axiomify/detector': resolve(
         __dirname,
-        'packages/security-detector/src/index.ts',
+        'packages/detector/src/index.ts',
       ),
-      '@axiomify/security-sanitizer': resolve(
+      '@axiomify/sanitizer': resolve(
         __dirname,
-        'packages/security-sanitizer/src/index.ts',
+        'packages/sanitizer/src/index.ts',
       ),
     },
   },

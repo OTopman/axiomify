@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeHpp, sanitizeInput } from '../src';
 
-describe('security-sanitizer', () => {
+describe('sanitizer', () => {
   it('removes script tags and null bytes', () => {
     const result = sanitizeInput({ value: '<script>alert(1)</script>abc\u0000def' }) as any;
     expect(result.value).not.toContain('<script>');

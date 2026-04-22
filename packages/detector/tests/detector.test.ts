@@ -5,7 +5,7 @@ import {
   isSuspiciousUserAgent,
 } from '../src';
 
-describe('security-detector', () => {
+describe('detector', () => {
   it('detects SQL payloads', () => {
     expect(detectSqlInjection("1 UNION SELECT * FROM users")).toBe(true);
   });

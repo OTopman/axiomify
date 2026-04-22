@@ -1,11 +1,11 @@
-# @axiomify/security-detector
+# @axiomify/detector
 
 Detection primitives used by `@axiomify/security`.
 
 ## Install
 
 ```bash
-npm install @axiomify/security-detector
+npm install @axiomify/detector
 ```
 
 ## Exports

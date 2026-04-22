@@ -6,8 +6,8 @@ import {
   detectNoSqlInjection,
   detectSqlInjection,
   isSuspiciousUserAgent,
-} from '@axiomify/security-detector';
-import { normalizeHpp, sanitizeInput } from '@axiomify/security-sanitizer';
+} from '@axiomify/detector';
+import { normalizeHpp, sanitizeInput } from '@axiomify/sanitizer';
 
 export interface SecurityOptions {
   xssProtection?: boolean;

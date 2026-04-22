@@ -3,8 +3,8 @@
 Security hardening middleware for Axiomify.
 
 Built on top of:
-- `@axiomify/security-detector`
-- `@axiomify/security-sanitizer`
+- `@axiomify/detector`
+- `@axiomify/sanitizer`
 
 ## Install
 

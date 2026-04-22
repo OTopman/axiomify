@@ -1,11 +1,11 @@
-# @axiomify/security-sanitizer
+# @axiomify/sanitizer
 
 Sanitization primitives used by `@axiomify/security`.
 
 ## Install
 
 ```bash
-npm install @axiomify/security-sanitizer
+npm install @axiomify/sanitizer
 ```
 
 ## Exports
