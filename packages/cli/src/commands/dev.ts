@@ -21,19 +21,13 @@ export async function devServer(entry: string): Promise<void> {
   const restartServer = () => {
     // Check if the process is actually still running at the OS level
     if (child && child.exitCode === null && child.signalCode === null) {
-      // 1. Remove listeners. If the user hits "save" 3 times instantly,
-      // this naturally overwrites the queue so we only boot the app ONCE.
       child.removeAllListeners('exit');
-
-      // 2. Queue the new start to happen ONLY after the port is guaranteed free
       child.once('exit', () => {
         startChild();
       });
 
-      // 3. Send the kill signal
       child.kill('SIGKILL');
     } else {
-      // If it's already dead (or crashed runtime), boot immediately
       startChild();
     }
   };
