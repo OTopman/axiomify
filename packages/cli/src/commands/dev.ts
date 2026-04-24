@@ -6,17 +6,35 @@ import { getUserExternals } from '../utils/externals';
 export async function devServer(entry: string): Promise<void> {
   const entryPath = path.resolve(process.cwd(), entry);
   const outPath = path.resolve(process.cwd(), '.axiomify/dev.js');
+
   let child: ChildProcess | null = null;
+  let firstBuild = true;
+
+  const startChild = () => {
+    child = spawn('node', [outPath], { stdio: 'inherit' });
+
+    child.on('error', (err) => {
+      console.error('❌ Failed to start process:', err);
+    });
+  };
 
   const restartServer = () => {
-    if (child) {
+    // Check if the process is actually still running at the OS level
+    if (child && child.exitCode === null && child.signalCode === null) {
+      // 1. Remove listeners. If the user hits "save" 3 times instantly,
+      // this naturally overwrites the queue so we only boot the app ONCE.
       child.removeAllListeners('exit');
+
+      // 2. Queue the new start to happen ONLY after the port is guaranteed free
       child.once('exit', () => {
-        child = spawn('node', [outPath], { stdio: 'inherit' });
+        startChild();
       });
+
+      // 3. Send the kill signal
       child.kill('SIGKILL');
     } else {
-      child = spawn('node', [outPath], { stdio: 'inherit' });
+      // If it's already dead (or crashed runtime), boot immediately
+      startChild();
     }
   };
 
@@ -24,10 +42,16 @@ export async function devServer(entry: string): Promise<void> {
     name: 'watch-plugin',
     setup(build) {
       build.onEnd((result) => {
-        if (result.errors.length > 0) {
-          console.error('❌ Build failed. Waiting for changes...');
+        if (result.errors.length === 0) {
+          if (firstBuild) {
+            firstBuild = false;
+            restartServer();
+          } else {
+            console.log('🔄 Changes detected, restarting...');
+            restartServer();
+          }
         } else {
-          restartServer();
+          console.error('❌ Build failed. Fix errors to trigger a restart.');
         }
       });
     },
@@ -45,9 +69,6 @@ export async function devServer(entry: string): Promise<void> {
     plugins: [watchPlugin],
   });
 
-  // On Ctrl-C / SIGTERM, tear everything down. Without this the spawned
-  // server child survives after the CLI exits — a classic "why is port
-  // 3000 still in use?" leak.
   let shuttingDown = false;
   const shutdown = async (signal: NodeJS.Signals) => {
     if (shuttingDown) return;
@@ -57,9 +78,8 @@ export async function devServer(entry: string): Promise<void> {
     if (child) {
       child.removeAllListeners('exit');
       child.kill('SIGTERM');
-      // Give it 2s to exit gracefully, then SIGKILL.
       setTimeout(() => {
-        if (child && !child.killed) child.kill('SIGKILL');
+        if (child && child.exitCode === null) child.kill('SIGKILL');
       }, 2000).unref();
     }
 
