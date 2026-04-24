@@ -1,8 +1,7 @@
 import { Axiomify } from '@axiomify/core';
-import pkg from 'maskify-ts';
+import { Maskify } from 'maskify-ts';
 import pc from 'picocolors';
 
-const { Maskify } = pkg;
 declare module '@axiomify/core' {
   interface RequestState {
     startTime?: bigint;

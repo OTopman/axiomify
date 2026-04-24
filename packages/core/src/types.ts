@@ -98,6 +98,25 @@ export interface RouteSchema {
   params?: ZodTypeAny;
   response?: ZodTypeAny | Record<number, ZodTypeAny>;
   files?: Record<string, FileConfig>;
+  /**
+   * OpenAPI 3.0 Security Requirement Object.
+   * Defines which security schemes are required to execute this specific route.
+   * Ensure the scheme name matches a definition in your global `components.securitySchemes`.
+   * @example [{ bearerAuth: [] }]
+   */
+  security?: Array<Record<string, string[]>>;
+
+  /**
+   * OpenAPI tags used to logically group this route within the Swagger UI documentation.
+   * @example ['Merchant', 'Authentication']
+   */
+  tags?: string[];
+
+  /**
+   * A detailed explanation of the route's behavior, displayed in the Swagger UI.
+   * Supports Markdown formatting for rich text rendering.
+   */
+  description?: string;
 }
 
 export interface UploadedFile {

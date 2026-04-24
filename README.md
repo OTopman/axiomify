@@ -9,7 +9,7 @@
 
 **Fastify-level speed. NestJS-level structure. Zero compromises.**
 
-Axiomify is a high-performance, schema-first Node.js framework engineered for strict type safety and minimal runtime overhead. By unifying routing, validation, and request handling into a single declarative source of truth, Axiomify eliminates middleware fragmentation. 
+Axiomify is a high-performance, schema-first Node.js framework engineered for strict type safety and minimal runtime overhead. By unifying routing, validation, and request handling into a single declarative source of truth, Axiomify eliminates middleware fragmentation.
 
 Built on a modular, adapter-driven architecture, Axiomify allows you to write your business logic once and deploy it across Express, Fastify, Hapi, or Native HTTP interchangeably. v4.0.0 adds enterprise-grade plugins (authentication, rate limiting, metrics, WebSockets) and comprehensive security hardening across all adapters.
 
@@ -66,7 +66,7 @@ Axiomify is distributed as a suite of 16 interoperable packages. Install only wh
 
 ### 1. Installation & CLI Scaffolding
 
-The fastest way to start building is using the Axiomify CLI. 
+The fastest way to start building is using the Axiomify CLI.
 
 ```bash
 # Install the CLI globally (or run via npx)
@@ -102,21 +102,21 @@ const app = new Axiomify();
 app.route({
   method: 'POST',
   path: '/users/:id/profile',
-  
+
   // TypeScript automatically infers req.params, req.body, req.query types
   schema: {
     params: z.object({ id: z.string() }),
     body: z.object({ name: z.string().min(1), email: z.string().email() }),
     response: z.object({ ok: z.boolean() }),
   },
-  
+
   handler: async (req, res) => {
     // ✅ req.params, req.body are type-safe
     const { id } = req.params;
     const { name, email } = req.body;
-    
+
     // Your business logic here...
-    
+
     return res.send({ ok: true });
   },
 });

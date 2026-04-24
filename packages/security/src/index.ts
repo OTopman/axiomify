@@ -23,6 +23,16 @@ export interface SecurityOptions {
   noSqlPatterns?: RegExp[];
 }
 
+// Helper to safely bypass Fastify's read-only getters
+function patchRequestProperty(req: any, key: string, newValue: any) {
+  Object.defineProperty(req, key, {
+    value: newValue,
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  });
+}
+
 export function useSecurity(
   app: Axiomify,
   options: SecurityOptions = {},
@@ -85,12 +95,7 @@ export function useSecurity(
     }
 
     if (hppProtection && req.query && typeof req.query === 'object') {
-      Object.defineProperty(req, 'query', {
-        value: normalizeHpp(req.query),
-        writable: true,
-        configurable: true,
-        enumerable: true,
-      });
+      patchRequestProperty(req, 'query', normalizeHpp(req.query));
     }
 
     if (xssProtection || prototypePollutionProtection || nullByteProtection) {
@@ -101,26 +106,23 @@ export function useSecurity(
       };
 
       if (req.body)
-        Object.defineProperty(req, 'body', {
-          value: sanitizeInput(req.body, sanitizeOptions),
-          writable: true,
-          configurable: true,
-          enumerable: true,
-        });
+        patchRequestProperty(
+          req,
+          'body',
+          sanitizeInput(req.body, sanitizeOptions),
+        );
       if (req.query)
-        Object.defineProperty(req, 'query', {
-          value: sanitizeInput(req.query, sanitizeOptions),
-          writable: true,
-          configurable: true,
-          enumerable: true,
-        });
+        patchRequestProperty(
+          req,
+          'query',
+          sanitizeInput(req.query, sanitizeOptions),
+        );
       if (req.params)
-        Object.defineProperty(req, 'params', {
-          value: sanitizeInput(req.params, sanitizeOptions),
-          writable: true,
-          configurable: true,
-          enumerable: true,
-        });
+        patchRequestProperty(
+          req,
+          'params',
+          sanitizeInput(req.params, sanitizeOptions),
+        );
     }
   });
 }

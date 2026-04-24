@@ -6,4 +6,5 @@ export default defineConfig({
   clean: true,
   treeshake: true,
   sourcemap: false,
+  noExternal: ['commander'],
 });

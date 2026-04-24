@@ -86,7 +86,9 @@ export async function initProject(
       console.error(
         pc.red('❌ Refusing to overwrite existing files:\n') +
           collisions.map((p) => `   - ${p}`).join('\n') +
-          pc.yellow("\n\nRe-run with '--force' if you really want to replace them."),
+          pc.yellow(
+            "\n\nRe-run with '--force' if you really want to replace them.",
+          ),
       );
       process.exit(1);
     }
@@ -166,8 +168,14 @@ export async function initProject(
 
     await fs.writeFile(path.join(dir, '.eslintrc.cjs'), eslintConfig);
     await fs.writeFile(path.join(dir, '.prettierrc'), prettierConfig);
-    await fs.writeFile(path.join(dir, '.prettierignore'), 'dist\nnode_modules\ncoverage\n');
-    await fs.writeFile(path.join(dir, '.editorconfig'), 'root = true\n\n[*]\ncharset = utf-8\nend_of_line = lf\nindent_style = space\nindent_size = 2\ninsert_final_newline = true\ntrim_trailing_whitespace = true\n');
+    await fs.writeFile(
+      path.join(dir, '.prettierignore'),
+      'dist\nnode_modules\ncoverage\n',
+    );
+    await fs.writeFile(
+      path.join(dir, '.editorconfig'),
+      'root = true\n\n[*]\ncharset = utf-8\nend_of_line = lf\nindent_style = space\nindent_size = 2\ninsert_final_newline = true\ntrim_trailing_whitespace = true\n',
+    );
   }
 
   const tsConfig = {
@@ -219,8 +227,14 @@ if (require.main === module) {
 }
 `;
 
-  await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify(pkgJson, null, 2));
-  await fs.writeFile(path.join(dir, 'tsconfig.json'), JSON.stringify(tsConfig, null, 2));
+  await fs.writeFile(
+    path.join(dir, 'package.json'),
+    JSON.stringify(pkgJson, null, 2),
+  );
+  await fs.writeFile(
+    path.join(dir, 'tsconfig.json'),
+    JSON.stringify(tsConfig, null, 2),
+  );
   await fs.writeFile(path.join(dir, 'src', 'index.ts'), indexTs);
 
   console.log(pc.green(`\n✅ Axiomify project initialized in ${pc.bold(dir)}`));
@@ -242,12 +256,22 @@ if (require.main === module) {
       await execa(pkgManager, installArgs, { cwd: dir, stdio: 'inherit' });
       console.log(pc.green('✅ Dependencies installed successfully!'));
     } catch {
-      console.error(pc.red('❌ Failed to install dependencies. Please install manually.'));
+      console.error(
+        pc.red('❌ Failed to install dependencies. Please install manually.'),
+      );
     }
   } else {
-    console.log(pc.yellow(`\n📦 Run "cd ${projectName} && ${answers.packageManager || 'npm'} install" to get started.`));
+    console.log(
+      pc.yellow(
+        `\n📦 Run "cd ${projectName} && ${
+          answers.packageManager || 'npm'
+        } install" to get started.`,
+      ),
+    );
   }
 
   const devCommand = DEV_COMMAND_BY_PM[answers.packageManager || 'npm'];
-  console.log(pc.cyan(`\n🔥 Run "${devCommand}" to start your development server!`));
+  console.log(
+    pc.cyan(`\n🔥 Run "${devCommand}" to start your development server!`),
+  );
 }

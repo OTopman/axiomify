@@ -1,8 +1,8 @@
 import type { HttpMethod, RouteDefinition } from './types';
 
-interface RouteMatch {
-  route: RouteDefinition;
-  params: Record<string, string>;
+interface RoutePayload {
+  definition: RouteDefinition;
+  paramKeys: string[];
 }
 
 export type RouterLookupResult =
@@ -13,9 +13,8 @@ export type RouterLookupResult =
 class TrieNode {
   public children = new Map<string, TrieNode>();
   public paramChild: TrieNode | null = null;
-  public paramName: string | null = null;
   public wildcardChild: TrieNode | null = null;
-  public routes = new Map<HttpMethod, RouteDefinition>();
+  public routes = new Map<HttpMethod, RoutePayload>();
 }
 
 export class Router {
@@ -27,29 +26,20 @@ export class Router {
    */
   public register(route: RouteDefinition): void {
     const parts = this.splitPath(route.path);
+    const paramKeys: string[] = []; // Store keys for this specific route
     let currentNode = this.root;
 
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
 
       if (part.startsWith(':')) {
-        // Handle dynamic parameters (e.g., :id)
+        paramKeys.push(part.slice(1)); // Save the parameter name
         if (!currentNode.paramChild) {
           currentNode.paramChild = new TrieNode();
-          currentNode.paramName = part.slice(1);
-        } else if (currentNode.paramName !== part.slice(1)) {
-          throw new Error(
-            `Route conflict: cannot register "${route.path}" — ` +
-              `param name ":${part.slice(1)}" conflicts with existing ` +
-              `":${currentNode.paramName}" at the same position. ` +
-              `Use the same param name for sibling dynamic routes.`,
-          );
         }
+        // Removed the Route Conflict Error block entirely.
         currentNode = currentNode.paramChild;
       } else if (part === '*') {
-        // Wildcard must be the final path segment. Checked against the actual
-        // loop index, not parts.indexOf — indexOf returns the first match
-        // which can mis-report position when '*' appears more than once.
         if (i !== parts.length - 1) {
           throw new Error(
             `Invalid route "${route.path}": wildcard * must be the final path segment.`,
@@ -60,7 +50,6 @@ export class Router {
         }
         currentNode = currentNode.wildcardChild;
       } else {
-        // Handle static path segments
         if (!currentNode.children.has(part)) {
           currentNode.children.set(part, new TrieNode());
         }
@@ -74,7 +63,8 @@ export class Router {
       );
     }
 
-    currentNode.routes.set(route.method, route);
+    // Store the extracted paramKeys alongside the definition
+    currentNode.routes.set(route.method, { definition: route, paramKeys });
   }
 
   /**
@@ -83,7 +73,8 @@ export class Router {
    */
   public lookup(method: HttpMethod, path: string): RouterLookupResult {
     let currentNode = this.root;
-    const params: Record<string, string> = {};
+    const paramValues: string[] = []; // Store values positionally
+    let wildcardValue: string | null = null;
     const parts = this.splitPath(path);
 
     for (let i = 0; i < parts.length; i++) {
@@ -92,11 +83,10 @@ export class Router {
       if (currentNode.children.has(part)) {
         currentNode = currentNode.children.get(part)!;
       } else if (currentNode.paramChild) {
-        const paramName = currentNode.paramName!;
         currentNode = currentNode.paramChild;
-        params[paramName] = part;
+        paramValues.push(part); // Push the raw value
       } else if (currentNode.wildcardChild) {
-        params['*'] = parts.slice(i).join('/');
+        wildcardValue = parts.slice(i).join('/');
         currentNode = currentNode.wildcardChild;
         break;
       } else {
@@ -104,14 +94,14 @@ export class Router {
       }
     }
 
-    let route = currentNode.routes.get(method);
+    let payload = currentNode.routes.get(method);
 
-    // Auto-handle HEAD requests using GET handlers
-    if (!route && method === 'HEAD') {
-      route = currentNode.routes.get('GET');
+    // Auto-handle HEAD requests
+    if (!payload && method === 'HEAD') {
+      payload = currentNode.routes.get('GET');
     }
 
-    if (!route) {
+    if (!payload) {
       // 405 Method Not Allowed Support
       if (currentNode.routes.size > 0) {
         const allowed = Array.from(currentNode.routes.keys());
@@ -123,7 +113,16 @@ export class Router {
       return null;
     }
 
-    return { route, params };
+    // Map the positional values to the route's specific keys
+    const params: Record<string, string> = {};
+    for (let i = 0; i < payload.paramKeys.length; i++) {
+      params[payload.paramKeys[i]] = paramValues[i];
+    }
+    if (wildcardValue !== null) {
+      params['*'] = wildcardValue;
+    }
+
+    return { route: payload.definition, params };
   }
 
   /**

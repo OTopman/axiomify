@@ -17,7 +17,9 @@ program
   .description('Bootstrap a new Axiomify project')
   .argument('[directory]', 'Target directory')
   .option('-f, --force', 'Overwrite existing project files', false)
-  .action((directory, options) => initProject(directory, options));
+  .action((directory: string, options?: { force?: boolean }) =>
+    initProject(directory, options),
+  );
 
 program
   .command('dev')

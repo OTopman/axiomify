@@ -7,6 +7,23 @@ export interface OpenApiOptions {
     version: string;
     description?: string;
   };
+  autoInferResponses?: boolean;
+
+  /**
+   * OpenAPI 3.0 Components Object.
+   * Used to define reusable documentation assets, such as global `securitySchemes`
+   * (e.g., Bearer tokens, API keys) that can be referenced by individual routes.
+   * @example { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer' } } }
+   */
+  components?: Record<string, unknown>;
+
+  /**
+   * Global OpenAPI 3.0 Security Requirement Object.
+   * Applies the specified security configuration to ALL routes in the application by default.
+   * Individual routes can override this by defining their own `schema.security` array.
+   * @example [{ bearerAuth: [] }]
+   */
+  security?: Array<Record<string, string[]>>;
 }
 
 /**
@@ -23,7 +40,10 @@ function isZodSchema(value: unknown): boolean {
 }
 
 export class OpenApiGenerator {
-  constructor(private app: Axiomify, private options: OpenApiOptions) {}
+  constructor(
+    private app: Axiomify,
+    private options: OpenApiOptions,
+  ) {}
 
   public generate(): Record<string, any> {
     const spec: any = {
@@ -31,6 +51,14 @@ export class OpenApiGenerator {
       info: this.options.info,
       paths: {},
     };
+
+    if (this.options.components) {
+      spec.components = this.options.components;
+    }
+
+    if (this.options.security) {
+      spec.security = this.options.security;
+    }
 
     for (const route of this.app.registeredRoutes) {
       const openApiPath = this.formatPath(route.path);
@@ -42,9 +70,12 @@ export class OpenApiGenerator {
 
       spec.paths[openApiPath][method] = {
         summary: `Handler for ${route.method} ${route.path}`,
+        description: route.schema?.description,
+        tags: route.schema?.tags,
         parameters: this.extractParameters(route),
         requestBody: this.extractBody(route),
         responses: this.extractResponse(route), // Pass route directly
+        ...(route.schema?.security && { security: route.schema.security }),
       };
     }
 
@@ -58,14 +89,16 @@ export class OpenApiGenerator {
     return path.replace(/:([a-zA-Z0-9_]+)/g, '{$1}');
   }
 
-  private extractParameters(route: RouteDefinition): any[] {
-    const parameters: any[] = [];
+  private extractParameters(route: RouteDefinition): unknown[] {
+    const parameters: unknown[] = [];
 
     if (route.schema?.params) {
-      const paramSchema = zodToJsonSchema(route.schema.params as any, {
+      const paramSchema = zodToJsonSchema(route.schema.params, {
         target: 'openApi3',
-      }) as any;
-      for (const [key, prop] of Object.entries(paramSchema.properties || {})) {
+      });
+      for (const [key, prop] of Object.entries(
+        (paramSchema as any).properties || {},
+      )) {
         parameters.push({
           name: key,
           in: 'path',
