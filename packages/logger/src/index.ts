@@ -12,7 +12,17 @@ export interface LoggerOptions {
   sensitiveFields?: string[];
   level?: 'debug' | 'info' | 'warn' | 'error';
   beautify?: boolean;
+  /**
+   * Include request headers in the log entry.
+   * Defaults to `false` — headers often contain auth tokens and cookies.
+   * Enable only when you are confident your log pipeline is secure and
+   * sensitive headers are masked via `sensitiveFields`.
+   */
   includeHeaders?: boolean;
+  /**
+   * Include the response payload in the log entry.
+   * Defaults to `false` — payloads can contain PII.
+   */
   includePayload?: boolean;
 }
 
@@ -28,14 +38,14 @@ const LEVEL_RANK: Record<LogLevel, number> = {
 function fallbackMaskObject(
   input: unknown,
   sensitiveFields: Set<string>,
-): unknown {
+): Record<string, any> {
   if (Array.isArray(input)) {
     return input.map((item) => fallbackMaskObject(item, sensitiveFields));
   }
 
-  if (!input || typeof input !== 'object') return input;
+  if (!input || typeof input !== 'object') return {};
 
-  return Object.entries(input).reduce<Record<string, unknown>>(
+  return Object.entries(input).reduce<Record<string, any>>(
     (acc, [key, value]) => {
       const isSensitive = sensitiveFields.has(key.toLowerCase());
       if (isSensitive && typeof value === 'string') {
@@ -43,7 +53,6 @@ function fallbackMaskObject(
         acc[key] = `${'*'.repeat(Math.max(3, value.length - 2))}${visibleEnd}`;
         return acc;
       }
-
       acc[key] = fallbackMaskObject(value, sensitiveFields);
       return acc;
     },
@@ -52,7 +61,7 @@ function fallbackMaskObject(
 }
 
 export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
-  const sensitiveFields = options.sensitiveFields || [
+  const sensitiveFields = options.sensitiveFields ?? [
     'password',
     'token',
     'authorization',
@@ -60,11 +69,17 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
     'ssn',
     'cookie',
     'set-cookie',
+    'x-api-key',
+    'x-auth-token',
   ];
   const logLevel = options.level ?? 'info';
   const beautify = options.beautify ?? process.stdout.isTTY ?? true;
-  const includeHeaders = options.includeHeaders ?? true;
-  const includePayload = options.includePayload ?? true;
+
+  // Safe defaults: opt-in to verbose logging, not opt-out.
+  const includeHeaders = options.includeHeaders ?? false;
+  const includePayload = options.includePayload ?? false;
+
+  const isProd = process.env.NODE_ENV === 'production';
 
   const sensitiveFieldSet = new Set(
     sensitiveFields.map((field) => field.toLowerCase()),
@@ -73,13 +88,13 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
   const emit = (
     level: LogLevel,
     message: string,
-    meta: Record<string, any> = {},
+    meta: Record<string, unknown> = {},
   ) => {
     if (LEVEL_RANK[level] < LEVEL_RANK[logLevel]) return;
 
     const timestamp = new Date().toISOString();
     const maskedMeta =
-      typeof Maskify.mask === 'function'
+      typeof Maskify.autoMask === 'function'
         ? Maskify.autoMask(meta)
         : fallbackMaskObject(meta, sensitiveFieldSet);
 
@@ -147,8 +162,12 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
 
     const errorObj =
       err instanceof Error
-        ? { name: err.name, message: err.message, stack: err.stack }
-        : { message: String(err), value: err };
+        ? {
+            name: err.name,
+            message: err.message,
+            ...(!isProd && { stack: err.stack }),
+          }
+        : { message: String(err) };
 
     emit('error', 'Request Failed', {
       requestId: req.id,

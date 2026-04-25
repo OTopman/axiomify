@@ -1,16 +1,16 @@
-import fs from 'fs/promises';
-import { existsSync } from 'fs';
-import path from 'path';
 import { prompt } from 'enquirer';
-import pc from 'picocolors';
 import { execa } from 'execa';
+import { existsSync } from 'fs';
+import fs from 'fs/promises';
+import path from 'path';
+import pc from 'picocolors';
+import pkg from '../../package.json';
 
 const DEV_COMMAND_BY_PM: Record<InitAnswers['packageManager'], string> = {
   npm: 'npm run dev',
   pnpm: 'pnpm dev',
   yarn: 'yarn dev',
 };
-
 type InitAnswers = {
   projectName: string;
   description: string;
@@ -73,6 +73,32 @@ export async function initProject(
 
   const answers = (await prompt(questions)) as InitAnswers;
   const projectName = targetDir || answers.projectName;
+
+  if (!projectName || projectName.trim().length === 0) {
+    console.error(
+      pc.red(
+        '❌ A project name is required. Aborting to avoid writing into the current directory.',
+      ),
+    );
+    process.exit(1);
+  }
+
+  // Reject obvious traversal / unsafe names. We don't try to be exhaustive —
+  // we just block the worst cases. The user can always specify an absolute
+  // directory if they need something exotic.
+  if (
+    // eslint-disable-next-line no-control-regex
+    /[<>:"|?*\u0000-\u001f]/.test(projectName) ||
+    projectName.includes('..')
+  ) {
+    console.error(
+      pc.red(
+        `❌ Invalid project name: "${projectName}". Names cannot contain path traversal or control characters.`,
+      ),
+    );
+    process.exit(1);
+  }
+
   const dir = path.resolve(process.cwd(), projectName);
 
   if (existsSync(dir) && !options.force && targetDir) {
@@ -96,6 +122,8 @@ export async function initProject(
 
   await fs.mkdir(path.join(dir, 'src'), { recursive: true });
 
+  const AXIOMIFY_VERSION = `^${pkg.version}`;
+
   const pkgJson: any = {
     name: projectName,
     version: '1.0.0',
@@ -109,19 +137,19 @@ export async function initProject(
       typecheck: 'tsc --noEmit',
     },
     dependencies: {
-      '@axiomify/core': 'latest',
-      '@axiomify/express': 'latest',
-      '@axiomify/helmet': 'latest',
-      '@axiomify/cors': 'latest',
-      '@axiomify/logger': 'latest',
-      '@axiomify/security': 'latest',
-      '@axiomify/rate-limit': 'latest',
-      '@axiomify/fingerprint': 'latest',
+      '@axiomify/core': AXIOMIFY_VERSION,
+      '@axiomify/express': AXIOMIFY_VERSION,
+      '@axiomify/helmet': AXIOMIFY_VERSION,
+      '@axiomify/cors': AXIOMIFY_VERSION,
+      '@axiomify/logger': AXIOMIFY_VERSION,
+      '@axiomify/security': AXIOMIFY_VERSION,
+      '@axiomify/rate-limit': AXIOMIFY_VERSION,
+      '@axiomify/fingerprint': AXIOMIFY_VERSION,
     },
     devDependencies: {
-      typescript: '^6.0.0',
+      typescript: '^5.4.0',
       '@types/node': '^22.0.0',
-      '@axiomify/cli': 'latest',
+      '@axiomify/cli': AXIOMIFY_VERSION,
     },
   };
 
@@ -140,31 +168,31 @@ export async function initProject(
     pkgJson.scripts.format = 'prettier --write .';
 
     const eslintConfig = `module.exports = {
-  root: true,
-  parser: '@typescript-eslint/parser',
-  plugins: ['@typescript-eslint', 'prettier'],
-  extends: [
-    'eslint:recommended',
-    'plugin:@typescript-eslint/recommended',
-    'plugin:prettier/recommended',
-  ],
-  parserOptions: {
-    ecmaVersion: 2022,
-    sourceType: 'module',
-  },
-  env: {
-    node: true,
-    es2022: true,
-  },
-};`;
+      root: true,
+      parser: '@typescript-eslint/parser',
+      plugins: ['@typescript-eslint', 'prettier'],
+      extends: [
+        'eslint:recommended',
+        'plugin:@typescript-eslint/recommended',
+        'plugin:prettier/recommended',
+      ],
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: 'module',
+      },
+      env: {
+        node: true,
+        es2022: true,
+      },
+    };`;
 
     const prettierConfig = `{
-  "semi": true,
-  "trailingComma": "all",
-  "singleQuote": true,
-  "printWidth": 100,
-  "tabWidth": 2
-}`;
+      "semi": true,
+      "trailingComma": "all",
+      "singleQuote": true,
+      "printWidth": 100,
+      "tabWidth": 2
+    }`;
 
     await fs.writeFile(path.join(dir, '.eslintrc.cjs'), eslintConfig);
     await fs.writeFile(path.join(dir, '.prettierrc'), prettierConfig);
@@ -195,37 +223,48 @@ export async function initProject(
   };
 
   const indexTs = `
-import { Axiomify } from '@axiomify/core';
-import { ExpressAdapter } from '@axiomify/express';
-import { useHelmet } from '@axiomify/helmet';
-import { useCors } from '@axiomify/cors';
-import { useLogger } from '@axiomify/logger';
-import { useSecurity } from '@axiomify/security';
-import { useRateLimit } from '@axiomify/rate-limit';
-import { useFingerprint } from '@axiomify/fingerprint';
+    import { Axiomify } from '@axiomify/core';
+    import { ExpressAdapter } from '@axiomify/express';
+    import { useHelmet } from '@axiomify/helmet';
+    import { useCors } from '@axiomify/cors';
+    import { useLogger } from '@axiomify/logger';
+    import { useSecurity } from '@axiomify/security';
+    import { useRateLimit, MemoryStore, RedisStore } from '@axiomify/rate-limit';
+    import { useFingerprint } from '@axiomify/fingerprint';
 
-export const app = new Axiomify();
+    export const app = new Axiomify();
 
-useHelmet(app);
-useCors(app, { credentials: false });
-useSecurity(app);
-useRateLimit(app, { max: 100, windowMs: 60_000 });
-useFingerprint(app);
-useLogger(app);
+    useHelmet(app);
+    useCors(app, { credentials: false });
+    useSecurity(app);
 
-app.route({
-  method: 'GET',
-  path: '/health',
-  handler: async (_req, res) => {
-    res.status(200).send({ status: 'healthy', timestamp: Date.now() }, 'System Operational');
-  },
-});
+    // ⚠️  PRODUCTION NOTE
+    // MemoryStore is per-process. In any multi-worker / multi-instance
+    // deployment (PM2 cluster, k8s with replicas > 1), the effective rate
+    // limit becomes max × number_of_processes. For production, swap this
+    // for a RedisStore:
+    //
+    //   import Redis from 'ioredis';
+    //   const redis = new Redis(process.env.REDIS_URL);
+    //   useRateLimit(app, { max: 100, windowMs: 60_000, store: new RedisStore(redis) });
+    useRateLimit(app, { max: 100, windowMs: 60_000, store: new MemoryStore() });
 
-if (require.main === module) {
-  const adapter = new ExpressAdapter(app);
-  adapter.listen(3000, () => console.log('🚀 Axiomify online on port 3000'));
-}
-`;
+    useFingerprint(app);
+    useLogger(app);
+
+    app.route({
+      method: 'GET',
+      path: '/health',
+      handler: async (_req, res) => {
+        res.status(200).send({ status: 'healthy' }, 'System Operational');
+      },
+    });
+
+    if (require.main === module) {
+      const adapter = new ExpressAdapter(app);
+      adapter.listen(3000, () => console.log('🚀 Axiomify online on port 3000'));
+    }
+    `;
 
   await fs.writeFile(
     path.join(dir, 'package.json'),

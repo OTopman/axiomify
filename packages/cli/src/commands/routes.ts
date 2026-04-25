@@ -27,9 +27,20 @@ export async function inspectRoutes(entry: string): Promise<void> {
       // Ignore if it's the first time and not yet in cache
     }
 
-    // 3. Import the compiled app
-    // Since the CLI is CJS, import() becomes require().
-    // require() uses raw absolute paths, not file:// URLs.
+    // Import the compiled app
+    // Side-effect warning: if the user's entry file calls `adapter.listen()`
+    // outside of `if (require.main === module)`, this require() will start a
+    // real server and the inspection command will hang. We can't detect this
+    // reliably, but we can give the user a hint via a timeout.
+    const inspectionTimeout = setTimeout(() => {
+      console.warn(
+        '\n⚠️  Route inspection is taking longer than expected.\n' +
+          '   Your entry file may be starting a server unconditionally.\n' +
+          '   Wrap the listen() call in `if (require.main === module) { ... }`\n' +
+          '   so it only runs when the file is executed directly.\n',
+      );
+    }, 5_000);
+    inspectionTimeout.unref();
     const mod = require(tempPath);
     const app = mod.app || mod.default;
 

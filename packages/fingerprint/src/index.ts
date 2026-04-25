@@ -5,6 +5,10 @@ import type {
 } from '@axiomify/core';
 import { createHash, randomUUID } from 'node:crypto';
 
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 declare module '@axiomify/core' {
   interface RequestState {
     fingerprint?: string;
@@ -190,7 +194,6 @@ export function useFingerprint(
   app.addHook('onRequest', (req: AxiomifyRequest, res: AxiomifyResponse) => {
     let serverId: string | undefined;
 
-    // 1. Stateful Cookie Defense
     if (statefulCookie) {
       const cookieName =
         typeof statefulCookie === 'object' && statefulCookie.name
@@ -202,7 +205,11 @@ export function useFingerprint(
           : 31536000;
 
       const cookies = (req.headers.cookie as string) || '';
-      const match = cookies.match(new RegExp(`${cookieName}=([^;]+)`));
+      // Escape the cookie name before building the RegExp to prevent ReDoS
+      // if the name ever contains regex metacharacters.
+      const match = cookies.match(
+        new RegExp(`${escapeRegExp(cookieName)}=([^;]+)`),
+      );
       serverId = match ? match[1] : undefined;
 
       if (!serverId) {
@@ -221,16 +228,13 @@ export function useFingerprint(
     };
 
     for (const [header, key] of Object.entries(BASE_HEADER_MAP)) {
-      // Only capture infrastructure headers if explicitly trusted
       if (!trustProxyHeaders && (key === 'ja3' || key === 'deviceId')) continue;
-
       const normalized = normalizeHeader(req.headers[header]);
       if (normalized && !data[key]) {
         data[key] = normalized;
       }
     }
 
-    // Custom Application Headers
     for (const header of additionalHeaders) {
       const normalized = normalizeHeader(req.headers[header.toLowerCase()]);
       if (normalized) {
@@ -238,7 +242,6 @@ export function useFingerprint(
       }
     }
 
-    // Stable Hashing
     const payload = stableSortObject({
       ...data,
       ...(includePath ? { path: req.path } : {}),
@@ -249,7 +252,6 @@ export function useFingerprint(
       .update(JSON.stringify(payload))
       .digest('hex');
 
-    // Attach to State
     req.state.fingerprint = fingerprint;
     req.state.fingerprintData = data;
     req.state.fingerprintConfidence = computeConfidence(data);

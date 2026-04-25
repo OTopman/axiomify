@@ -3,7 +3,6 @@ import type {
   AxiomifyResponse,
   HookType,
   RouteDefinition,
-  RouteHandler,
 } from './types';
 
 export type HookHandlerMap = {
@@ -42,9 +41,6 @@ export class HookManager {
   };
 
   add<T extends HookType>(type: T, fn: HookHandlerMap[T]): void {
-    if (!this.hooks[type]) {
-      this.hooks[type] = [];
-    }
     this.hooks[type].push(fn);
   }
 
@@ -64,15 +60,5 @@ export class HookManager {
     for (let i = 0; i < list.length; i++) {
       await list[i](...(args as any));
     }
-  }
-}
-
-export class ExecutionEngine {
-  public async run(
-    req: AxiomifyRequest,
-    res: AxiomifyResponse,
-    handler: RouteHandler,
-  ): Promise<void> {
-    await handler(req as any, res);
   }
 }

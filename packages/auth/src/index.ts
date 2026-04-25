@@ -5,7 +5,6 @@ import type {
 } from '@axiomify/core';
 import * as jwt from 'jsonwebtoken';
 
-// Type-Safe Module Augmentation for req.user
 declare module '@axiomify/core' {
   interface AxiomifyRequest {
     user?: AuthUser;
@@ -14,7 +13,7 @@ declare module '@axiomify/core' {
 
 export interface AuthUser {
   id: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface AuthOptions {
@@ -23,20 +22,44 @@ export interface AuthOptions {
   getToken?: (req: AxiomifyRequest) => string | null;
 }
 
+/**
+ * Implement this interface and pass it as `store` to `createRefreshHandler`
+ * to enable single-use refresh token rotation (revoke on use).
+ * Without a store, a stolen refresh token grants access until expiry.
+ */
+export interface RefreshTokenStore {
+  isRevoked(tokenJti: string): Promise<boolean>;
+  revoke(tokenJti: string, expiresAtUnixSeconds: number): Promise<void>;
+}
+
 export interface RefreshOptions {
   secret: string;
   refreshSecret: string;
   accessTokenTtl?: number;
   refreshTokenTtl?: number;
   algorithms?: jwt.Algorithm[];
+  /**
+   * Provide a store to enable refresh token rotation (strongly recommended).
+   * Without this, stolen refresh tokens remain valid until expiry.
+   */
+  store?: RefreshTokenStore;
 }
 
-/**
- * Extracts a bearer token from an Authorization header. Per RFC 6750 §2.1 the
- * scheme name is case-insensitive, so "bearer xyz" and "BEARER xyz" must work
- * the same as "Bearer xyz". Also tolerates extra whitespace between scheme
- * and credential.
- */
+const BLOCKED_ALGORITHMS = new Set(['none', 'NONE', 'None']);
+
+function validateAlgorithms(algorithms: string[]): jwt.Algorithm[] {
+  const safe = algorithms.filter(
+    (a) => !BLOCKED_ALGORITHMS.has(a),
+  ) as jwt.Algorithm[];
+  if (safe.length === 0) {
+    throw new Error(
+      '[axiomify/auth] Every provided algorithm was rejected. ' +
+        'The "none" algorithm is not permitted.',
+    );
+  }
+  return safe;
+}
+
 function extractBearer(header: string): string | null {
   const match = /^\s*Bearer\s+(\S+)\s*$/i.exec(header);
   return match ? match[1] : null;
@@ -47,43 +70,88 @@ function buildGetToken(options: AuthOptions) {
     options.getToken ??
     ((req: AxiomifyRequest) => {
       let authHeader = req.headers['authorization'];
-
-      if (Array.isArray(authHeader)) {
-        authHeader = authHeader[0];
-      }
-
+      if (Array.isArray(authHeader)) authHeader = authHeader[0];
       return authHeader ? extractBearer(authHeader) : null;
     })
   );
 }
 
+function validateSecret(secret: string, context: string): void {
+  if (secret.length < 32) {
+    const msg =
+      `[axiomify/auth] ${context} is shorter than 32 characters. ` +
+      'Use a cryptographically random secret of at least 256 bits.';
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(msg);
+    }
+    console.warn(msg);
+  }
+}
+
 export function createRefreshHandler(options: RefreshOptions) {
-  return async (req: any, res: any) => {
-    const authHeader = Array.isArray(req.headers.authorization)
-      ? req.headers.authorization[0]
-      : req.headers.authorization;
+  validateSecret(options.secret, 'JWT access secret');
+  validateSecret(options.refreshSecret, 'JWT refresh secret');
+
+  const algorithms = validateAlgorithms(options.algorithms ?? ['HS256']);
+  const accessTtl = options.accessTokenTtl ?? 900;
+  const refreshTtl = options.refreshTokenTtl ?? 604_800;
+
+  if (!options.store) {
+    console.warn(
+      '[axiomify/auth] No `store` provided to createRefreshHandler. ' +
+        'Refresh token rotation and revocation are DISABLED. ' +
+        'A stolen refresh token will remain valid until it expires. ' +
+        'Provide a store implementing RefreshTokenStore for production use.',
+    );
+  }
+
+  return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
+    const authHeader = Array.isArray(req.headers['authorization'])
+      ? req.headers['authorization'][0]
+      : (req.headers['authorization'] as string | undefined);
 
     const token = authHeader ? extractBearer(authHeader) : null;
     if (!token) return res.status(401).send(null, 'Missing refresh token');
 
     try {
-      const decoded = jwt.verify(token, options.refreshSecret, {
-        algorithms: options.algorithms ?? ['HS256'],
-      }) as any;
+      // Check revocation before signature verification to fail-fast on replayed tokens.
+      if (options.store) {
+        // Use the raw token as the key if no jti is present (jti extraction
+        // happens after verify, so we key on the token string itself here).
+        if (await options.store.isRevoked(token)) {
+          return res.status(401).send(null, 'Refresh token has been revoked');
+        }
+      }
 
-      // A valid signature over an empty / malformed payload shouldn't mint an
-      // access token with `id: undefined`. Require an explicit subject id.
+      const decoded = jwt.verify(token, options.refreshSecret, {
+        algorithms,
+      }) as jwt.JwtPayload;
+
       const id = decoded?.id ?? decoded?.sub;
       if (typeof id !== 'string' || id.length === 0) {
         return res.status(401).send(null, 'Invalid refresh token payload');
       }
 
+      // Rotate: immediately revoke the consumed refresh token.
+      if (options.store) {
+        const exp = decoded.exp ?? Math.floor(Date.now() / 1000) + refreshTtl;
+        await options.store.revoke(token, exp);
+      }
+
       const accessToken = jwt.sign({ id }, options.secret, {
-        expiresIn: options.accessTokenTtl ?? 900,
+        expiresIn: accessTtl,
       });
-      res
-        .status(200)
-        .send({ accessToken, expiresIn: options.accessTokenTtl ?? 900 });
+
+      // Issue a brand-new refresh token (rotation).
+      const newRefreshToken = jwt.sign({ id }, options.refreshSecret, {
+        expiresIn: refreshTtl,
+      });
+
+      res.status(200).send({
+        accessToken,
+        refreshToken: newRefreshToken,
+        expiresIn: accessTtl,
+      });
     } catch {
       res.status(401).send(null, 'Invalid refresh token');
     }
@@ -91,13 +159,8 @@ export function createRefreshHandler(options: RefreshOptions) {
 }
 
 export function createAuthPlugin(options: AuthOptions): PluginHandler {
-  if (options.secret.length < 32) {
-    console.warn(
-      '[axiomify/auth] JWT secret is shorter than 32 characters. ' +
-        'Use a cryptographically random secret of at least 256 bits in production.',
-    );
-  }
-
+  validateSecret(options.secret, 'JWT secret');
+  const algorithms = validateAlgorithms(options.algorithms ?? ['HS256']);
   const getToken = buildGetToken(options);
 
   return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
@@ -109,7 +172,7 @@ export function createAuthPlugin(options: AuthOptions): PluginHandler {
 
     try {
       const decoded = jwt.verify(token, options.secret, {
-        algorithms: options.algorithms ?? ['HS256'],
+        algorithms,
       }) as AuthUser;
       req.user = decoded;
     } catch {

@@ -1,8 +1,13 @@
-import type { Axiomify } from '@axiomify/core';
+import type { Axiomify, AxiomifyRequest } from '@axiomify/core';
 import { OpenApiGenerator, OpenApiOptions } from './generator';
 
 export interface SwaggerPluginOptions extends OpenApiOptions {
-  routePrefix?: string; // e.g., '/docs'
+  routePrefix?: string;
+  /**
+   * Optional gate for the docs UI and the raw spec endpoint.
+   * Return false to deny. Recommended for production / non-public APIs.
+   */
+  protect?: (req: AxiomifyRequest) => boolean | Promise<boolean>;
 }
 
 function escapeHtml(s: string): string {
@@ -14,37 +19,19 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/**
- * Escape a value for interpolation into a single-quoted JS string literal
- * inside the inline Swagger bootstrap script. Defense in depth: the prefix is
- * developer-controlled, but a stray apostrophe would otherwise break the UI.
- */
 function escapeJsString(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
-/**
- * A strongly-typed factory for defining OpenAPI security schemes.
- * Provides IntelliSense for routes without requiring global type declarations.
- */
 export function defineSecuritySchemes<const T extends Record<string, unknown>>(
   schemes: T,
 ) {
   return {
-    /** The raw OpenAPI components object to pass into `useOpenAPI` */
     schemes,
-
-    /** * Typed helper to inject security requirements into a RouteSchema.
-     * Enforces that the developer can only pass valid, registered scheme names.
-     */
     require: (
       name: keyof T,
       scopes: string[] = [],
-    ): Array<Record<string, string[]>> => {
-      return [{ [name as string]: scopes }];
-    },
-
-    /** Helper for multiple required schemes (e.g., both API Key AND OAuth) */
+    ): Array<Record<string, string[]>> => [{ [name as string]: scopes }],
     requireMultiple: (
       requirements: Array<keyof T>,
     ): Array<Record<string, string[]>> => {
@@ -57,17 +44,36 @@ export function defineSecuritySchemes<const T extends Record<string, unknown>>(
   };
 }
 
-// 2. Export the "Batteries Included" default configuration
 export const Security = defineSecuritySchemes({
   bearerAuth: { type: 'http', scheme: 'bearer' },
   apiKey: { type: 'apiKey', in: 'header', name: 'X-API-KEY' },
   basicAuth: { type: 'http', scheme: 'basic' },
 } as const);
 
+function inferSchemaFromPayload<T = unknown>(data: T, depth = 0): T {
+  // Hard depth cap prevents stack overflow on pathological inputs.
+  if (depth > 32) return { type: 'object' } as T;
+  if (data === null) return { type: 'null' } as T;
+  if (Array.isArray(data)) {
+    return {
+      type: 'array',
+      items:
+        data.length > 0
+          ? inferSchemaFromPayload(data[0], depth + 1)
+          : { type: 'object' },
+    } as T;
+  }
+  if (typeof data === 'object') {
+    const properties: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data)) {
+      properties[key] = inferSchemaFromPayload(value, depth + 1);
+    }
+    return { type: 'object', properties } as T;
+  }
+  return { type: typeof data } as T;
+}
+
 export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
-  // Default the prefix so an omitted `routePrefix` doesn't register routes
-  // at the literal path "undefined/openapi.json". Also normalize trailing
-  // slashes so "/docs" and "/docs/" behave identically.
   const rawPrefix = options.routePrefix ?? '/docs';
   const normalizedPrefix = rawPrefix.startsWith('/')
     ? rawPrefix
@@ -77,139 +83,115 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
     : normalizedPrefix;
 
   const generator = new OpenApiGenerator(app, options);
-
   let cachedSpec: any = null;
 
   if (options.autoInferResponses) {
-    for (const route of app.registeredRoutes) {
-      const originalHandler = route.handler;
+    // Capture inferred response schemas via an onPostHandler hook instead of
+    // mutating each `route.handler`. Mutating registered route handlers is a
+    // hidden side effect that breaks plugins that compare or cache handler refs.
+    app.addHook('onPostHandler', (req, res, match) => {
+      if (!match?.route) return;
 
-      route.handler = async (req, res) => {
-        const originalSend = res.send.bind(res);
-        const originalSendRaw = res.sendRaw.bind(res);
+      // Skip self-requests to docs endpoints.
+      if (req.path === `${prefix}/openapi.json` || req.path === prefix) return;
 
-        const capturePayload = (data: unknown) => {
-          if (!cachedSpec) cachedSpec = generator.generate();
+      const payload = (res as any).payload;
+      if (payload === undefined) return;
 
-          const path = generator['formatPath'](route.path);
-          const method = route.method.toLowerCase();
-          const statusCode = res.statusCode.toString();
+      if (!cachedSpec) cachedSpec = generator.generate();
 
-          const existingResponse =
-            cachedSpec.paths[path]?.[method]?.responses?.[statusCode];
-          const isDefault =
-            existingResponse?.description === 'Successful response' &&
-            existingResponse?.content?.['application/json']?.schema?.type ===
-              'object';
+      const path = (generator as any).formatPath(match.route.path);
+      const method = match.route.method.toLowerCase();
+      const statusCode = String(res.statusCode);
 
-          if (!existingResponse || isDefault) {
-            // Ensure we profile an object, even if sendRaw passed a JSON string
-            let parsedData = data;
-            if (typeof data === 'string') {
-              try {
-                parsedData = JSON.parse(data);
-              } catch {
-                /* empty */
-              }
-            }
+      const existingResponse =
+        cachedSpec.paths[path]?.[method]?.responses?.[statusCode];
+      const isDefault =
+        existingResponse?.description === 'Successful response' &&
+        existingResponse?.content?.['application/json']?.schema?.type ===
+          'object';
 
-            cachedSpec.paths[path][method].responses[statusCode] = {
-              description: `Auto-inferred response`,
-              content: {
-                'application/json': {
-                  schema: inferSchemaFromPayload(parsedData),
-                },
-              },
-            };
-          }
+      if (existingResponse && !isDefault) return;
+
+      let parsedData: unknown = payload;
+      if (typeof payload === 'string') {
+        try {
+          parsedData = JSON.parse(payload);
+        } catch {
+          /* leave as string */
+        }
+      }
+
+      if (cachedSpec.paths[path]?.[method]) {
+        cachedSpec.paths[path][method].responses[statusCode] = {
+          description: 'Auto-inferred response',
+          content: {
+            'application/json': { schema: inferSchemaFromPayload(parsedData) },
+          },
         };
-
-        // Intercept standard sends
-        res.send = <T>(data: T, message?: string) => {
-          capturePayload(data);
-          originalSend(data, message);
-        };
-
-        // Intercept raw sends (only if it's JSON)
-        res.sendRaw = (payload: unknown, contentType?: string) => {
-          if (!contentType || contentType.includes('application/json')) {
-            capturePayload(payload);
-          }
-          originalSendRaw(payload, contentType);
-        };
-
-        return originalHandler(req, res);
-      };
-    }
+      }
+    });
   }
 
-  // 1. Serve the raw OpenAPI JSON
+  const guard = async (req: AxiomifyRequest): Promise<boolean> => {
+    if (!options.protect) {
+      if (process.env.NODE_ENV === 'production') {
+        // One-time warning per request when unprotected in prod.
+        console.warn(
+          '[axiomify/openapi] OpenAPI endpoints are publicly accessible. ' +
+            'Provide a `protect` function to restrict the API documentation in production.',
+        );
+      }
+      return true;
+    }
+    return Boolean(await options.protect(req));
+  };
+
   app.route({
     method: 'GET',
     path: `${prefix}/openapi.json`,
-    handler: async (_req, res) => {
-      if (!cachedSpec) {
-        cachedSpec = generator.generate();
-      }
+    handler: async (req, res) => {
+      if (!(await guard(req))) return res.status(403).send(null, 'Forbidden');
+      if (!cachedSpec) cachedSpec = generator.generate();
       res.status(200).sendRaw(JSON.stringify(cachedSpec), 'application/json');
     },
   });
 
-  // 2. Serve the Swagger UI HTML
   app.route({
     method: 'GET',
     path: `${prefix}`,
-    handler: async (_req, res) => {
-      // const specUrl = `${prefix}/openapi.json`;
-      const specUrl = `${prefix}/openapi.json?t=${Date.now()}`;
+    handler: async (req, res) => {
+      if (!(await guard(req))) return res.status(403).send(null, 'Forbidden');
 
-      const html = `
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>${escapeHtml(options.info.title)} - API Docs</title>
-          <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css" />
-        </head>
-        <body style="margin: 0; padding: 0;">
-          <div id="swagger-ui"></div>
-          <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js"></script>
-          <script>
-            window.onload = () => {
-              window.ui = SwaggerUIBundle({
-                url: '${escapeJsString(specUrl)}',
-                dom_id: '#swagger-ui',
-              });
-            };
-          </script>
-        </body>
-        </html>
-      `;
+      // Cache-bust only in non-production. In production the spec is stable,
+      // so allow the browser to cache the URL.
+      const isDev = process.env.NODE_ENV !== 'production';
+      const specUrl = isDev
+        ? `${prefix}/openapi.json?t=${Date.now()}`
+        : `${prefix}/openapi.json`;
 
+      const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(options.info.title)} - API Docs</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css" />
+</head>
+<body style="margin: 0; padding: 0;">
+  <div id="swagger-ui"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js"></script>
+  <script>
+    window.onload = () => {
+      window.ui = SwaggerUIBundle({
+        url: '${escapeJsString(specUrl)}',
+        dom_id: '#swagger-ui',
+      });
+    };
+  </script>
+</body>
+</html>`;
       res.status(200).sendRaw(html, 'text/html');
     },
   });
-}
-
-/**
- * Recursively maps a live JavaScript object to an OpenAPI 3.0 Schema
- */
-function inferSchemaFromPayload<T = unknown>(data: T): T {
-  if (data === null) return { type: 'null' } as T;
-  if (Array.isArray(data)) {
-    return {
-      type: 'array',
-      items:
-        data.length > 0 ? inferSchemaFromPayload(data[0]) : { type: 'object' },
-    } as T;
-  }
-  if (typeof data === 'object') {
-    const properties: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(data)) {
-      properties[key] = inferSchemaFromPayload(value);
-    }
-    return { type: 'object', properties } as T;
-  }
-  return { type: typeof data } as T; // string, number, boolean
 }

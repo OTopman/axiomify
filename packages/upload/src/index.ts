@@ -5,12 +5,11 @@ import type {
   UploadedFile,
 } from '@axiomify/core';
 import Busboy from 'busboy';
-import { createWriteStream, existsSync, mkdirSync } from 'fs';
-import { unlink } from 'fs/promises';
+import { createWriteStream } from 'fs';
+import { mkdir, unlink } from 'fs/promises';
 import path from 'path';
 import { pipeline } from 'stream/promises';
 
-// 🚀 2. Inject it into the Core Request
 declare module '@axiomify/core' {
   interface AxiomifyRequest<Body, Query, Params> {
     files?: Record<string, UploadedFile>;
@@ -19,25 +18,39 @@ declare module '@axiomify/core' {
 
 /**
  * Strips path separators and parent-directory segments from a user-supplied
- * filename so it can be safely joined with the upload directory. Returns a
- * leaf-name only — never a path.
- *
- * Defends against Busboy filenames like `../../etc/cron.d/pwn` which,
- * path.join'd with `autoSaveTo`, would otherwise escape the upload root.
+ * filename so it can be safely joined with the upload directory.
  */
 function sanitizeFilename(name: string): string {
-  // Basename strips POSIX separators. Windows backslashes aren't separators
-  // on POSIX, so handle them explicitly.
   const leaf = path.basename(name).replace(/\\/g, '_');
-  // Reject anything that still looks like traversal or a hidden control char.
-  const cleaned = leaf
-    .replace(/^\.+/, '') // no leading dots (.., ., .hidden)
-    .replace(/\0/g, '') // drop NUL
-    .trim();
-  // Final fallback for edge cases (empty name, name that was only dots).
+  const cleaned = leaf.replace(/^\.+/, '').replace(/\0/g, '').trim();
   return cleaned || `upload-${Date.now()}`;
 }
 
+/**
+ * Creates the upload directory if it does not exist.
+ * Uses `mkdir({ recursive: true })` atomically — no TOCTOU race.
+ */
+async function ensureDir(dir: string): Promise<void> {
+  await mkdir(dir, { recursive: true });
+}
+
+/**
+ * ⚠️  MIME TYPE VALIDATION NOTE:
+ * The MIME type checked here (`info.mimeType`) comes from the Content-Type
+ * header of the multipart part, which the uploader controls entirely.
+ * An attacker can upload a PHP or shell script with `Content-Type: image/jpeg`
+ * and bypass this check.
+ *
+ * For production use, validate the actual file content using magic bytes
+ * after the upload completes. Install the `file-type` npm package and add:
+ *
+ *   import { fileTypeFromFile } from 'file-type';
+ *   const type = await fileTypeFromFile(savePath);
+ *   if (!type || !config.accept.includes(type.mime)) {
+ *     await unlink(savePath).catch(() => {});
+ *     throw new Error(`File content does not match accepted types`);
+ *   }
+ */
 export function useUpload(app: Axiomify): void {
   app.addHook(
     'onPreHandler',
@@ -75,13 +88,13 @@ export function useUpload(app: Axiomify): void {
             try {
               const config = fileSchema[fieldname];
               if (!config || !config.accept.includes(info.mimeType)) {
-                throw new Error(`Invalid or unexpected file: ${fieldname}`);
+                file.resume();
+                throw new Error(
+                  `Invalid or unexpected file field "${fieldname}" ` +
+                    `(reported MIME: ${info.mimeType})`,
+                );
               }
 
-              // Always sanitize the user-supplied filename before use. If the
-              // caller provides a `rename`, run it on the sanitized original
-              // and sanitize its output too — a custom `rename` shouldn't be
-              // able to escape the upload root either.
               const safeOriginal = sanitizeFilename(info.filename);
               let finalName = safeOriginal;
               if (config.rename) {
@@ -92,12 +105,9 @@ export function useUpload(app: Axiomify): void {
                 finalName = sanitizeFilename(renamed);
               }
 
-              if (!existsSync(config.autoSaveTo))
-                mkdirSync(config.autoSaveTo, { recursive: true });
+              // Atomic directory creation — no TOCTOU race between exists-check and mkdir.
+              await ensureDir(config.autoSaveTo);
 
-              // Defense in depth: after join, confirm the resolved path is
-              // still inside autoSaveTo. sanitizeFilename should already
-              // guarantee this, but the check costs nothing.
               savePath = path.join(config.autoSaveTo, finalName);
               const rootResolved = path.resolve(config.autoSaveTo);
               const savePathResolved = path.resolve(savePath);
@@ -112,7 +122,6 @@ export function useUpload(app: Axiomify): void {
 
               let byteCount = 0;
 
-              // Register the file early so the cleanup hook can find it if we abort!
               mutableReq.files[fieldname] = {
                 originalName: info.filename,
                 savedName: finalName,
@@ -126,19 +135,22 @@ export function useUpload(app: Axiomify): void {
                 if (byteCount > config.maxSize) {
                   file.destroy(
                     new Error(
-                      `File ${fieldname} exceeds limit of ${config.maxSize} bytes`,
+                      `File "${fieldname}" exceeds limit of ${config.maxSize} bytes`,
                     ),
                   );
                 }
               });
 
               await pipeline(file, createWriteStream(savePath));
-
-              // Update the final size
               mutableReq.files[fieldname].size = byteCount;
+
+              // ── Magic-byte validation hook point ──────────────────────────
+              // If you install `file-type`, add the check here after pipeline
+              // completes. See the JSDoc on useUpload for the snippet.
+              // ─────────────────────────────────────────────────────────────
             } catch (err) {
-              file.resume(); // drain buffer
-              if (savePath) await unlink(savePath).catch(() => {}); // Delete partial file
+              file.resume();
+              if (savePath) await unlink(savePath).catch(() => {});
 
               const rawSocket =
                 (req.raw as any).socket || (req.raw as any).connection;
@@ -160,7 +172,7 @@ export function useUpload(app: Axiomify): void {
           try {
             await Promise.all(fileWrites);
           } catch {
-            /* already rejected via safeReject, avoid uncaught promise rejection */
+            /* already rejected via safeReject */
           }
           safeResolve();
         });
@@ -175,12 +187,11 @@ export function useUpload(app: Axiomify): void {
     'onError',
     async (err: any, req: AxiomifyRequest, _res: AxiomifyResponse) => {
       if (req.files) {
-        for (const key of Object.keys(req.files)) {
-          const file = req.files[key];
-          if (existsSync(file.path)) {
-            await unlink(file.path).catch(() => {}); // Clean up orphaned files
-          }
-        }
+        await Promise.allSettled(
+          Object.values(req.files).map((file) =>
+            unlink(file.path).catch(() => {}),
+          ),
+        );
       }
     },
   );

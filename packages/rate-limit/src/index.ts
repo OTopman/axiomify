@@ -19,9 +19,6 @@ export interface RedisClient {
   ): Promise<[number, number]>;
 }
 
-/**
- * Use MemoryStore for single-process apps. Use RedisStore for PM2 clusters or multi-instance deployments.
- */
 export class RedisStore {
   constructor(private client: RedisClient) {}
   async increment(
@@ -58,9 +55,8 @@ export class MemoryStore implements RateLimitStore {
   private timer: NodeJS.Timeout;
 
   constructor() {
-    // Prune expired keys every 60 seconds to prevent OOM DoS attacks
     this.timer = setInterval(() => this.prune(), 60_000);
-    this.timer.unref(); // Don't block the Node event loop from exiting
+    this.timer.unref();
   }
 
   private prune() {
@@ -89,43 +85,68 @@ export class MemoryStore implements RateLimitStore {
 
     this.hits.set(key, { timestamps, windowMs });
 
-    // resetTime is when the *oldest* request in the current window ages out.
-    // The previous implementation used `windowStart + windowMs`, which
-    // algebraically simplifies to `now` — i.e. "right now" — and was
-    // therefore meaningless. When the map is empty, fall back to now+window.
     const oldest = timestamps[0] ?? now;
     const resetTime = Math.ceil((oldest + windowMs) / 1000);
 
-    return {
-      count: timestamps.length,
-      resetTime,
-    };
+    return { count: timestamps.length, resetTime };
   }
 }
 
 export interface RateLimitOptions {
-  windowMs?: number; // Default: 60000 (1 minute)
-  max?: number; // Default: 100 requests per window
-  maxRequests?: number; // Alias for max
+  windowMs?: number;
+  max?: number;
+  maxRequests?: number;
   store?: RateLimitStore;
   keyGenerator?: (req: AxiomifyRequest) => string;
-  keyExtractor?: (req: AxiomifyRequest) => string; // Alias for keyGenerator
+  keyExtractor?: (req: AxiomifyRequest) => string;
   skip?: (req: AxiomifyRequest) => boolean;
 }
 
-/**
- * Shared handler used by both `useRateLimit` (global onPreHandler) and
- * `createRateLimitPlugin` (per-route). Keeps a single source of truth for
- * limit enforcement, headers, and response short-circuiting.
- */
+// Emitted once per process to avoid log flooding.
+let _emittedIpWarning = false;
+let _emittedStoreWarning = false;
+
+function createDefaultKeyGenerator(): (req: AxiomifyRequest) => string {
+  return (req: AxiomifyRequest) => {
+    if (!req.ip) {
+      if (!_emittedIpWarning) {
+        _emittedIpWarning = true;
+        console.warn(
+          '[axiomify/rate-limit] req.ip is falsy on an incoming request. ' +
+            'These requests will share the "unknown" rate-limit bucket, which ' +
+            'means a single client can exhaust the limit for all IP-less traffic. ' +
+            'Ensure your adapter populates req.ip correctly (check proxy/trust settings).',
+        );
+      }
+      return 'unknown';
+    }
+    return req.ip;
+  };
+}
+
+function createStore(provided?: RateLimitStore): RateLimitStore {
+  if (provided) return provided;
+
+  if (process.env.NODE_ENV === 'production' && !_emittedStoreWarning) {
+    _emittedStoreWarning = true;
+    console.warn(
+      '[axiomify/rate-limit] Using in-memory MemoryStore in production. ' +
+        'MemoryStore is per-process: each Node.js worker or container instance ' +
+        'maintains its own counter, so the effective rate limit is ' +
+        'max × numberOfProcesses. Provide a RedisStore for multi-process or ' +
+        'multi-instance deployments.',
+    );
+  }
+
+  return new MemoryStore();
+}
+
 function buildLimiter(options: RateLimitOptions = {}) {
   const windowMs = options.windowMs ?? 60_000;
   const max = options.max ?? options.maxRequests ?? 100;
-  const store = options.store ?? new MemoryStore();
+  const store = createStore(options.store);
   const keyGenerator =
-    options.keyGenerator ??
-    options.keyExtractor ??
-    ((req: AxiomifyRequest) => req.ip || '127.0.0.1');
+    options.keyGenerator ?? options.keyExtractor ?? createDefaultKeyGenerator();
 
   return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
     if (options.skip?.(req)) return;
@@ -146,10 +167,6 @@ function buildLimiter(options: RateLimitOptions = {}) {
   };
 }
 
-/**
- * @example
- * keyGenerator: (req) => (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ?? req.ip
- */
 export function createRateLimitPlugin(options: RateLimitOptions = {}) {
   return buildLimiter(options);
 }
@@ -159,7 +176,6 @@ export function useRateLimit(
   options: RateLimitOptions = {},
 ): void {
   const limiter = buildLimiter(options);
-  // We use onPreHandler so we can eventually read route-specific metadata if needed
   app.addHook('onPreHandler', async (req, res) => {
     await limiter(req, res);
   });

@@ -4,15 +4,36 @@ export interface DetectorOptions {
   blockedUserAgentPatterns?: RegExp[];
 }
 
+/**
+ * ⚠️  HEURISTIC ONLY — NOT A RELIABLE SQL INJECTION DEFENSE.
+ *
+ * These patterns catch the most obvious script-kiddie payloads but are
+ * trivially bypassed via comment insertion (`union`), case variation,
+ * URL encoding, CASE/WHEN syntax, time-based blind injection, and dozens of
+ * other techniques.
+ *
+ * The ONLY reliable defense against SQL injection is parameterized queries /
+ * prepared statements at the database layer. These patterns are a supplementary
+ * signal (e.g. for logging/alerting), not a security gate.
+ */
 export const DEFAULT_SQL_PATTERNS = [
   /(?:\bunion\b\s+\bselect\b)/i,
   /(?:\bor\b\s+\d+\s*=\s*\d+)/i,
   /(?:--|\/\*|\*\/|;\s*drop\s+table|\bexec\b\s*\()/i,
-  /(?:\bselect\b.+\bfrom\b)/i,
+  // NOTE: the `select...from` pattern below generates false positives on
+  // legitimate JSON payloads containing those words. Disabled by default.
+  // /(?:\bselect\b.+\bfrom\b)/i,
 ];
 
+/**
+ * ⚠️  HEURISTIC ONLY — NOT A RELIABLE NOSQL INJECTION DEFENSE.
+ *
+ * MongoDB operator injection (`$where`, `$ne`, etc.) is best prevented by
+ * schema validation (Zod) that strips unexpected keys before they reach the
+ * database driver. These patterns are a supplementary heuristic.
+ */
 export const DEFAULT_NOSQL_PATTERNS = [
-  /\$(?:ne|gt|gte|lt|lte|regex|where|expr|jsonSchema)/i,
+  /\$(?:ne|gt|gte|lt|lte|regex|where|expr|jsonSchema)\b/i,
   /\{\s*\$where/i,
 ];
 

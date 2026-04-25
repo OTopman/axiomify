@@ -1,4 +1,4 @@
-import { ExecutionEngine, HookHandlerMap, HookManager } from './lifecycle';
+import { HookHandlerMap, HookManager } from './lifecycle';
 import { Router } from './router';
 import type {
   AxiomifyRequest,
@@ -14,7 +14,7 @@ import type {
 import { ValidationCompiler } from './validation';
 
 export interface AxiomifyOptions {
-  timeout?: number; // Default request timeout in ms. 0 = disabled. Default: 0.
+  timeout?: number;
   telemetry?: {
     startSpan: (
       name: string,
@@ -39,11 +39,9 @@ function mergePlugins(
 }
 
 export class Axiomify {
-  public router = new Router();
-  public engine = new ExecutionEngine();
-  public validator = new ValidationCompiler();
-
-  // Use the new unified HookEngine
+  // readonly: external code must not replace the router or compiler at runtime.
+  public readonly router = new Router();
+  public readonly validator = new ValidationCompiler();
   public readonly hooks = new HookManager();
 
   private readonly _routes: RouteDefinition[] = [];
@@ -62,7 +60,6 @@ export class Axiomify {
     this._timeout = options.timeout ?? 0;
     this._telemetry = options.telemetry;
 
-    // Auto-inject Request ID
     this.addHook('onRequest', (req, res) => {
       res.header('X-Request-Id', req.id);
     });
@@ -93,7 +90,6 @@ export class Axiomify {
     return this;
   }
 
-  // Default Serializer (Overridable)
   public serializer: SerializerFn = (
     data,
     message,
@@ -115,7 +111,6 @@ export class Axiomify {
     return this;
   }
 
-  // Route Grouping
   public group(prefix: string, callback: (group: RouteGroup) => void): this;
   public group(
     prefix: string,
@@ -124,9 +119,7 @@ export class Axiomify {
   ): this;
   public group(
     prefix: string,
-    optionsOrCallback:
-      | RouteGroupOptions
-      | ((group: RouteGroup) => void),
+    optionsOrCallback: RouteGroupOptions | ((group: RouteGroup) => void),
     maybeCallback?: (group: RouteGroup) => void,
   ): this {
     const options =
@@ -137,9 +130,7 @@ export class Axiomify {
         : maybeCallback;
 
     if (!callback) {
-      throw new Error(
-        'A route group callback is required when registering a group.',
-      );
+      throw new Error('A route group callback is required.');
     }
 
     const inheritedPlugins = options.plugins ?? [];
@@ -163,9 +154,7 @@ export class Axiomify {
 
         this.group(
           joinRoutePath(prefix, subPrefix),
-          {
-            plugins: mergePlugins(inheritedPlugins, subOptions.plugins),
-          },
+          { plugins: mergePlugins(inheritedPlugins, subOptions.plugins) },
           subCallback!,
         );
         return groupProxy;
@@ -175,7 +164,6 @@ export class Axiomify {
     return this;
   }
 
-  // Health Check Method
   public healthCheck(
     path = '/health',
     checks?: Record<string, () => Promise<boolean>>,
@@ -184,12 +172,13 @@ export class Axiomify {
       method: 'GET',
       path,
       handler: async (req, res) => {
-        if (!checks)
-          return res
-            .status(200)
-            .send({ status: 'ok', uptime: process.uptime() });
+        if (!checks) {
+          return res.status(200).send({ status: 'ok' });
+        }
+
         const results: Record<string, boolean> = {};
         let passed = true;
+
         await Promise.all(
           Object.entries(checks).map(async ([name, fn]) => {
             try {
@@ -201,6 +190,7 @@ export class Axiomify {
             }
           }),
         );
+
         return res
           .status(passed ? 200 : 503)
           .send({ status: passed ? 'ok' : 'degraded', checks: results });
@@ -220,36 +210,27 @@ export class Axiomify {
 
     try {
       await this.hooks.run('onRequest', req, res);
-      // If an onRequest hook sent the response (e.g. CORS preflight), stop here.
-      // No match is known yet, so onPostHandler is skipped — its contract is
-      // that `match` is always defined.
       if (res.headersSent) return;
 
       const match = this.router.lookup(req.method, req.path);
 
-      // 1. Handle 404 (Eliminates 'null' from the union)
       if (!match) {
         return res.status(404).send(null, 'Route not found');
       }
 
-      // 2. Handle 405 (Eliminates the '{ error, allowed }' object from the union)
       if ('error' in match) {
         res.header('Allow', match.allowed.join(', '));
         return res.status(405).send(null, 'Method Not Allowed');
       }
 
-      // 3. TypeScript now mathematically GUARANTEES match is `{ route, params }`
       matched = match;
       const { route, params } = match;
 
       Object.assign(req.params as any, params);
       const routeId = `${route.method}:${route.path}`;
 
-      // This is now 100% type-safe
       await this.hooks.run('onPreHandler', req, res, match);
 
-      // Halt if a global hook short-circuited (rate limit, auth, etc.).
-      // We still fire onPostHandler so logging/metrics see the response.
       if (res.headersSent) {
         await this.hooks.run('onPostHandler', req, res, match);
         return;
@@ -267,20 +248,25 @@ export class Axiomify {
       this.validator.execute(routeId, req);
 
       let responsePayload: unknown = undefined;
-      let responseSent = false;
-      const originalSend = res.send;
+      let sendCallCount = 0;
+      const originalSend = res.send.bind(res);
 
       res.send = (data: any, message?: string) => {
-        responsePayload = data;
-        responseSent = true;
-        // Expose payload directly on the response object for the Logger plugin
-        (res as any).payload = data;
-        (res as any).responseMessage = message;
-        // Auto-strip body for HEAD requests
-        if (req.method === 'HEAD') {
-          return originalSend.call(res, undefined, message);
+        // Guard: detect double-send from misbehaving handlers. Only the first
+        // call captures the payload; subsequent calls still go through to the
+        // underlying adapter (which may ignore them or throw) but do not
+        // corrupt the captured payload used for response validation.
+        if (sendCallCount === 0) {
+          responsePayload = data;
+          (res as any).payload = data;
+          (res as any).responseMessage = message;
         }
-        return originalSend.call(res, data, message);
+        sendCallCount++;
+
+        if (req.method === 'HEAD') {
+          return originalSend(undefined, message);
+        }
+        return originalSend(data, message);
       };
 
       const effectiveTimeout = route.timeout ?? this._timeout;
@@ -307,24 +293,22 @@ export class Axiomify {
           });
 
           try {
+            // ExecutionEngine removed — call handler directly.
             await Promise.race([
-              this.engine.run(req, res, route.handler),
+              route.handler(req as any, res),
               timeoutPromise,
             ]);
           } finally {
             if (timeoutId !== undefined) clearTimeout(timeoutId);
           }
         } else {
-          await this.engine.run(req, res, route.handler);
+          await route.handler(req as any, res);
         }
       } finally {
         if (span) span.end();
       }
 
-      // Only validate the response schema when the handler actually sent a
-      // payload. Skipping on non-send avoids comparing `undefined` to a schema
-      // that never expected to run (e.g. the handler threw after our patch).
-      if (responseSent) {
+      if (sendCallCount > 0) {
         try {
           this.validator.validateResponse(
             routeId,
@@ -355,16 +339,16 @@ export class Axiomify {
     res: AxiomifyResponse,
   ) {
     await this.hooks.run('onError', err, req, res);
-
-    // If a hook already sent a response (like 401 Unauthorized), bail out to prevent a crash.
     if (res.headersSent) return;
 
-    const statusCode = err.statusCode || err.status || 500;
+    // Normalize statusCode — accept both .statusCode and .status but prefer
+    // .statusCode so the error shape is consistent across all packages.
+    const statusCode = err.statusCode ?? err.status ?? 500;
     const message = err.message || 'Internal Server Error';
 
     const errorData =
-      err.issues ||
-      err.errors ||
+      err.issues ??
+      err.errors ??
       (process.env.NODE_ENV === 'development' ? { stack: err.stack } : null);
 
     res.status(statusCode).send(errorData, message);

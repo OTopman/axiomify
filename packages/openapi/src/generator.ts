@@ -142,7 +142,9 @@ export class OpenApiGenerator {
 
       //  Safely cast the generated schema to bypass the strict Union Type
       if (schema.body) {
-        const bodySchema = zodToJsonSchema(schema.body) as any;
+        const bodySchema = zodToJsonSchema(schema.body, {
+          target: 'openApi3',
+        }) as any;
 
         // Safely extract properties if it's an object
         if (bodySchema.properties) {

@@ -27,7 +27,6 @@ export interface HelmetOptions {
   docsPath?: string | false;
 }
 
-// The highly permissive CSP required exclusively for Swagger UI
 const DOCS_CSP =
   "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https://validator.swagger.io; worker-src 'self' blob:;";
 
@@ -39,6 +38,17 @@ function setIfEnabled(
 ): void {
   if (!value) return;
   res.header(headerName, typeof value === 'string' ? value : fallback);
+}
+
+/**
+ * Returns true only when the request path is exactly the docs path or
+ * starts with it followed by a `/`. Uses req.path (no query string) and
+ * requires the match to be at a segment boundary so `/docs-extra` does NOT
+ * match a docsPath of `/docs`.
+ */
+function isDocsRequest(reqPath: string, docsPath: string | false): boolean {
+  if (!docsPath) return false;
+  return reqPath === docsPath || reqPath.startsWith(docsPath + '/');
 }
 
 export function useHelmet(app: Axiomify, options: HelmetOptions = {}): void {
@@ -65,12 +75,13 @@ export function useHelmet(app: Axiomify, options: HelmetOptions = {}): void {
       'X-AspNet-Version',
       'X-AspNetMvc-Version',
     ],
-    docsPath = '/docs', // Default matches OpenAPI
+    docsPath = '/docs',
   } = options;
 
   app.addHook('onRequest', (req: AxiomifyRequest, res: AxiomifyResponse) => {
-    // Detect if the request is hitting the documentation path
-    const isDocsPath = docsPath && req.url && req.url.includes(docsPath);
+    // Exact prefix match at a path segment boundary — prevents `/other-docs`
+    // or `?ref=/docs` from matching and receiving the permissive Docs CSP.
+    const isDocPath = isDocsRequest(req.path, docsPath);
 
     setIfEnabled(res, 'X-Content-Type-Options', xContentTypeOptions, 'nosniff');
     setIfEnabled(res, 'X-Frame-Options', xFrameOptions, 'DENY');
@@ -85,23 +96,20 @@ export function useHelmet(app: Axiomify, options: HelmetOptions = {}): void {
     );
     setIfEnabled(res, 'X-DNS-Prefetch-Control', xDnsPrefetchControl, 'off');
 
-    // 1. Swap the strict CSP for the Docs CSP if we are on the docs route
     if (contentSecurityPolicy) {
-      if (isDocsPath) {
-        res.header('Content-Security-Policy', DOCS_CSP);
-      } else {
-        res.header('Content-Security-Policy', contentSecurityPolicy);
-      }
+      res.header(
+        'Content-Security-Policy',
+        isDocPath ? DOCS_CSP : contentSecurityPolicy,
+      );
     }
 
-    // 2. Bypass strict Cross-Origin policies for the docs to prevent JSON blocking
-    if (crossOriginEmbedderPolicy && !isDocsPath) {
+    if (crossOriginEmbedderPolicy && !isDocPath) {
       res.header('Cross-Origin-Embedder-Policy', crossOriginEmbedderPolicy);
     }
-    if (crossOriginOpenerPolicy && !isDocsPath) {
+    if (crossOriginOpenerPolicy && !isDocPath) {
       res.header('Cross-Origin-Opener-Policy', crossOriginOpenerPolicy);
     }
-    if (crossOriginResourcePolicy && !isDocsPath) {
+    if (crossOriginResourcePolicy && !isDocPath) {
       res.header('Cross-Origin-Resource-Policy', crossOriginResourcePolicy);
     }
 

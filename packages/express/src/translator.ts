@@ -1,4 +1,8 @@
-import type { AxiomifyRequest, AxiomifyResponse, SerializerFn } from '@axiomify/core';
+import type {
+  AxiomifyRequest,
+  AxiomifyResponse,
+  SerializerFn,
+} from '@axiomify/core';
 import crypto from 'crypto';
 import type { Request, Response } from 'express';
 import { Readable } from 'stream';
@@ -58,7 +62,7 @@ export function translateRequest(req: Request): AxiomifyRequest {
 export function translateResponse(
   res: Response,
   serializer: SerializerFn,
-  req: AxiomifyRequest
+  req: AxiomifyRequest,
 ): AxiomifyResponse {
   let statusCode = 200;
   let isSent = false;
@@ -76,35 +80,40 @@ export function translateResponse(
       res.removeHeader(key);
       return this;
     },
+
     send<T>(data: T, message?: string) {
+      if (isSent) return; // Idempotent
       isSent = true;
       const isError = statusCode >= 400;
-      // Safely call the Serializer injected from the core app
       const payload = serializer(data, message, statusCode, isError, req);
       res.status(statusCode).json(payload);
     },
+
     sendRaw(payload: any, contentType = 'text/plain') {
+      if (isSent) return;
       isSent = true;
       res.setHeader('Content-Type', contentType);
       res.status(statusCode).send(payload);
     },
+
     error(err: unknown) {
+      if (isSent) return;
       isSent = true;
       const message = err instanceof Error ? err.message : 'Unknown Error';
       const payload = serializer(null, message, 500, true, req);
       res.status(500).json(payload);
     },
 
-    // Streaming support (pipes a readable stream to the response)
     stream(readable: Readable, contentType = 'application/octet-stream') {
+      if (isSent) return;
       isSent = true;
       res.setHeader('Content-Type', contentType);
       res.status(statusCode);
       readable.pipe(res);
     },
 
-    // SSE (Server-Sent Events) setup
     sseInit(sseHeartbeatMs: number = 15_000) {
+      if (isSent) return;
       isSent = true;
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -114,15 +123,15 @@ export function translateResponse(
       const heartbeat = setInterval(() => {
         res.write(': keepalive\n\n');
       }, sseHeartbeatMs);
+      heartbeat.unref(); // Don't block process exit on a lingering SSE timer.
       res.on('close', () => clearInterval(heartbeat));
     },
 
-    // SSE payload dispatcher
     sseSend(data: any, event?: string) {
       if (event) res.write(`event: ${event}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
-      // Optional: Call res.flush() here if using a compression middleware that requires it
     },
+
     get statusCode() {
       return statusCode;
     },

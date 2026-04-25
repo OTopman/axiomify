@@ -45,17 +45,24 @@ export class HapiAdapter {
             axiomifyRes.error(err);
           });
 
-          const effectiveTimeout = this.core.timeout || 30_000;
-          if (effectiveTimeout > 0) {
+          // Respects timeout:0 as "disabled"; core already handles timeout
+          // internally, so the Hapi adapter does not add a second independent timeout.
+          // The core's own timeout mechanism (Promise.race + setTimeout) fires first
+          // and rejects the handler promise, which our .catch() above will handle.
+          // We only add the Hapi-level safety net when the core timeout is disabled (0)
+          // so a runaway handler can't stall a Hapi request forever.
+          const coreTimeout = this.core.timeout;
+          if (coreTimeout === 0) {
+            const backstopMs = 30_000;
             setTimeout(() => {
               if (!axiomifyRes.headersSent) {
                 reject(
                   new Error(
-                    `Axiomify handler did not send a response within the ${effectiveTimeout}ms timeout`,
+                    `Handler did not respond within the ${backstopMs}ms backstop timeout.`,
                   ),
                 );
               }
-            }, effectiveTimeout).unref();
+            }, backstopMs).unref();
           }
         });
       },

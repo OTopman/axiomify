@@ -16,13 +16,34 @@ function sanitize(obj: any): any {
   return clean;
 }
 
+export interface HttpAdapterOptions {
+  bodyLimitBytes?: number;
+  /**
+   * When true, derive `req.ip` from the leftmost `X-Forwarded-For` entry,
+   * falling back to `socket.remoteAddress`. Only enable behind a trusted
+   * reverse proxy; otherwise clients can spoof their IP.
+   */
+  trustProxy?: boolean;
+  /**
+   * Optional error sink for uncaught adapter errors. When omitted, errors
+   * are silently swallowed in production and logged in development —
+   * `console.error` is never used unconditionally.
+   */
+  onAdapterError?: (err: unknown) => void;
+}
+
 export class HttpAdapter {
   private server: http.Server;
+  private readonly trustProxy: boolean;
+  private readonly onAdapterError?: (err: unknown) => void;
 
   constructor(
     private core: Axiomify,
-    options: { bodyLimitBytes?: number } = {},
+    options: HttpAdapterOptions = {},
   ) {
+    this.trustProxy = options.trustProxy ?? false;
+    this.onAdapterError = options.onAdapterError;
+
     this.server = http.createServer(async (req, res) => {
       try {
         const parsedBody = await this.parseBody(
@@ -37,7 +58,7 @@ export class HttpAdapter {
         );
         await this.core.handle(axiomifyReq, axiomifyRes);
       } catch (err) {
-        console.error('[Axiomify Native HTTP Error]:', err);
+        this.handleAdapterError(err);
         if (!res.headersSent) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(
@@ -51,6 +72,31 @@ export class HttpAdapter {
     });
   }
 
+  private handleAdapterError(err: unknown): void {
+    if (this.onAdapterError) {
+      this.onAdapterError(err);
+      return;
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('[axiomify/http] adapter error:', err);
+    }
+  }
+
+  private resolveIp(req: IncomingMessage): string {
+    if (this.trustProxy) {
+      const xff = req.headers['x-forwarded-for'];
+      const value = Array.isArray(xff) ? xff[0] : xff;
+      if (typeof value === 'string' && value.length > 0) {
+        const first = value.split(',')[0]?.trim();
+        if (first) return first;
+      }
+      const xri = req.headers['x-real-ip'];
+      const xriValue = Array.isArray(xri) ? xri[0] : xri;
+      if (typeof xriValue === 'string' && xriValue.length > 0) return xriValue;
+    }
+    return req.socket.remoteAddress || '0.0.0.0';
+  }
+
   private async parseBody(
     req: IncomingMessage,
     limitBytes = 1_048_576,
@@ -58,13 +104,9 @@ export class HttpAdapter {
     if (req.method === 'GET' || req.method === 'HEAD') return undefined;
 
     return new Promise((resolve, reject) => {
-      // Collect Buffer chunks instead of concatenating strings. `chunk.toString()`
-      // on each chunk decodes as UTF-8 at the chunk boundary and corrupts
-      // multi-byte characters that get split across packets. Decoding once,
-      // after all chunks have arrived, is both faster and byte-correct.
       const chunks: Buffer[] = [];
       let receivedBytes = 0;
-      let settled = false; // 🚀 State lock
+      let settled = false;
 
       req.on('data', (chunk: Buffer) => {
         if (settled) return;
@@ -112,6 +154,7 @@ export class HttpAdapter {
     const _state = {};
     const requestId =
       (req.headers['x-request-id'] as string) || crypto.randomUUID();
+    const ip = this.resolveIp(req);
 
     return {
       get id() {
@@ -127,7 +170,7 @@ export class HttpAdapter {
         return path;
       },
       get ip() {
-        return req.socket.remoteAddress || '0.0.0.0';
+        return ip;
       },
       get headers() {
         return req.headers as Record<string, string | string[] | undefined>;
@@ -174,43 +217,47 @@ export class HttpAdapter {
         res.removeHeader(key);
         return this;
       },
+
       send(data: any, message?: string) {
+        if (isSent) return; // Idempotent — prevent double-write crashes.
         isSent = true;
         const isError = statusCode >= 400;
         const payload = serializer(data, message, statusCode, isError, req);
-
         if (!res.hasHeader('Content-Type')) {
           res.setHeader('Content-Type', 'application/json');
         }
         res.writeHead(statusCode);
         res.end(JSON.stringify(payload));
       },
+
       sendRaw(payload: any, contentType = 'text/plain') {
+        if (isSent) return;
         isSent = true;
         res.setHeader('Content-Type', contentType);
         res.writeHead(statusCode);
         res.end(payload);
       },
+
       error(err: unknown) {
+        if (isSent) return;
         isSent = true;
         const message = err instanceof Error ? err.message : 'Unknown Error';
         const payload = serializer(null, message, 500, true, req);
-
         res.setHeader('Content-Type', 'application/json');
         res.writeHead(500);
         res.end(JSON.stringify(payload));
       },
 
-      // Native HTTP Stream implementation
       stream(readable: Readable, contentType = 'application/octet-stream') {
+        if (isSent) return;
         isSent = true;
         res.setHeader('Content-Type', contentType);
         res.writeHead(statusCode);
         readable.pipe(res);
       },
 
-      // Native HTTP SSE Init
       sseInit(sseHeartbeatMs: number = 15_000) {
+        if (isSent) return;
         isSent = true;
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
@@ -221,10 +268,11 @@ export class HttpAdapter {
         const heartbeat = setInterval(() => {
           res.write(': keepalive\n\n');
         }, sseHeartbeatMs);
+        // unref so a lingering SSE timer does not block process exit.
+        heartbeat.unref();
         res.on('close', () => clearInterval(heartbeat));
       },
 
-      // Native HTTP SSE Send
       sseSend(data: any, event?: string) {
         if (event) res.write(`event: ${event}\n`);
         res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -233,7 +281,6 @@ export class HttpAdapter {
       get statusCode() {
         return statusCode;
       },
-
       get raw() {
         return res;
       },

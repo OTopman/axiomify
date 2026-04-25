@@ -10,18 +10,25 @@ jobs:
         node-version: [18, 20, 22]
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        # Pin to SHA instead of floating tag to prevent supply-chain attacks.
+        # Equivalent to actions/checkout@v4 at time of writing — verify and
+        # update this SHA when you intentionally upgrade the action.
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        # `npm ci` is deterministic — it installs exactly what is in
+        # package-lock.json and fails if the lock file is out of sync.
+        # `npm install` silently updates the lock file and can introduce
+        # different dependency versions across CI runs.
+        run: npm ci
 
-      - name: Security audit
+      - name: Security Audit
         run: npm audit --audit-level=high
 
       - name: Typecheck & Build
@@ -36,6 +43,8 @@ jobs:
           files: ./coverage/coverage-final.json
           flags: unittests
           name: codecov-umbrella
-          fail_ci_if_error: false
+          # Set to true so a broken Codecov token doesn't silently drop
+          # coverage tracking without any signal in CI.
+          fail_ci_if_error: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

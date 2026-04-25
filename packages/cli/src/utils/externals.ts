@@ -11,8 +11,12 @@ export function getUserExternals(cwd: string): string[] {
       return [...deps, ...devDeps];
     }
   } catch (err) {
+    // Include the actual error so users can debug malformed package.json
+    // instead of seeing a generic "defaulting to empty" message.
+    const message = err instanceof Error ? err.message : String(err);
     console.warn(
-      '[Axiomify CLI] Failed to read package.json, defaulting to empty externals.',
+      `[Axiomify CLI] Failed to read package.json (${message}); ` +
+        'defaulting to empty externals.',
     );
   }
   return [];

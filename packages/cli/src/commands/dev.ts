@@ -18,7 +18,34 @@ export async function devServer(entry: string): Promise<void> {
     });
   };
 
+  const GRACEFUL_KILL_MS = 3000;
+
   const restartServer = () => {
+    if (child && child.exitCode === null && child.signalCode === null) {
+      child.removeAllListeners('exit');
+      const oldChild = child;
+
+      // Try graceful shutdown first so in-flight requests can drain and
+      // SIGTERM handlers in the user's app can run cleanly.
+      oldChild.once('exit', () => {
+        startChild();
+      });
+
+      oldChild.kill('SIGTERM');
+
+      // Hard kill only if the child doesn't exit within the grace window.
+      const forceKill = setTimeout(() => {
+        if (oldChild.exitCode === null && oldChild.signalCode === null) {
+          oldChild.kill('SIGKILL');
+        }
+      }, GRACEFUL_KILL_MS);
+      forceKill.unref();
+    } else {
+      startChild();
+    }
+  };
+
+  /*   const restartServer = () => {
     // Check if the process is actually still running at the OS level
     if (child && child.exitCode === null && child.signalCode === null) {
       child.removeAllListeners('exit');
@@ -30,7 +57,7 @@ export async function devServer(entry: string): Promise<void> {
     } else {
       startChild();
     }
-  };
+  }; */
 
   const watchPlugin: esbuild.Plugin = {
     name: 'watch-plugin',

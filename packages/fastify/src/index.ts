@@ -9,14 +9,10 @@ import fastify, {
   FastifyInstance,
   FastifyReply,
   FastifyRequest,
+  FastifyServerOptions,
 } from 'fastify';
 import { Readable } from 'stream';
 
-/**
- * Strip prototype-pollution vectors from a parsed JSON body. Matches the
- * helpers in `@axiomify/http` and `@axiomify/express`. Without this, a body
- * like `{"__proto__": {"polluted": true}}` mutates Object.prototype.
- */
 function sanitize(obj: any): any {
   if (obj === null || typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) return obj.map(sanitize);
@@ -29,11 +25,25 @@ function sanitize(obj: any): any {
   return clean;
 }
 
+export interface FastifyAdapterOptions {
+  /** Maximum body size in bytes. Default: Fastify's 1MB default. */
+  bodyLimit?: number;
+  /** Pass-through Fastify options for advanced cases. */
+  fastifyOptions?: FastifyServerOptions;
+}
+
 export class FastifyAdapter {
   private app: FastifyInstance;
 
-  constructor(private core: Axiomify) {
-    this.app = fastify({ logger: false });
+  constructor(
+    private core: Axiomify,
+    options: FastifyAdapterOptions = {},
+  ) {
+    this.app = fastify({
+      logger: false,
+      bodyLimit: options.bodyLimit,
+      ...options.fastifyOptions,
+    });
 
     this.app.addContentTypeParser(
       'multipart/form-data',
@@ -42,9 +52,6 @@ export class FastifyAdapter {
       },
     );
 
-    // Fastify 5 / find-my-way 9 require the literal `/*`. The `/{*}` syntax
-    // previously used is rejected with "Wildcard must be the last character
-    // in the route" — the adapter couldn't instantiate at all.
     this.app.all('/*', async (req: FastifyRequest, res: FastifyReply) => {
       const axiomifyReq = this.translateRequest(req);
       const axiomifyRes = this.translateResponse(
@@ -60,8 +67,13 @@ export class FastifyAdapter {
   private translateRequest(req: FastifyRequest): AxiomifyRequest {
     const _params = {};
     const _state = {};
-    // Sanitize once at translation time rather than on every body access.
     const safeBody = sanitize(req.body);
+
+    // Compute path once at translation time. Avoids `new URL(...)` allocation
+    // on every plugin access. Also handles protocol-relative paths like `//x`
+    // that would mis-parse via URL().
+    const queryIdx = req.url.indexOf('?');
+    const path = queryIdx === -1 ? req.url : req.url.slice(0, queryIdx);
 
     return {
       get id() {
@@ -78,7 +90,7 @@ export class FastifyAdapter {
         return req.url;
       },
       get path() {
-        return new URL(`http://localhost${req.url}`).pathname;
+        return path;
       },
       get ip() {
         return req.ip;
@@ -129,18 +141,24 @@ export class FastifyAdapter {
         res.removeHeader(key);
         return this;
       },
+
       send<T>(data: T, message = 'Operation successful') {
-        const isError = statusCode >= 400;
+        if (isSent) return; // Idempotent: prevent double-write crashes.
         isSent = true;
+        const isError = statusCode >= 400;
         const payload = serializer(data, message, statusCode, isError, req);
         res.send(payload);
       },
+
       sendRaw(payload: any, contentType = 'text/plain') {
+        if (isSent) return;
         isSent = true;
         res.header('Content-Type', contentType);
         res.status(statusCode).send(payload);
       },
+
       error(err: unknown) {
+        if (isSent) return;
         isSent = true;
         const message = err instanceof Error ? err.message : 'Unknown Error';
         const payload = serializer(null, message, 500, true, req);
@@ -148,12 +166,14 @@ export class FastifyAdapter {
       },
 
       stream(readable: Readable, contentType = 'application/octet-stream') {
+        if (isSent) return;
         isSent = true;
         res.header('Content-Type', contentType);
         res.status(statusCode).send(readable);
       },
 
       sseInit(sseHeartbeatMs: number = 15_000) {
+        if (isSent) return;
         isSent = true;
         res.raw.writeHead(200, {
           'Content-Type': 'text/event-stream',
@@ -163,6 +183,7 @@ export class FastifyAdapter {
         const heartbeat = setInterval(() => {
           res.raw.write(': keepalive\n\n');
         }, sseHeartbeatMs);
+        heartbeat.unref(); // Don't block process exit on a lingering SSE timer
         res.raw.on('close', () => clearInterval(heartbeat));
       },
 
@@ -183,16 +204,14 @@ export class FastifyAdapter {
     };
   }
 
-  public listen(port: number, callback?: () => void): void {
-    this.app
-      .listen({ port })
-      .then(() => {
-        callback?.();
-      })
-      .catch((err) => {
-        console.error(err);
-        process.exit(1);
-      });
+  /**
+   * Returns a Promise that resolves when the server is listening, or rejects
+   * with the underlying error. Does NOT call process.exit on failure — callers
+   * decide how to handle listen failures.
+   */
+  public async listen(port: number, callback?: () => void): Promise<void> {
+    await this.app.listen({ port });
+    callback?.();
   }
 
   public async close(): Promise<void> {

@@ -19,14 +19,18 @@ export interface CorsOptions {
   strictPreflight?: boolean;
 }
 
+/**
+ * Append a value to the Vary header without duplicating existing entries.
+ * Reads via the public `res.raw` instead of private `_headers` internals.
+ */
 function setVary(res: any, value: string): void {
   if (typeof res.header !== 'function') return;
 
-  const existing =
-    res?._headers?.Vary ??
-    res?._headers?.vary ??
-    res?.raw?.getHeader?.('Vary') ??
-    res?.raw?.getHeader?.('vary');
+  // Read the existing Vary value through the adapter's raw response object
+  // rather than accessing private `_headers` which differs across adapters.
+  const raw = res.raw;
+  const existing: string | undefined =
+    typeof raw?.getHeader === 'function' ? raw.getHeader('Vary') : undefined;
 
   if (!existing) {
     res.header('Vary', value);
@@ -35,7 +39,7 @@ function setVary(res: any, value: string): void {
 
   const current = String(existing)
     .split(',')
-    .map((item) => item.trim())
+    .map((item: string) => item.trim())
     .filter(Boolean);
 
   if (!current.includes(value)) {
@@ -61,7 +65,9 @@ export function useCors(app: Axiomify, options: CorsOptions = {}): void {
   } = options;
 
   if (credentials && origin === '*') {
-    throw new Error('[axiomify/cors] `credentials: true` cannot be combined with `origin: "*"`.');
+    throw new Error(
+      '[axiomify/cors] `credentials: true` cannot be combined with `origin: "*"`.',
+    );
   }
 
   app.addHook('onRequest', async (req, res) => {
@@ -76,11 +82,14 @@ export function useCors(app: Axiomify, options: CorsOptions = {}): void {
     } else if (typeof origin === 'string') {
       if (requestOrigin === origin) resolvedOrigin = origin;
     } else if (origin instanceof RegExp) {
-      if (requestOrigin && origin.test(requestOrigin)) resolvedOrigin = requestOrigin;
+      if (requestOrigin && origin.test(requestOrigin))
+        resolvedOrigin = requestOrigin;
     } else if (Array.isArray(origin)) {
       if (requestOrigin) {
         const match = origin.some((entry) =>
-          typeof entry === 'string' ? entry === requestOrigin : entry.test(requestOrigin),
+          typeof entry === 'string'
+            ? entry === requestOrigin
+            : entry.test(requestOrigin),
         );
         if (match) resolvedOrigin = requestOrigin;
       }
@@ -108,18 +117,22 @@ export function useCors(app: Axiomify, options: CorsOptions = {}): void {
         return;
       }
 
-      const reqAccessControlHeaders = req.headers['access-control-request-headers'];
+      const reqAccessControlHeaders =
+        req.headers['access-control-request-headers'];
       const resolvedAllowedHeaders = allowedHeaders?.length
         ? allowedHeaders.join(', ')
         : typeof reqAccessControlHeaders === 'string'
-          ? reqAccessControlHeaders
-          : 'Content-Type, Authorization';
+        ? reqAccessControlHeaders
+        : 'Content-Type, Authorization';
 
       res.header('Access-Control-Allow-Methods', methods.join(', '));
       res.header('Access-Control-Allow-Headers', resolvedAllowedHeaders);
       res.header('Access-Control-Max-Age', String(maxAge));
 
-      if (allowPrivateNetwork && req.headers['access-control-request-private-network'] === 'true') {
+      if (
+        allowPrivateNetwork &&
+        req.headers['access-control-request-private-network'] === 'true'
+      ) {
         res.header('Access-Control-Allow-Private-Network', 'true');
       }
 
@@ -133,6 +146,8 @@ export function useCors(app: Axiomify, options: CorsOptions = {}): void {
       return;
     }
 
-    res.header('Access-Control-Allow-Methods', methods.join(', '));
+    // Access-Control-Allow-Methods is a preflight-only header.
+    // Do NOT send it on every non-OPTIONS response — it is meaningless
+    // outside a preflight context and adds unnecessary response bloat.
   });
 }
