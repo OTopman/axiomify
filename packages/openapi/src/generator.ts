@@ -93,7 +93,7 @@ export class OpenApiGenerator {
     const parameters: unknown[] = [];
 
     if (route.schema?.params) {
-      const paramSchema = zodToJsonSchema(route.schema.params, {
+      const paramSchema = zodToJsonSchema(route.schema.params as any, {
         target: 'openApi3',
       });
       for (const [key, prop] of Object.entries(
