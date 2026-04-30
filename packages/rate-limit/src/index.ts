@@ -3,6 +3,22 @@ import type {
   AxiomifyRequest,
   AxiomifyResponse,
 } from '@axiomify/core';
+import { randomUUID } from 'crypto';
+
+const REDIS_SLIDING_WINDOW_SCRIPT = `
+  local key = KEYS[1]
+  local now = tonumber(ARGV[1])
+  local window = tonumber(ARGV[2])
+  local member = ARGV[3]
+  local windowStart = now - window
+  redis.call('ZREMRANGEBYSCORE', key, '-inf', windowStart)
+  redis.call('ZADD', key, now, member)
+  redis.call('PEXPIRE', key, window)
+  local count = redis.call('ZCARD', key)
+  local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+  local resetTime = oldest[2] and math.ceil((tonumber(oldest[2]) + window) / 1000) or math.ceil((now + window) / 1000)
+  return {count, resetTime}
+`;
 
 export interface RateLimitStore {
   increment(
@@ -26,35 +42,34 @@ export class RedisStore {
     windowMs: number,
   ): Promise<{ count: number; resetTime: number }> {
     const now = Date.now();
-    const script = `
-      local key = KEYS[1]
-      local now = tonumber(ARGV[1])
-      local window = tonumber(ARGV[2])
-      local windowStart = now - window
-      redis.call('ZREMRANGEBYSCORE', key, '-inf', windowStart)
-      redis.call('ZADD', key, now, now)
-      redis.call('PEXPIRE', key, window)
-      local count = redis.call('ZCARD', key)
-      local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
-      local resetTime = oldest[2] and math.ceil((tonumber(oldest[2]) + window) / 1000) or math.ceil((now + window) / 1000)
-      return {count, resetTime}
-    `;
+    const member = `${now}:${randomUUID()}`;
     const [count, resetTime] = await this.client.eval(
-      script,
+      REDIS_SLIDING_WINDOW_SCRIPT,
       1,
       key,
       now.toString(),
       windowMs.toString(),
+      member,
     );
     return { count, resetTime };
   }
 }
 
+export interface MemoryStoreOptions {
+  /**
+   * Hard cap for unique keys kept in memory. Prevents attacker-controlled
+   * key cardinality from growing this map without bound.
+   */
+  maxKeys?: number;
+}
+
 export class MemoryStore implements RateLimitStore {
   private hits = new Map<string, { timestamps: number[]; windowMs: number }>();
   private timer: NodeJS.Timeout;
+  private readonly maxKeys: number;
 
-  constructor() {
+  constructor(options: MemoryStoreOptions = {}) {
+    this.maxKeys = options.maxKeys ?? 50_000;
     this.timer = setInterval(() => this.prune(), 60_000);
     this.timer.unref();
   }
@@ -84,11 +99,23 @@ export class MemoryStore implements RateLimitStore {
     timestamps.push(now);
 
     this.hits.set(key, { timestamps, windowMs });
+    if (this.hits.size > this.maxKeys) {
+      this.prune();
+      while (this.hits.size > this.maxKeys) {
+        const oldestKey = this.hits.keys().next().value;
+        if (oldestKey === undefined) break;
+        this.hits.delete(oldestKey);
+      }
+    }
 
     const oldest = timestamps[0] ?? now;
     const resetTime = Math.ceil((oldest + windowMs) / 1000);
 
     return { count: timestamps.length, resetTime };
+  }
+
+  public close(): void {
+    clearInterval(this.timer);
   }
 }
 
@@ -100,6 +127,12 @@ export interface RateLimitOptions {
   keyGenerator?: (req: AxiomifyRequest) => string;
   keyExtractor?: (req: AxiomifyRequest) => string;
   skip?: (req: AxiomifyRequest) => boolean;
+  /**
+   * In production, using MemoryStore is unsafe for multi-process/multi-instance
+   * deployments. Set this only for explicitly single-process deployments.
+   */
+  allowMemoryStoreInProduction?: boolean;
+  memoryStoreMaxKeys?: number;
 }
 
 // Emitted once per process to avoid log flooding.
@@ -124,10 +157,26 @@ function createDefaultKeyGenerator(): (req: AxiomifyRequest) => string {
   };
 }
 
-function createStore(provided?: RateLimitStore): RateLimitStore {
+function createStore(options: RateLimitOptions): RateLimitStore {
+  const provided = options.store;
   if (provided) return provided;
 
-  if (process.env.NODE_ENV === 'production' && !_emittedStoreWarning) {
+  if (
+    process.env.NODE_ENV === 'production' &&
+    !options.allowMemoryStoreInProduction
+  ) {
+    throw new Error(
+      '[axiomify/rate-limit] Refusing to use in-memory MemoryStore in production. ' +
+        'Provide a distributed store such as RedisStore, or set ' +
+        '`allowMemoryStoreInProduction: true` only for a known single-process deployment.',
+    );
+  }
+
+  if (
+    process.env.NODE_ENV === 'production' &&
+    options.allowMemoryStoreInProduction &&
+    !_emittedStoreWarning
+  ) {
     _emittedStoreWarning = true;
     console.warn(
       '[axiomify/rate-limit] Using in-memory MemoryStore in production. ' +
@@ -138,13 +187,13 @@ function createStore(provided?: RateLimitStore): RateLimitStore {
     );
   }
 
-  return new MemoryStore();
+  return new MemoryStore({ maxKeys: options.memoryStoreMaxKeys });
 }
 
 function buildLimiter(options: RateLimitOptions = {}) {
   const windowMs = options.windowMs ?? 60_000;
   const max = options.max ?? options.maxRequests ?? 100;
-  const store = createStore(options.store);
+  const store = createStore(options);
   const keyGenerator =
     options.keyGenerator ?? options.keyExtractor ?? createDefaultKeyGenerator();
 

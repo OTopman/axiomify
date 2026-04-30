@@ -5,7 +5,7 @@ const app = new Axiomify();
 app.route({
   method: 'GET',
   path: '/bench',
-  handler: async (req, res) => res.send({ hello: 'world' })
+  handler: async (req, res) => res.send({ hello: 'world' }),
 });
 
 const server = new HttpAdapter(app).listen(3000, () => {

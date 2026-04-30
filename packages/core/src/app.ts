@@ -38,6 +38,42 @@ function mergePlugins(
   return [...inherited, ...local];
 }
 
+function attachRequestSignal(req: AxiomifyRequest): {
+  controller: AbortController;
+  cleanup(): void;
+} {
+  const controller = new AbortController();
+  const upstreamSignal = req.signal;
+  let cleanup = () => {};
+
+  if (upstreamSignal) {
+    const abortFromUpstream = () => {
+      if (!controller.signal.aborted) {
+        controller.abort(upstreamSignal.reason);
+      }
+    };
+
+    if (upstreamSignal.aborted) {
+      abortFromUpstream();
+    } else {
+      upstreamSignal.addEventListener('abort', abortFromUpstream, {
+        once: true,
+      });
+      cleanup = () =>
+        upstreamSignal.removeEventListener('abort', abortFromUpstream);
+    }
+  }
+
+  Object.defineProperty(req, 'signal', {
+    value: controller.signal,
+    writable: false,
+    enumerable: true,
+    configurable: true,
+  });
+
+  return { controller, cleanup };
+}
+
 export class Axiomify {
   public readonly router = new Router();
   public readonly validator = new ValidationCompiler();
@@ -205,6 +241,7 @@ export class Axiomify {
     req: AxiomifyRequest,
     res: AxiomifyResponse,
   ): Promise<void> {
+    const requestAbort = attachRequestSignal(req);
     let matched: {
       route: RouteDefinition;
       params: Record<string, string>;
@@ -255,6 +292,7 @@ export class Axiomify {
 
       res.send = (data: unknown, message?: string) => {
         if (sendCallCount === 0) {
+          this.validator.validateResponse(routeId, data, res.statusCode);
           responsePayload = data;
           (res as unknown as Record<string, unknown>).payload = data;
           (res as unknown as Record<string, unknown>).responseMessage = message;
@@ -280,13 +318,13 @@ export class Axiomify {
       try {
         if (effectiveTimeout > 0) {
           let timeoutId: ReturnType<typeof setTimeout> | undefined;
+          const timeoutError = Object.assign(new Error('Request timed out'), {
+            statusCode: 503,
+          });
           const timeoutPromise = new Promise<never>((_, reject) => {
             timeoutId = setTimeout(() => {
-              reject(
-                Object.assign(new Error('Request timed out'), {
-                  statusCode: 503,
-                }),
-              );
+              requestAbort.controller.abort(timeoutError);
+              reject(timeoutError);
             }, effectiveTimeout);
           });
 
@@ -305,28 +343,11 @@ export class Axiomify {
         if (span) span.end();
       }
 
-      if (sendCallCount > 0) {
-        try {
-          this.validator.validateResponse(
-            routeId,
-            responsePayload,
-            res.statusCode,
-          );
-        } catch (validationErr: unknown) {
-          if (process.env.NODE_ENV === 'development') {
-            const err = validationErr as { errors?: unknown; message?: string };
-            console.error(
-              `[Axiomify] Response schema mismatch on ${routeId}:`,
-              err.errors ?? err.message,
-            );
-          }
-        }
-      }
-
       await this.hooks.run('onPostHandler', req, res, match);
     } catch (err: unknown) {
       await this.handleError(err, req, res);
     } finally {
+      requestAbort.cleanup();
       // runSafe: a throwing onClose hook must not suppress cleanup for others.
       await this.hooks.runSafe('onClose', req, res);
     }

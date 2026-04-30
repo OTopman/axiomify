@@ -3,12 +3,17 @@ import type { AxiomifyRequest, RouteSchema } from './types';
 
 export class ValidationError extends Error {
   public readonly errors: Record<string, Record<string, string>>;
-  public readonly statusCode = 400;
+  public readonly statusCode: number;
 
-  constructor(message: string, errors: Record<string, Record<string, string>>) {
+  constructor(
+    message: string,
+    errors: Record<string, Record<string, string>>,
+    statusCode = 400,
+  ) {
     super(message);
     this.name = 'ValidationError';
     this.errors = errors;
+    this.statusCode = statusCode;
   }
 }
 
@@ -149,17 +154,16 @@ export class ValidationCompiler {
     const result = validator(data);
 
     if (!result.valid) {
-      if (process.env.NODE_ENV !== 'production') {
-        // Wrap the error in a namespaced 'response' object
-        throw new ValidationError('Response validation failed', {
+      // Fail before the response is sent. Serving a contract-invalid response
+      // in production is worse than returning a controlled 500: clients can
+      // cache, persist, or act on malformed data.
+      throw new ValidationError(
+        'Response validation failed',
+        {
           response: result.errors || {},
-        });
-      } else {
-        console.warn(
-          `[Axiomify] Response validation mismatch for route ${routeId}:`,
-          result.errors,
-        );
-      }
+        },
+        500,
+      );
     }
   }
 

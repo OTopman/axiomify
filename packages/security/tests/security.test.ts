@@ -15,7 +15,12 @@ describe('Security Package', () => {
 
   it('should block large payloads', async () => {
     const hook = setup({ maxBodySize: 10 });
-    const req: any = { headers: { 'content-length': '20' }, query: {}, params: {}, body: {} };
+    const req: any = {
+      headers: { 'content-length': '20' },
+      query: {},
+      params: {},
+      body: {},
+    };
     const res = makeRes();
 
     await hook(req, res);
@@ -24,7 +29,12 @@ describe('Security Package', () => {
 
   it('should prevent parameter pollution', async () => {
     const hook = setup();
-    const req: any = { headers: {}, query: { user: ['admin', 'attacker'] }, params: {}, body: {} };
+    const req: any = {
+      headers: {},
+      query: { user: ['admin', 'attacker'] },
+      params: {},
+      body: {},
+    };
     const res = makeRes();
 
     await hook(req, res);
@@ -33,7 +43,12 @@ describe('Security Package', () => {
 
   it('should detect SQL injection', async () => {
     const hook = setup();
-    const req: any = { headers: {}, query: { id: "1 UNION SELECT * FROM users" }, params: {}, body: {} };
+    const req: any = {
+      headers: {},
+      query: { id: '1 UNION SELECT * FROM users' },
+      params: {},
+      body: {},
+    };
     const res = makeRes();
 
     await hook(req, res);
@@ -42,7 +57,12 @@ describe('Security Package', () => {
 
   it('should detect NoSQL injection operators', async () => {
     const hook = setup();
-    const req: any = { headers: {}, query: {}, params: {}, body: { username: { $ne: null } } };
+    const req: any = {
+      headers: {},
+      query: {},
+      params: {},
+      body: { username: { $ne: null } },
+    };
     const res = makeRes();
 
     await hook(req, res);
@@ -51,7 +71,12 @@ describe('Security Package', () => {
 
   it('should block suspicious scanner user agents', async () => {
     const hook = setup();
-    const req: any = { headers: { 'user-agent': 'sqlmap/1.8.3' }, query: {}, params: {}, body: {} };
+    const req: any = {
+      headers: { 'user-agent': 'sqlmap/1.8.3' },
+      query: {},
+      params: {},
+      body: {},
+    };
     const res = makeRes();
 
     await hook(req, res);
@@ -73,12 +98,19 @@ describe('Security Package', () => {
 
     await hook(req, res);
     expect(req.body.content).not.toContain('<script>');
-    expect(Object.prototype.hasOwnProperty.call(req.body, '__proto__')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(req.body, '__proto__')).toBe(
+      false,
+    );
   });
 
   it('should strip null bytes from string input', async () => {
     const hook = setup();
-    const req: any = { headers: {}, query: {}, params: {}, body: { value: 'abc\u0000def' } };
+    const req: any = {
+      headers: {},
+      query: {},
+      params: {},
+      body: { value: 'abc\u0000def' },
+    };
     const res = makeRes();
 
     await hook(req, res);

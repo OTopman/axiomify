@@ -12,19 +12,19 @@ export function gracefulShutdown(
     if (draining) return;
     draining = true;
 
-    // Close keep-alive connections so server.close() can actually finish.
-    // Without this, long-lived keep-alive connections hold the server open
-    // until the force-exit timeout fires, causing process.exit(1) on every
-    // clean deploy behind a load balancer.
-    // closeAllConnections() was added in Node 18.2.0.
-    if (typeof server.closeAllConnections === 'function') {
-      server.closeAllConnections();
-    }
+    const closeIdleConnections = () => {
+      if (typeof server.closeIdleConnections === 'function') {
+        server.closeIdleConnections();
+      }
+    };
 
     // Force-exit safety net. Unref'd so it does not keep the event loop alive
     // on its own. Cleared on clean shutdown so we don't exit(1) after a
     // successful exit(0) has already fired.
     const forceExit = setTimeout(() => {
+      if (typeof server.closeAllConnections === 'function') {
+        server.closeAllConnections();
+      }
       console.error(
         '[axiomify/core] Graceful shutdown timeout exceeded. Forcing exit.',
       );
@@ -32,6 +32,9 @@ export function gracefulShutdown(
     }, timeout);
     forceExit.unref();
 
+    // Stop accepting new connections first, then close idle keep-alive sockets.
+    // Active requests are given the configured timeout to finish before
+    // closeAllConnections() is used as the last resort above.
     server.close(async (err) => {
       clearTimeout(forceExit);
       if (err) return process.exit(1);
@@ -43,6 +46,7 @@ export function gracefulShutdown(
         process.exit(1);
       }
     });
+    closeIdleConnections();
   };
 
   // `once` so repeated calls to gracefulShutdown don't stack listeners, and

@@ -1,10 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Axiomify } from '@axiomify/core';
 import jwt from 'jsonwebtoken';
-import {
-  createAuthPlugin,
-  createRefreshHandler,
-} from '../src/index';
+import { createAuthPlugin, createRefreshHandler } from '../src/index';
 
 /**
  * These tests cover the paths the original suite missed:

@@ -48,7 +48,7 @@ describe('Express Adapter Translators', () => {
     expect(req.method).toBe('POST');
     expect(req.path).toBe('/api/v1/test');
     expect(req.ip).toBe('127.0.0.1');
-    expect(req.body).toStrictEqual({ key: 'value' });
+    expect(req.body).toMatchObject({ key: 'value' });
     expect(req.query).toStrictEqual({ search: 'term' });
     expect(req.headers.authorization).toBe('Bearer token');
   });

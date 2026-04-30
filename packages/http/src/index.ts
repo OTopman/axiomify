@@ -7,13 +7,29 @@ import { Readable } from 'stream';
 function sanitize(obj: any): any {
   if (obj === null || typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) return obj.map(sanitize);
-  const clean: any = {};
+  const clean: any = Object.create(null);
   for (const key of Object.keys(obj)) {
     if (key === '__proto__' || key === 'constructor' || key === 'prototype')
       continue;
     clean[key] = sanitize(obj[key]);
   }
   return clean;
+}
+
+function createRequestSignal(req: IncomingMessage): AbortSignal {
+  const controller = new AbortController();
+  const abort = () => {
+    if (!controller.signal.aborted) {
+      controller.abort(new Error('Client aborted request'));
+    }
+  };
+
+  req.once('aborted', abort);
+  req.once('close', () => {
+    if (req.destroyed) abort();
+  });
+
+  return controller.signal;
 }
 
 export interface HttpAdapterOptions {
@@ -60,11 +76,21 @@ export class HttpAdapter {
       } catch (err) {
         this.handleAdapterError(err);
         if (!res.headersSent) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
+          const anyErr = err as Record<string, unknown>;
+          const statusCode =
+            typeof anyErr.statusCode === 'number' ? anyErr.statusCode : 500;
+          const message =
+            statusCode === 413
+              ? 'Payload Too Large'
+              : statusCode === 400
+                ? 'Bad Request'
+                : 'Internal Server Error';
+
+          res.writeHead(statusCode, { 'Content-Type': 'application/json' });
           res.end(
             JSON.stringify({
               status: 'failed',
-              message: 'Internal Server Error',
+              message,
             }),
           );
         }
@@ -114,7 +140,7 @@ export class HttpAdapter {
 
         if (receivedBytes > limitBytes) {
           settled = true;
-          req.destroy();
+          req.resume();
           return reject(
             Object.assign(new Error('Payload Too Large'), { statusCode: 413 }),
           );
@@ -127,9 +153,20 @@ export class HttpAdapter {
         settled = true;
         if (chunks.length === 0) return resolve(undefined);
         const body = Buffer.concat(chunks).toString('utf8');
+        const contentType = req.headers['content-type'] || '';
         try {
           resolve(sanitize(JSON.parse(body)));
         } catch {
+          if (
+            typeof contentType === 'string' &&
+            contentType.includes('application/json')
+          ) {
+            return reject(
+              Object.assign(new Error('Invalid JSON body'), {
+                statusCode: 400,
+              }),
+            );
+          }
           resolve(body);
         }
       });
@@ -152,6 +189,7 @@ export class HttpAdapter {
 
     const _params = {};
     const _state = {};
+    const signal = createRequestSignal(req);
     const requestId =
       (req.headers['x-request-id'] as string) || crypto.randomUUID();
     const ip = this.resolveIp(req);
@@ -193,6 +231,9 @@ export class HttpAdapter {
       get stream() {
         return req;
       },
+      get signal() {
+        return signal;
+      },
     };
   }
 
@@ -220,14 +261,25 @@ export class HttpAdapter {
 
       send(data: any, message?: string) {
         if (isSent) return; // Idempotent — prevent double-write crashes.
+        let body: string;
+        let finalStatusCode = statusCode;
+        try {
+          const isError = statusCode >= 400;
+          const payload = serializer(data, message, statusCode, isError, req);
+          body = JSON.stringify(payload);
+        } catch {
+          finalStatusCode = 500;
+          body = JSON.stringify({
+            status: 'failed',
+            message: 'Internal Server Error',
+          });
+        }
         isSent = true;
-        const isError = statusCode >= 400;
-        const payload = serializer(data, message, statusCode, isError, req);
         if (!res.hasHeader('Content-Type')) {
           res.setHeader('Content-Type', 'application/json');
         }
-        res.writeHead(statusCode);
-        res.end(JSON.stringify(payload));
+        res.writeHead(finalStatusCode);
+        res.end(body);
       },
 
       sendRaw(payload: any, contentType = 'text/plain') {

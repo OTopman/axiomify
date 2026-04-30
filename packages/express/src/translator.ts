@@ -10,7 +10,7 @@ import { Readable } from 'stream';
 function sanitize(obj: unknown): unknown {
   if (obj === null || typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) return (obj as unknown[]).map(sanitize);
-  const clean: Record<string, unknown> = {};
+  const clean: Record<string, unknown> = Object.create(null);
   for (const key of Object.keys(obj as object)) {
     if (key === '__proto__' || key === 'constructor' || key === 'prototype')
       continue;
@@ -19,9 +19,28 @@ function sanitize(obj: unknown): unknown {
   return clean;
 }
 
+function createRequestSignal(req: Request): AbortSignal {
+  const controller = new AbortController();
+  const abort = () => {
+    if (!controller.signal.aborted) {
+      controller.abort(new Error('Client aborted request'));
+    }
+  };
+
+  if (typeof req.once === 'function') {
+    req.once('aborted', abort);
+    req.once('close', () => {
+      if (req.destroyed) abort();
+    });
+  }
+
+  return controller.signal;
+}
+
 export function translateRequest(req: Request): AxiomifyRequest {
   const state: Record<string, unknown> = {};
   const id = (req.headers['x-request-id'] as string) || crypto.randomUUID();
+  const signal = createRequestSignal(req);
 
   return {
     get id() {
@@ -57,6 +76,9 @@ export function translateRequest(req: Request): AxiomifyRequest {
     },
     get raw() {
       return req;
+    },
+    get signal() {
+      return signal;
     },
   };
 }

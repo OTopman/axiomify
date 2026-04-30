@@ -7,8 +7,18 @@ import { sanitize } from './utils';
 
 export class HapiAdapter {
   private server: Hapi.Server;
+  private readonly bodyLimitBytes: number;
 
-  constructor(private core: Axiomify, config: Hapi.ServerOptions = {}) {
+  constructor(
+    private core: Axiomify,
+    config: Hapi.ServerOptions = {},
+  ) {
+    const configuredPayload = config.routes?.payload || {};
+    this.bodyLimitBytes =
+      typeof configuredPayload.maxBytes === 'number'
+        ? configuredPayload.maxBytes
+        : 1_048_576;
+
     // We keep `parse: false, output: 'stream'` so that @axiomify/upload can
     // pipe the raw request into Busboy. That means JSON / urlencoded bodies
     // arrive here as an unread stream — we parse them ourselves per-request
@@ -19,7 +29,8 @@ export class HapiAdapter {
       routes: {
         ...(config.routes || {}),
         payload: {
-          ...(config.routes?.payload || {}),
+          ...configuredPayload,
+          maxBytes: this.bodyLimitBytes,
           output: 'stream',
           parse: false,
         },
@@ -30,7 +41,29 @@ export class HapiAdapter {
       method: '*',
       path: '/{any*}',
       handler: async (req: any, h: any) => {
-        const parsedBody = await this.parseBody(req);
+        let parsedBody: unknown;
+        try {
+          parsedBody = await this.parseBody(req);
+        } catch (err: any) {
+          const statusCode =
+            typeof err?.statusCode === 'number'
+              ? err.statusCode
+              : typeof err?.status === 'number'
+                ? err.status
+                : 500;
+          const message =
+            statusCode === 413
+              ? 'Payload Too Large'
+              : statusCode === 400
+                ? 'Bad Request'
+                : 'Internal Server Error';
+          const axiomifyReq = this.translateRequest(req, undefined);
+          return h
+            .response(
+              this.core.serializer(null, message, statusCode, true, axiomifyReq),
+            )
+            .code(statusCode);
+        }
         return new Promise((resolve, reject) => {
           const axiomifyReq = this.translateRequest(req, parsedBody);
           // Inject the serializer here
@@ -88,7 +121,19 @@ export class HapiAdapter {
 
     return new Promise<unknown>((resolve, reject) => {
       const chunks: Buffer[] = [];
-      stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+      let receivedBytes = 0;
+      stream.on('data', (chunk: Buffer) => {
+        receivedBytes += chunk.length;
+        if (receivedBytes > this.bodyLimitBytes) {
+          stream.destroy(
+            Object.assign(new Error('Payload Too Large'), {
+              statusCode: 413,
+            }),
+          );
+          return;
+        }
+        chunks.push(chunk);
+      });
       stream.on('end', () => {
         if (chunks.length === 0) return resolve(undefined);
         const body = Buffer.concat(chunks).toString('utf8');
@@ -96,7 +141,11 @@ export class HapiAdapter {
           try {
             resolve(sanitize(JSON.parse(body)));
           } catch {
-            resolve(body);
+            reject(
+              Object.assign(new Error('Invalid JSON body'), {
+                statusCode: 400,
+              }),
+            );
           }
         } else if (contentType.includes('application/x-www-form-urlencoded')) {
           resolve(Object.fromEntries(new URLSearchParams(body)));
@@ -111,6 +160,18 @@ export class HapiAdapter {
   private translateRequest(req: Request, parsedBody: unknown): AxiomifyRequest {
     const _params = {};
     const _state = {};
+    const controller = new AbortController();
+    const rawReq = req.raw.req;
+    const abort = () => {
+      if (!controller.signal.aborted) {
+        controller.abort(new Error('Client aborted request'));
+      }
+    };
+    rawReq.once('aborted', abort);
+    rawReq.once('close', () => {
+      if (rawReq.destroyed) abort();
+    });
+
     return {
       get id() {
         return (
@@ -150,7 +211,10 @@ export class HapiAdapter {
         return req;
       },
       get stream() {
-        return req.raw.req;
+        return rawReq;
+      },
+      get signal() {
+        return controller.signal;
       },
     };
   }

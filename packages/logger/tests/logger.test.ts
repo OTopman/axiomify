@@ -5,7 +5,9 @@ describe('useLogger Plugin', () => {
   let stdoutSpy: any;
 
   beforeEach(() => {
-    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    stdoutSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
   });
 
   afterEach(() => {
@@ -17,14 +19,30 @@ describe('useLogger Plugin', () => {
     useLogger(mockApp);
 
     expect(mockApp.addHook).toHaveBeenCalledTimes(3);
-    expect(mockApp.addHook).toHaveBeenNthCalledWith(1, 'onRequest', expect.any(Function));
-    expect(mockApp.addHook).toHaveBeenNthCalledWith(2, 'onPostHandler', expect.any(Function));
-    expect(mockApp.addHook).toHaveBeenNthCalledWith(3, 'onError', expect.any(Function));
+    expect(mockApp.addHook).toHaveBeenNthCalledWith(
+      1,
+      'onRequest',
+      expect.any(Function),
+    );
+    expect(mockApp.addHook).toHaveBeenNthCalledWith(
+      2,
+      'onPostHandler',
+      expect.any(Function),
+    );
+    expect(mockApp.addHook).toHaveBeenNthCalledWith(
+      3,
+      'onError',
+      expect.any(Function),
+    );
   });
 
   it('logs incoming requests with masked headers', async () => {
     const mockApp = { addHook: vi.fn() } as any;
-    useLogger(mockApp, { sensitiveFields: ['authorization'], beautify: false });
+    useLogger(mockApp, {
+      sensitiveFields: ['authorization'],
+      beautify: false,
+      includeHeaders: true,
+    });
 
     const onRequestHook = mockApp.addHook.mock.calls[0][1];
 
@@ -42,7 +60,9 @@ describe('useLogger Plugin', () => {
     const parsedLog = JSON.parse(stdoutSpy.mock.calls[0][0]);
     expect(parsedLog.message).toBe('Incoming Request');
     expect(parsedLog.method).toBe('POST');
-    expect(parsedLog.headers.authorization).not.toBe('Bearer super-secret-token');
+    expect(parsedLog.headers.authorization).not.toBe(
+      'Bearer super-secret-token',
+    );
     expect(mockReq.state.startTime).toBeDefined();
   });
 

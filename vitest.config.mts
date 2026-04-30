@@ -29,10 +29,6 @@ export default defineConfig({
         'benchmarks/**',
         'examples/**',
         'packages/cli/**',
-        'packages/express/**',
-        'packages/fastify/**',
-        'packages/hapi/**',
-        'packages/openapi/**',
       ],
       thresholds: {
         lines: 82,

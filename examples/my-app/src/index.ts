@@ -41,7 +41,6 @@ const schema = new GraphQLSchema({
 });
 useGraphQL(app, { schema });
 
-
 // useLogger(app);
 // useMetrics(app);
 

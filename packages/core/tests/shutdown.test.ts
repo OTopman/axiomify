@@ -25,10 +25,11 @@ describe('gracefulShutdown', () => {
     exitSpy.mockRestore();
   });
 
-  it('calls closeAllConnections() when available to drain keep-alive sockets', async () => {
+  it('closes idle keep-alive sockets after stopping new connections', async () => {
     const mockServer = new EventEmitter() as any;
     mockServer.close = vi.fn((cb: () => void) => cb());
     mockServer.closeAllConnections = vi.fn();
+    mockServer.closeIdleConnections = vi.fn();
 
     const exitSpy = vi
       .spyOn(process, 'exit')
@@ -39,12 +40,13 @@ describe('gracefulShutdown', () => {
 
     await new Promise(process.nextTick);
 
-    // closeAllConnections must be called before server.close so keep-alive
-    // connections do not prevent the server from stopping.
-    const closeAllOrder =
-      mockServer.closeAllConnections.mock.invocationCallOrder[0];
+    // Active requests should be allowed to drain. Only idle keep-alive
+    // sockets are closed after server.close() starts refusing new work.
+    const closeIdleOrder =
+      mockServer.closeIdleConnections.mock.invocationCallOrder[0];
     const closeOrder = mockServer.close.mock.invocationCallOrder[0];
-    expect(closeAllOrder).toBeLessThan(closeOrder);
+    expect(closeOrder).toBeLessThan(closeIdleOrder);
+    expect(mockServer.closeAllConnections).not.toHaveBeenCalled();
 
     exitSpy.mockRestore();
   });

@@ -90,11 +90,10 @@ describe('TrieNode Radix Router', () => {
     ).toThrow(/already registered/);
   });
 
-  it('allows sibling param routes at the same depth — first registered param name wins', () => {
-    // The router intentionally shares a single param trie node for routes like
-    // /api/:version/health and /api/:region/status. The first registered param
-    // name (:version) is used for all matches at that depth. This is a
-    // deliberate design decision: no conflict error is thrown.
+  it('allows sibling param routes at the same depth with route-specific param names', () => {
+    // The router shares a single param trie node for routes like
+    // /api/:version/health and /api/:region/status, but stores param keys on
+    // each terminal route payload so handlers see the matched route's names.
     const router = new Router();
     router.register({
       method: 'GET',
@@ -107,16 +106,13 @@ describe('TrieNode Radix Router', () => {
       handler: async () => {},
     } as RouteDefinition);
 
-    // Both routes are reachable. The param key is whichever name was registered
-    // first (:version), regardless of which route matched.
     const healthMatch = router.lookup('GET', '/api/v1/health');
     expect(healthMatch).not.toBeNull();
     expect(healthMatch?.params).toHaveProperty('version', 'v1');
 
     const statusMatch = router.lookup('GET', '/api/us-east/status');
     expect(statusMatch).not.toBeNull();
-    // :region was registered second — its key at this depth resolves to :version
-    expect(statusMatch?.params).toHaveProperty('version', 'us-east');
+    expect(statusMatch?.params).toHaveProperty('region', 'us-east');
   });
 
   it('allows multiple methods on the same param path', () => {

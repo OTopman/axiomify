@@ -39,6 +39,7 @@ export interface SecurityOptions {
   blockedUserAgentPatterns?: RegExp[];
   sqlPatterns?: RegExp[];
   noSqlPatterns?: RegExp[];
+  sanitizerMaxDepth?: number;
 }
 
 function patchRequestProperty(req: unknown, key: string, newValue: unknown) {
@@ -66,6 +67,7 @@ export function useSecurity(
     blockedUserAgentPatterns = DEFAULT_BLOCKED_UA_PATTERNS,
     sqlPatterns = DEFAULT_SQL_PATTERNS,
     noSqlPatterns = DEFAULT_NOSQL_PATTERNS,
+    sanitizerMaxDepth = 64,
   } = options;
 
   app.addHook('onRequest', async (req: AxiomifyRequest, res) => {
@@ -124,6 +126,7 @@ export function useSecurity(
         xssProtection,
         prototypePollutionProtection,
         nullByteProtection,
+        maxDepth: sanitizerMaxDepth,
       };
 
       if (req.body)

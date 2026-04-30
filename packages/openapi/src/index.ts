@@ -8,6 +8,10 @@ export interface SwaggerPluginOptions extends OpenApiOptions {
    * Return false to deny. Recommended for production / non-public APIs.
    */
   protect?: (req: AxiomifyRequest) => boolean | Promise<boolean>;
+  /**
+   * Explicitly allow public OpenAPI docs in production. Defaults to false.
+   */
+  allowPublicInProduction?: boolean;
 }
 
 function escapeHtml(s: string): string {
@@ -84,6 +88,7 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
 
   const generator = new OpenApiGenerator(app, options);
   let cachedSpec: any = null;
+  let emittedPublicDocsWarning = false;
 
   if (options.autoInferResponses) {
     // Capture inferred response schemas via an onPostHandler hook instead of
@@ -136,11 +141,15 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
   const guard = async (req: AxiomifyRequest): Promise<boolean> => {
     if (!options.protect) {
       if (process.env.NODE_ENV === 'production') {
-        // One-time warning per request when unprotected in prod.
-        console.warn(
-          '[axiomify/openapi] OpenAPI endpoints are publicly accessible. ' +
-            'Provide a `protect` function to restrict the API documentation in production.',
-        );
+        if (!emittedPublicDocsWarning) {
+          emittedPublicDocsWarning = true;
+          console.warn(
+            '[axiomify/openapi] OpenAPI endpoints are not protected. ' +
+              'Production access is denied by default. Provide a `protect` ' +
+              'function or set `allowPublicInProduction: true` explicitly.',
+          );
+        }
+        return options.allowPublicInProduction === true;
       }
       return true;
     }

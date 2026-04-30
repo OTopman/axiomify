@@ -212,7 +212,7 @@ export function useFingerprint(
       );
       serverId = match ? match[1] : undefined;
 
-      if (!serverId) {
+      if (!serverId && res && typeof res.header === 'function') {
         serverId = randomUUID();
         res.header(
           'Set-Cookie',

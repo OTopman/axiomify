@@ -3,7 +3,9 @@ import { useFingerprint } from '../src';
 
 describe('Fingerprint Package', () => {
   const setup = (options: any = {}) => {
-    const app = { addHook: (name: string, hook: any) => (app as any).hook = hook } as any;
+    const app = {
+      addHook: (name: string, hook: any) => ((app as any).hook = hook),
+    } as any;
     useFingerprint(app, options);
     return (app as any).hook;
   };

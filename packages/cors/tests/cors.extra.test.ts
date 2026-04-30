@@ -18,7 +18,7 @@ describe('CORS Plugin — extended', () => {
       headers: origin ? { origin } : {},
       id: 'c',
       params: {},
-    } as any);
+    }) as any;
 
   const makeRes = () => {
     const headers: Record<string, string> = {};

@@ -6,6 +6,21 @@ export interface FileConfig {
   accept: string[]; // e.g., ['image/jpeg', 'image/png']
   autoSaveTo: string; // The directory to pipe the stream to
   rename?: (originalName: string, mimetype: string) => string | Promise<string>;
+  /**
+   * Maximum number of files accepted for this field.
+   * Defaults to 1 so repeated multipart fields cannot overwrite each other.
+   */
+  maxFiles?: number;
+  /**
+   * Preserve the sanitized original filename when no rename() function is
+   * provided. Defaults to false; generated names avoid cross-user collisions.
+   */
+  preserveOriginalName?: boolean;
+  /**
+   * Validate file contents against known magic bytes when the accepted MIME
+   * type is supported by the upload plugin. Defaults to true.
+   */
+  validateContent?: boolean;
 }
 
 export type HttpMethod =
@@ -60,6 +75,7 @@ export interface AxiomifyRequest<
   readonly state: RequestState;
   readonly raw: unknown;
   readonly stream: import('stream').Readable;
+  readonly signal?: AbortSignal;
 }
 
 export interface AxiomifyResponse {

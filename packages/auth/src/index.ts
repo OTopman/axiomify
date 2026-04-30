@@ -3,6 +3,7 @@ import type {
   AxiomifyResponse,
   PluginHandler,
 } from '@axiomify/core';
+import { randomUUID } from 'crypto';
 import * as jwt from 'jsonwebtoken';
 
 declare module '@axiomify/core' {
@@ -20,6 +21,8 @@ export interface AuthOptions {
   secret: string;
   algorithms?: jwt.Algorithm[];
   getToken?: (req: AxiomifyRequest) => string | null;
+  issuer?: string;
+  audience?: string | string[];
 }
 
 /**
@@ -38,6 +41,8 @@ export interface RefreshOptions {
   accessTokenTtl?: number;
   refreshTokenTtl?: number;
   algorithms?: jwt.Algorithm[];
+  issuer?: string;
+  audience?: string | string[];
   /**
    * Provide a store to enable refresh token rotation (strongly recommended).
    * Without this, stolen refresh tokens remain valid until expiry.
@@ -88,6 +93,15 @@ function validateSecret(secret: string, context: string): void {
   }
 }
 
+function tokenOptions(
+  options: Pick<AuthOptions, 'issuer' | 'audience'>,
+): Pick<jwt.SignOptions & jwt.VerifyOptions, 'issuer' | 'audience'> {
+  return {
+    ...(options.issuer ? { issuer: options.issuer } : {}),
+    ...(options.audience ? { audience: options.audience } : {}),
+  };
+}
+
 export function createRefreshHandler(options: RefreshOptions) {
   validateSecret(options.secret, 'JWT access secret');
   validateSecret(options.refreshSecret, 'JWT refresh secret');
@@ -95,6 +109,14 @@ export function createRefreshHandler(options: RefreshOptions) {
   const algorithms = validateAlgorithms(options.algorithms ?? ['HS256']);
   const accessTtl = options.accessTokenTtl ?? 900;
   const refreshTtl = options.refreshTokenTtl ?? 604_800;
+  const issuerAudience = tokenOptions(options);
+
+  if (!options.store && process.env.NODE_ENV === 'production') {
+    throw new Error(
+      '[axiomify/auth] Refusing to create refresh handler without a store in production. ' +
+        'Refresh token rotation and revocation are required for production use.',
+    );
+  }
 
   if (!options.store) {
     console.warn(
@@ -125,6 +147,7 @@ export function createRefreshHandler(options: RefreshOptions) {
 
       const decoded = jwt.verify(token, options.refreshSecret, {
         algorithms,
+        ...issuerAudience,
       }) as jwt.JwtPayload;
 
       const id = decoded?.id ?? decoded?.sub;
@@ -140,11 +163,15 @@ export function createRefreshHandler(options: RefreshOptions) {
 
       const accessToken = jwt.sign({ id }, options.secret, {
         expiresIn: accessTtl,
+        jwtid: randomUUID(),
+        ...issuerAudience,
       });
 
       // Issue a brand-new refresh token (rotation).
       const newRefreshToken = jwt.sign({ id }, options.refreshSecret, {
         expiresIn: refreshTtl,
+        jwtid: randomUUID(),
+        ...issuerAudience,
       });
 
       res.status(200).send({
@@ -162,6 +189,7 @@ export function createAuthPlugin(options: AuthOptions): PluginHandler {
   validateSecret(options.secret, 'JWT secret');
   const algorithms = validateAlgorithms(options.algorithms ?? ['HS256']);
   const getToken = buildGetToken(options);
+  const issuerAudience = tokenOptions(options);
 
   return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
     const token = getToken(req);
@@ -173,6 +201,7 @@ export function createAuthPlugin(options: AuthOptions): PluginHandler {
     try {
       const decoded = jwt.verify(token, options.secret, {
         algorithms,
+        ...issuerAudience,
       }) as AuthUser;
       req.user = decoded;
     } catch {

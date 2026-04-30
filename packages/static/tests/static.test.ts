@@ -48,7 +48,7 @@ describe('serveStatic Plugin', () => {
   it('securely resolves paths and blocks directory traversal', async () => {
     const mockApp = { route: vi.fn() } as any;
     serveStatic(mockApp, { prefix: '/assets', root: '/var/www/assets' });
-    
+
     const handler = mockApp.route.mock.calls[0][0].handler;
 
     const mockReq = { params: { '*': '../../etc/passwd' }, headers: {} } as any;
@@ -61,17 +61,9 @@ describe('serveStatic Plugin', () => {
 
     await handler(mockReq, mockRes);
 
-    // The fs mock above simulates a missing file, so we expect a 404.
-    // The crucial part is verifying that the path passed to fs.stat was normalized
-    // and stripped of the ../ attempts.
-    const fs = require('fs');
-
-    // Depending on OS path separators, it should evaluate to /var/www/assets/etc/passwd
-    // instead of /var/etc/passwd
-    const calledPath = statSpy.mock.calls[0][0];
-
-    expect(calledPath.endsWith('etc/passwd')).toBe(true);
-    expect(calledPath.includes('..')).toBe(false);
+    expect(mockRes.status).toHaveBeenCalledWith(403);
+    expect(mockRes.send).toHaveBeenCalledWith(null, 'Forbidden');
+    expect(statSpy).not.toHaveBeenCalled();
   });
 
   it('returns 404 for missing files', async () => {

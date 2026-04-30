@@ -16,13 +16,29 @@ import { Readable } from 'stream';
 function sanitize(obj: any): any {
   if (obj === null || typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) return obj.map(sanitize);
-  const clean: any = {};
+  const clean: any = Object.create(null);
   for (const key of Object.keys(obj)) {
     if (key === '__proto__' || key === 'constructor' || key === 'prototype')
       continue;
     clean[key] = sanitize(obj[key]);
   }
   return clean;
+}
+
+function createRequestSignal(req: FastifyRequest): AbortSignal {
+  const controller = new AbortController();
+  const abort = () => {
+    if (!controller.signal.aborted) {
+      controller.abort(new Error('Client aborted request'));
+    }
+  };
+
+  req.raw.once('aborted', abort);
+  req.raw.once('close', () => {
+    if (req.raw.destroyed) abort();
+  });
+
+  return controller.signal;
 }
 
 export interface FastifyAdapterOptions {
@@ -52,6 +68,31 @@ export class FastifyAdapter {
       },
     );
 
+    this.app.setErrorHandler((err, req, res) => {
+      const anyErr = err as { statusCode?: number; status?: number };
+      const statusCode =
+        typeof anyErr.statusCode === 'number'
+          ? anyErr.statusCode
+          : typeof anyErr.status === 'number'
+            ? anyErr.status
+            : 500;
+      const message =
+        statusCode === 413
+          ? 'Payload Too Large'
+          : statusCode === 400
+            ? 'Bad Request'
+            : 'Internal Server Error';
+      const axiomifyReq = this.translateRequest(req);
+      const payload = this.core.serializer(
+        null,
+        message,
+        statusCode,
+        true,
+        axiomifyReq,
+      );
+      res.status(statusCode).send(payload);
+    });
+
     this.app.all('/*', async (req: FastifyRequest, res: FastifyReply) => {
       const axiomifyReq = this.translateRequest(req);
       const axiomifyRes = this.translateResponse(
@@ -68,6 +109,7 @@ export class FastifyAdapter {
     const _params = {};
     const _state = {};
     const safeBody = sanitize(req.body);
+    const signal = createRequestSignal(req);
 
     // Compute path once at translation time. Avoids `new URL(...)` allocation
     // on every plugin access. Also handles protocol-relative paths like `//x`
@@ -115,6 +157,9 @@ export class FastifyAdapter {
       },
       get stream() {
         return req.raw;
+      },
+      get signal() {
+        return signal;
       },
     };
   }

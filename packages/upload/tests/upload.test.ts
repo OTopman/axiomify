@@ -12,7 +12,20 @@ vi.mock('fs', async () => {
     createWriteStream: vi.fn().mockReturnValue({ on: vi.fn(), end: vi.fn() }),
   };
 });
-vi.mock('fs/promises', () => ({ unlink: vi.fn().mockResolvedValue(true) }));
+vi.mock('fs/promises', () => ({
+  mkdir: vi.fn().mockResolvedValue(undefined),
+  unlink: vi.fn().mockResolvedValue(true),
+  open: vi.fn().mockResolvedValue({
+    read: vi.fn(async (buffer: Buffer) => {
+      const pngHeader = Buffer.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      ]);
+      pngHeader.copy(buffer);
+      return { bytesRead: pngHeader.length };
+    }),
+    close: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
 
 // 2. Mock stream pipeline to resolve instantly
 vi.mock('stream/promises', () => ({
@@ -115,6 +128,8 @@ describe('useUpload Plugin', () => {
     expect(mockReq.body.username).toBe('axiom_user');
     expect(mockReq.files.avatar).toBeDefined();
     expect(mockReq.files.avatar.originalName).toBe('profile.png');
-    expect(mockReq.files.avatar.path.includes('profile.png')).toBe(true);
+    expect(mockReq.files.avatar.savedName).toMatch(/\.png$/);
+    expect(mockReq.files.avatar.savedName).not.toBe('profile.png');
+    expect(mockReq.files.avatar.path.endsWith('.png')).toBe(true);
   });
 });

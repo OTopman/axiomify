@@ -19,6 +19,8 @@ export interface CorsOptions {
   strictPreflight?: boolean;
 }
 
+const VARY_STATE = Symbol.for('axiomify.cors.vary');
+
 /**
  * Append a value to the Vary header without duplicating existing entries.
  * Reads via the public `res.raw` instead of private `_headers` internals.
@@ -29,10 +31,15 @@ function setVary(res: any, value: string): void {
   // Read the existing Vary value through the adapter's raw response object
   // rather than accessing private `_headers` which differs across adapters.
   const raw = res.raw;
-  const existing: string | undefined =
-    typeof raw?.getHeader === 'function' ? raw.getHeader('Vary') : undefined;
+  const existing =
+    (typeof raw?.getHeader === 'function'
+      ? raw.getHeader('Vary')
+      : undefined) ??
+    res[VARY_STATE] ??
+    (typeof raw?.getHeaders === 'function' ? raw.getHeaders().vary : undefined);
 
   if (!existing) {
+    res[VARY_STATE] = value;
     res.header('Vary', value);
     return;
   }
@@ -46,7 +53,9 @@ function setVary(res: any, value: string): void {
     current.push(value);
   }
 
-  res.header('Vary', current.join(', '));
+  const next = current.join(', ');
+  res[VARY_STATE] = next;
+  res.header('Vary', next);
 }
 
 export function useCors(app: Axiomify, options: CorsOptions = {}): void {
@@ -122,8 +131,8 @@ export function useCors(app: Axiomify, options: CorsOptions = {}): void {
       const resolvedAllowedHeaders = allowedHeaders?.length
         ? allowedHeaders.join(', ')
         : typeof reqAccessControlHeaders === 'string'
-        ? reqAccessControlHeaders
-        : 'Content-Type, Authorization';
+          ? reqAccessControlHeaders
+          : 'Content-Type, Authorization';
 
       res.header('Access-Control-Allow-Methods', methods.join(', '));
       res.header('Access-Control-Allow-Headers', resolvedAllowedHeaders);

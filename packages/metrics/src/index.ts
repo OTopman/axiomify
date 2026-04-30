@@ -8,22 +8,54 @@ export interface MetricsOptions {
   path?: string;
   protect?: (req: AxiomifyRequest) => boolean | Promise<boolean>;
   wsManager?: any;
+  /**
+   * Explicitly allow public metrics in production. Defaults to false.
+   */
+  allowPublicInProduction?: boolean;
+}
+
+function escapeLabelValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
 }
 
 export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
   const metricsPath = options.path ?? '/metrics';
+  let emittedPublicMetricsWarning = false;
 
   if (!options.protect && process.env.NODE_ENV === 'production') {
     console.warn(
-      '[axiomify/metrics] The metrics endpoint is publicly accessible. ' +
-        'Prometheus metrics reveal route patterns, latencies, and error rates. ' +
-        'Provide a `protect` function to restrict access in production.',
+      '[axiomify/metrics] The metrics endpoint is not protected. ' +
+        'Production access is denied by default. Provide a `protect` function ' +
+        'or set `allowPublicInProduction: true` explicitly.',
     );
   }
 
   const stats = {
     requestsTotal: new Map<string, number>(),
     durationTotal: new Map<string, number>(),
+  };
+
+  const record = (
+    req: AxiomifyRequest,
+    status: number | string,
+    routeLabel: string,
+  ) => {
+    if (req.path === metricsPath) return;
+
+    const label =
+      `method="${escapeLabelValue(req.method)}",` +
+      `route="${escapeLabelValue(routeLabel)}",` +
+      `status="${escapeLabelValue(String(status))}"`;
+
+    const durationMs = req.state.startTime
+      ? Number(process.hrtime.bigint() - req.state.startTime) / 1_000_000
+      : 0;
+
+    stats.requestsTotal.set(label, (stats.requestsTotal.get(label) ?? 0) + 1);
+    stats.durationTotal.set(
+      label,
+      (stats.durationTotal.get(label) ?? 0) + durationMs,
+    );
   };
 
   app.addHook('onRequest', (req: AxiomifyRequest) => {
@@ -35,23 +67,21 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
   app.addHook(
     'onPostHandler',
     (req: AxiomifyRequest, res: AxiomifyResponse, match: any) => {
-      if (req.path === metricsPath) return;
-
       const routeLabel: string = match?.route?.path ?? req.path;
       const status = res.statusCode || 200;
-      const label = `method="${req.method}",route="${routeLabel}",status="${status}"`;
-
-      const durationMs = req.state.startTime
-        ? Number(process.hrtime.bigint() - req.state.startTime) / 1_000_000
-        : 0;
-
-      stats.requestsTotal.set(label, (stats.requestsTotal.get(label) ?? 0) + 1);
-      stats.durationTotal.set(
-        label,
-        (stats.durationTotal.get(label) ?? 0) + durationMs,
-      );
+      record(req, status, routeLabel);
     },
   );
+
+  app.addHook('onError', (err: any, req: AxiomifyRequest) => {
+    const status =
+      typeof err?.statusCode === 'number'
+        ? err.statusCode
+        : typeof err?.status === 'number'
+          ? err.status
+          : 500;
+    record(req, status, req.path);
+  });
 
   app.route({
     method: 'GET',
@@ -62,6 +92,17 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
         if (!isAllowed) {
           return res.status(403).send(null, 'Forbidden');
         }
+      } else if (
+        process.env.NODE_ENV === 'production' &&
+        !options.allowPublicInProduction
+      ) {
+        if (!emittedPublicMetricsWarning) {
+          emittedPublicMetricsWarning = true;
+          console.warn(
+            '[axiomify/metrics] Denied public metrics request in production.',
+          );
+        }
+        return res.status(403).send(null, 'Forbidden');
       }
 
       let output =

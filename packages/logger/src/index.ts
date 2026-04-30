@@ -38,12 +38,12 @@ const LEVEL_RANK: Record<LogLevel, number> = {
 function fallbackMaskObject(
   input: unknown,
   sensitiveFields: Set<string>,
-): Record<string, any> {
+): unknown {
   if (Array.isArray(input)) {
     return input.map((item) => fallbackMaskObject(item, sensitiveFields));
   }
 
-  if (!input || typeof input !== 'object') return {};
+  if (!input || typeof input !== 'object') return input;
 
   return Object.entries(input).reduce<Record<string, any>>(
     (acc, [key, value]) => {
@@ -93,10 +93,14 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
     if (LEVEL_RANK[level] < LEVEL_RANK[logLevel]) return;
 
     const timestamp = new Date().toISOString();
-    const maskedMeta =
+    const autoMasked =
       typeof Maskify.autoMask === 'function'
         ? Maskify.autoMask(meta)
-        : fallbackMaskObject(meta, sensitiveFieldSet);
+        : meta;
+    const maskedMeta = fallbackMaskObject(
+      autoMasked,
+      sensitiveFieldSet,
+    ) as Record<string, unknown>;
 
     if (beautify) {
       const colorMap = {

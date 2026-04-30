@@ -29,6 +29,11 @@ export interface WsOptions {
    * Default: no limit — set this in production.
    */
   maxConnections?: number;
+  /**
+   * Maximum queued outbound bytes before broadcasts to a client are skipped.
+   * Prevents slow consumers from growing memory without bound.
+   */
+  maxBufferedBytes?: number;
   authenticate?: (req: IncomingMessage) => Promise<any | null>;
   onBinary?: (client: WsClient, data: Buffer) => void;
 }
@@ -47,12 +52,16 @@ export class WsManager {
   >();
   private schemas: WsEventSchema = {};
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  private readonly maxBufferedBytes: number;
 
   constructor(options: WsOptions) {
     this.wss = new WebSocketServer({ noServer: true });
 
     const heartbeatMs = options.heartbeatIntervalMs ?? 30_000;
-    const maxConnections = options.maxConnections;
+    const maxConnections =
+      options.maxConnections ??
+      (process.env.NODE_ENV === 'production' ? 10_000 : undefined);
+    this.maxBufferedBytes = options.maxBufferedBytes ?? 1_048_576;
 
     if (options.server) {
       options.server.on(
@@ -125,6 +134,10 @@ export class WsManager {
 
     this.wss.on('connection', (ws: any) => {
       const client = ws as WsClient;
+      if (!client.id) client.id = crypto.randomUUID();
+      if (!client.rooms) client.rooms = new Set();
+      if (!this.clients.has(client.id)) this.clients.set(client.id, client);
+      if (!client._lastPong) client._lastPong = Date.now();
 
       client.on('pong', () => {
         client._lastPong = Date.now();
@@ -201,7 +214,12 @@ export class WsManager {
     if (!clients) return;
     const payload = JSON.stringify({ event, data });
     clients.forEach((c) => {
-      if (c.readyState === WebSocket.OPEN) c.send(payload);
+      if (
+        c.readyState === WebSocket.OPEN &&
+        (c.bufferedAmount ?? 0) <= this.maxBufferedBytes
+      ) {
+        c.send(payload);
+      }
     });
   }
 
@@ -235,8 +253,8 @@ export function useWebSockets(app: Axiomify, options: WsOptions): void {
   ) {
     console.warn(
       '[axiomify/ws] No `maxConnections` limit set. ' +
-        'An uncapped WebSocket server can exhaust process memory under connection flood. ' +
-        'Set `maxConnections` to a value appropriate for your available memory.',
+        'Defaulting to 10000 in production. Set an explicit value appropriate ' +
+        'for your available memory.',
     );
   }
 

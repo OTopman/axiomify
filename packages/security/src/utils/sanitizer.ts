@@ -2,6 +2,7 @@ export interface SanitizerOptions {
   xssProtection?: boolean;
   prototypePollutionProtection?: boolean;
   nullByteProtection?: boolean;
+  maxDepth?: number;
 }
 
 const PROTOTYPE_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
@@ -42,8 +43,13 @@ export function sanitizeInput(
     xssProtection: true,
     prototypePollutionProtection: true,
     nullByteProtection: true,
+    maxDepth: 64,
   },
+  depth = 0,
 ): unknown {
+  const maxDepth = options.maxDepth ?? 64;
+  if (depth > maxDepth) return undefined;
+
   if (typeof input === 'string') {
     const withoutNullBytes = options.nullByteProtection
       ? input.replace(/\0/g, '')
@@ -54,15 +60,15 @@ export function sanitizeInput(
   }
 
   if (Array.isArray(input)) {
-    return input.map((value) => sanitizeInput(value, options));
+    return input.map((value) => sanitizeInput(value, options, depth + 1));
   }
 
   if (input && typeof input === 'object') {
-    const sanitized: Record<string, unknown> = {};
+    const sanitized: Record<string, unknown> = Object.create(null);
     for (const [key, value] of Object.entries(input)) {
       if (options.prototypePollutionProtection && PROTOTYPE_KEYS.has(key))
         continue;
-      sanitized[key] = sanitizeInput(value, options);
+      sanitized[key] = sanitizeInput(value, options, depth + 1);
     }
     return sanitized;
   }
@@ -73,7 +79,7 @@ export function sanitizeInput(
 export function normalizeHpp(input: unknown): unknown {
   if (!input || typeof input !== 'object') return input;
 
-  const normalized: Record<string, unknown> = {};
+  const normalized: Record<string, unknown> = Object.create(null);
   for (const [key, value] of Object.entries(input)) {
     normalized[key] = Array.isArray(value) ? value[value.length - 1] : value;
   }

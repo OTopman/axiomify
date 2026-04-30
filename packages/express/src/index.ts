@@ -1,5 +1,5 @@
 import type { Axiomify } from '@axiomify/core';
-import type { Express, Request, Response } from 'express';
+import type { Express, NextFunction, Request, Response } from 'express';
 import express from 'express';
 import { Server } from 'http';
 import { translateRequest, translateResponse } from './translator';
@@ -19,7 +19,7 @@ export interface ExpressAdapterOptions {
    * Set to `1` for a single proxy hop, `2` for two hops, or `true` to trust all.
    * Never set to `true` in production unless you fully control the proxy chain.
    *
-   * @default 1
+   * @default false
    */
   trustProxy?: boolean | number | string;
 }
@@ -30,7 +30,7 @@ export class ExpressAdapter {
   private server?: Server;
 
   constructor(coreApp: Axiomify, options: ExpressAdapterOptions = {}) {
-    const { bodyLimit = '1mb', trustProxy = 1 } = options;
+    const { bodyLimit = '1mb', trustProxy = false } = options;
 
     this.core = coreApp;
     this.app = express();
@@ -62,6 +62,33 @@ export class ExpressAdapter {
 
       next();
     });
+
+    this.app.use(
+      (err: any, req: Request, res: Response, next: NextFunction) => {
+        if (res.headersSent) return next(err);
+        const statusCode =
+          typeof err?.statusCode === 'number'
+            ? err.statusCode
+            : typeof err?.status === 'number'
+              ? err.status
+              : 500;
+        const message =
+          statusCode === 413
+            ? 'Payload Too Large'
+            : statusCode === 400
+              ? 'Bad Request'
+              : 'Internal Server Error';
+        const axiomifyReq = translateRequest(req);
+        const payload = this.core.serializer(
+          null,
+          message,
+          statusCode,
+          true,
+          axiomifyReq,
+        );
+        res.status(statusCode).json(payload);
+      },
+    );
 
     this.app.all('*', async (req: Request, res: Response) => {
       const axiomifyReq = translateRequest(req);

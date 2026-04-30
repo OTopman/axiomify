@@ -29,6 +29,13 @@ const MIME_TYPES: Record<string, string> = {
 
 const DEFAULT_FORCE_DOWNLOAD = new Set(['.svg', '.html', '.htm', '.xml']);
 
+function realpathSafe(target: string): Promise<string> {
+  if (typeof fs.promises.realpath === 'function') {
+    return fs.promises.realpath(target);
+  }
+  return Promise.resolve(path.resolve(target));
+}
+
 export function serveStatic(app: Axiomify, options: StaticOptions): void {
   const prefix = options.prefix.startsWith('/')
     ? options.prefix
@@ -36,6 +43,7 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
   const routePath = prefix === '/' ? '/*' : `${prefix}/*`;
 
   const rootResolved = path.resolve(options.root);
+  const rootRealPath = realpathSafe(rootResolved);
   const forceDownload = options.forceDownloadExtensions
     ? new Set(options.forceDownloadExtensions.map((e) => e.toLowerCase()))
     : DEFAULT_FORCE_DOWNLOAD;
@@ -45,20 +53,39 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
     path: routePath,
     handler: async (req, res) => {
       try {
-        const reqPath = (req.params as any)['*'] || '';
-        const safeSuffix = path
-          .normalize(reqPath)
-          .replace(/^(\.\.[\\/\\])+/, '');
-        const absolutePath = path.resolve(rootResolved, safeSuffix);
+        const rootReal = await rootRealPath;
+        const reqPath = String((req.params as any)['*'] || '');
+        let decodedPath: string;
+        try {
+          decodedPath = decodeURIComponent(reqPath);
+        } catch {
+          return res.status(400).send(null, 'Bad Request');
+        }
 
+        if (decodedPath.includes('\0') || path.isAbsolute(decodedPath)) {
+          return res.status(403).send(null, 'Forbidden');
+        }
+
+        const normalizedPath = path.normalize(decodedPath.replace(/\\/g, '/'));
         if (
-          absolutePath !== rootResolved &&
-          !absolutePath.startsWith(rootResolved + path.sep)
+          normalizedPath === '..' ||
+          normalizedPath.startsWith(`..${path.sep}`) ||
+          normalizedPath.includes(`${path.sep}..${path.sep}`)
         ) {
           return res.status(403).send(null, 'Forbidden');
         }
 
-        const stat = await fs.promises.stat(absolutePath);
+        const absolutePath = path.resolve(rootReal, normalizedPath);
+        const realPath = await realpathSafe(absolutePath);
+
+        if (
+          realPath !== rootReal &&
+          !realPath.startsWith(rootReal + path.sep)
+        ) {
+          return res.status(403).send(null, 'Forbidden');
+        }
+
+        const stat = await fs.promises.stat(realPath);
         if (!stat.isFile()) {
           return res.status(404).send(null, 'File not found');
         }
@@ -78,7 +105,7 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
           return res.status(304).sendRaw('');
         }
 
-        const ext = path.extname(absolutePath).toLowerCase();
+        const ext = path.extname(realPath).toLowerCase();
         const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
         res.header('Cache-Control', 'public, max-age=86400');
@@ -88,7 +115,7 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
         // inline can execute JavaScript via <script> tags or event handlers.
         // attachment + nosniff prevents browsers from rendering them.
         if (forceDownload.has(ext)) {
-          const filename = path.basename(absolutePath);
+          const filename = path.basename(realPath);
           res.header(
             'Content-Disposition',
             `attachment; filename="${filename.replace(/"/g, '\\"')}"`,
@@ -96,7 +123,7 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
           res.header('X-Content-Type-Options', 'nosniff');
         }
 
-        const stream = fs.createReadStream(absolutePath);
+        const stream = fs.createReadStream(realPath);
         res.stream(stream, contentType);
       } catch (err: any) {
         if (err.code === 'ENOENT') {

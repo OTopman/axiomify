@@ -26,7 +26,7 @@ export interface GraphQLPluginOptions<TContext = Record<string, unknown>> {
   path?: string;
   /**
    * Serve the GraphiQL playground. Disable in production.
-   * @default true
+   * @default true outside production, false in production
    */
   playground?: boolean;
   playgroundPath?: string;
@@ -163,21 +163,22 @@ export function useGraphQL<TContext = Record<string, unknown>>(
   app: Axiomify,
   options: GraphQLPluginOptions<TContext>,
 ): void {
+  const isProduction = process.env.NODE_ENV === 'production';
   const {
     schema,
     context: contextFactory,
     path: rawPath = '/graphql',
-    playground = true,
+    playground = !isProduction,
     playgroundPath: rawPlaygroundPath,
-    maxDepth,
-    maxAliases,
+    maxDepth = isProduction ? 12 : undefined,
+    maxAliases = isProduction ? 15 : undefined,
     validationRules = [],
   } = options;
 
   // Default: disable introspection in production, enable in dev/test.
   // Explicit option always wins so callers can override in either direction.
   const disableIntrospection =
-    options.disableIntrospection ?? process.env.NODE_ENV === 'production';
+    options.disableIntrospection ?? isProduction;
 
   const gqlPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
   const pgPath =
