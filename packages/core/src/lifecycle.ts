@@ -61,4 +61,18 @@ export class HookManager {
       await list[i](...(args as any));
     }
   }
+
+  public async runSafe<T extends HookType>(
+    type: T,
+    ...args: Parameters<HookHandlerMap[T]>
+  ): Promise<void> {
+    const list = this.hooks[type];
+    for (const fn of list) {
+      try {
+        await (fn as any)(...args);
+      } catch (e) {
+        console.error(`[Axiomify] Hook "${type}" threw:`, e);
+      }
+    }
+  }
 }

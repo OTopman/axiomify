@@ -1,31 +1,60 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Axiomify } from '../src/app';
 
-/**
- * Covers the paths in `app.ts` that existing tests skip:
- *   - `group()` nested prefixing
- *   - `healthCheck()` with and without user checks
- *   - `setSerializer()` override
- *   - HEAD auto-handling (strips body)
- *   - Route collision throws from the router
- */
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const makeReq = (path: string, method = 'GET') =>
+  ({
+    method,
+    path,
+    params: {},
+    headers: {},
+    id: 'test',
+    state: {},
+  }) as any;
+
+const makeRes = () => {
+  let sendPayload: unknown;
+  let statusCode = 0;
+  const res: any = {
+    status: vi.fn().mockImplementation((code: number) => {
+      statusCode = code;
+      return res;
+    }),
+    send: vi.fn().mockImplementation((data: unknown) => {
+      sendPayload = data;
+    }),
+    header: vi.fn().mockReturnThis(),
+    removeHeader: vi.fn().mockReturnThis(),
+    headersSent: false,
+    get _status() {
+      return statusCode;
+    },
+    get _payload() {
+      return sendPayload;
+    },
+  };
+  return res;
+};
+
+// ─── group() ─────────────────────────────────────────────────────────────────
+
 describe('Axiomify.group', () => {
-  it('prefixes routes with the group path', async () => {
+  it('prefixes routes with the group path', () => {
     const app = new Axiomify();
     app.group('/api/v1', (g) => {
       g.route({
         method: 'GET',
         path: '/users',
-        handler: async (_req, res) => res.send({ ok: true }),
+        handler: async (_r, res) => res.send({}),
       });
     });
 
-    // Only one route is registered, at the prefixed path.
     expect(app.registeredRoutes).toHaveLength(1);
     expect(app.registeredRoutes[0].path).toBe('/api/v1/users');
   });
 
-  it('flattens nested groups', async () => {
+  it('flattens nested groups', () => {
     const app = new Axiomify();
     app.group('/api', (g) => {
       g.group('/v1', (g2) => {
@@ -40,7 +69,7 @@ describe('Axiomify.group', () => {
     expect(app.registeredRoutes.map((r) => r.path)).toContain('/api/v1/things');
   });
 
-  it('collapses accidental double slashes', async () => {
+  it('collapses accidental double slashes', () => {
     const app = new Axiomify();
     app.group('/api/', (g) => {
       g.route({
@@ -53,7 +82,7 @@ describe('Axiomify.group', () => {
     expect(app.registeredRoutes[0].path).toBe('/api/users');
   });
 
-  it('inherits plugins across a group and preserves route-specific plugins', async () => {
+  it('inherits plugins and merges with route-specific plugins in declaration order', async () => {
     const app = new Axiomify();
     const order: string[] = [];
 
@@ -80,22 +109,7 @@ describe('Axiomify.group', () => {
       },
     );
 
-    const req = {
-      method: 'GET',
-      path: '/api/users',
-      params: {},
-      headers: {},
-      id: 'group-plugins',
-    } as any;
-    const res = {
-      status: vi.fn().mockReturnThis(),
-      send: vi.fn(),
-      header: vi.fn().mockReturnThis(),
-      headersSent: false,
-    } as any;
-
-    await app.handle(req, res);
-
+    await app.handle(makeReq('/api/users'), makeRes());
     expect(order).toEqual(['auth', 'audit']);
   });
 
@@ -138,64 +152,15 @@ describe('Axiomify.group', () => {
       },
     );
 
-    const req = {
-      method: 'GET',
-      path: '/api/admin/users',
-      params: {},
-      headers: {},
-      id: 'group-plugin-order',
-    } as any;
-    const res = {
-      status: vi.fn().mockReturnThis(),
-      send: vi.fn(),
-      header: vi.fn().mockReturnThis(),
-      headersSent: false,
-    } as any;
-
-    await app.handle(req, res);
-
+    await app.handle(makeReq('/api/admin/users'), makeRes());
     expect(order).toEqual(['auth', 'scope', 'audit']);
   });
 });
 
+// ─── healthCheck() ───────────────────────────────────────────────────────────
+
 describe('Axiomify.healthCheck', () => {
-  const makeReq = (path: string) =>
-    ({
-      method: 'GET',
-      path,
-      params: {},
-      headers: {},
-      id: 'h',
-    } as any);
-
-  // Captures the payload passed to send() so each test can introspect it.
-  // Using a plain closure keeps the types simple and avoids tripping over
-  // vitest mock-return semantics (mockReturnThis-then-read-calls is
-  // fiddly with chained .status().send()).
-  const makeRes = () => {
-    let sendPayload: any;
-    let statusCode = 0;
-    const res: any = {
-      status: vi.fn().mockImplementation((code: number) => {
-        statusCode = code;
-        return res;
-      }),
-      send: vi.fn().mockImplementation((data: any) => {
-        sendPayload = data;
-      }),
-      header: vi.fn().mockImplementation(() => res),
-      headersSent: false,
-      get _status() {
-        return statusCode;
-      },
-      get _payload() {
-        return sendPayload;
-      },
-    };
-    return res;
-  };
-
-  it('returns 200 and uptime when no checks are provided', async () => {
+  it('returns 200 with status and uptime when no checks are provided', async () => {
     const app = new Axiomify();
     app.healthCheck();
 
@@ -204,7 +169,9 @@ describe('Axiomify.healthCheck', () => {
 
     expect(res._status).toBe(200);
     expect(res._payload.status).toBe('ok');
+    // uptime must be a non-negative number
     expect(typeof res._payload.uptime).toBe('number');
+    expect(res._payload.uptime).toBeGreaterThanOrEqual(0);
   });
 
   it('returns 200 when all checks pass', async () => {
@@ -226,7 +193,7 @@ describe('Axiomify.healthCheck', () => {
     const app = new Axiomify();
     app.healthCheck('/health', {
       db: async () => true,
-      queue: async () => false, // failing dependency
+      queue: async () => false,
     });
 
     const res = makeRes();
@@ -253,45 +220,27 @@ describe('Axiomify.healthCheck', () => {
   });
 });
 
+// ─── setSerializer() ─────────────────────────────────────────────────────────
+
 describe('Axiomify.setSerializer', () => {
-  it('overrides the default envelope', async () => {
+  it('overrides the default response envelope', async () => {
     const app = new Axiomify();
-    app.setSerializer((data, message) => ({
-      result: data,
-      note: message,
-    }));
+    app.setSerializer((data, message) => ({ result: data, note: message }));
     app.route({
       method: 'GET',
       path: '/x',
       handler: async (_r, res) => res.send({ a: 1 }, 'hi'),
     });
 
-    const req = {
-      method: 'GET',
-      path: '/x',
-      params: {},
-      headers: {},
-      id: 'r',
-    } as any;
-    let captured: any;
-    const res = {
-      status: vi.fn().mockReturnThis(),
-      send: vi.fn().mockImplementation((data: any) => {
-        captured = data;
-      }),
-      header: vi.fn().mockReturnThis(),
-      headersSent: false,
-    } as any;
+    const res = makeRes();
+    await app.handle(makeReq('/x'), res);
 
-    await app.handle(req, res);
-
-    // Serializers produce the final payload via the adapter, but the mock's
-    // `res.send` receives the raw data, message pair — so we verify the
-    // serializer was at least invokable without throwing and that the route
-    // ran. Deeper serialization tests belong to individual adapter suites.
-    expect(captured).toEqual({ a: 1 });
+    // The mock captures the raw data passed to res.send() before serialization.
+    expect(res._payload).toEqual({ a: 1 });
   });
 });
+
+// ─── app.use() ───────────────────────────────────────────────────────────────
 
 describe('Axiomify.use', () => {
   it('installs a global plugin through app.use()', async () => {
@@ -303,7 +252,6 @@ describe('Axiomify.use', () => {
     });
 
     app.use(installer);
-
     expect(installer).toHaveBeenCalledWith(app);
 
     app.route({
@@ -320,18 +268,14 @@ describe('Axiomify.use', () => {
       state: {},
       id: 'use-test',
     } as any;
-    const res = {
-      status: vi.fn().mockReturnThis(),
-      send: vi.fn(),
-      header: vi.fn().mockReturnThis(),
-      headersSent: false,
-    } as any;
-
+    const res = makeRes();
     await app.handle(req, res);
 
     expect((res as any).payload).toEqual({ installed: true });
   });
 });
+
+// ─── HEAD request handling ───────────────────────────────────────────────────
 
 describe('HEAD request handling', () => {
   it('auto-routes HEAD to a GET handler and strips the body', async () => {
@@ -349,10 +293,10 @@ describe('HEAD request handling', () => {
       headers: {},
       id: 'h',
     } as any;
-    let captured: any = 'not-called';
+    let captured: unknown = 'not-called';
     const res = {
       status: vi.fn().mockReturnThis(),
-      send: vi.fn().mockImplementation((data: any) => {
+      send: vi.fn().mockImplementation((data: unknown) => {
         captured = data;
       }),
       header: vi.fn().mockReturnThis(),
@@ -360,30 +304,23 @@ describe('HEAD request handling', () => {
     } as any;
 
     await app.handle(req, res);
-
-    // The core wraps send() and passes `undefined` as the data for HEAD.
     expect(captured).toBeUndefined();
   });
 });
 
+// ─── Route registration guards ───────────────────────────────────────────────
+
 describe('Route registration guards', () => {
   it('throws when two routes collide on the same method + path', () => {
     const app = new Axiomify();
-    app.route({
-      method: 'GET',
-      path: '/dup',
-      handler: async () => {},
-    });
+    app.route({ method: 'GET', path: '/dup', handler: async () => {} });
     expect(() =>
-      app.route({
-        method: 'GET',
-        path: '/dup',
-        handler: async () => {},
-      }),
+      app.route({ method: 'GET', path: '/dup', handler: async () => {} }),
     ).toThrow(/already registered/);
   });
-
 });
+
+// ─── 404 / 405 dispatch ──────────────────────────────────────────────────────
 
 describe('404 / 405 dispatch', () => {
   it('responds 404 for an unknown path', async () => {
@@ -394,21 +331,8 @@ describe('404 / 405 dispatch', () => {
       handler: async (_r, res) => res.send({}),
     });
 
-    const req = {
-      method: 'GET',
-      path: '/unknown',
-      params: {},
-      headers: {},
-      id: 'r',
-    } as any;
-    const res = {
-      status: vi.fn().mockReturnThis(),
-      send: vi.fn(),
-      header: vi.fn().mockReturnThis(),
-      headersSent: false,
-    } as any;
-
-    await app.handle(req, res);
+    const res = makeRes();
+    await app.handle(makeReq('/unknown'), res);
     expect(res.status).toHaveBeenCalledWith(404);
   });
 
@@ -420,22 +344,95 @@ describe('404 / 405 dispatch', () => {
       handler: async (_r, res) => res.send({}),
     });
 
-    const req = {
-      method: 'GET',
-      path: '/submit',
-      params: {},
-      headers: {},
-      id: 'r',
-    } as any;
-    const res = {
-      status: vi.fn().mockReturnThis(),
-      send: vi.fn(),
-      header: vi.fn().mockReturnThis(),
-      headersSent: false,
-    } as any;
-
-    await app.handle(req, res);
+    const res = makeRes();
+    await app.handle(makeReq('/submit'), res);
     expect(res.header).toHaveBeenCalledWith('Allow', 'POST');
     expect(res.status).toHaveBeenCalledWith(405);
+  });
+});
+
+// ─── onError hook isolation (runSafe) ────────────────────────────────────────
+
+describe('onError hook isolation', () => {
+  it('calls all onError hooks even when one throws, and still sends a response', async () => {
+    const app = new Axiomify();
+    const secondHookCalled = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    // First hook throws — must NOT prevent the second hook from running.
+    app.addHook('onError', async () => {
+      throw new Error('hook exploded');
+    });
+    app.addHook('onError', secondHookCalled);
+
+    app.route({
+      method: 'GET',
+      path: '/boom',
+      handler: async () => {
+        throw new Error('handler error');
+      },
+    });
+
+    const res = makeRes();
+    await app.handle(makeReq('/boom'), res);
+
+    expect(secondHookCalled).toHaveBeenCalled();
+    // A response must still be sent after all hooks run.
+    expect(res._status).toBe(500);
+
+    consoleSpy.mockRestore();
+  });
+
+  it('does not recurse when onError itself throws', async () => {
+    const app = new Axiomify();
+    let callCount = 0;
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    app.addHook('onError', async () => {
+      callCount++;
+      throw new Error('recursive trap');
+    });
+
+    app.route({
+      method: 'GET',
+      path: '/recurse',
+      handler: async () => {
+        throw new Error('initial error');
+      },
+    });
+
+    const res = makeRes();
+    // This must resolve — not stack overflow.
+    await expect(app.handle(makeReq('/recurse'), res)).resolves.not.toThrow();
+    // onError was called exactly once — no recursion.
+    expect(callCount).toBe(1);
+
+    consoleSpy.mockRestore();
+  });
+});
+
+// ─── onClose hook isolation ──────────────────────────────────────────────────
+
+describe('onClose hook isolation', () => {
+  it('calls all onClose hooks even when one throws', async () => {
+    const app = new Axiomify();
+    const secondClosed = vi.fn();
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    app.addHook('onClose', async () => {
+      throw new Error('close failed');
+    });
+    app.addHook('onClose', secondClosed);
+
+    app.route({
+      method: 'GET',
+      path: '/ok',
+      handler: async (_r, res) => res.send({}),
+    });
+
+    await app.handle(makeReq('/ok'), makeRes());
+
+    expect(secondClosed).toHaveBeenCalled();
+    consoleSpy.mockRestore();
   });
 });

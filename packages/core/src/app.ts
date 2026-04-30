@@ -39,7 +39,6 @@ function mergePlugins(
 }
 
 export class Axiomify {
-  // readonly: external code must not replace the router or compiler at runtime.
   public readonly router = new Router();
   public readonly validator = new ValidationCompiler();
   public readonly hooks = new HookManager();
@@ -171,9 +170,12 @@ export class Axiomify {
     this.route({
       method: 'GET',
       path,
-      handler: async (req, res) => {
+      handler: async (_req, res) => {
         if (!checks) {
-          return res.status(200).send({ status: 'ok' });
+          // Include uptime so callers can introspect process health duration.
+          return res
+            .status(200)
+            .send({ status: 'ok', uptime: process.uptime() });
         }
 
         const results: Record<string, boolean> = {};
@@ -226,7 +228,7 @@ export class Axiomify {
       matched = match;
       const { route, params } = match;
 
-      Object.assign(req.params as any, params);
+      Object.assign(req.params as object, params);
       const routeId = `${route.method}:${route.path}`;
 
       await this.hooks.run('onPreHandler', req, res, match);
@@ -251,15 +253,11 @@ export class Axiomify {
       let sendCallCount = 0;
       const originalSend = res.send.bind(res);
 
-      res.send = (data: any, message?: string) => {
-        // Guard: detect double-send from misbehaving handlers. Only the first
-        // call captures the payload; subsequent calls still go through to the
-        // underlying adapter (which may ignore them or throw) but do not
-        // corrupt the captured payload used for response validation.
+      res.send = (data: unknown, message?: string) => {
         if (sendCallCount === 0) {
           responsePayload = data;
-          (res as any).payload = data;
-          (res as any).responseMessage = message;
+          (res as unknown as Record<string, unknown>).payload = data;
+          (res as unknown as Record<string, unknown>).responseMessage = message;
         }
         sendCallCount++;
 
@@ -281,7 +279,7 @@ export class Axiomify {
 
       try {
         if (effectiveTimeout > 0) {
-          let timeoutId: NodeJS.Timeout | undefined;
+          let timeoutId: ReturnType<typeof setTimeout> | undefined;
           const timeoutPromise = new Promise<never>((_, reject) => {
             timeoutId = setTimeout(() => {
               reject(
@@ -293,16 +291,15 @@ export class Axiomify {
           });
 
           try {
-            // ExecutionEngine removed — call handler directly.
             await Promise.race([
-              route.handler(req as any, res),
+              route.handler(req as never, res),
               timeoutPromise,
             ]);
           } finally {
             if (timeoutId !== undefined) clearTimeout(timeoutId);
           }
         } else {
-          await route.handler(req as any, res);
+          await route.handler(req as never, res);
         }
       } finally {
         if (span) span.end();
@@ -315,41 +312,54 @@ export class Axiomify {
             responsePayload,
             res.statusCode,
           );
-        } catch (validationErr: any) {
+        } catch (validationErr: unknown) {
           if (process.env.NODE_ENV === 'development') {
+            const err = validationErr as { errors?: unknown; message?: string };
             console.error(
               `[Axiomify] Response schema mismatch on ${routeId}:`,
-              validationErr.errors ?? validationErr.message,
+              err.errors ?? err.message,
             );
           }
         }
       }
 
       await this.hooks.run('onPostHandler', req, res, match);
-    } catch (err: any) {
+    } catch (err: unknown) {
       await this.handleError(err, req, res);
     } finally {
-      await this.hooks.run('onClose', req, res);
+      // runSafe: a throwing onClose hook must not suppress cleanup for others.
+      await this.hooks.runSafe('onClose', req, res);
     }
   }
 
   private async handleError(
-    err: any,
+    err: unknown,
     req: AxiomifyRequest,
     res: AxiomifyResponse,
   ) {
-    await this.hooks.run('onError', err, req, res);
+    // runSafe: a throwing onError hook must not re-enter handleError and
+    // recurse until the call stack overflows.
+    await this.hooks.runSafe('onError', err, req, res);
     if (res.headersSent) return;
 
-    // Normalize statusCode — accept both .statusCode and .status but prefer
-    // .statusCode so the error shape is consistent across all packages.
-    const statusCode = err.statusCode ?? err.status ?? 500;
-    const message = err.message || 'Internal Server Error';
+    const anyErr = err as Record<string, unknown>;
+    const statusCode =
+      typeof anyErr.statusCode === 'number'
+        ? anyErr.statusCode
+        : typeof anyErr.status === 'number'
+          ? anyErr.status
+          : 500;
+    const message =
+      typeof anyErr.message === 'string'
+        ? anyErr.message
+        : 'Internal Server Error';
 
     const errorData =
-      err.issues ??
-      err.errors ??
-      (process.env.NODE_ENV === 'development' ? { stack: err.stack } : null);
+      anyErr.issues ??
+      anyErr.errors ??
+      (process.env.NODE_ENV === 'development'
+        ? { stack: typeof anyErr.stack === 'string' ? anyErr.stack : undefined }
+        : null);
 
     res.status(statusCode).send(errorData, message);
   }

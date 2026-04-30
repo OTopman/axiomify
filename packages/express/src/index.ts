@@ -4,21 +4,54 @@ import express from 'express';
 import { Server } from 'http';
 import { translateRequest, translateResponse } from './translator';
 
+export interface ExpressAdapterOptions {
+  /**
+   * Maximum body size for JSON and URL-encoded payloads.
+   * Enforced by the Express body parsers — not dependent on Content-Length.
+   * @default '1mb'
+   */
+  bodyLimit?: string;
+  /**
+   * Express trust proxy setting. Required for correct req.ip behind load
+   * balancers, nginx, or any reverse proxy. Without this, req.ip returns the
+   * proxy's IP instead of the client's, breaking rate limiting and fingerprinting.
+   *
+   * Set to `1` for a single proxy hop, `2` for two hops, or `true` to trust all.
+   * Never set to `true` in production unless you fully control the proxy chain.
+   *
+   * @default 1
+   */
+  trustProxy?: boolean | number | string;
+}
+
 export class ExpressAdapter {
   private app: Express;
   private core: Axiomify;
   private server?: Server;
 
-  constructor(coreApp: Axiomify) {
+  constructor(coreApp: Axiomify, options: ExpressAdapterOptions = {}) {
+    const { bodyLimit = '1mb', trustProxy = 1 } = options;
+
     this.core = coreApp;
     this.app = express();
 
-    // Instantiate memory-heavy parsers ONCE during boot
-    const jsonParser = express.json();
-    const urlencodedParser = express.urlencoded({ extended: true });
+    // Required for correct req.ip when deployed behind a proxy/load balancer.
+    // Without this, all requests appear to originate from the proxy IP, which
+    // breaks rate limiting, fingerprinting, and audit logs.
+    this.app.set('trust proxy', trustProxy);
+
+    // Instantiate parsers once at boot with explicit size limits.
+    // These limits are enforced on the actual body stream, unlike the
+    // Content-Length header check in @axiomify/security which can be bypassed
+    // by chunked transfer encoding.
+    const jsonParser = express.json({ limit: bodyLimit });
+    const urlencodedParser = express.urlencoded({
+      extended: true,
+      limit: bodyLimit,
+    });
 
     this.app.use((req, res, next) => {
-      const match = this.core.router.lookup(req.method as any, req.path);
+      const match = this.core.router.lookup(req.method as never, req.path);
       if (!match) return next();
 
       const contentType = req.headers['content-type'] || '';
@@ -30,7 +63,6 @@ export class ExpressAdapter {
       next();
     });
 
-    // The Hijack: Catch all traffic and route it to Axiomify's Radix Engine
     this.app.all('*', async (req: Request, res: Response) => {
       const axiomifyReq = translateRequest(req);
       const axiomifyRes = translateResponse(
@@ -43,15 +75,11 @@ export class ExpressAdapter {
     });
   }
 
-  /**
-   * Bootstraps the server.
-   */
   public listen(port: number, callback?: () => void): Server {
     this.server = this.app.listen(port, callback);
     return this.server;
   }
 
-  // Graceful Shutdown
   public async close(): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.server) return resolve();
@@ -59,10 +87,6 @@ export class ExpressAdapter {
     });
   }
 
-  /**
-   * Exposes the underlying Express app just in case legacy integration is needed,
-   * though using this breaks the framework-agnostic guarantee.
-   */
   public get native(): Express {
     return this.app;
   }

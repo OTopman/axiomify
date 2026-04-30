@@ -32,12 +32,14 @@ export interface GraphQLPluginOptions<TContext = Record<string, unknown>> {
   playgroundPath?: string;
   maxDepth?: number;
   maxAliases?: number;
-  validationRules?: ReadonlyArray<any>;
+  validationRules?: ReadonlyArray<never>;
   /**
    * Disables GraphQL introspection queries (__schema, __type).
-   * Always disable in production — introspection exposes your full schema
-   * to any client and is the first step in targeted GraphQL attacks.
-   * @default false (introspection enabled — set to true in production)
+   *
+   * Defaults to `true` in production (NODE_ENV === 'production') and `false`
+   * otherwise. Introspection exposes your full schema to any client and is the
+   * first reconnaissance step in targeted GraphQL attacks. Explicitly set this
+   * option to override the environment-based default.
    */
   disableIntrospection?: boolean;
 }
@@ -46,44 +48,50 @@ export interface GraphQLResult {
   data?: Record<string, unknown> | null;
   errors?: ReadonlyArray<{
     message: string;
-    locations?: any;
-    path?: any;
-    extensions?: any;
+    locations?: unknown;
+    path?: unknown;
+    extensions?: unknown;
   }>;
   extensions?: Record<string, unknown>;
 }
 
-function measureDepth(node: any, current = 0): number {
+function measureDepth(node: Record<string, unknown>, current = 0): number {
   if (node.selectionSet) {
-    const children = node.selectionSet.selections as any[];
-    // Use reduce instead of Math.max(...spread) to avoid call-stack overflow
-    // on queries with thousands of selections.
+    const children = (
+      node.selectionSet as { selections: Record<string, unknown>[] }
+    ).selections;
     return children.reduce(
-      (max, s) => Math.max(max, measureDepth(s, current + 1)),
+      (max: number, s) => Math.max(max, measureDepth(s, current + 1)),
       current,
     );
   }
   return current;
 }
 
-function countAliases(node: any): number {
+function countAliases(node: Record<string, unknown>): number {
   let count = node.alias ? 1 : 0;
   if (node.selectionSet) {
-    const children = node.selectionSet.selections as any[];
-    count += children.reduce((sum, s) => sum + countAliases(s), 0);
+    const children = (
+      node.selectionSet as { selections: Record<string, unknown>[] }
+    ).selections;
+    count += children.reduce((sum: number, s) => sum + countAliases(s), 0);
   }
   return count;
 }
 
 function getQueryDepth(doc: DocumentNode): number {
   return doc.definitions.reduce(
-    (max, def) => Math.max(max, measureDepth(def)),
+    (max, def) =>
+      Math.max(max, measureDepth(def as unknown as Record<string, unknown>)),
     0,
   );
 }
 
 function getQueryAliases(doc: DocumentNode): number {
-  return doc.definitions.reduce((sum, def) => sum + countAliases(def), 0);
+  return doc.definitions.reduce(
+    (sum, def) => sum + countAliases(def as unknown as Record<string, unknown>),
+    0,
+  );
 }
 
 function formatGraphQLErrors(errors: ReadonlyArray<GraphQLError>) {
@@ -109,7 +117,7 @@ function escapeJsString(s: string): string {
 
 function buildPlaygroundHtml(graphqlPath: string): string {
   const htmlPath = escapeHtml(graphqlPath);
-  const jsPath = escapeJsString(graphqlPath); // JS string context needs JS escaping
+  const jsPath = escapeJsString(graphqlPath);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -164,16 +172,12 @@ export function useGraphQL<TContext = Record<string, unknown>>(
     maxDepth,
     maxAliases,
     validationRules = [],
-    disableIntrospection = false,
   } = options;
 
-  if (!disableIntrospection && process.env.NODE_ENV === 'production') {
-    console.warn(
-      '[axiomify/graphql] GraphQL introspection is ENABLED in production. ' +
-        'Introspection exposes your full schema to any client. ' +
-        'Set `disableIntrospection: true` for production deployments.',
-    );
-  }
+  // Default: disable introspection in production, enable in dev/test.
+  // Explicit option always wins so callers can override in either direction.
+  const disableIntrospection =
+    options.disableIntrospection ?? process.env.NODE_ENV === 'production';
 
   const gqlPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
   const pgPath =
@@ -214,13 +218,13 @@ export function useGraphQL<TContext = Record<string, unknown>>(
     let document: DocumentNode;
     try {
       document = parse(query);
-    } catch (parseErr: any) {
-      return res
-        .status(400)
-        .sendRaw(
-          JSON.stringify({ errors: [{ message: parseErr.message }] }),
-          'application/json',
-        );
+    } catch (parseErr: unknown) {
+      return res.status(400).sendRaw(
+        JSON.stringify({
+          errors: [{ message: (parseErr as Error).message }],
+        }),
+        'application/json',
+      );
     }
 
     // Reject disallowed operation types (e.g. mutations over GET).
@@ -228,6 +232,7 @@ export function useGraphQL<TContext = Record<string, unknown>>(
       for (const def of document.definitions) {
         const op = def as OperationDefinitionNode;
         if (op.operation && !allowedOperations.includes(op.operation)) {
+          res.header('Allow', 'POST');
           return res.status(405).sendRaw(
             JSON.stringify({
               errors: [
@@ -288,10 +293,12 @@ export function useGraphQL<TContext = Record<string, unknown>>(
     if (contextFactory) {
       try {
         ctx = await contextFactory(req, res);
-      } catch (ctxErr: any) {
+      } catch (ctxErr: unknown) {
         return res.status(500).sendRaw(
           JSON.stringify({
-            errors: [{ message: ctxErr?.message ?? 'Context error.' }],
+            errors: [
+              { message: (ctxErr as Error)?.message ?? 'Context error.' },
+            ],
           }),
           'application/json',
         );
@@ -320,10 +327,12 @@ export function useGraphQL<TContext = Record<string, unknown>>(
       return res
         .status(200)
         .sendRaw(JSON.stringify(result), 'application/json');
-    } catch (execErr: any) {
+    } catch (execErr: unknown) {
       return res.status(500).sendRaw(
         JSON.stringify({
-          errors: [{ message: execErr?.message ?? 'Execution error.' }],
+          errors: [
+            { message: (execErr as Error)?.message ?? 'Execution error.' },
+          ],
         }),
         'application/json',
       );
@@ -343,7 +352,6 @@ export function useGraphQL<TContext = Record<string, unknown>>(
     },
   });
 
-  // GET: only allow query operations (no mutations, no subscriptions).
   app.route({
     method: 'GET',
     path: gqlPath,
@@ -368,7 +376,7 @@ export function useGraphQL<TContext = Record<string, unknown>>(
         req,
         res,
         { query: q.query, operationName: q.operationName, variables },
-        ['query'], // GET must not execute mutations
+        ['query'],
       );
     },
   });

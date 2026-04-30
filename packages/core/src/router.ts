@@ -37,7 +37,6 @@ export class Router {
         if (!currentNode.paramChild) {
           currentNode.paramChild = new TrieNode();
         }
-        // Removed the Route Conflict Error block entirely.
         currentNode = currentNode.paramChild;
       } else if (part === '*') {
         if (i !== parts.length - 1) {

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
+import pkg from '../package.json';
 import { buildProject } from './commands/build';
 import { devServer } from './commands/dev';
 import { initProject } from './commands/init';
@@ -10,7 +11,9 @@ const program = new Command();
 program
   .name('axiomify')
   .description('The official CLI for the Axiomify framework')
-  .version('1.0.0');
+  // Read version from package.json so `axiomify --version` always matches the
+  // published package rather than a stale hardcoded string.
+  .version(pkg.version);
 
 program
   .command('init')

@@ -11,6 +11,7 @@ const DEV_COMMAND_BY_PM: Record<InitAnswers['packageManager'], string> = {
   pnpm: 'pnpm dev',
   yarn: 'yarn dev',
 };
+
 type InitAnswers = {
   projectName: string;
   description: string;
@@ -26,7 +27,7 @@ export async function initProject(
 ): Promise<void> {
   console.log(pc.cyan(pc.bold('\n🚀 Axiomify Project Initializer\n')));
 
-  const questions: any[] = [];
+  const questions: unknown[] = [];
 
   if (!targetDir) {
     questions.push({
@@ -71,7 +72,7 @@ export async function initProject(
     },
   );
 
-  const answers = (await prompt(questions)) as InitAnswers;
+  const answers = (await prompt(questions as any)) as InitAnswers;
   const projectName = targetDir || answers.projectName;
 
   if (!projectName || projectName.trim().length === 0) {
@@ -83,9 +84,6 @@ export async function initProject(
     process.exit(1);
   }
 
-  // Reject obvious traversal / unsafe names. We don't try to be exhaustive —
-  // we just block the worst cases. The user can always specify an absolute
-  // directory if they need something exotic.
   if (
     // eslint-disable-next-line no-control-regex
     /[<>:"|?*\u0000-\u001f]/.test(projectName) ||
@@ -124,7 +122,7 @@ export async function initProject(
 
   const AXIOMIFY_VERSION = `^${pkg.version}`;
 
-  const pkgJson: any = {
+  const pkgJson: Record<string, unknown> = {
     name: projectName,
     version: '1.0.0',
     private: true,
@@ -154,8 +152,8 @@ export async function initProject(
   };
 
   if (answers.useEslint) {
-    pkgJson.devDependencies = {
-      ...pkgJson.devDependencies,
+    (pkgJson.devDependencies as Record<string, string>) = {
+      ...(pkgJson.devDependencies as Record<string, string>),
       eslint: '^8.57.0',
       prettier: '^3.0.0',
       'eslint-config-prettier': '^9.0.0',
@@ -163,36 +161,37 @@ export async function initProject(
       '@typescript-eslint/eslint-plugin': '^7.0.0',
       '@typescript-eslint/parser': '^7.0.0',
     };
-    pkgJson.scripts.lint = 'eslint . --ext .ts';
-    pkgJson.scripts['lint:fix'] = 'eslint . --ext .ts --fix';
-    pkgJson.scripts.format = 'prettier --write .';
+    (pkgJson.scripts as Record<string, string>).lint = 'eslint . --ext .ts';
+    (pkgJson.scripts as Record<string, string>)['lint:fix'] =
+      'eslint . --ext .ts --fix';
+    (pkgJson.scripts as Record<string, string>).format = 'prettier --write .';
 
     const eslintConfig = `module.exports = {
-      root: true,
-      parser: '@typescript-eslint/parser',
-      plugins: ['@typescript-eslint', 'prettier'],
-      extends: [
-        'eslint:recommended',
-        'plugin:@typescript-eslint/recommended',
-        'plugin:prettier/recommended',
-      ],
-      parserOptions: {
-        ecmaVersion: 2022,
-        sourceType: 'module',
-      },
-      env: {
-        node: true,
-        es2022: true,
-      },
-    };`;
+  root: true,
+  parser: '@typescript-eslint/parser',
+  plugins: ['@typescript-eslint', 'prettier'],
+  extends: [
+    'eslint:recommended',
+    'plugin:@typescript-eslint/recommended',
+    'plugin:prettier/recommended',
+  ],
+  parserOptions: {
+    ecmaVersion: 2022,
+    sourceType: 'module',
+  },
+  env: {
+    node: true,
+    es2022: true,
+  },
+};`;
 
     const prettierConfig = `{
-      "semi": true,
-      "trailingComma": "all",
-      "singleQuote": true,
-      "printWidth": 100,
-      "tabWidth": 2
-    }`;
+  "semi": true,
+  "trailingComma": "all",
+  "singleQuote": true,
+  "printWidth": 100,
+  "tabWidth": 2
+}`;
 
     await fs.writeFile(path.join(dir, '.eslintrc.cjs'), eslintConfig);
     await fs.writeFile(path.join(dir, '.prettierrc'), prettierConfig);
@@ -206,10 +205,12 @@ export async function initProject(
     );
   }
 
+  // tsconfig uses CommonJS to match the CLI's dev/build output format (format: 'cjs').
+  // The scaffolded entry file uses `require.main === module` which only works in CJS.
   const tsConfig = {
     compilerOptions: {
       target: 'ES2022',
-      module: 'ESNext',
+      module: 'CommonJS',
       moduleResolution: 'node',
       strict: true,
       esModuleInterop: true,
@@ -222,49 +223,60 @@ export async function initProject(
     include: ['src/**/*'],
   };
 
-  const indexTs = `
-    import { Axiomify } from '@axiomify/core';
-    import { ExpressAdapter } from '@axiomify/express';
-    import { useHelmet } from '@axiomify/helmet';
-    import { useCors } from '@axiomify/cors';
-    import { useLogger } from '@axiomify/logger';
-    import { useSecurity } from '@axiomify/security';
-    import { useRateLimit, MemoryStore, RedisStore } from '@axiomify/rate-limit';
-    import { useFingerprint } from '@axiomify/fingerprint';
+  const indexTs = `import { Axiomify } from '@axiomify/core';
+import { ExpressAdapter } from '@axiomify/express';
+import { useHelmet } from '@axiomify/helmet';
+import { useCors } from '@axiomify/cors';
+import { useLogger } from '@axiomify/logger';
+import { useSecurity } from '@axiomify/security';
+import { useRateLimit, MemoryStore } from '@axiomify/rate-limit';
+import { useFingerprint } from '@axiomify/fingerprint';
 
-    export const app = new Axiomify();
+export const app = new Axiomify();
 
-    useHelmet(app);
-    useCors(app, { credentials: false });
-    useSecurity(app);
+useHelmet(app);
+useCors(app, { credentials: false });
+useSecurity(app);
 
-    // ⚠️  PRODUCTION NOTE
-    // MemoryStore is per-process. In any multi-worker / multi-instance
-    // deployment (PM2 cluster, k8s with replicas > 1), the effective rate
-    // limit becomes max × number_of_processes. For production, swap this
-    // for a RedisStore:
-    //
-    //   import Redis from 'ioredis';
-    //   const redis = new Redis(process.env.REDIS_URL);
-    //   useRateLimit(app, { max: 100, windowMs: 60_000, store: new RedisStore(redis) });
-    useRateLimit(app, { max: 100, windowMs: 60_000, store: new MemoryStore() });
+// ⚠️  PRODUCTION NOTE
+// MemoryStore is per-process. In any multi-worker / multi-instance
+// deployment (PM2 cluster, k8s with replicas > 1), the effective rate
+// limit becomes max × number_of_processes. For production, swap this
+// for a RedisStore:
+//
+//   import Redis from 'ioredis';
+//   const redis = new Redis(process.env.REDIS_URL);
+//   useRateLimit(app, { max: 100, windowMs: 60_000, store: new RedisStore(redis) });
+useRateLimit(app, { max: 100, windowMs: 60_000, store: new MemoryStore() });
 
-    useFingerprint(app);
-    useLogger(app);
+useFingerprint(app);
+useLogger(app);
 
-    app.route({
-      method: 'GET',
-      path: '/health',
-      handler: async (_req, res) => {
-        res.status(200).send({ status: 'healthy' }, 'System Operational');
-      },
-    });
+app.route({
+  method: 'GET',
+  path: '/health',
+  handler: async (_req, res) => {
+    res.status(200).send({ status: 'healthy' }, 'System Operational');
+  },
+});
 
-    if (require.main === module) {
-      const adapter = new ExpressAdapter(app);
-      adapter.listen(3000, () => console.log('🚀 Axiomify online on port 3000'));
-    }
-    `;
+if (require.main === module) {
+  const adapter = new ExpressAdapter(app);
+  adapter.listen(3000, () => console.log('🚀 Axiomify online on port 3000'));
+}
+`;
+
+  // .gitignore — includes .axiomify (CLI temp build output) so it is never committed.
+  const gitignore =
+    [
+      'node_modules',
+      'dist',
+      '.axiomify',
+      '.env',
+      '.env.local',
+      'coverage',
+      '*.log',
+    ].join('\n') + '\n';
 
   await fs.writeFile(
     path.join(dir, 'package.json'),
@@ -275,6 +287,7 @@ export async function initProject(
     JSON.stringify(tsConfig, null, 2),
   );
   await fs.writeFile(path.join(dir, 'src', 'index.ts'), indexTs);
+  await fs.writeFile(path.join(dir, '.gitignore'), gitignore);
 
   console.log(pc.green(`\n✅ Axiomify project initialized in ${pc.bold(dir)}`));
 

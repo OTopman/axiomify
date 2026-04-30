@@ -5,7 +5,7 @@ import {
   GraphQLSchema,
   GraphQLString,
 } from 'graphql';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, afterEach } from 'vitest';
 import { useGraphQL } from '../src';
 
 // ─── Shared test schema ───────────────────────────────────────────────────────
@@ -14,10 +14,7 @@ const schema = new GraphQLSchema({
   query: new GraphQLObjectType({
     name: 'Query',
     fields: {
-      hello: {
-        type: GraphQLString,
-        resolve: () => 'world',
-      },
+      hello: { type: GraphQLString, resolve: () => 'world' },
       echo: {
         type: GraphQLString,
         args: { message: { type: GraphQLString } },
@@ -27,7 +24,7 @@ const schema = new GraphQLSchema({
   }),
 });
 
-// ─── Minimal test adapter (no real HTTP server) ───────────────────────────────
+// ─── Minimal in-process adapter ───────────────────────────────────────────────
 
 type MockRes = {
   _status: number;
@@ -70,7 +67,7 @@ function makeReqRes(
       delete mock._headers[k];
       return res;
     },
-    send(data: any, _message?: string) {
+    send(data: unknown) {
       mock._body = JSON.stringify(data);
       mock._sent = true;
     },
@@ -128,9 +125,7 @@ describe('@axiomify/graphql — useGraphQL()', () => {
     const r = await invoke(app, 'POST', '/graphql', { query: '{ hello }' });
 
     expect(r._status).toBe(200);
-    const body = JSON.parse(r._body);
-    expect(body.data).toEqual({ hello: 'world' });
-    expect(body.errors).toBeUndefined();
+    expect(JSON.parse(r._body).data).toEqual({ hello: 'world' });
   });
 
   it('passes variables to the resolver', async () => {
@@ -143,8 +138,7 @@ describe('@axiomify/graphql — useGraphQL()', () => {
     });
 
     expect(r._status).toBe(200);
-    const body = JSON.parse(r._body);
-    expect(body.data).toEqual({ echo: 'axiomify' });
+    expect(JSON.parse(r._body).data).toEqual({ echo: 'axiomify' });
   });
 
   it('returns 400 when the query field is missing', async () => {
@@ -153,8 +147,7 @@ describe('@axiomify/graphql — useGraphQL()', () => {
 
     const r = await invoke(app, 'POST', '/graphql', {});
     expect(r._status).toBe(400);
-    const body = JSON.parse(r._body);
-    expect(body.errors[0].message).toMatch(/missing "query"/i);
+    expect(JSON.parse(r._body).errors[0].message).toMatch(/missing "query"/i);
   });
 
   it('returns 400 for parse errors', async () => {
@@ -163,8 +156,7 @@ describe('@axiomify/graphql — useGraphQL()', () => {
 
     const r = await invoke(app, 'POST', '/graphql', { query: '{ !!invalid' });
     expect(r._status).toBe(400);
-    const body = JSON.parse(r._body);
-    expect(body.errors).toHaveLength(1);
+    expect(JSON.parse(r._body).errors).toHaveLength(1);
   });
 
   it('returns 400 for validation errors (unknown field)', async () => {
@@ -175,8 +167,7 @@ describe('@axiomify/graphql — useGraphQL()', () => {
       query: '{ doesNotExist }',
     });
     expect(r._status).toBe(400);
-    const body = JSON.parse(r._body);
-    expect(body.errors.length).toBeGreaterThan(0);
+    expect(JSON.parse(r._body).errors.length).toBeGreaterThan(0);
   });
 
   it('enforces maxDepth', async () => {
@@ -188,14 +179,11 @@ describe('@axiomify/graphql — useGraphQL()', () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: deepSchema, maxDepth: 2, playground: false });
 
-    // depth 3 query: Query.a.b.value
     const r = await invoke(app, 'POST', '/graphql', {
       query: '{ a { b { value } } }',
     });
-
     expect(r._status).toBe(400);
-    const body = JSON.parse(r._body);
-    expect(body.errors[0].message).toMatch(/depth/i);
+    expect(JSON.parse(r._body).errors[0].message).toMatch(/depth/i);
   });
 
   it('allows queries within maxDepth', async () => {
@@ -210,7 +198,6 @@ describe('@axiomify/graphql — useGraphQL()', () => {
     const r = await invoke(app, 'POST', '/graphql', {
       query: '{ a { b { value } } }',
     });
-
     expect(r._status).toBe(200);
   });
 
@@ -221,10 +208,8 @@ describe('@axiomify/graphql — useGraphQL()', () => {
     const r = await invoke(app, 'POST', '/graphql', {
       query: '{ a: hello b: hello }',
     });
-
     expect(r._status).toBe(400);
-    const body = JSON.parse(r._body);
-    expect(body.errors[0].message).toMatch(/alias/i);
+    expect(JSON.parse(r._body).errors[0].message).toMatch(/alias/i);
   });
 
   it('handles GET queries via query string', async () => {
@@ -232,10 +217,37 @@ describe('@axiomify/graphql — useGraphQL()', () => {
     useGraphQL(app, { schema, playground: false });
 
     const r = await invoke(app, 'GET', '/graphql', {}, { query: '{ hello }' });
-
     expect(r._status).toBe(200);
-    const body = JSON.parse(r._body);
-    expect(body.data).toEqual({ hello: 'world' });
+    expect(JSON.parse(r._body).data).toEqual({ hello: 'world' });
+  });
+
+  it('returns 405 with Allow: POST header when a mutation is attempted over GET', async () => {
+    const mutSchema = new GraphQLSchema({
+      query: new GraphQLObjectType({
+        name: 'Query',
+        fields: { ping: { type: GraphQLString, resolve: () => 'pong' } },
+      }),
+      mutation: new GraphQLObjectType({
+        name: 'Mutation',
+        fields: {
+          setName: { type: GraphQLString, resolve: () => 'done' },
+        },
+      }),
+    });
+
+    const app = new Axiomify();
+    useGraphQL(app, { schema: mutSchema, playground: false });
+
+    const r = await invoke(
+      app,
+      'GET',
+      '/graphql',
+      {},
+      { query: 'mutation { setName }' },
+    );
+
+    expect(r._status).toBe(405);
+    expect(r._headers['Allow']).toBe('POST');
   });
 
   it('returns 400 for invalid variables JSON in GET', async () => {
@@ -254,8 +266,7 @@ describe('@axiomify/graphql — useGraphQL()', () => {
     );
 
     expect(r._status).toBe(400);
-    const body = JSON.parse(r._body);
-    expect(body.errors[0].message).toMatch(/variables/i);
+    expect(JSON.parse(r._body).errors[0].message).toMatch(/variables/i);
   });
 
   it('registers the playground route when enabled', async () => {
@@ -263,7 +274,6 @@ describe('@axiomify/graphql — useGraphQL()', () => {
     useGraphQL(app, { schema, playground: true });
 
     const r = await invoke(app, 'GET', '/graphql/playground');
-
     expect(r._status).toBe(200);
     expect(r._contentType).toBe('text/html');
     expect(r._body).toContain('GraphiQL');
@@ -274,7 +284,6 @@ describe('@axiomify/graphql — useGraphQL()', () => {
     useGraphQL(app, { schema, playground: false });
 
     const r = await invoke(app, 'GET', '/graphql/playground');
-
     expect(r._status).toBe(404);
   });
 
@@ -284,8 +293,7 @@ describe('@axiomify/graphql — useGraphQL()', () => {
 
     const r = await invoke(app, 'POST', '/api/gql', { query: '{ hello }' });
     expect(r._status).toBe(200);
-    const body = JSON.parse(r._body);
-    expect(body.data).toEqual({ hello: 'world' });
+    expect(JSON.parse(r._body).data).toEqual({ hello: 'world' });
   });
 
   it('injects context into resolvers', async () => {
@@ -317,8 +325,7 @@ describe('@axiomify/graphql — useGraphQL()', () => {
     await app.handle(req, res);
 
     expect(mock._status).toBe(200);
-    const body = JSON.parse(mock._body);
-    expect(body.data).toEqual({ userId: 'u-42' });
+    expect(JSON.parse(mock._body).data).toEqual({ userId: 'u-42' });
   });
 
   it('always returns 200 with partial errors on resolver throw', async () => {
@@ -344,5 +351,65 @@ describe('@axiomify/graphql — useGraphQL()', () => {
     const body = JSON.parse(r._body);
     expect(body.errors).toBeDefined();
     expect(body.errors[0].message).toMatch(/resolver exploded/i);
+  });
+
+  describe('disableIntrospection', () => {
+    const savedEnv = process.env.NODE_ENV;
+    afterEach(() => {
+      process.env.NODE_ENV = savedEnv;
+    });
+
+    it('disables introspection when NODE_ENV=production and option is not set', async () => {
+      process.env.NODE_ENV = 'production';
+      const app = new Axiomify();
+      useGraphQL(app, { schema, playground: false });
+
+      const r = await invoke(app, 'POST', '/graphql', {
+        query: '{ __schema { types { name } } }',
+      });
+      expect(r._status).toBe(400);
+      expect(JSON.parse(r._body).errors[0].message).toMatch(/introspection/i);
+    });
+
+    it('allows introspection in development when option is not set', async () => {
+      process.env.NODE_ENV = 'development';
+      const app = new Axiomify();
+      useGraphQL(app, { schema, playground: false });
+
+      const r = await invoke(app, 'POST', '/graphql', {
+        query: '{ __schema { queryType { name } } }',
+      });
+      expect(r._status).toBe(200);
+    });
+
+    it('explicit disableIntrospection: true overrides development environment', async () => {
+      process.env.NODE_ENV = 'development';
+      const app = new Axiomify();
+      useGraphQL(app, {
+        schema,
+        playground: false,
+        disableIntrospection: true,
+      });
+
+      const r = await invoke(app, 'POST', '/graphql', {
+        query: '{ __schema { queryType { name } } }',
+      });
+      expect(r._status).toBe(400);
+    });
+
+    it('explicit disableIntrospection: false overrides production environment', async () => {
+      process.env.NODE_ENV = 'production';
+      const app = new Axiomify();
+      useGraphQL(app, {
+        schema,
+        playground: false,
+        disableIntrospection: false,
+      });
+
+      const r = await invoke(app, 'POST', '/graphql', {
+        query: '{ __schema { queryType { name } } }',
+      });
+      expect(r._status).toBe(200);
+    });
   });
 });

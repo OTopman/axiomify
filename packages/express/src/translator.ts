@@ -7,20 +7,20 @@ import crypto from 'crypto';
 import type { Request, Response } from 'express';
 import { Readable } from 'stream';
 
-function sanitize(obj: any): any {
+function sanitize(obj: unknown): unknown {
   if (obj === null || typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map(sanitize);
-  const clean: any = {};
-  for (const key of Object.keys(obj)) {
+  if (Array.isArray(obj)) return (obj as unknown[]).map(sanitize);
+  const clean: Record<string, unknown> = {};
+  for (const key of Object.keys(obj as object)) {
     if (key === '__proto__' || key === 'constructor' || key === 'prototype')
       continue;
-    clean[key] = sanitize(obj[key]);
+    clean[key] = sanitize((obj as Record<string, unknown>)[key]);
   }
   return clean;
 }
 
 export function translateRequest(req: Request): AxiomifyRequest {
-  const state: Record<string, any> = {};
+  const state: Record<string, unknown> = {};
   const id = (req.headers['x-request-id'] as string) || crypto.randomUUID();
 
   return {
@@ -37,15 +37,17 @@ export function translateRequest(req: Request): AxiomifyRequest {
       return req.path;
     },
     get ip() {
-      return req.ip || req.socket.remoteAddress || '0.0.0.0';
+      // req.ip returns the real client IP when Express trust proxy is configured
+      // (set in ExpressAdapter constructor).  Fall back through the chain so
+      // tests that don't go through the full adapter still get a value.
+      return req.ip ?? req.socket.remoteAddress ?? '0.0.0.0';
     },
     get headers() {
       return req.headers as Record<string, string | string[] | undefined>;
     },
     get stream() {
-      return req;
+      return req as unknown as Readable;
     },
-    // engine can overwrite them with transformed Zod data.
     body: sanitize(req.body),
     query: req.query,
     params: req.params,
@@ -61,8 +63,8 @@ export function translateRequest(req: Request): AxiomifyRequest {
 
 export function translateResponse(
   res: Response,
-  serializer: SerializerFn,
-  req: AxiomifyRequest,
+  serializer: SerializerFn = (data) => data,
+  req?: AxiomifyRequest,
 ): AxiomifyResponse {
   let statusCode = 200;
   let isSent = false;
@@ -82,14 +84,14 @@ export function translateResponse(
     },
 
     send<T>(data: T, message?: string) {
-      if (isSent) return; // Idempotent
+      if (isSent) return;
       isSent = true;
       const isError = statusCode >= 400;
       const payload = serializer(data, message, statusCode, isError, req);
       res.status(statusCode).json(payload);
     },
 
-    sendRaw(payload: any, contentType = 'text/plain') {
+    sendRaw(payload: unknown, contentType = 'text/plain') {
       if (isSent) return;
       isSent = true;
       res.setHeader('Content-Type', contentType);
@@ -112,7 +114,7 @@ export function translateResponse(
       readable.pipe(res);
     },
 
-    sseInit(sseHeartbeatMs: number = 15_000) {
+    sseInit(sseHeartbeatMs = 15_000) {
       if (isSent) return;
       isSent = true;
       res.setHeader('Content-Type', 'text/event-stream');
@@ -123,11 +125,11 @@ export function translateResponse(
       const heartbeat = setInterval(() => {
         res.write(': keepalive\n\n');
       }, sseHeartbeatMs);
-      heartbeat.unref(); // Don't block process exit on a lingering SSE timer.
+      heartbeat.unref();
       res.on('close', () => clearInterval(heartbeat));
     },
 
-    sseSend(data: any, event?: string) {
+    sseSend(data: unknown, event?: string) {
       if (event) res.write(`event: ${event}\n`);
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     },
