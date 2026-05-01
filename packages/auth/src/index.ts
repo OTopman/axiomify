@@ -4,7 +4,8 @@ import type {
   PluginHandler,
 } from '@axiomify/core';
 import { randomUUID } from 'crypto';
-import * as jwt from 'jsonwebtoken';
+import type { Algorithm, JwtPayload, SignOptions, VerifyOptions } from 'jsonwebtoken';
+import { sign, verify } from 'jsonwebtoken';
 
 declare module '@axiomify/core' {
   interface AxiomifyRequest {
@@ -19,20 +20,37 @@ export interface AuthUser {
 
 export interface AuthOptions {
   secret: string;
-  algorithms?: jwt.Algorithm[];
+  algorithms?: Algorithm[];
   getToken?: (req: AxiomifyRequest) => string | null;
   issuer?: string;
   audience?: string | string[];
 }
 
-/**
- * Implement this interface and pass it as `store` to `createRefreshHandler`
- * to enable single-use refresh token rotation (revoke on use).
- * Without a store, a stolen refresh token grants access until expiry.
- */
-export interface RefreshTokenStore {
-  isRevoked(tokenJti: string): Promise<boolean>;
-  revoke(tokenJti: string, expiresAtUnixSeconds: number): Promise<void>;
+export interface TokenStore {
+  save(jti: string, ttlSeconds: number): Promise<void>;
+  exists(jti: string): Promise<boolean>;
+  revoke(jti: string): Promise<void>;
+}
+
+export class MemoryTokenStore implements TokenStore {
+  private tokens = new Map<string, NodeJS.Timeout>();
+
+  async save(jti: string, ttlSeconds: number): Promise<void> {
+    await this.revoke(jti);
+    const timer = setTimeout(() => this.tokens.delete(jti), ttlSeconds * 1000);
+    timer.unref?.();
+    this.tokens.set(jti, timer);
+  }
+
+  async exists(jti: string): Promise<boolean> {
+    return this.tokens.has(jti);
+  }
+
+  async revoke(jti: string): Promise<void> {
+    const timer = this.tokens.get(jti);
+    if (timer) clearTimeout(timer);
+    this.tokens.delete(jti);
+  }
 }
 
 export interface RefreshOptions {
@@ -40,149 +58,107 @@ export interface RefreshOptions {
   refreshSecret: string;
   accessTokenTtl?: number;
   refreshTokenTtl?: number;
-  algorithms?: jwt.Algorithm[];
+  algorithms?: Algorithm[];
   issuer?: string;
   audience?: string | string[];
   /**
-   * Provide a store to enable refresh token rotation (strongly recommended).
-   * Without this, stolen refresh tokens remain valid until expiry.
+   * Optional token store for refresh-token revocation support.
+   * Without a store, stolen refresh tokens cannot be revoked before expiry.
    */
-  store?: RefreshTokenStore;
+  store?: TokenStore;
+  /**
+   * Optional rate-limit plugin reference for route wiring.
+   * Apply it on your `/auth/refresh` route via `plugins: [rateLimitPlugin]`.
+   */
+  rateLimitPlugin?: PluginHandler;
 }
 
 const BLOCKED_ALGORITHMS = new Set(['none', 'NONE', 'None']);
-
-function validateAlgorithms(algorithms: string[]): jwt.Algorithm[] {
-  const safe = algorithms.filter(
-    (a) => !BLOCKED_ALGORITHMS.has(a),
-  ) as jwt.Algorithm[];
-  if (safe.length === 0) {
-    throw new Error(
-      '[axiomify/auth] Every provided algorithm was rejected. ' +
-        'The "none" algorithm is not permitted.',
-    );
-  }
+function validateAlgorithms(algorithms: string[]): Algorithm[] {
+  const safe = algorithms.filter((a) => !BLOCKED_ALGORITHMS.has(a)) as Algorithm[];
+  if (safe.length === 0) throw new Error('[axiomify/auth] Every provided algorithm was rejected. The "none" algorithm is not permitted.');
   return safe;
 }
-
 function extractBearer(header: string): string | null {
   const match = /^\s*Bearer\s+(\S+)\s*$/i.exec(header);
   return match ? match[1] : null;
 }
-
 function buildGetToken(options: AuthOptions) {
-  return (
-    options.getToken ??
-    ((req: AxiomifyRequest) => {
-      let authHeader = req.headers['authorization'];
-      if (Array.isArray(authHeader)) authHeader = authHeader[0];
-      return authHeader ? extractBearer(authHeader) : null;
-    })
-  );
+  return options.getToken ?? ((req: AxiomifyRequest) => {
+    let authHeader = req.headers['authorization'];
+    if (Array.isArray(authHeader)) authHeader = authHeader[0];
+    return authHeader ? extractBearer(authHeader) : null;
+  });
 }
-
 function validateSecret(secret: string, context: string): void {
   if (secret.length < 32) {
-    const msg =
-      `[axiomify/auth] ${context} is shorter than 32 characters. ` +
-      'Use a cryptographically random secret of at least 256 bits.';
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error(msg);
-    }
+    const msg = `[axiomify/auth] ${context} is shorter than 32 characters. Use a cryptographically random secret of at least 256 bits.`;
+    if (process.env.NODE_ENV === 'production') throw new Error(msg);
     console.warn(msg);
   }
 }
-
-function tokenOptions(
-  options: Pick<AuthOptions, 'issuer' | 'audience'>,
-): Pick<jwt.SignOptions & jwt.VerifyOptions, 'issuer' | 'audience'> {
-  return {
-    ...(options.issuer ? { issuer: options.issuer } : {}),
-    ...(options.audience ? { audience: options.audience } : {}),
-  };
+function tokenOptions(options: Pick<AuthOptions, 'issuer' | 'audience'>): Pick<SignOptions & VerifyOptions, 'issuer' | 'audience'> {
+  return { ...(options.issuer ? { issuer: options.issuer } : {}), ...(options.audience ? { audience: options.audience } : {}) };
 }
 
-export function createRefreshHandler(options: RefreshOptions) {
+async function verifyAsync(token: string, secret: string, options: VerifyOptions): Promise<JwtPayload> {
+  const payload = await new Promise((resolve, reject) =>
+    verify(token, secret, options, (err, decoded) => (err ? reject(err) : resolve(decoded))),
+  );
+
+  if (!payload || typeof payload === "string") {
+    throw new Error('Invalid JWT payload type');
+  }
+
+  return payload as JwtPayload;
+}
+
+async function signAsync(payload: string | Buffer | object, secret: string, options: SignOptions): Promise<string> {
+  return (await new Promise((resolve, reject) =>
+    sign(payload, secret, options, (err, token) => (err || !token ? reject(err ?? new Error('Token signing failed')) : resolve(token))),
+  )) as string;
+}
+
+/**
+ * Creates refresh handler. Provide `store` for revocation; otherwise stolen tokens are valid until expiry.
+ */
+export function createRefreshHandler(options: RefreshOptions): PluginHandler {
   validateSecret(options.secret, 'JWT access secret');
   validateSecret(options.refreshSecret, 'JWT refresh secret');
-
   const algorithms = validateAlgorithms(options.algorithms ?? ['HS256']);
   const accessTtl = options.accessTokenTtl ?? 900;
   const refreshTtl = options.refreshTokenTtl ?? 604_800;
   const issuerAudience = tokenOptions(options);
 
-  if (!options.store && process.env.NODE_ENV === 'production') {
-    throw new Error(
-      '[axiomify/auth] Refusing to create refresh handler without a store in production. ' +
-        'Refresh token rotation and revocation are required for production use.',
-    );
-  }
-
-  if (!options.store) {
-    console.warn(
-      '[axiomify/auth] No `store` provided to createRefreshHandler. ' +
-        'Refresh token rotation and revocation are DISABLED. ' +
-        'A stolen refresh token will remain valid until it expires. ' +
-        'Provide a store implementing RefreshTokenStore for production use.',
-    );
-  }
-
-  return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
-    const authHeader = Array.isArray(req.headers['authorization'])
-      ? req.headers['authorization'][0]
-      : (req.headers['authorization'] as string | undefined);
-
+  const handler: PluginHandler = async (req: AxiomifyRequest, res: AxiomifyResponse) => {
+    const authHeader = Array.isArray(req.headers['authorization']) ? req.headers['authorization'][0] : (req.headers['authorization'] as string | undefined);
     const token = authHeader ? extractBearer(authHeader) : null;
     if (!token) return res.status(401).send(null, 'Missing refresh token');
 
     try {
-      // Check revocation before signature verification to fail-fast on replayed tokens.
-      if (options.store) {
-        // Use the raw token as the key if no jti is present (jti extraction
-        // happens after verify, so we key on the token string itself here).
-        if (await options.store.isRevoked(token)) {
-          return res.status(401).send(null, 'Refresh token has been revoked');
-        }
-      }
-
-      const decoded = jwt.verify(token, options.refreshSecret, {
-        algorithms,
-        ...issuerAudience,
-      }) as jwt.JwtPayload;
-
+      const decoded = await verifyAsync(token, options.refreshSecret, { algorithms, ...issuerAudience });
       const id = decoded?.id ?? decoded?.sub;
-      if (typeof id !== 'string' || id.length === 0) {
-        return res.status(401).send(null, 'Invalid refresh token payload');
-      }
+      const jti = decoded?.jti;
+      if (typeof id !== 'string' || !id || typeof jti !== 'string' || !jti) return res.status(401).send(null, 'Invalid refresh token payload');
 
-      // Rotate: immediately revoke the consumed refresh token.
       if (options.store) {
-        const exp = decoded.exp ?? Math.floor(Date.now() / 1000) + refreshTtl;
-        await options.store.revoke(token, exp);
+        const exists = await options.store.exists(jti);
+        if (!exists) return res.status(401).send(null, 'Refresh token has been revoked');
+        await options.store.revoke(jti);
       }
 
-      const accessToken = jwt.sign({ id }, options.secret, {
-        expiresIn: accessTtl,
-        jwtid: randomUUID(),
-        ...issuerAudience,
-      });
+      const accessToken = await signAsync({ id }, options.secret, { expiresIn: accessTtl, jwtid: randomUUID(), ...issuerAudience });
+      const nextJti = randomUUID();
+      const newRefreshToken = await signAsync({ id }, options.refreshSecret, { expiresIn: refreshTtl, jwtid: nextJti, ...issuerAudience });
+      if (options.store) await options.store.save(nextJti, refreshTtl);
 
-      // Issue a brand-new refresh token (rotation).
-      const newRefreshToken = jwt.sign({ id }, options.refreshSecret, {
-        expiresIn: refreshTtl,
-        jwtid: randomUUID(),
-        ...issuerAudience,
-      });
-
-      res.status(200).send({
-        accessToken,
-        refreshToken: newRefreshToken,
-        expiresIn: accessTtl,
-      });
+      res.status(200).send({ accessToken, refreshToken: newRefreshToken, expiresIn: accessTtl });
     } catch {
       res.status(401).send(null, 'Invalid refresh token');
     }
   };
+
+  return handler;
 }
 
 export function createAuthPlugin(options: AuthOptions): PluginHandler {
@@ -193,21 +169,12 @@ export function createAuthPlugin(options: AuthOptions): PluginHandler {
 
   return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
     const token = getToken(req);
-
-    if (!token) {
-      return res.status(401).send(null, 'Unauthorized: Missing token');
-    }
-
+    if (!token) return res.status(401).send(null, 'Unauthorized: Missing token');
     try {
-      const decoded = jwt.verify(token, options.secret, {
-        algorithms,
-        ...issuerAudience,
-      }) as AuthUser;
+      const decoded = (await verifyAsync(token, options.secret, { algorithms, ...issuerAudience })) as AuthUser;
       req.user = decoded;
     } catch {
-      return res
-        .status(401)
-        .send(null, 'Unauthorized: Invalid or expired token');
+      return res.status(401).send(null, 'Unauthorized: Invalid or expired token');
     }
   };
 }
