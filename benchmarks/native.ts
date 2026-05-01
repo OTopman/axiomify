@@ -7,7 +7,7 @@ const app = new Axiomify();
 // to keep the benchmark perfectly apples-to-apples.
 app.route({
   method: 'GET',
-  path: '/api',
+  path: '/ping',
   handler: async (req, res) => {
     res.send({ status: 'success', code: 200 });
   },
