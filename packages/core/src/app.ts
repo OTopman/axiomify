@@ -161,7 +161,7 @@ export class Axiomify {
         if (effectiveTimeout > 0) {
           let timeoutId: ReturnType<typeof setTimeout> | undefined;
           const timeoutError = Object.assign(new Error('Request timed out'), {
-            statusCode: 503,
+            statusCode: 408,
           });
 
           const timeoutPromise = new Promise<never>((_, reject) => {

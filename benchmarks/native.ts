@@ -14,4 +14,6 @@ app.route({
 });
 
 console.log('Compiling Axiomify pipeline...');
-new NativeAdapter(app, { port: 3000 }).listen();
+new NativeAdapter(app, { port: 3000 }).listen(() => {
+  console.log('Axiomify pipeline is listening on port 3000');
+});

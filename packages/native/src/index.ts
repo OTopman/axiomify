@@ -7,8 +7,39 @@ import type {
 import { randomUUID } from 'crypto';
 import uWS from 'uWebSockets.js';
 
-export interface NativeAdapterOptions {
-  port?: number;
+// RFC 7231 + common extensions
+const HTTP_STATUS_PHRASES: Record<number, string> = {
+  100: 'Continue',
+  101: 'Switching Protocols',
+  200: 'OK',
+  201: 'Created',
+  202: 'Accepted',
+  204: 'No Content',
+  206: 'Partial Content',
+  301: 'Moved Permanently',
+  302: 'Found',
+  304: 'Not Modified',
+  400: 'Bad Request',
+  401: 'Unauthorized',
+  403: 'Forbidden',
+  404: 'Not Found',
+  405: 'Method Not Allowed',
+  408: 'Request Timeout',
+  409: 'Conflict',
+  410: 'Gone',
+  413: 'Payload Too Large',
+  415: 'Unsupported Media Type',
+  422: 'Unprocessable Entity',
+  429: 'Too Many Requests',
+  500: 'Internal Server Error',
+  501: 'Not Implemented',
+  502: 'Bad Gateway',
+  503: 'Service Unavailable',
+  504: 'Gateway Timeout',
+};
+
+function statusLine(code: number): string {
+  return `${code} ${HTTP_STATUS_PHRASES[code] ?? 'Unknown'}`;
 }
 
 // --- 1. THE FAST REQUEST SHAPE ---
@@ -45,13 +76,11 @@ class NativeRequest implements AxiomifyRequest {
     this.body = body;
   }
 
-  // Lazy Evaluate UUID
   get id() {
     if (!this._id) this._id = randomUUID();
     return this._id;
   }
 
-  // Lazy Evaluate Query Strings
   get query() {
     if (!this._parsedQuery) {
       this._parsedQuery = {};
@@ -112,7 +141,7 @@ class NativeResponse implements AxiomifyResponse {
     const jsonString = JSON.stringify((this as any).payload);
 
     this.raw.cork(() => {
-      this.raw.writeStatus(`${this.statusCode} OK`);
+      this.raw.writeStatus(statusLine(this.statusCode));
       this.raw.writeHeader('Content-Type', 'application/json');
       for (const [k, v] of this.outHeaders.entries()) {
         this.raw.writeHeader(k, v);
@@ -126,7 +155,7 @@ class NativeResponse implements AxiomifyResponse {
     this.headersSent = true;
 
     this.raw.cork(() => {
-      this.raw.writeStatus(`${this.statusCode} OK`);
+      this.raw.writeStatus(statusLine(this.statusCode));
       this.raw.writeHeader('Content-Type', contentType);
       for (const [k, v] of this.outHeaders.entries()) {
         this.raw.writeHeader(k, v);
@@ -144,21 +173,20 @@ class NativeResponse implements AxiomifyResponse {
     this.headersSent = true;
 
     this.raw.cork(() => {
-      this.raw.writeStatus(`${this.statusCode} OK`);
+      this.raw.writeStatus(statusLine(this.statusCode));
       for (const [k, v] of this.outHeaders.entries()) {
         this.raw.writeHeader(k, v);
       }
     });
 
     readable.on('data', (chunk) => {
-      // Handle uWS backpressure via tryEnd / onWritable
       const lastOffset = this.raw.getWriteOffset();
-      const [ok, done] = this.raw.tryEnd(chunk, readable.readableLength);
+      const [ok] = this.raw.tryEnd(chunk, readable.readableLength);
 
       if (!ok) {
         readable.pause();
         this.raw.onWritable((offset) => {
-          const [writeOk, writeDone] = this.raw.tryEnd(
+          const [writeOk] = this.raw.tryEnd(
             chunk.slice(offset - lastOffset),
             readable.readableLength,
           );
@@ -172,42 +200,85 @@ class NativeResponse implements AxiomifyResponse {
       if (!this.aborted) this.raw.end();
     });
   }
+
   sseInit() {
     throw new Error('SSE not yet implemented in Native');
   }
   sseSend() {}
 }
 
-function readBody(
-  res: uWS.HttpResponse,
-  contentType: string = '',
-): Promise<any> {
-  return new Promise((resolve) => {
-    let buffer = Buffer.alloc(0);
-    res.onData((ab, isLast) => {
-      const chunk = Buffer.from(ab);
-      buffer = Buffer.concat([buffer, chunk]);
-      if (isLast) {
-        if (buffer.length === 0) return resolve(undefined);
+type WsUserData = { url: string; headers: Record<string, string> };
 
-        // Only attempt JSON parsing if the client explicitly sent JSON
-        if (contentType.includes('application/json')) {
-          try {
-            resolve(JSON.parse(buffer.toString()));
-          } catch {
-            resolve(undefined);
-          }
-        } else {
-          // Pass raw Buffer/String to @axiomify/upload or @axiomify/graphql
-          resolve(buffer);
-        }
-      }
-    });
-  });
+export interface NativeWsOptions {
+  /** Path to bind the WebSocket endpoint on. Defaults to '/ws'. */
+  path?: string;
+  compression?: number;
+  maxPayloadLength?: number;
+  idleTimeout?: number;
+  open?: (ws: uWS.WebSocket<WsUserData>) => void;
+  message?: (
+    ws: uWS.WebSocket<WsUserData>,
+    message: ArrayBuffer,
+    isBinary: boolean,
+  ) => void;
+  close?: (
+    ws: uWS.WebSocket<WsUserData>,
+    code: number,
+    message: ArrayBuffer,
+  ) => void;
 }
 
 export interface NativeAdapterOptions {
   port?: number;
+  /**
+   * Maximum request body size in bytes. Requests whose buffered body exceeds
+   * this value are aborted with a 413 response. Defaults to 1 MiB.
+   */
+  maxBodySize?: number;
+  /**
+   * WebSocket endpoint configuration. Set to `false` to disable the WS
+   * endpoint entirely. When omitted, no WS endpoint is registered.
+   */
+  ws?: NativeWsOptions | false;
+}
+
+function readBody(
+  res: uWS.HttpResponse,
+  contentType: string = '',
+  maxBodySize: number,
+): Promise<{ body: any; tooLarge: boolean }> {
+  return new Promise((resolve) => {
+    let buffer = Buffer.alloc(0);
+    let tooLarge = false;
+
+    res.onData((ab, isLast) => {
+      if (tooLarge) return;
+
+      const chunk = Buffer.from(ab);
+      buffer = Buffer.concat([buffer, chunk]);
+
+      if (buffer.length > maxBodySize) {
+        tooLarge = true;
+        if (isLast) resolve({ body: undefined, tooLarge: true });
+        return;
+      }
+
+      if (isLast) {
+        if (buffer.length === 0)
+          return resolve({ body: undefined, tooLarge: false });
+
+        if (contentType.includes('application/json')) {
+          try {
+            resolve({ body: JSON.parse(buffer.toString()), tooLarge: false });
+          } catch {
+            resolve({ body: undefined, tooLarge: false });
+          }
+        } else {
+          resolve({ body: buffer, tooLarge: false });
+        }
+      }
+    });
+  });
 }
 
 export class NativeAdapter {
@@ -215,19 +286,26 @@ export class NativeAdapter {
   private port: number;
   private server: uWS.TemplatedApp;
   private listenSocket: any = null;
+  private readonly maxBodySize: number;
 
   constructor(app: Axiomify, options: NativeAdapterOptions = {}) {
     this.app = app;
     this.port = options.port || 3000;
+    this.maxBodySize = options.maxBodySize ?? 1024 * 1024;
     this.server = uWS.App();
+
+    if (options.ws !== false && options.ws !== undefined) {
+      this.registerWs(options.ws);
+    }
   }
 
-  public listen(callback?: () => void): void {
-    // 1. Explicitly bind to /ws instead of /* to avoid route collision
-    this.server.ws('/ws', {
-      compression: uWS.SHARED_COMPRESSOR,
-      maxPayloadLength: 16 * 1024 * 1024,
-      idleTimeout: 120,
+  private registerWs(opts: NativeWsOptions): void {
+    const wsPath = opts.path ?? '/ws';
+
+    this.server.ws<WsUserData>(wsPath, {
+      compression: opts.compression ?? uWS.SHARED_COMPRESSOR,
+      maxPayloadLength: opts.maxPayloadLength ?? 16 * 1024 * 1024,
+      idleTimeout: opts.idleTimeout ?? 120,
 
       upgrade: (res, req, context) => {
         const url = req.getUrl();
@@ -237,18 +315,13 @@ export class NativeAdapter {
           'sec-websocket-extensions',
         );
 
-        // Extract headers synchronously before yielding to the event loop
         const headers: Record<string, string> = {};
         req.forEach((k, v) => {
           headers[k] = v;
         });
 
-        let aborted = false;
-        res.onAborted(() => {
-          aborted = true;
-        });
+        res.onAborted(() => {});
 
-        // CORKING is mandatory for successful handshake delivery in uWS
         res.cork(() => {
           res.upgrade(
             { url, headers },
@@ -260,17 +333,13 @@ export class NativeAdapter {
         });
       },
 
-      open: (ws) => {
-        console.log(`[Axiomify WS] Connection established`);
-        ws.send('Welcome to Axiomify Native');
-      },
-
-      message: (ws, message, isBinary) => {
-        ws.send(message, isBinary); // Echo
-      },
+      open: opts.open ?? (() => {}),
+      message: opts.message ?? (() => {}),
+      close: opts.close ?? (() => {}),
     });
+  }
 
-    // Pre-compiled by V8, retaining 100% of the speed.
+  public listen(callback?: () => void): void {
     this.server.any('/*', (res, req) => {
       let aborted = false;
       res.onAborted(() => {
@@ -290,8 +359,28 @@ export class NativeAdapter {
       (async () => {
         let body: any = undefined;
         if (method === 'POST' || method === 'PUT' || method === 'PATCH') {
-          // Assuming you implemented the Content-Type fix we discussed!
-          body = await readBody(res, headers['content-type']);
+          const result = await readBody(
+            res,
+            headers['content-type'],
+            this.maxBodySize,
+          );
+          if (result.tooLarge) {
+            if (!aborted) {
+              res.cork(() => {
+                res.writeStatus(statusLine(413));
+                res.writeHeader('Content-Type', 'application/json');
+                res.end(
+                  JSON.stringify({
+                    status: 'failed',
+                    message: 'Payload Too Large',
+                    data: null,
+                  }),
+                );
+              });
+            }
+            return;
+          }
+          body = result.body;
         }
 
         if (aborted) return;
@@ -313,7 +402,7 @@ export class NativeAdapter {
 
     this.server.listen(this.port, (token) => {
       if (token) {
-        this.listenSocket = token; // Save the token!
+        this.listenSocket = token;
         if (callback) callback();
       } else {
         console.error(`[Axiomify] Port ${this.port} is occupied.`);

@@ -1,5 +1,5 @@
 import { Axiomify } from '@axiomify/core';
-import { startNativeAdapter } from '@axiomify/native';
+import { NativeAdapter } from '@axiomify/native';
 
 const app = new Axiomify();
 
@@ -11,4 +11,6 @@ app.route({
   },
 });
 
-startNativeAdapter(app, { port: 3000 });
+new NativeAdapter(app, { port: 3000 }).listen(() => {
+  console.log('Axiomify pipeline is listening on port 3000');
+});

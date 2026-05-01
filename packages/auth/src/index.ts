@@ -35,6 +35,17 @@ export interface TokenStore {
 export class MemoryTokenStore implements TokenStore {
   private tokens = new Map<string, NodeJS.Timeout>();
 
+  constructor() {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn(
+        '[axiomify/auth] MemoryTokenStore is per-process and not shared across ' +
+          'multiple instances or workers. Revoked tokens are not propagated to other ' +
+          'processes, making token revocation unreliable in multi-process deployments. ' +
+          'Use a distributed store (e.g. Redis) for production.',
+      );
+    }
+  }
+
   async save(jti: string, ttlSeconds: number): Promise<void> {
     await this.revoke(jti);
     const timer = setTimeout(() => this.tokens.delete(jti), ttlSeconds * 1000);
