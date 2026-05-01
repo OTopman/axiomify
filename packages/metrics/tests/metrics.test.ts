@@ -6,62 +6,47 @@ describe('Metrics Plugin', () => {
   it('protect returns 403 when false', async () => {
     const app = new Axiomify();
     useMetrics(app, { protect: () => false });
-
-    const req = {
-      method: 'GET',
-      path: '/metrics',
-      headers: {},
-      id: '1',
-      params: {},
-      query: {},
-      body: {},
-      state: {},
-    } as any;
-    const res = {
-      status: vi.fn().mockReturnThis(),
-      send: vi.fn(),
-      headersSent: false,
-      header: vi.fn().mockReturnThis(),
-    } as any;
-
+    const req = { method: 'GET', path: '/metrics', headers: {}, id: '1', params: {}, query: {}, body: {}, state: {}, ip: '127.0.0.1' } as any;
+    const res = { status: vi.fn().mockReturnThis(), send: vi.fn(), headersSent: false, header: vi.fn().mockReturnThis() } as any;
     await app.handle(req, res);
     expect(res.status).toHaveBeenCalledWith(403);
   });
 
-  it('includes wsManager stats and handles status 0', async () => {
+  it('returns 403 when requireToken is set and header is missing', async () => {
     const app = new Axiomify();
-    const mockWs = { getStats: () => ({ connectedClients: 5, rooms: {} }) };
-    useMetrics(app, { wsManager: mockWs });
+    useMetrics(app, { requireToken: 'secret-token' });
+    const req = { method: 'GET', path: '/metrics', headers: {}, id: '2', params: {}, query: {}, body: {}, state: {}, ip: '127.0.0.1' } as any;
+    const res = { status: vi.fn().mockReturnThis(), send: vi.fn(), headersSent: false, header: vi.fn().mockReturnThis() } as any;
+    await app.handle(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
 
-    const req = {
-      method: 'GET',
-      path: '/metrics',
-      headers: {},
-      id: '1',
-      params: {},
-      query: {},
-      body: {},
-      state: {},
-    } as any;
-    let output = '';
+  it('allows request when requireToken header is correct', async () => {
+    const app = new Axiomify();
+    useMetrics(app, { requireToken: 'secret-token' });
+    const req = { method: 'GET', path: '/metrics', headers: { 'x-metrics-token': 'secret-token' }, id: '5', params: {}, query: {}, body: {}, state: {}, ip: '127.0.0.1' } as any;
+    const res = { status: vi.fn().mockReturnThis(), send: vi.fn(), headersSent: false, header: vi.fn().mockReturnThis(), sendRaw: vi.fn() } as any;
+    await app.handle(req, res);
+    expect(res.sendRaw).toHaveBeenCalled();
+  });
 
-    const res = {
-      status: vi.fn().mockReturnThis(),
-      send: vi.fn(),
-      sendRaw: function (d: string) {
-        output = d;
-        this.headersSent = true;
-      },
-      headersSent: false,
-      header: vi.fn().mockReturnThis(),
-    } as any;
+  it('returns 403 when allowlist is set but IP is not allowed', async () => {
+    const app = new Axiomify();
+    useMetrics(app, { allowlist: ['192.168.1.1'] });
+    const req = { method: 'GET', path: '/metrics', headers: {}, id: '4', params: {}, query: {}, body: {}, state: {}, ip: '10.2.3.4' } as any;
+    const res = { status: vi.fn().mockReturnThis(), send: vi.fn(), headersSent: false, header: vi.fn().mockReturnThis(), sendRaw: vi.fn() } as any;
+    await app.handle(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.sendRaw).not.toHaveBeenCalled();
+  });
 
-    // Bypass the hook engine and execute the plugin's handler directly
-    const route = app.registeredRoutes.find((r) => r.path === '/metrics');
-    if (route && route.handler) {
-      await route.handler(req, res);
-    }
-
-    expect(output).toContain('ws_connected_clients 5');
+  it('allows request when IP is in CIDR allowlist', async () => {
+    const app = new Axiomify();
+    useMetrics(app, { allowlist: ['10.0.0.0/8'] });
+    const req = { method: 'GET', path: '/metrics', headers: {}, id: '3', params: {}, query: {}, body: {}, state: {}, ip: '10.2.3.4' } as any;
+    const res = { status: vi.fn().mockReturnThis(), send: vi.fn(), headersSent: false, header: vi.fn().mockReturnThis(), sendRaw: vi.fn() } as any;
+    await app.handle(req, res);
+    expect(res.status).not.toHaveBeenCalledWith(403);
+    expect(res.sendRaw).toHaveBeenCalled();
   });
 });

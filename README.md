@@ -156,7 +156,12 @@ const refreshTokens = createRefreshHandler({
   refreshTokenTtl: 60 * 60 * 24 * 30, // 30 days
 });
 
-app.route({ method: 'POST', path: '/auth/refresh', handler: refreshTokens });
+app.route({
+  method: 'POST',
+  path: '/auth/refresh',
+  plugins: [rateLimitByIP],
+  handler: refreshTokens,
+});
 
 // Register CORS for all routes
 useCors(app, { origin: ['https://trusted.example.com'] });
@@ -306,7 +311,7 @@ useWebSockets(app, {
   // authenticate: async (req) => verifyJwtFromHeader(req.headers.authorization),
 });
 
-const ws = (app as any).ws as WsManager;
+const ws = app.ws!;
 
 // Register a message type with automatic validation
 ws.on(

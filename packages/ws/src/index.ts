@@ -7,18 +7,18 @@ import type { ZodTypeAny } from 'zod';
 // Make the WsManager type-safe on the Axiomify instance.
 declare module '@axiomify/core' {
   interface Axiomify {
-    ws?: WsManager;
+    ws?: WsManager<unknown>;
   }
 }
 
-export interface WsClient extends WebSocket {
+export interface WsClient<TUser = unknown> extends WebSocket {
   id: string;
   rooms: Set<string>;
-  user?: any;
+  user?: TUser;
   _lastPong: number;
 }
 
-export interface WsOptions {
+export interface WsOptions<TUser = unknown> {
   server: Server;
   path?: string;
   heartbeatIntervalMs?: number;
@@ -26,7 +26,7 @@ export interface WsOptions {
   /**
    * Maximum number of simultaneous WebSocket connections.
    * Upgrade requests beyond this limit are rejected with 503.
-   * Default: no limit — set this in production.
+   * Default: 10_000. Set higher for large deployments, or Infinity explicitly to disable.
    */
   maxConnections?: number;
   /**
@@ -34,33 +34,33 @@ export interface WsOptions {
    * Prevents slow consumers from growing memory without bound.
    */
   maxBufferedBytes?: number;
-  authenticate?: (req: IncomingMessage) => Promise<any | null>;
-  onBinary?: (client: WsClient, data: Buffer) => void;
+  authenticate?: (req: IncomingMessage) => Promise<TUser | null>;
+  onBinary?: (client: WsClient<TUser>, data: Buffer) => void;
 }
 
 export interface WsEventSchema {
   [event: string]: ZodTypeAny;
 }
 
-export class WsManager {
+const MAX_CONNECTIONS_DEFAULT = 10_000;
+
+export class WsManager<TUser = unknown> {
   public wss: WebSocketServer;
-  private clients = new Map<string, WsClient>();
-  private rooms = new Map<string, Set<WsClient>>();
+  private clients = new Map<string, WsClient<TUser>>();
+  private rooms = new Map<string, Set<WsClient<TUser>>>();
   private eventHandlers = new Map<
     string,
-    (client: WsClient, data: any) => void
+    (client: WsClient<TUser>, data: any) => void
   >();
   private schemas: WsEventSchema = {};
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private readonly maxBufferedBytes: number;
 
-  constructor(options: WsOptions) {
+  constructor(options: WsOptions<TUser>) {
     this.wss = new WebSocketServer({ noServer: true });
 
     const heartbeatMs = options.heartbeatIntervalMs ?? 30_000;
-    const maxConnections =
-      options.maxConnections ??
-      (process.env.NODE_ENV === 'production' ? 10_000 : undefined);
+    
     this.maxBufferedBytes = options.maxBufferedBytes ?? 1_048_576;
 
     if (options.server) {
@@ -72,10 +72,8 @@ export class WsManager {
           if (options.path && pathname !== options.path) return;
 
           // Enforce connection cap before paying upgrade cost.
-          if (
-            maxConnections !== undefined &&
-            this.clients.size >= maxConnections
-          ) {
+          const limit = options.maxConnections ?? MAX_CONNECTIONS_DEFAULT;
+          if (this.wss.clients.size >= limit) {
             socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n');
             socket.destroy();
             return;
@@ -93,7 +91,7 @@ export class WsManager {
             }
 
             this.wss.handleUpgrade(request, socket, head, (ws: any) => {
-              const client = ws as WsClient;
+              const client = ws as WsClient<TUser>;
               client.id = crypto.randomUUID();
               client.rooms = new Set();
               client.user = user;
@@ -133,7 +131,7 @@ export class WsManager {
     }
 
     this.wss.on('connection', (ws: any) => {
-      const client = ws as WsClient;
+      const client = ws as WsClient<TUser>;
       if (!client.id) client.id = crypto.randomUUID();
       if (!client.rooms) client.rooms = new Set();
       if (!this.clients.has(client.id)) this.clients.set(client.id, client);
@@ -191,19 +189,19 @@ export class WsManager {
   public on<T = any>(
     event: string,
     schema: ZodTypeAny | null,
-    handler: (client: WsClient, data: T) => void,
+    handler: (client: WsClient<TUser>, data: T) => void,
   ) {
     if (schema) this.schemas[event] = schema;
     this.eventHandlers.set(event, handler as any);
   }
 
-  public joinRoom(client: WsClient, room: string) {
+  public joinRoom(client: WsClient<TUser>, room: string) {
     client.rooms.add(room);
     if (!this.rooms.has(room)) this.rooms.set(room, new Set());
     this.rooms.get(room)!.add(client);
   }
 
-  public leaveRoom(client: WsClient, room: string) {
+  public leaveRoom(client: WsClient<TUser>, room: string) {
     client.rooms.delete(room);
     this.rooms.get(room)?.delete(client);
     if (this.rooms.get(room)?.size === 0) this.rooms.delete(room);
@@ -240,7 +238,7 @@ export class WsManager {
   }
 }
 
-export function useWebSockets(app: Axiomify, options: WsOptions): void {
+export function useWebSockets<TUser = unknown>(app: Axiomify, options: WsOptions<TUser>): void {
   if (!options.server) {
     console.warn(
       '[axiomify/ws] No server provided. WebSocket upgrade listeners will not be attached.',
@@ -258,7 +256,7 @@ export function useWebSockets(app: Axiomify, options: WsOptions): void {
     );
   }
 
-  const manager = new WsManager(options);
+  const manager = new WsManager<TUser>(options);
   // Type-safe assignment via module augmentation (no `as any` cast).
   (app as any).ws = manager;
 }

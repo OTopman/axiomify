@@ -7,11 +7,13 @@ const app = new Axiomify();
 // to keep the benchmark perfectly apples-to-apples.
 app.route({
   method: 'GET',
-  path: '/api',
+  path: '/ping',
   handler: async (req, res) => {
     res.send({ status: 'success', code: 200 });
   },
 });
 
 console.log('Compiling Axiomify pipeline...');
-new NativeAdapter(app, { port: 3000 }).listen();
+new NativeAdapter(app, { port: 3000 }).listen(() => {
+  console.log('Axiomify pipeline is listening on port 3000');
+});

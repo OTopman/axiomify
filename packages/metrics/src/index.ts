@@ -8,10 +8,46 @@ export interface MetricsOptions {
   path?: string;
   protect?: (req: AxiomifyRequest) => boolean | Promise<boolean>;
   wsManager?: any;
+  allowlist?: string[];
+  requireToken?: string;
   /**
    * Explicitly allow public metrics in production. Defaults to false.
    */
   allowPublicInProduction?: boolean;
+}
+
+
+function ipv4ToInt(ip: string): number | null {
+  const parts = ip.split('.');
+  if (parts.length !== 4) return null;
+  const nums = parts.map((p) => Number(p));
+  if (nums.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+  return ((nums[0] << 24) >>> 0) + (nums[1] << 16) + (nums[2] << 8) + nums[3];
+}
+
+type IpMatcher = (ip: string) => boolean;
+
+function buildAllowlistMatchers(allowlist: string[]): IpMatcher[] {
+  return allowlist.flatMap((entry) => {
+    if (!entry.includes('/')) {
+      return [(ip: string) => ip === entry];
+    }
+
+    const [cidrIp, bitsRaw] = entry.split('/');
+    const bits = Number(bitsRaw);
+    const cidrInt = ipv4ToInt(cidrIp);
+    if (cidrInt === null || !Number.isInteger(bits) || bits < 0 || bits > 32) {
+      return [];
+    }
+
+    const mask = bits === 0 ? 0 : (~((1 << (32 - bits)) - 1)) >>> 0;
+    return [
+      (ip: string) => {
+        const ipInt = ipv4ToInt(ip);
+        return ipInt !== null && (ipInt & mask) === (cidrInt & mask);
+      },
+    ];
+  });
 }
 
 function escapeLabelValue(value: string): string {
@@ -22,13 +58,13 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
   const metricsPath = options.path ?? '/metrics';
   let emittedPublicMetricsWarning = false;
 
-  if (!options.protect && process.env.NODE_ENV === 'production') {
-    console.warn(
-      '[axiomify/metrics] The metrics endpoint is not protected. ' +
-        'Production access is denied by default. Provide a `protect` function ' +
-        'or set `allowPublicInProduction: true` explicitly.',
-    );
+  if (!options.protect && !options.allowlist && !options.requireToken) {
+    console.warn('[axiomify/metrics] Warning: /metrics is publicly accessible. Set protect, allowlist, or requireToken in production.');
   }
+
+  const allowlistMatchers = options.allowlist
+    ? buildAllowlistMatchers(options.allowlist)
+    : null;
 
   const stats = {
     requestsTotal: new Map<string, number>(),
@@ -87,6 +123,17 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
     method: 'GET',
     path: metricsPath,
     handler: async (req, res) => {
+      if (options.requireToken) {
+        const token = req.headers['x-metrics-token'];
+        const supplied = Array.isArray(token) ? token[0] : token;
+        if (supplied !== options.requireToken) return res.status(403).send(null, 'Forbidden');
+      }
+
+      if (allowlistMatchers) {
+        const ip = req.ip ?? "";
+        if (!allowlistMatchers.some((match) => match(ip))) return res.status(403).send(null, 'Forbidden');
+      }
+
       if (options.protect) {
         const isAllowed = await options.protect(req);
         if (!isAllowed) {

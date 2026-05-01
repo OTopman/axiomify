@@ -1,15 +1,14 @@
 import { createAuthPlugin } from '@axiomify/auth';
 import { Axiomify, UnauthorizedError, z } from '@axiomify/core';
-import { ExpressAdapter } from '@axiomify/express';
+import { useGraphQL } from '@axiomify/graphql';
 import { useHelmet } from '@axiomify/helmet';
+import { useLogger } from '@axiomify/logger';
+import { NativeAdapter } from '@axiomify/native';
 import { useOpenAPI } from '@axiomify/openapi';
 import { useUpload } from '@axiomify/upload';
-import { useLogger } from '@axiomify/logger';
-import { useWebSockets, WsManager } from '@axiomify/ws';
 import { randomUUID } from 'crypto';
 import { createReadStream } from 'fs';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
-import { useGraphQL } from '@axiomify/graphql';
 import path from 'path';
 
 export const app = new Axiomify();
@@ -161,8 +160,8 @@ app.route({
 });
 
 if (require.main === module) {
-  const adapter = new ExpressAdapter(app);
-  const server = adapter.listen(3000, () => {
+  const adapter = new NativeAdapter(app, { port: 3000 });
+  const server = adapter.listen(() => {
     console.log('🚀 Axiomify engine online on port 3000');
     console.log('GraphQL ready at http://localhost:3000/graphql');
     console.log('Playground at   http://localhost:3000/graphql/playground');
@@ -170,7 +169,7 @@ if (require.main === module) {
 
   // Note: two arguments. `useWebSockets` returns void; the manager is
   // attached to the app as `(app as any).ws`.
-  useWebSockets(app, {
+  /* useWebSockets(app, {
     server,
     path: '/ws',
     authenticate: async (_req) => ({ id: 'user-123' }),
@@ -183,7 +182,7 @@ if (require.main === module) {
     (client, data) => {
       wsManager.joinRoom(client, data.room);
       wsManager.broadcastToRoom(data.room, 'chat:received', {
-        sender: client.user.id,
+        sender: (client.user as any).id,
         text: data.text,
       });
     },
@@ -204,5 +203,5 @@ if (require.main === module) {
   };
 
   process.once('SIGTERM', () => shutdown('SIGTERM'));
-  process.once('SIGINT', () => shutdown('SIGINT'));
+  process.once('SIGINT', () => shutdown('SIGINT')); */
 }
