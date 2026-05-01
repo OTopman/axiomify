@@ -8,6 +8,30 @@ describe('OpenApiGenerator', () => {
     info: { title: 'Test API', version: '1.0.0' },
   };
 
+  it('produces a correct requestBody for a Zod Array schema', () => {
+    const mockApp = {
+      registeredRoutes: [
+        {
+          method: 'POST',
+          path: '/bulk',
+          schema: { body: z.array(z.object({ id: z.number() })) },
+          handler: () => {},
+        },
+      ],
+    } as unknown as Axiomify;
+
+    const generator = new OpenApiGenerator(mockApp, {
+      info: { title: 'Test', version: '1' },
+    });
+    const spec = generator.generate();
+
+    const requestBody = spec.paths['/bulk']['post'].requestBody;
+    expect(requestBody.content['application/json'].schema.type).toBe('array');
+    expect(requestBody.content['application/json'].schema.items.type).toBe(
+      'object',
+    );
+  });
+
   it('produces a correct requestBody from a Zod body schema', () => {
     const mockApp = {
       registeredRoutes: [

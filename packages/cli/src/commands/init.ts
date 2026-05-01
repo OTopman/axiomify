@@ -15,6 +15,10 @@ const DEV_COMMAND_BY_PM: Record<InitAnswers['packageManager'], string> = {
 type InitAnswers = {
   projectName: string;
   description: string;
+  adapter:
+    | 'Native (C++ Engine - Fastest)'
+    | 'Express (Max Compatibility)'
+    | 'Node HTTP (Zero Dependency)';
   useEslint: boolean;
   installDeps: boolean;
   useGit: boolean;
@@ -39,6 +43,17 @@ export async function initProject(
   }
 
   questions.push(
+    {
+      type: 'select',
+      name: 'adapter',
+      message: 'Which underlying HTTP engine do you want to use?',
+      choices: [
+        'Native (C++ Engine - Fastest)',
+        'Express (Max Compatibility)',
+        'Node HTTP (Zero Dependency)',
+      ],
+      initial: 0,
+    },
     {
       type: 'input',
       name: 'description',
@@ -122,6 +137,23 @@ export async function initProject(
 
   const AXIOMIFY_VERSION = `^${pkg.version}`;
 
+  let adapterPackage = '@axiomify/native';
+  let adapterImport = "import { NativeAdapter } from '@axiomify/native';";
+  let adapterInit =
+    "const server = new NativeAdapter(app, { port: 3000 });\n  server.listen(() => console.log('  Axiomify Native Engine online on port 3000'));";
+
+  if (answers.adapter.includes('Express')) {
+    adapterPackage = '@axiomify/express';
+    adapterImport = "import { ExpressAdapter } from '@axiomify/express';";
+    adapterInit =
+      "const server = new ExpressAdapter(app);\n  server.listen(3000, () => console.log('  Axiomify Express Engine online on port 3000'));";
+  } else if (answers.adapter.includes('HTTP')) {
+    adapterPackage = '@axiomify/http';
+    adapterImport = "import { HttpAdapter } from '@axiomify/http';";
+    adapterInit =
+      "const server = new HttpAdapter(app);\n  server.listen(3000, () => console.log('  Axiomify HTTP Engine online on port 3000'));";
+  }
+
   const pkgJson: Record<string, unknown> = {
     name: projectName,
     version: '1.0.0',
@@ -136,7 +168,7 @@ export async function initProject(
     },
     dependencies: {
       '@axiomify/core': AXIOMIFY_VERSION,
-      '@axiomify/express': AXIOMIFY_VERSION,
+      [adapterPackage]: AXIOMIFY_VERSION, // Inject selected adapter
       '@axiomify/helmet': AXIOMIFY_VERSION,
       '@axiomify/cors': AXIOMIFY_VERSION,
       '@axiomify/logger': AXIOMIFY_VERSION,
@@ -167,31 +199,31 @@ export async function initProject(
     (pkgJson.scripts as Record<string, string>).format = 'prettier --write .';
 
     const eslintConfig = `module.exports = {
-  root: true,
-  parser: '@typescript-eslint/parser',
-  plugins: ['@typescript-eslint', 'prettier'],
-  extends: [
-    'eslint:recommended',
-    'plugin:@typescript-eslint/recommended',
-    'plugin:prettier/recommended',
-  ],
-  parserOptions: {
-    ecmaVersion: 2022,
-    sourceType: 'module',
-  },
-  env: {
-    node: true,
-    es2022: true,
-  },
-};`;
+      root: true,
+      parser: '@typescript-eslint/parser',
+      plugins: ['@typescript-eslint', 'prettier'],
+      extends: [
+        'eslint:recommended',
+        'plugin:@typescript-eslint/recommended',
+        'plugin:prettier/recommended',
+      ],
+      parserOptions: {
+        ecmaVersion: 2022,
+        sourceType: 'module',
+      },
+      env: {
+        node: true,
+        es2022: true,
+      },
+    };`;
 
     const prettierConfig = `{
-  "semi": true,
-  "trailingComma": "all",
-  "singleQuote": true,
-  "printWidth": 100,
-  "tabWidth": 2
-}`;
+      "semi": true,
+      "trailingComma": "all",
+      "singleQuote": true,
+      "printWidth": 100,
+      "tabWidth": 2
+    }`;
 
     await fs.writeFile(path.join(dir, '.eslintrc.cjs'), eslintConfig);
     await fs.writeFile(path.join(dir, '.prettierrc'), prettierConfig);
@@ -224,47 +256,38 @@ export async function initProject(
   };
 
   const indexTs = `import { Axiomify } from '@axiomify/core';
-import { ExpressAdapter } from '@axiomify/express';
-import { useHelmet } from '@axiomify/helmet';
-import { useCors } from '@axiomify/cors';
-import { useLogger } from '@axiomify/logger';
-import { useSecurity } from '@axiomify/security';
-import { useRateLimit, MemoryStore } from '@axiomify/rate-limit';
-import { useFingerprint } from '@axiomify/fingerprint';
+    ${adapterImport}
+    import { useHelmet } from '@axiomify/helmet';
+    import { useCors } from '@axiomify/cors';
+    import { useLogger } from '@axiomify/logger';
+    import { useSecurity } from '@axiomify/security';
+    import { useRateLimit, MemoryStore } from '@axiomify/rate-limit';
+    import { useFingerprint } from '@axiomify/fingerprint';
 
-export const app = new Axiomify();
+    export const app = new Axiomify();
 
-useHelmet(app);
-useCors(app, { credentials: false });
-useSecurity(app);
+    useHelmet(app);
+    useCors(app, { credentials: false });
+    useSecurity(app);
 
-// ⚠️  PRODUCTION NOTE
-// MemoryStore is per-process. In any multi-worker / multi-instance
-// deployment (PM2 cluster, k8s with replicas > 1), the effective rate
-// limit becomes max × number_of_processes. For production, swap this
-// for a RedisStore:
-//
-//   import Redis from 'ioredis';
-//   const redis = new Redis(process.env.REDIS_URL);
-//   useRateLimit(app, { max: 100, windowMs: 60_000, store: new RedisStore(redis) });
-useRateLimit(app, { max: 100, windowMs: 60_000, store: new MemoryStore() });
+    // PRODUCTION NOTE
+    // MemoryStore is per-process. For production, swap this for a RedisStore.
+    useRateLimit(app, { max: 100, windowMs: 60_000, store: new MemoryStore() });
+    useFingerprint(app);
+    useLogger(app);
 
-useFingerprint(app);
-useLogger(app);
+    app.route({
+      method: 'GET',
+      path: '/health',
+      handler: async (_req, res) => {
+        res.status(200).send({ status: 'healthy' }, 'System Operational');
+      },
+    });
 
-app.route({
-  method: 'GET',
-  path: '/health',
-  handler: async (_req, res) => {
-    res.status(200).send({ status: 'healthy' }, 'System Operational');
-  },
-});
-
-if (require.main === module) {
-  const adapter = new ExpressAdapter(app);
-  adapter.listen(3000, () => console.log('🚀 Axiomify online on port 3000'));
-}
-`;
+    if (require.main === module) {
+      ${adapterInit}
+    }
+    `;
 
   // .gitignore — includes .axiomify (CLI temp build output) so it is never committed.
   const gitignore =

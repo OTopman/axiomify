@@ -114,13 +114,84 @@ export class Axiomify {
   }
 
   public route<S extends RouteSchema>(definition: RouteDefinition<S>): this {
-    this.router.register(definition as RouteDefinition);
-    this._routes.push(definition as RouteDefinition);
-
     const routeId = `${definition.method}:${definition.path}`;
+
     if (definition.schema) {
       this.validator.compile(routeId, definition.schema);
     }
+
+    // --- PRE-COMPILE THE PIPELINE ---
+    const pipeline: Array<
+      (req: AxiomifyRequest, res: AxiomifyResponse) => Promise<void> | void
+    > = [];
+
+    // We wrap this so we don't have to dynamically look up the hook array per request.
+    pipeline.push(async (req, res) => {
+      await this.hooks.run('onPreHandler', req, res, {
+        route: definition as RouteDefinition,
+        params: req.params as Record<string, string>,
+      });
+    });
+
+    // Route-specific Plugins
+    if (definition.plugins) {
+      pipeline.push(...definition.plugins);
+    }
+
+    // Zod Validation
+    if (definition.schema) {
+      pipeline.push((req) => {
+        this.validator.execute(routeId, req);
+      });
+    }
+
+    // The Core Handler
+    // Telemetry and timeout logic is moved here so it only wraps the final handler, not the whole pipeline.
+    const effectiveTimeout = definition.timeout ?? this._timeout;
+    pipeline.push(async (req, res) => {
+      let span: { end(): void } | undefined;
+      if (this._telemetry) {
+        span = this._telemetry.startSpan('http.request', {
+          method: req.method,
+          path: definition.path,
+        });
+      }
+
+      try {
+        if (effectiveTimeout > 0) {
+          let timeoutId: ReturnType<typeof setTimeout> | undefined;
+          const timeoutError = Object.assign(new Error('Request timed out'), {
+            statusCode: 503,
+          });
+
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(
+              () => reject(timeoutError),
+              effectiveTimeout,
+            );
+          });
+
+          try {
+            await Promise.race([
+              definition.handler(req as never, res),
+              timeoutPromise,
+            ]);
+          } finally {
+            if (timeoutId !== undefined) clearTimeout(timeoutId);
+          }
+        } else {
+          await definition.handler(req as never, res);
+        }
+      } finally {
+        if (span) span.end();
+      }
+    });
+
+    // Lock it in
+    definition._compiledPipeline = pipeline;
+
+    this.router.register(definition as RouteDefinition);
+    this._routes.push(definition as RouteDefinition);
 
     return this;
   }
@@ -242,113 +313,53 @@ export class Axiomify {
     res: AxiomifyResponse,
   ): Promise<void> {
     const requestAbort = attachRequestSignal(req);
-    let matched: {
-      route: RouteDefinition;
-      params: Record<string, string>;
-    } | null = null;
+    let match: ReturnType<typeof this.router.lookup> = null;
 
     try {
       await this.hooks.run('onRequest', req, res);
       if (res.headersSent) return;
 
-      const match = this.router.lookup(req.method, req.path);
-
-      if (!match) {
-        return res.status(404).send(null, 'Route not found');
-      }
-
+      match = this.router.lookup(req.method, req.path);
+      if (!match) return res.status(404).send(null, 'Route not found');
       if ('error' in match) {
         res.header('Allow', match.allowed.join(', '));
         return res.status(405).send(null, 'Method Not Allowed');
       }
 
-      matched = match;
-      const { route, params } = match;
+      Object.assign(req.params as object, match.params);
+      const routeId = `${match.route.method}:${match.route.path}`;
 
-      Object.assign(req.params as object, params);
-      const routeId = `${route.method}:${route.path}`;
-
-      await this.hooks.run('onPreHandler', req, res, match);
-
-      if (res.headersSent) {
-        await this.hooks.run('onPostHandler', req, res, match);
-        return;
-      }
-
-      const routePlugins = route.plugins ?? [];
-      for (const routePlugin of routePlugins) {
-        await routePlugin(req, res);
-        if (res.headersSent) {
-          await this.hooks.run('onPostHandler', req, res, match);
-          return;
-        }
-      }
-
-      this.validator.execute(routeId, req);
-
-      let responsePayload: unknown = undefined;
+      // NOTE: This res.send monkey-patch allocates closures per request.
+      // It is necessary for the current Express/Fastify adapters, but we will
+      // bypass this entirely in the uWS native adapter.
       let sendCallCount = 0;
       const originalSend = res.send.bind(res);
-
       res.send = (data: unknown, message?: string) => {
         if (sendCallCount === 0) {
           this.validator.validateResponse(routeId, data, res.statusCode);
-          responsePayload = data;
           (res as unknown as Record<string, unknown>).payload = data;
           (res as unknown as Record<string, unknown>).responseMessage = message;
         }
         sendCallCount++;
-
-        if (req.method === 'HEAD') {
-          return originalSend(undefined, message);
-        }
+        if (req.method === 'HEAD') return originalSend(undefined, message);
         return originalSend(data, message);
       };
 
-      const effectiveTimeout = route.timeout ?? this._timeout;
-
-      let span: { end(): void } | undefined;
-      if (this._telemetry) {
-        span = this._telemetry.startSpan('http.request', {
-          method: req.method,
-          path: route.path,
-        });
+      // --- THE BLAZING FAST EXECUTION LOOP ---
+      // Zero dynamic logic. Just iterate and execute.
+      const pipeline = match.route._compiledPipeline!;
+      for (let i = 0; i < pipeline.length; i++) {
+        if (res.headersSent) break;
+        await pipeline[i](req, res);
       }
 
-      try {
-        if (effectiveTimeout > 0) {
-          let timeoutId: ReturnType<typeof setTimeout> | undefined;
-          const timeoutError = Object.assign(new Error('Request timed out'), {
-            statusCode: 503,
-          });
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            timeoutId = setTimeout(() => {
-              requestAbort.controller.abort(timeoutError);
-              reject(timeoutError);
-            }, effectiveTimeout);
-          });
-
-          try {
-            await Promise.race([
-              route.handler(req as never, res),
-              timeoutPromise,
-            ]);
-          } finally {
-            if (timeoutId !== undefined) clearTimeout(timeoutId);
-          }
-        } else {
-          await route.handler(req as never, res);
-        }
-      } finally {
-        if (span) span.end();
+      if (!res.headersSent) {
+        await this.hooks.run('onPostHandler', req, res, match);
       }
-
-      await this.hooks.run('onPostHandler', req, res, match);
     } catch (err: unknown) {
       await this.handleError(err, req, res);
     } finally {
       requestAbort.cleanup();
-      // runSafe: a throwing onClose hook must not suppress cleanup for others.
       await this.hooks.runSafe('onClose', req, res);
     }
   }
@@ -368,8 +379,8 @@ export class Axiomify {
       typeof anyErr.statusCode === 'number'
         ? anyErr.statusCode
         : typeof anyErr.status === 'number'
-          ? anyErr.status
-          : 500;
+        ? anyErr.status
+        : 500;
     const message =
       typeof anyErr.message === 'string'
         ? anyErr.message

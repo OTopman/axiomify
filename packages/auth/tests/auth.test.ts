@@ -1,7 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
 import { Axiomify } from '@axiomify/core';
-import { createAuthPlugin, createRefreshHandler, useAuth } from '../src/index';
 import jwt from 'jsonwebtoken';
+import { describe, expect, it, vi } from 'vitest';
+import { createAuthPlugin, useAuth } from '../src/index';
 
 describe('Auth Plugin & Refresh', () => {
   const secret = 'super-secret-key-that-is-at-least-32-chars-long!';

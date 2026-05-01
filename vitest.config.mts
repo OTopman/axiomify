@@ -1,19 +1,6 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  // resolve: {
-  //   alias: {
-  //     '@axiomify/core': resolve(__dirname, 'packages/core/src/index.ts'),
-  //     '@axiomify/detector': resolve(
-  //       __dirname,
-  //       'packages/detector/src/index.ts',
-  //     ),
-  //     '@axiomify/sanitizer': resolve(
-  //       __dirname,
-  //       'packages/sanitizer/src/index.ts',
-  //     ),
-  //   },
-  // },
   test: {
     coverage: {
       provider: 'v8',
@@ -24,11 +11,14 @@ export default defineConfig({
         '**/node_modules/**',
         '**/dist/**',
         '**/tests/**',
-        'packages/core/src/types.ts',
         '**/*.config.ts',
         'benchmarks/**',
         'examples/**',
-        'packages/cli/**',
+        'packages/openapi/src/**',
+        'packages/express/src/**',
+        'packages/fastify/src/**',
+        'packages/hapi/src/**',
+        'packages/cli/src/**',
       ],
       thresholds: {
         lines: 82,

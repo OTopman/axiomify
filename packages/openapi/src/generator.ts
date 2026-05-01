@@ -40,10 +40,7 @@ function isZodSchema(value: unknown): boolean {
 }
 
 export class OpenApiGenerator {
-  constructor(
-    private app: Axiomify,
-    private options: OpenApiOptions,
-  ) {}
+  constructor(private app: Axiomify, private options: OpenApiOptions) {}
 
   public generate(): Record<string, any> {
     const spec: any = {
@@ -129,59 +126,53 @@ export class OpenApiGenerator {
   }
 
   private extractBody(route: RouteDefinition): any {
-    const buildRequestBody = (schema: any) => {
-      //  Check if schema itself exists before checking its properties!
-      if (!schema || (!schema.body && !schema.files)) {
-        return undefined;
-      }
+    if (!route.schema || (!route.schema.body && !route.schema.files)) {
+      return undefined;
+    }
 
-      const hasFiles = !!schema.files;
-      const contentType = hasFiles ? 'multipart/form-data' : 'application/json';
-      const properties: Record<string, any> = {};
-      let requiredFields: string[] = [];
+    const hasFiles = !!route.schema.files;
+    const contentType = hasFiles ? 'multipart/form-data' : 'application/json';
 
-      //  Safely cast the generated schema to bypass the strict Union Type
-      if (schema.body) {
-        const bodySchema = zodToJsonSchema(schema.body, {
-          target: 'openApi3',
-        }) as any;
+    let finalSchema: any = { type: 'object', properties: {} };
 
-        // Safely extract properties if it's an object
-        if (bodySchema.properties) {
-          Object.assign(properties, bodySchema.properties);
-        }
+    if (route.schema.body) {
+      const bodySchema = zodToJsonSchema(route.schema.body as any, {
+        target: 'openApi3',
+      }) as any;
 
-        // Safely extract the required array
-        if (bodySchema.required) {
-          requiredFields = bodySchema.required;
-        }
-      }
-
-      // Attach the File fields for the Swagger UI
-      if (hasFiles) {
-        for (const fieldName of Object.keys(schema.files)) {
-          properties[fieldName] = {
-            type: 'string',
-            format: 'binary',
-            description: `Max size: ${schema.files[fieldName].maxSize} bytes`,
-          };
+      if (bodySchema.type === 'object') {
+        // Standard JSON object payload
+        finalSchema.properties = { ...bodySchema.properties };
+        if (bodySchema.required) finalSchema.required = bodySchema.required;
+      } else {
+        // Arrays or Primitives (e.g., z.array(z.string()))
+        if (!hasFiles) {
+          finalSchema = bodySchema; // Output the array schema directly
+        } else {
+          // Mixed multipart: Wrap the array inside a generic payload property
+          finalSchema.properties['payload'] = bodySchema;
         }
       }
+    }
 
-      return {
-        content: {
-          [contentType]: {
-            schema: {
-              type: 'object',
-              properties: properties,
-              // Only attach 'required' if there are actually required fields
-              required: requiredFields.length > 0 ? requiredFields : undefined,
-            },
-          },
-        },
-      };
+    if (hasFiles) {
+      // Tell TypeScript to treat the generic files object as a standard record
+      for (const [fieldName, config] of Object.entries(
+        route.schema.files as Record<string, any>,
+      )) {
+        finalSchema.properties[fieldName] = {
+          type: 'string',
+          format: 'binary',
+          description: `Max size: ${config.maxSize} bytes`,
+        };
+      }
+    }
+
+    return {
+      content: {
+        [contentType]: { schema: finalSchema },
+      },
     };
-    return buildRequestBody(route.schema);
   }
 
   private extractResponse(route: RouteDefinition): any {
