@@ -1,6 +1,6 @@
 import { RequestDispatcher } from './dispatcher';
 import { HookHandlerMap, HookManager } from './lifecycle';
-import { Router } from './router';
+import { RouteRegistry } from './registry';
 import type {
   AxiomifyRequest,
   AxiomifyResponse,
@@ -8,11 +8,10 @@ import type {
   RouteDefinition,
   RouteGroup,
   RouteGroupOptions,
-  RoutePlugin,
+  RouteMiddleware,
   RouteSchema,
   SerializerFn,
 } from './types';
-import { ValidationCompiler } from './validation';
 
 export interface AxiomifyOptions {
   timeout?: number;
@@ -24,6 +23,19 @@ export interface AxiomifyOptions {
   };
 }
 
+export interface AppContext {
+  provide<T>(token: string, value: T): void;
+  resolve<T>(token: string): T | undefined;
+}
+
+export interface AppModule {
+  name: string;
+  dependencies?: string[];
+  register(app: Axiomify, context: AppContext): void;
+}
+
+export type AppConfigurator = (app: Axiomify, context: AppContext) => void;
+/** @deprecated Use AppConfigurator or AppModule instead. */
 export type AppPlugin = (app: Axiomify) => void;
 
 function joinRoutePath(prefix: string, path: string): string {
@@ -31,30 +43,33 @@ function joinRoutePath(prefix: string, path: string): string {
 }
 
 function mergePlugins(
-  inherited: RoutePlugin[] | undefined,
-  local: RoutePlugin[] | undefined,
-): RoutePlugin[] | undefined {
+  inherited: RouteMiddleware[] | undefined,
+  local: RouteMiddleware[] | undefined,
+): RouteMiddleware[] | undefined {
   if (!inherited?.length) return local;
   if (!local?.length) return [...inherited];
   return [...inherited, ...local];
 }
 
 export class Axiomify {
-  public readonly router = new Router();
-  public readonly validator = new ValidationCompiler();
   public readonly hooks = new HookManager();
-  private readonly dispatcher = new RequestDispatcher(
-    this.router,
-    this.hooks,
-    this.validator,
-  );
-
-  private readonly _routes: RouteDefinition[] = [];
+  private readonly registry: RouteRegistry;
+  private readonly dispatcher: RequestDispatcher;
   private readonly _timeout: number;
   private readonly _telemetry?: AxiomifyOptions['telemetry'];
+  private readonly _services = new Map<string, unknown>();
+  private readonly _modules = new Set<string>();
 
   public get registeredRoutes(): readonly RouteDefinition[] {
-    return this._routes;
+    return this.registry.registeredRoutes;
+  }
+
+  public get router() {
+    return this.registry.router;
+  }
+
+  public get validator() {
+    return this.registry.validator;
   }
 
   public get timeout(): number {
@@ -64,14 +79,45 @@ export class Axiomify {
   constructor(options: AxiomifyOptions = {}) {
     this._timeout = options.timeout ?? 0;
     this._telemetry = options.telemetry;
+    this.registry = new RouteRegistry(this.hooks, {
+      timeout: this._timeout,
+      telemetry: this._telemetry,
+    });
+    this.dispatcher = new RequestDispatcher(
+      this.registry.router,
+      this.hooks,
+      this.registry.validator,
+    );
 
     this.addHook('onRequest', (req, res) => {
       res.header('X-Request-Id', req.id);
     });
   }
 
-  public use(plugin: AppPlugin): this {
-    plugin(this);
+  public use(configurator: AppPlugin | AppConfigurator | AppModule): this {
+    const context: AppContext = {
+      provide: (token, value) => this._services.set(token, value),
+      resolve: (token) => this._services.get(token) as never,
+    };
+    if (typeof configurator === 'function') {
+      if (configurator.length >= 2) {
+        (configurator as AppConfigurator)(this, context);
+      } else {
+        (configurator as AppPlugin)(this);
+      }
+      return this;
+    }
+
+    if (this._modules.has(configurator.name)) return this;
+    for (const dep of configurator.dependencies ?? []) {
+      if (!this._modules.has(dep)) {
+        throw new Error(
+          `Module "${configurator.name}" requires "${dep}" to be registered first.`,
+        );
+      }
+    }
+    configurator.register(this, context);
+    this._modules.add(configurator.name);
     return this;
   }
 
@@ -84,85 +130,7 @@ export class Axiomify {
   }
 
   public route<S extends RouteSchema>(definition: RouteDefinition<S>): this {
-    const routeId = `${definition.method}:${definition.path}`;
-
-    if (definition.schema) {
-      this.validator.compile(routeId, definition.schema);
-    }
-
-    // --- PRE-COMPILE THE PIPELINE ---
-    const pipeline: Array<
-      (req: AxiomifyRequest, res: AxiomifyResponse) => Promise<void> | void
-    > = [];
-
-    // We wrap this so we don't have to dynamically look up the hook array per request.
-    pipeline.push(async (req, res) => {
-      await this.hooks.run('onPreHandler', req, res, {
-        route: definition as RouteDefinition,
-        params: req.params as Record<string, string>,
-      });
-    });
-
-    // Route-specific Plugins
-    if (definition.plugins) {
-      pipeline.push(...definition.plugins);
-    }
-
-    // Zod Validation
-    if (definition.schema) {
-      pipeline.push((req) => {
-        this.validator.execute(routeId, req);
-      });
-    }
-
-    // The Core Handler
-    // Telemetry and timeout logic is moved here so it only wraps the final handler, not the whole pipeline.
-    const effectiveTimeout = definition.timeout ?? this._timeout;
-    pipeline.push(async (req, res) => {
-      let span: { end(): void } | undefined;
-      if (this._telemetry) {
-        span = this._telemetry.startSpan('http.request', {
-          method: req.method,
-          path: definition.path,
-        });
-      }
-
-      try {
-        if (effectiveTimeout > 0) {
-          let timeoutId: ReturnType<typeof setTimeout> | undefined;
-          const timeoutError = Object.assign(new Error('Request timed out'), {
-            statusCode: 408,
-          });
-
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            timeoutId = setTimeout(
-              () => reject(timeoutError),
-              effectiveTimeout,
-            );
-          });
-
-          try {
-            await Promise.race([
-              definition.handler(req as never, res),
-              timeoutPromise,
-            ]);
-          } finally {
-            if (timeoutId !== undefined) clearTimeout(timeoutId);
-          }
-        } else {
-          await definition.handler(req as never, res);
-        }
-      } finally {
-        if (span) span.end();
-      }
-    });
-
-    // Lock it in
-    definition._compiledPipeline = pipeline;
-
-    this.router.register(definition as RouteDefinition);
-    this._routes.push(definition as RouteDefinition);
-
+    this.registry.register(definition);
     return this;
   }
 

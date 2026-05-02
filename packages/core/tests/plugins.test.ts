@@ -3,6 +3,25 @@ import { Axiomify } from '../src/app';
 import type { AxiomifyRequest, AxiomifyResponse } from '../src/types';
 
 describe('Route-level Plugin System', () => {
+  it('supports app modules with dependency ordering and DI context', () => {
+    const app = new Axiomify();
+    app.use({
+      name: 'config',
+      register: (_app, context) => {
+        context.provide('db.url', 'postgres://localhost:5432/app');
+      },
+    });
+
+    app.use({
+      name: 'db',
+      dependencies: ['config'],
+      register: (_app, context) => {
+        const url = context.resolve<string>('db.url');
+        expect(url).toBe('postgres://localhost:5432/app');
+      },
+    });
+  });
+
   it('executes multiple plugins in the declared array order', async () => {
     const app = new Axiomify();
     const order: number[] = [];

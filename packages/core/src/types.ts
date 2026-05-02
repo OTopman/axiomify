@@ -160,10 +160,12 @@ export type PluginHandler = (
   res: AxiomifyResponse,
 ) => void | Promise<void>;
 
-export type RoutePlugin = PluginHandler;
+export type RouteMiddleware = PluginHandler;
+/** @deprecated Use RouteMiddleware instead. */
+export type RoutePlugin = RouteMiddleware;
 
 export interface RouteGroupOptions {
-  plugins?: RoutePlugin[];
+  plugins?: RouteMiddleware[];
 }
 
 /**
@@ -178,7 +180,7 @@ export interface RouteDefinition<
   method: HttpMethod;
   path: string;
   schema?: S;
-  plugins?: RoutePlugin[];
+  plugins?: RouteMiddleware[];
   timeout?: number; // milliseconds; overrides the global default when set
   handler: RouteHandler<B, Q, P, S['files']>;
   // The fully flattened, pre-computed execution pipeline for this specific route.
