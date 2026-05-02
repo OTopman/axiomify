@@ -11,26 +11,26 @@ import type { ValidationCompiler } from './validation';
 function attachRequestSignal(req: AxiomifyRequest): {
   controller: AbortController;
   cleanup(): void;
-} {
-  const controller = new AbortController();
+} | null {
   const upstreamSignal = req.signal;
+  if (!upstreamSignal) return null;
+
+  const controller = new AbortController();
   const originalSignal = upstreamSignal;
   let cleanup = () => {};
 
-  if (upstreamSignal) {
-    const abortFromUpstream = () => {
-      if (!controller.signal.aborted) controller.abort(upstreamSignal.reason);
-    };
+  const abortFromUpstream = () => {
+    if (!controller.signal.aborted) controller.abort(upstreamSignal.reason);
+  };
 
-    if (upstreamSignal.aborted) {
-      abortFromUpstream();
-    } else {
-      upstreamSignal.addEventListener('abort', abortFromUpstream, {
-        once: true,
-      });
-      cleanup = () =>
-        upstreamSignal.removeEventListener('abort', abortFromUpstream);
-    }
+  if (upstreamSignal.aborted) {
+    abortFromUpstream();
+  } else {
+    upstreamSignal.addEventListener('abort', abortFromUpstream, {
+      once: true,
+    });
+    cleanup = () =>
+      upstreamSignal.removeEventListener('abort', abortFromUpstream);
   }
 
   req.signal = controller.signal;
@@ -68,7 +68,7 @@ export class RequestDispatcher {
     } catch (err) {
       await this.handleError(err, req, res);
     } finally {
-      requestAbort.cleanup();
+      requestAbort?.cleanup();
       await this.hooks.runSafe('onClose', req, res);
     }
   }
@@ -87,7 +87,7 @@ export class RequestDispatcher {
     } catch (err) {
       await this.handleError(err, req, res);
     } finally {
-      requestAbort.cleanup();
+      requestAbort?.cleanup();
       await this.hooks.runSafe('onClose', req, res);
     }
   }
