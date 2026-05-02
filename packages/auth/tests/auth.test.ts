@@ -1,4 +1,4 @@
-import { Axiomify } from '@axiomify/core';
+import { Axiomify } from '../../core/src/app';
 import jwt from 'jsonwebtoken';
 import { describe, expect, it, vi } from 'vitest';
 import { createAuthPlugin, getAuthUser, useAuth } from '../src/index';

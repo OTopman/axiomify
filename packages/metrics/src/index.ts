@@ -101,9 +101,21 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
   });
 
   app.addHook(
+    'onPreHandler',
+    (req: AxiomifyRequest, _res: AxiomifyResponse, match: any) => {
+      if (match?.route?.path) {
+        req.state.metricsRouteLabel = String(match.route.path);
+      }
+    },
+  );
+
+  app.addHook(
     'onPostHandler',
     (req: AxiomifyRequest, res: AxiomifyResponse, match: any) => {
-      const routeLabel: string = match?.route?.path ?? req.path;
+      const routeLabel: string =
+        match?.route?.path ??
+        (req.state.metricsRouteLabel as string | undefined) ??
+        UNMATCHED_ROUTE_LABEL;
       const status = res.statusCode || 200;
       record(req, status, routeLabel);
     },
@@ -116,7 +128,10 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
         : typeof err?.status === 'number'
           ? err.status
           : 500;
-    record(req, status, req.path);
+    const routeLabel =
+      (req.state.metricsRouteLabel as string | undefined) ??
+      UNMATCHED_ROUTE_LABEL;
+    record(req, status, routeLabel);
   });
 
   app.route({
@@ -178,3 +193,4 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
     },
   });
 }
+  const UNMATCHED_ROUTE_LABEL = '__unmatched__';
