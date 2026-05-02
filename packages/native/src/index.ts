@@ -174,30 +174,56 @@ class NativeResponse implements AxiomifyResponse {
 
     this.raw.cork(() => {
       this.raw.writeStatus(statusLine(this.statusCode));
+      // Stream size is unknown up-front; force chunked transfer semantics.
+      this.raw.writeHeader('Transfer-Encoding', 'chunked');
       for (const [k, v] of this.outHeaders.entries()) {
         this.raw.writeHeader(k, v);
       }
     });
 
-    readable.on('data', (chunk) => {
-      const lastOffset = this.raw.getWriteOffset();
-      const [ok] = this.raw.tryEnd(chunk, readable.readableLength);
+    const pending: Buffer[] = [];
+    let flushing = false;
 
-      if (!ok) {
-        readable.pause();
-        this.raw.onWritable((offset) => {
-          const [writeOk] = this.raw.tryEnd(
-            chunk.slice(offset - lastOffset),
-            readable.readableLength,
-          );
-          if (writeOk) readable.resume();
-          return writeOk;
-        });
+    const flush = () => {
+      if (this.aborted) return true;
+      while (pending.length > 0) {
+        const chunk = pending[0];
+        const ok = this.raw.write(chunk);
+        if (!ok) {
+          readable.pause();
+          if (!flushing) {
+            flushing = true;
+            this.raw.onWritable(() => {
+              flushing = false;
+              const drained = flush();
+              if (drained) readable.resume();
+              return drained;
+            });
+          }
+          return false;
+        }
+        pending.shift();
       }
+      return true;
+    };
+
+    readable.on('data', (chunk) => {
+      pending.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      flush();
     });
 
     readable.on('end', () => {
-      if (!this.aborted) this.raw.end();
+      if (this.aborted) return;
+      if (flush()) this.raw.end();
+      else {
+        this.raw.onWritable(() => {
+          if (flush()) {
+            this.raw.end();
+            return true;
+          }
+          return false;
+        });
+      }
     });
   }
 
