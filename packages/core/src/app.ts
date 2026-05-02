@@ -326,41 +326,64 @@ export class Axiomify {
         return res.status(405).send(null, 'Method Not Allowed');
       }
 
-      Object.assign(req.params as object, match.params);
-      const routeId = `${match.route.method}:${match.route.path}`;
-
-      // NOTE: This res.send monkey-patch allocates closures per request.
-      // It is necessary for the current Express/Fastify adapters, but we will
-      // bypass this entirely in the uWS native adapter.
-      let sendCallCount = 0;
-      const originalSend = res.send.bind(res);
-      res.send = (data: unknown, message?: string) => {
-        if (sendCallCount === 0) {
-          this.validator.validateResponse(routeId, data, res.statusCode);
-          (res as unknown as Record<string, unknown>).payload = data;
-          (res as unknown as Record<string, unknown>).responseMessage = message;
-        }
-        sendCallCount++;
-        if (req.method === 'HEAD') return originalSend(undefined, message);
-        return originalSend(data, message);
-      };
-
-      // --- THE BLAZING FAST EXECUTION LOOP ---
-      // Zero dynamic logic. Just iterate and execute.
-      const pipeline = match.route._compiledPipeline!;
-      for (let i = 0; i < pipeline.length; i++) {
-        if (res.headersSent) break;
-        await pipeline[i](req, res);
-      }
-
-      if (!res.headersSent) {
-        await this.hooks.run('onPostHandler', req, res, match);
-      }
+      await this.executeMatchedRoute(req, res, match.route, match.params);
     } catch (err: unknown) {
       await this.handleError(err, req, res);
     } finally {
       requestAbort.cleanup();
       await this.hooks.runSafe('onClose', req, res);
+    }
+  }
+
+  public async handleMatchedRoute(
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+    route: RouteDefinition,
+    params: Record<string, string>,
+  ): Promise<void> {
+    const requestAbort = attachRequestSignal(req);
+    try {
+      await this.hooks.run('onRequest', req, res);
+      if (res.headersSent) return;
+      await this.executeMatchedRoute(req, res, route, params);
+    } catch (err: unknown) {
+      await this.handleError(err, req, res);
+    } finally {
+      requestAbort.cleanup();
+      await this.hooks.runSafe('onClose', req, res);
+    }
+  }
+
+  private async executeMatchedRoute(
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+    route: RouteDefinition,
+    params: Record<string, string>,
+  ): Promise<void> {
+    Object.assign(req.params as object, params);
+    const routeId = `${route.method}:${route.path}`;
+
+    let sendCallCount = 0;
+    const originalSend = res.send.bind(res);
+    res.send = (data: unknown, message?: string) => {
+      if (sendCallCount === 0) {
+        this.validator.validateResponse(routeId, data, res.statusCode);
+        (res as unknown as Record<string, unknown>).payload = data;
+        (res as unknown as Record<string, unknown>).responseMessage = message;
+      }
+      sendCallCount++;
+      if (req.method === 'HEAD') return originalSend(undefined, message);
+      return originalSend(data, message);
+    };
+
+    const pipeline = route._compiledPipeline!;
+    for (let i = 0; i < pipeline.length; i++) {
+      if (res.headersSent) break;
+      await pipeline[i](req, res);
+    }
+
+    if (!res.headersSent) {
+      await this.hooks.run('onPostHandler', req, res, { route, params });
     }
   }
 

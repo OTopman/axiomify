@@ -90,6 +90,26 @@ export class ExpressAdapter {
       },
     );
 
+    for (const route of this.core.registeredRoutes) {
+      this.app[route.method.toLowerCase() as 'get'](
+        route.path,
+        async (req: Request, res: Response) => {
+          const axiomifyReq = translateRequest(req);
+          const axiomifyRes = translateResponse(
+            res,
+            this.core.serializer,
+            axiomifyReq,
+          );
+          await this.core.handleMatchedRoute(
+            axiomifyReq,
+            axiomifyRes,
+            route,
+            req.params as Record<string, string>,
+          );
+        },
+      );
+    }
+
     this.app.all('*', async (req: Request, res: Response) => {
       const axiomifyReq = translateRequest(req);
       const axiomifyRes = translateResponse(
@@ -97,8 +117,12 @@ export class ExpressAdapter {
         this.core.serializer,
         axiomifyReq,
       );
-
-      await this.core.handle(axiomifyReq, axiomifyRes);
+      const match = this.core.router.lookup(req.method as never, req.path);
+      if (match && 'error' in match) {
+        axiomifyRes.header('Allow', match.allowed.join(', '));
+        return axiomifyRes.status(405).send(null, 'Method Not Allowed');
+      }
+      return axiomifyRes.status(404).send(null, 'Route not found');
     });
   }
 
