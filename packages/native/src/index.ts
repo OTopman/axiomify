@@ -365,7 +365,7 @@ export class NativeAdapter {
     });
   }
 
-  public listen(callback?: () => void): void {
+  public listen(callback?: () => void, onError?: (err: Error) => void): void {
     this.server.any('/*', (res, req) => {
       let aborted = false;
       res.onAborted(() => {
@@ -431,8 +431,16 @@ export class NativeAdapter {
         this.listenSocket = token;
         if (callback) callback();
       } else {
-        console.error(`[Axiomify] Port ${this.port} is occupied.`);
-        process.exit(1);
+        const err = new Error(`[Axiomify] Port ${this.port} is occupied.`);
+        if (onError) {
+          onError(err);
+          return;
+        }
+        // Defer throw so it surfaces as an uncaught exception instead of
+        // terminating process abruptly via process.exit().
+        queueMicrotask(() => {
+          throw err;
+        });
       }
     });
   }
