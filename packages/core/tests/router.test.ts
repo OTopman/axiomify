@@ -91,9 +91,6 @@ describe('TrieNode Radix Router', () => {
   });
 
   it('allows sibling param routes at the same depth with route-specific param names', () => {
-    // The router shares a single param trie node for routes like
-    // /api/:version/health and /api/:region/status, but stores param keys on
-    // each terminal route payload so handlers see the matched route's names.
     const router = new Router();
     router.register({
       method: 'GET',
@@ -130,6 +127,25 @@ describe('TrieNode Radix Router', () => {
 
     expect(router.lookup('GET', '/items/42')?.params).toEqual({ id: '42' });
     expect(router.lookup('PUT', '/items/42')?.params).toEqual({ id: '42' });
+  });
+
+  it('resolves method-specific param identifiers on the same structural path', () => {
+    const router = new Router();
+    router.register({
+      method: 'GET',
+      path: '/users/:id',
+      handler: async () => {},
+    } as RouteDefinition);
+    router.register({
+      method: 'POST',
+      path: '/users/:name',
+      handler: async () => {},
+    } as RouteDefinition);
+
+    expect(router.lookup('GET', '/users/alice')?.params).toEqual({ id: 'alice' });
+    expect(router.lookup('POST', '/users/alice')?.params).toEqual({
+      name: 'alice',
+    });
   });
 
   it('matches a wildcard route and captures the remainder in params["*"]', () => {
