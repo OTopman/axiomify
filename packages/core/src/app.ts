@@ -152,7 +152,7 @@ export class Axiomify {
     message,
     statusCode,
     isError,
-  }: SerializerInput) => ({
+  }) => ({
     status: isError || (statusCode && statusCode >= 400) ? 'failed' : 'success',
     message:
       message ||
@@ -163,8 +163,7 @@ export class Axiomify {
   });
 
   public setSerializer(fn: SerializerFn): this {
-    this.serializer = (input: SerializerInput) =>
-      this.invokeSerializer(fn, input);
+    this.serializer = (input) => this.invokeSerializer(fn, input);
     return this;
   }
 

@@ -5,11 +5,11 @@ set -e
 # Extract the major version number (e.g., "20" from "v20.11.0")
 NODE_MAJOR=$(node -v | cut -d 'v' -f 2 | cut -d '.' -f 1)
 
-if [ "$NODE_MAJOR" != "19" ] && [ "$NODE_MAJOR" != "20" ]; then
+if [ "$NODE_MAJOR" -lt "20" ]; then
   echo "🚨 [ERROR] Invalid V8 Engine Detected!"
-  echo "Benchmarks must be run on Node 19 or 20 to ensure accurate garbage collection metrics."
+  echo "Benchmarks require Node 20+."
   echo "Current active version: $(node -v)"
-  echo "Please switch your Node version (e.g., 'nvm use 20') and try again."
+  echo "Please switch your Node version (e.g., 'nvm use 22') and try again."
   exit 1
 fi
 echo "✅ Valid V8 Engine detected: $(node -v)"

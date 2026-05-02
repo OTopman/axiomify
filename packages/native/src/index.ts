@@ -392,8 +392,11 @@ export class NativeAdapter {
   }
 
   public listen(callback?: () => void, onError?: (err: Error) => void): void {
+<<<<<<< ours
     assertNoNativeSseRoutes(this.app.registeredRoutes);
 
+=======
+>>>>>>> theirs
     this.server.any('/*', (res, req) => {
       let aborted = false;
       res.onAborted(() => {

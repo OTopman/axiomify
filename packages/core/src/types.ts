@@ -191,11 +191,6 @@ export interface RouteDefinition<
   method: HttpMethod;
   path: string;
   schema?: S;
-  /**
-   * Marks this route as a Server-Sent Events endpoint so adapters can fail
-   * fast when their transport cannot support long-lived event streams.
-   */
-  sse?: boolean;
   plugins?: RouteMiddleware[];
   timeout?: number; // milliseconds; overrides the global default when set
   handler: RouteHandler<B, Q, P, S['files']>;

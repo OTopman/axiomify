@@ -3,6 +3,7 @@ import type {
   AxiomifyRequest,
   AxiomifyResponse,
 } from '@axiomify/core';
+import { timingSafeEqual } from 'crypto';
 
 export interface MetricsOptions {
   path?: string;
@@ -141,7 +142,9 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
       if (options.requireToken) {
         const token = req.headers['x-metrics-token'];
         const supplied = Array.isArray(token) ? token[0] : token;
-        if (supplied !== options.requireToken) return res.status(403).send(null, 'Forbidden');
+        if (!tokenMatches(supplied, options.requireToken)) {
+          return res.status(403).send(null, 'Forbidden');
+        }
       }
 
       if (allowlistMatchers) {
@@ -194,3 +197,13 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
   });
 }
   const UNMATCHED_ROUTE_LABEL = '__unmatched__';
+<<<<<<< ours
+=======
+  const tokenMatches = (supplied: string | undefined, expected: string) => {
+    if (typeof supplied !== 'string') return false;
+    const a = Buffer.from(supplied);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  };
+>>>>>>> theirs

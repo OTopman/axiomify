@@ -3,11 +3,11 @@ import type {
   AxiomifyResponse,
   SerializerFn,
   SerializerInput,
+  sanitizeInput,
 } from '@axiomify/core';
 import crypto from 'crypto';
 import type { Request, Response } from 'express';
 import { Readable } from 'stream';
-import { sanitizeInput } from '../../core/src/sanitize';
 
 function createRequestSignal(req: Request): AbortSignal {
   const controller = new AbortController();

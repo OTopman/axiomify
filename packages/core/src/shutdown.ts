@@ -1,5 +1,10 @@
 import type { Server } from 'http';
 
+const shutdownHandlers = new WeakMap<
+  Server,
+  { sigterm: () => void; sigint: () => void }
+>();
+
 export function gracefulShutdown(
   server: Server,
   options?: { timeoutMs?: number; onShutdown?: () => Promise<void> },
@@ -49,8 +54,15 @@ export function gracefulShutdown(
     closeIdleConnections();
   };
 
-  // `once` so repeated calls to gracefulShutdown don't stack listeners, and
-  // so the handler can't fire twice for the same signal.
-  process.once('SIGTERM', drain);
-  process.once('SIGINT', drain);
+  const existing = shutdownHandlers.get(server);
+  if (existing) {
+    process.removeListener('SIGTERM', existing.sigterm);
+    process.removeListener('SIGINT', existing.sigint);
+  }
+
+  const sigterm = () => void drain();
+  const sigint = () => void drain();
+  shutdownHandlers.set(server, { sigterm, sigint });
+  process.once('SIGTERM', sigterm);
+  process.once('SIGINT', sigint);
 }
