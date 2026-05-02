@@ -1,15 +1,8 @@
-import { Axiomify } from '@axiomify/core';
+import type { Axiomify } from '@axiomify/core';
 import crypto from 'crypto';
 import type { IncomingMessage, Server } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { ZodTypeAny } from 'zod';
-
-// Make the WsManager type-safe on the Axiomify instance.
-declare module '@axiomify/core' {
-  interface Axiomify {
-    ws?: WsManager<unknown>;
-  }
-}
 
 export interface WsClient<TUser = unknown> extends WebSocket {
   id: string;
@@ -257,6 +250,22 @@ export function useWebSockets<TUser = unknown>(app: Axiomify, options: WsOptions
   }
 
   const manager = new WsManager<TUser>(options);
-  // Type-safe assignment via module augmentation (no `as any` cast).
-  (app as any).ws = manager;
+  setWsManager(app, manager);
+}
+
+const WS_MANAGER_KEY = Symbol.for('axiomify.ws.manager');
+
+export function setWsManager<TUser = unknown>(
+  app: Axiomify,
+  manager: WsManager<TUser>,
+): void {
+  (app as unknown as Record<symbol, unknown>)[WS_MANAGER_KEY] = manager;
+}
+
+export function getWsManager<TUser = unknown>(
+  app: Axiomify,
+): WsManager<TUser> | undefined {
+  return (app as unknown as Record<symbol, unknown>)[
+    WS_MANAGER_KEY
+  ] as WsManager<TUser> | undefined;
 }

@@ -9,14 +9,6 @@ function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-declare module '@axiomify/core' {
-  interface RequestState {
-    fingerprint?: string;
-    fingerprintData?: FingerprintData;
-    fingerprintConfidence?: number;
-  }
-}
-
 export interface FingerprintData {
   version: string;
   ip: string;

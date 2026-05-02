@@ -1,87 +1,94 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/packages/express/src/index.ts b/packages/express/src/index.ts
-index 0bdc3f20884bff53bc2f18dfec9365a9c01b105c..266b0ab0dee002671e2fdfab69efb5fa1132d03c 100644
---- a/packages/express/src/index.ts
-+++ b/packages/express/src/index.ts
-@@ -68,53 +68,77 @@ export class ExpressAdapter {
-         if (res.headersSent) return next(err);
-         const statusCode =
-           typeof err?.statusCode === 'number'
-             ? err.statusCode
-             : typeof err?.status === 'number'
-               ? err.status
-               : 500;
-         const message =
-           statusCode === 413
-             ? 'Payload Too Large'
-             : statusCode === 400
-               ? 'Bad Request'
-               : 'Internal Server Error';
-         const axiomifyReq = translateRequest(req);
-         const payload = this.core.serializer(
-           null,
-           message,
-           statusCode,
-           true,
-           axiomifyReq,
-         );
-         res.status(statusCode).json(payload);
-       },
-     );
+diff --git a/packages/ws/src/index.ts b/packages/ws/src/index.ts
+index 0347e3a7369c223e7e3b82c30ba91b91f298ad4c..cc334874fb73756eb184bc96419609350d4bb670 100644
+--- a/packages/ws/src/index.ts
++++ b/packages/ws/src/index.ts
+@@ -1,38 +1,31 @@
+-import { Axiomify } from '@axiomify/core';
++import type { Axiomify } from '@axiomify/core';
+ import crypto from 'crypto';
+ import type { IncomingMessage, Server } from 'http';
+ import { WebSocket, WebSocketServer } from 'ws';
+ import type { ZodTypeAny } from 'zod';
  
-+    for (const route of this.core.registeredRoutes) {
-+      this.app[route.method.toLowerCase() as 'get'](
-+        route.path,
-+        async (req: Request, res: Response) => {
-+          const axiomifyReq = translateRequest(req);
-+          const axiomifyRes = translateResponse(
-+            res,
-+            this.core.serializer,
-+            axiomifyReq,
-+          );
-+          await this.core.handleMatchedRoute(
-+            axiomifyReq,
-+            axiomifyRes,
-+            route,
-+            req.params as Record<string, string>,
-+          );
-+        },
-+      );
-+    }
-+
-     this.app.all('*', async (req: Request, res: Response) => {
-       const axiomifyReq = translateRequest(req);
-       const axiomifyRes = translateResponse(
-         res,
-         this.core.serializer,
-         axiomifyReq,
-       );
+-// Make the WsManager type-safe on the Axiomify instance.
+-declare module '@axiomify/core' {
+-  interface Axiomify {
+-    ws?: WsManager<unknown>;
+-  }
+-}
 -
--      await this.core.handle(axiomifyReq, axiomifyRes);
-+      const match = this.core.router.lookup(req.method as never, req.path);
-+      if (match && 'error' in match) {
-+        axiomifyRes.header('Allow', match.allowed.join(', '));
-+        return axiomifyRes.status(405).send(null, 'Method Not Allowed');
-+      }
-+      return axiomifyRes.status(404).send(null, 'Route not found');
-     });
+ export interface WsClient<TUser = unknown> extends WebSocket {
+   id: string;
+   rooms: Set<string>;
+   user?: TUser;
+   _lastPong: number;
+ }
+ 
+ export interface WsOptions<TUser = unknown> {
+   server: Server;
+   path?: string;
+   heartbeatIntervalMs?: number;
+   maxMessageBytes?: number;
+   /**
+    * Maximum number of simultaneous WebSocket connections.
+    * Upgrade requests beyond this limit are rejected with 503.
+    * Default: 10_000. Set higher for large deployments, or Infinity explicitly to disable.
+    */
+   maxConnections?: number;
+   /**
+    * Maximum queued outbound bytes before broadcasts to a client are skipped.
+    * Prevents slow consumers from growing memory without bound.
+    */
+   maxBufferedBytes?: number;
+   authenticate?: (req: IncomingMessage) => Promise<TUser | null>;
+   onBinary?: (client: WsClient<TUser>, data: Buffer) => void;
+@@ -235,28 +228,44 @@ export class WsManager<TUser = unknown> {
+   public close(): void {
+     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+     this.wss.close();
+   }
+ }
+ 
+ export function useWebSockets<TUser = unknown>(app: Axiomify, options: WsOptions<TUser>): void {
+   if (!options.server) {
+     console.warn(
+       '[axiomify/ws] No server provided. WebSocket upgrade listeners will not be attached.',
+     );
    }
  
-   public listen(port: number, callback?: () => void): Server {
-     this.server = this.app.listen(port, callback);
-     return this.server;
+   if (
+     options.maxConnections === undefined &&
+     process.env.NODE_ENV === 'production'
+   ) {
+     console.warn(
+       '[axiomify/ws] No `maxConnections` limit set. ' +
+         'Defaulting to 10000 in production. Set an explicit value appropriate ' +
+         'for your available memory.',
+     );
    }
  
-   public async close(): Promise<void> {
-     return new Promise((resolve, reject) => {
-       if (!this.server) return resolve();
-       this.server.close((err) => (err ? reject(err) : resolve()));
-     });
-   }
- 
-   public get native(): Express {
-     return this.app;
-   }
+   const manager = new WsManager<TUser>(options);
+-  // Type-safe assignment via module augmentation (no `as any` cast).
+-  (app as any).ws = manager;
++  setWsManager(app, manager);
++}
++
++const WS_MANAGER_KEY = Symbol.for('axiomify.ws.manager');
++
++export function setWsManager<TUser = unknown>(
++  app: Axiomify,
++  manager: WsManager<TUser>,
++): void {
++  (app as unknown as Record<symbol, unknown>)[WS_MANAGER_KEY] = manager;
++}
++
++export function getWsManager<TUser = unknown>(
++  app: Axiomify,
++): WsManager<TUser> | undefined {
++  return (app as unknown as Record<symbol, unknown>)[
++    WS_MANAGER_KEY
++  ] as WsManager<TUser> | undefined;
  }
  
 EOF

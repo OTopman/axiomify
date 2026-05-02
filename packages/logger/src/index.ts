@@ -2,12 +2,6 @@ import { Axiomify } from '@axiomify/core';
 import { Maskify } from 'maskify-ts';
 import pc from 'picocolors';
 
-declare module '@axiomify/core' {
-  interface RequestState {
-    startTime?: bigint;
-  }
-}
-
 export interface LoggerOptions {
   sensitiveFields?: string[];
   level?: 'debug' | 'info' | 'warn' | 'error';

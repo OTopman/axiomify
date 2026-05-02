@@ -120,7 +120,10 @@ export class Router {
     }
 
     if (node.wildcardChild) {
-      const wildcardParams = [...params, ['*', parts.slice(index).join('/')]];
+      const wildcardParams: Array<[string, string]> = [
+        ...params,
+        ['*', parts.slice(index).join('/')],
+      ];
       const wildcardMatch = this.lookupNode(
         node.wildcardChild,
         parts,

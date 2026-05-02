@@ -1,7 +1,7 @@
-import { Axiomify } from '@axiomify/core';
+import { Axiomify } from '../../core/src/app';
 import jwt from 'jsonwebtoken';
 import { describe, expect, it, vi } from 'vitest';
-import { createAuthPlugin, useAuth } from '../src/index';
+import { createAuthPlugin, getAuthUser, useAuth } from '../src/index';
 
 describe('Auth Plugin & Refresh', () => {
   const secret = 'super-secret-key-that-is-at-least-32-chars-long!';
@@ -25,7 +25,7 @@ describe('Auth Plugin & Refresh', () => {
       method: 'GET',
       path: '/',
       plugins: [requireAuth],
-      handler: async (req, res) => res.send({ id: req.user?.id }),
+      handler: async (req, res) => res.send({ id: getAuthUser(req)?.id }),
     });
 
     const token = jwt.sign({ id: 123 }, secret);
@@ -35,6 +35,7 @@ describe('Auth Plugin & Refresh', () => {
       headers: { 'x-token': token },
       id: '1',
       params: {},
+      state: {},
     } as any;
     const res = {
       status: vi.fn().mockReturnThis(),
@@ -64,6 +65,7 @@ describe('Auth Plugin & Refresh', () => {
       headers: { authorization: `Bearer ${badToken}` },
       id: '2',
       params: {},
+      state: {},
     } as any;
     const res1 = {
       status: vi.fn().mockReturnThis(),
@@ -81,6 +83,7 @@ describe('Auth Plugin & Refresh', () => {
       headers: { authorization: `Bearer ${expiredToken}` },
       id: '3',
       params: {},
+      state: {},
     } as any;
     const res2 = {
       status: vi.fn().mockReturnThis(),

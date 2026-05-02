@@ -7,12 +7,6 @@ import { randomUUID } from 'crypto';
 import type { Algorithm, JwtPayload, SignOptions, VerifyOptions } from 'jsonwebtoken';
 import { sign, verify } from 'jsonwebtoken';
 
-declare module '@axiomify/core' {
-  interface AxiomifyRequest {
-    user?: AuthUser;
-  }
-}
-
 export interface AuthUser {
   id: string;
   [key: string]: unknown;
@@ -183,7 +177,7 @@ export function createAuthPlugin(options: AuthOptions): PluginHandler {
     if (!token) return res.status(401).send(null, 'Unauthorized: Missing token');
     try {
       const decoded = (await verifyAsync(token, options.secret, { algorithms, ...issuerAudience })) as AuthUser;
-      req.user = decoded;
+      req.state.authUser = decoded;
     } catch {
       return res.status(401).send(null, 'Unauthorized: Invalid or expired token');
     }
@@ -191,3 +185,7 @@ export function createAuthPlugin(options: AuthOptions): PluginHandler {
 }
 
 export const useAuth = createAuthPlugin;
+
+export function getAuthUser(req: AxiomifyRequest): AuthUser | undefined {
+  return req.state.authUser as AuthUser | undefined;
+}

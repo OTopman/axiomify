@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Axiomify } from '@axiomify/core';
+import { Axiomify } from '../../core/src/app';
 import jwt from 'jsonwebtoken';
-import { createAuthPlugin, createRefreshHandler, MemoryTokenStore } from '../src/index';
+import {
+  createAuthPlugin,
+  createRefreshHandler,
+  getAuthUser,
+  MemoryTokenStore,
+} from '../src/index';
 
 describe('Auth — refresh handler', () => {
   const accessSecret = 'access-secret-that-is-at-least-32-chars-xxx';
@@ -61,14 +66,14 @@ describe('Auth — route plugin Bearer extraction', () => {
   const runRequest = async (authHeader: string | string[] | undefined) => {
     const app = new Axiomify();
     const requireAuth = createAuthPlugin({ secret });
-    app.route({ method: 'GET', path: '/', plugins: [requireAuth], handler: async (req, res) => res.send({ id: req.user?.id }) });
-    const req = { method: 'GET', path: '/', headers: authHeader ? { authorization: authHeader } : {}, id: 'r', params: {} } as any;
+    app.route({ method: 'GET', path: '/', plugins: [requireAuth], handler: async (req, res) => res.send({ id: getAuthUser(req)?.id }) });
+    const req = { method: 'GET', path: '/', headers: authHeader ? { authorization: authHeader } : {}, id: 'r', params: {}, state: {} } as any;
     const res = { status: vi.fn().mockReturnThis(), send: vi.fn(), header: vi.fn().mockReturnThis(), headersSent: false } as any;
     await app.handle(req, res);
     return res;
   };
 
-  it('populates req.user on a successful verify', async () => {
+  it('populates auth user in request state on a successful verify', async () => {
     const token = jwt.sign({ id: 'user-1' }, secret);
     const res = await runRequest(`Bearer ${token}`);
     expect((res as any).payload).toEqual({ id: 'user-1' });
