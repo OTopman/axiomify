@@ -81,6 +81,7 @@ export interface AxiomifyRequest<
 export interface AxiomifyResponse {
   status(code: number): this;
   header(key: string, value: string): this;
+  getHeader(key: string): string | undefined;
   removeHeader(key: string): this;
   send<T>(data: T, message?: string): void;
   sendRaw(payload: any, contentType?: string): void;

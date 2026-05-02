@@ -246,6 +246,9 @@ export class HapiAdapter {
         headers[key] = value;
         return this;
       },
+      getHeader(key: string) {
+        return headers[key];
+      },
       removeHeader(key: string) {
         delete headers[key];
         return this;

@@ -163,6 +163,9 @@ class ValidatingResponse implements AxiomifyResponse {
     this.inner.header(key, value);
     return this;
   }
+  getHeader(key: string): string | undefined {
+    return this.inner.getHeader(key);
+  }
   removeHeader(key: string): this {
     this.inner.removeHeader(key);
     return this;

@@ -19,27 +19,14 @@ export interface CorsOptions {
   strictPreflight?: boolean;
 }
 
-const VARY_STATE = Symbol.for('axiomify.cors.vary');
-
-/**
- * Append a value to the Vary header without duplicating existing entries.
- * Reads via the public `res.raw` instead of private `_headers` internals.
- */
+/** Append a value to the Vary header without duplicating existing entries. */
 function setVary(res: any, value: string): void {
-  if (typeof res.header !== 'function') return;
+  if (typeof res.header !== 'function' || typeof res.getHeader !== 'function')
+    return;
 
-  // Read the existing Vary value through the adapter's raw response object
-  // rather than accessing private `_headers` which differs across adapters.
-  const raw = res.raw;
-  const existing =
-    (typeof raw?.getHeader === 'function'
-      ? raw.getHeader('Vary')
-      : undefined) ??
-    res[VARY_STATE] ??
-    (typeof raw?.getHeaders === 'function' ? raw.getHeaders().vary : undefined);
+  const existing = res.getHeader('Vary');
 
   if (!existing) {
-    res[VARY_STATE] = value;
     res.header('Vary', value);
     return;
   }
@@ -54,7 +41,6 @@ function setVary(res: any, value: string): void {
   }
 
   const next = current.join(', ');
-  res[VARY_STATE] = next;
   res.header('Vary', next);
 }
 

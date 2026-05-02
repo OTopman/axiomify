@@ -243,6 +243,10 @@ export class HttpAdapter {
         res.setHeader(key, value);
         return this;
       },
+      getHeader(key: string) {
+        const value = res.getHeader(key);
+        return typeof value === 'string' ? value : undefined;
+      },
       removeHeader(key: string) {
         res.removeHeader(key);
         return this;
