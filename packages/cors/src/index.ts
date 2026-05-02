@@ -21,8 +21,11 @@ export interface CorsOptions {
 
 /** Append a value to the Vary header without duplicating existing entries. */
 function setVary(res: any, value: string): void {
-  if (typeof res.header !== 'function' || typeof res.getHeader !== 'function')
+  if (typeof res.header !== 'function') return;
+  if (typeof res.getHeader !== 'function') {
+    res.header('Vary', value);
     return;
+  }
 
   const existing = res.getHeader('Vary');
 
@@ -42,6 +45,11 @@ function setVary(res: any, value: string): void {
 
   const next = current.join(', ');
   res.header('Vary', next);
+}
+
+function setVaryValues(res: any, values: string[]): void {
+  if (!values.length) return;
+  setVary(res, [...new Set(values)].join(', '));
 }
 
 export function useCors(app: Axiomify, options: CorsOptions = {}): void {
@@ -67,6 +75,7 @@ export function useCors(app: Axiomify, options: CorsOptions = {}): void {
 
   app.addHook('onRequest', async (req, res) => {
     const requestOrigin = req.headers['origin'] as string | undefined;
+    const varyValues: string[] = [];
 
     let resolvedOrigin: string | undefined;
 
@@ -95,7 +104,7 @@ export function useCors(app: Axiomify, options: CorsOptions = {}): void {
 
     if (resolvedOrigin) {
       res.header('Access-Control-Allow-Origin', resolvedOrigin);
-      if (resolvedOrigin !== '*') setVary(res, 'Origin');
+      if (resolvedOrigin !== '*') varyValues.push('Origin');
     }
 
     if (credentials) {
@@ -132,14 +141,18 @@ export function useCors(app: Axiomify, options: CorsOptions = {}): void {
       }
 
       if (varyOnRequestHeaders && !allowedHeaders?.length) {
-        setVary(res, 'Access-Control-Request-Headers');
+        varyValues.push('Access-Control-Request-Headers');
       }
+
+      setVaryValues(res, varyValues);
 
       if (!preflightContinue) {
         res.status(optionsSuccessStatus).send(null);
       }
       return;
     }
+
+    setVaryValues(res, varyValues);
 
     // Access-Control-Allow-Methods is a preflight-only header.
     // Do NOT send it on every non-OPTIONS response — it is meaningless

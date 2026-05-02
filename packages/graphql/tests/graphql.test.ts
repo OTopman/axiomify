@@ -1,28 +1,36 @@
 import { Axiomify } from '@axiomify/core';
-import {
-  buildSchema,
-  GraphQLObjectType,
-  GraphQLSchema,
-  GraphQLString,
-} from 'graphql';
+import { createRequire } from 'node:module';
 import { describe, expect, it, afterEach } from 'vitest';
-import { useGraphQL } from '../src';
+const require = createRequire(import.meta.url);
+const graphqlModule = (() => {
+  try {
+    return require('graphql') as typeof import('graphql');
+  } catch {
+    return null;
+  }
+})();
+const describeGraphQL = graphqlModule ? describe : describe.skip;
+const useGraphQL = graphqlModule
+  ? (require('../src') as typeof import('../src')).useGraphQL
+  : null;
 
 // ─── Shared test schema ───────────────────────────────────────────────────────
 
-const schema = new GraphQLSchema({
-  query: new GraphQLObjectType({
-    name: 'Query',
-    fields: {
-      hello: { type: GraphQLString, resolve: () => 'world' },
-      echo: {
-        type: GraphQLString,
-        args: { message: { type: GraphQLString } },
-        resolve: (_root, { message }: { message: string }) => message,
-      },
-    },
-  }),
-});
+const schema = graphqlModule
+  ? new graphqlModule.GraphQLSchema({
+      query: new graphqlModule.GraphQLObjectType({
+        name: 'Query',
+        fields: {
+          hello: { type: graphqlModule.GraphQLString, resolve: () => 'world' },
+          echo: {
+            type: graphqlModule.GraphQLString,
+            args: { message: { type: graphqlModule.GraphQLString } },
+            resolve: (_root, { message }: { message: string }) => message,
+          },
+        },
+      }),
+  })
+  : null;
 
 // ─── Minimal in-process adapter ───────────────────────────────────────────────
 
@@ -117,8 +125,9 @@ async function invoke(
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-describe('@axiomify/graphql — useGraphQL()', () => {
+describeGraphQL('@axiomify/graphql — useGraphQL()', () => {
   it('executes a simple POST query', async () => {
+    if (!schema) return;
     const app = new Axiomify();
     useGraphQL(app, { schema, playground: false });
 
@@ -129,6 +138,7 @@ describe('@axiomify/graphql — useGraphQL()', () => {
   });
 
   it('passes variables to the resolver', async () => {
+    if (!schema) return;
     const app = new Axiomify();
     useGraphQL(app, { schema, playground: false });
 
@@ -142,6 +152,7 @@ describe('@axiomify/graphql — useGraphQL()', () => {
   });
 
   it('returns 400 when the query field is missing', async () => {
+    if (!schema) return;
     const app = new Axiomify();
     useGraphQL(app, { schema, playground: false });
 
@@ -151,6 +162,7 @@ describe('@axiomify/graphql — useGraphQL()', () => {
   });
 
   it('returns 400 for parse errors', async () => {
+    if (!schema) return;
     const app = new Axiomify();
     useGraphQL(app, { schema, playground: false });
 
@@ -160,6 +172,7 @@ describe('@axiomify/graphql — useGraphQL()', () => {
   });
 
   it('returns 400 for validation errors (unknown field)', async () => {
+    if (!schema) return;
     const app = new Axiomify();
     useGraphQL(app, { schema, playground: false });
 
@@ -171,7 +184,7 @@ describe('@axiomify/graphql — useGraphQL()', () => {
   });
 
   it('enforces maxDepth', async () => {
-    const deepSchema = buildSchema(`
+    const deepSchema = graphqlModule!.buildSchema(`
       type Query { a: A }
       type A { b: B }
       type B { value: String }
@@ -187,7 +200,7 @@ describe('@axiomify/graphql — useGraphQL()', () => {
   });
 
   it('allows queries within maxDepth', async () => {
-    const deepSchema = buildSchema(`
+    const deepSchema = graphqlModule!.buildSchema(`
       type Query { a: A }
       type A { b: B }
       type B { value: String }
@@ -202,6 +215,7 @@ describe('@axiomify/graphql — useGraphQL()', () => {
   });
 
   it('enforces maxAliases', async () => {
+    if (!schema) return;
     const app = new Axiomify();
     useGraphQL(app, { schema, maxAliases: 1, playground: false });
 
@@ -213,6 +227,7 @@ describe('@axiomify/graphql — useGraphQL()', () => {
   });
 
   it('handles GET queries via query string', async () => {
+    if (!schema) return;
     const app = new Axiomify();
     useGraphQL(app, { schema, playground: false });
 

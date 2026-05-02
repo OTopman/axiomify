@@ -33,12 +33,21 @@ function attachRequestSignal(req: AxiomifyRequest): {
       upstreamSignal.removeEventListener('abort', abortFromUpstream);
   }
 
-  req.signal = controller.signal;
+  try {
+    req.signal = controller.signal;
+  } catch {
+    // Some adapters expose `signal` via a read-only getter.
+    // In that case, keep the upstream signal untouched.
+  }
 
   return {
     controller,
     cleanup: () => {
-      req.signal = originalSignal;
+      try {
+        req.signal = originalSignal;
+      } catch {
+        // No-op for read-only signal accessors.
+      }
       cleanup();
     },
   };

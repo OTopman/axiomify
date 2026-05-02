@@ -179,10 +179,9 @@ export class FastifyAdapter {
         if (isSent) return; // Idempotent: prevent double-write crashes.
         isSent = true;
         const isError = statusCode >= 400;
-        const payload =
-          serializer.length <= 1
-            ? (serializer as any)({ data, message, statusCode, isError, req })
-            : (serializer as any)(data, message, statusCode, isError, req);
+        const payload = serializer.length <= 1
+          ? (serializer as any)({ data, message, statusCode, isError, req })
+          : (serializer as any)(data, message, statusCode, isError, req);
         res.send(payload);
       },
 
@@ -197,16 +196,15 @@ export class FastifyAdapter {
         if (isSent) return;
         isSent = true;
         const message = err instanceof Error ? err.message : 'Unknown Error';
-        const payload =
-          serializer.length <= 1
-            ? (serializer as any)({
-                data: null,
-                message,
-                statusCode: 500,
-                isError: true,
-                req,
-              })
-            : (serializer as any)(null, message, 500, true, req);
+        const payload = serializer.length <= 1
+          ? (serializer as any)({
+              data: null,
+              message,
+              statusCode: 500,
+              isError: true,
+              req,
+            })
+          : (serializer as any)(null, message, 500, true, req);
         res.status(500).send(payload);
       },
 
