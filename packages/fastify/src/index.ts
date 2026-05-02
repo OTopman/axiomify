@@ -38,10 +38,7 @@ export interface FastifyAdapterOptions {
 export class FastifyAdapter {
   private app: FastifyInstance;
 
-  constructor(
-    private core: Axiomify,
-    options: FastifyAdapterOptions = {},
-  ) {
+  constructor(private core: Axiomify, options: FastifyAdapterOptions = {}) {
     this.app = fastify({
       logger: false,
       bodyLimit: options.bodyLimit,
@@ -61,14 +58,14 @@ export class FastifyAdapter {
         typeof anyErr.statusCode === 'number'
           ? anyErr.statusCode
           : typeof anyErr.status === 'number'
-            ? anyErr.status
-            : 500;
+          ? anyErr.status
+          : 500;
       const message =
         statusCode === 413
           ? 'Payload Too Large'
           : statusCode === 400
-            ? 'Bad Request'
-            : 'Internal Server Error';
+          ? 'Bad Request'
+          : 'Internal Server Error';
       const axiomifyReq = this.translateRequest(req);
       const payload = this.core.serializer({
         data: null,
@@ -182,9 +179,10 @@ export class FastifyAdapter {
         if (isSent) return; // Idempotent: prevent double-write crashes.
         isSent = true;
         const isError = statusCode >= 400;
-        const payload = serializer.length <= 1
-          ? (serializer as any)({ data, message, statusCode, isError, req })
-          : (serializer as any)(data, message, statusCode, isError, req);
+        const payload =
+          serializer.length <= 1
+            ? (serializer as any)({ data, message, statusCode, isError, req })
+            : (serializer as any)(data, message, statusCode, isError, req);
         res.send(payload);
       },
 
@@ -199,15 +197,16 @@ export class FastifyAdapter {
         if (isSent) return;
         isSent = true;
         const message = err instanceof Error ? err.message : 'Unknown Error';
-        const payload = serializer.length <= 1
-          ? (serializer as any)({
-              data: null,
-              message,
-              statusCode: 500,
-              isError: true,
-              req,
-            })
-          : (serializer as any)(null, message, 500, true, req);
+        const payload =
+          serializer.length <= 1
+            ? (serializer as any)({
+                data: null,
+                message,
+                statusCode: 500,
+                isError: true,
+                req,
+              })
+            : (serializer as any)(null, message, 500, true, req);
         res.status(500).send(payload);
       },
 
