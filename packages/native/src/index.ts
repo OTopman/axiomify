@@ -114,14 +114,14 @@ class NativeRequest implements AxiomifyRequest {
 class NativeResponse implements AxiomifyResponse {
   public statusCode = 200;
   public headersSent = false;
-  public raw: uWS.HttpResponse;
+  public raw: any;
   public aborted = false;
 
   private app: Axiomify;
   private req: NativeRequest;
   private outHeaders = new Map<string, string>();
 
-  constructor(res: uWS.HttpResponse, app: Axiomify, req: NativeRequest) {
+  constructor(res: any, app: Axiomify, req: NativeRequest) {
     this.raw = res;
     this.app = app;
     this.req = req;
@@ -136,7 +136,6 @@ class NativeResponse implements AxiomifyResponse {
     this.outHeaders.set(key, value);
     return this;
   }
-
   getHeader(key: string) {
     return this.outHeaders.get(key);
   }
@@ -150,11 +149,11 @@ class NativeResponse implements AxiomifyResponse {
     if (this.headersSent || this.aborted) return;
     this.headersSent = true;
 
-    (this as any).payload = serialize(this.app.serializer, {
+    (this as any).payload = this.app.serializer({
       data,
       message,
       statusCode: this.statusCode,
-      isError: this.statusCode >= 400,
+      isError: false,
       req: this.req,
     });
     const jsonString = JSON.stringify((this as any).payload);
@@ -266,14 +265,14 @@ export interface NativeWsOptions {
   compression?: number;
   maxPayloadLength?: number;
   idleTimeout?: number;
-  open?: (ws: uWS.WebSocket<WsUserData>) => void;
+  open?: (ws: any) => void;
   message?: (
-    ws: uWS.WebSocket<WsUserData>,
+    ws: any,
     message: ArrayBuffer,
     isBinary: boolean,
   ) => void;
   close?: (
-    ws: uWS.WebSocket<WsUserData>,
+    ws: any,
     code: number,
     message: ArrayBuffer,
   ) => void;
@@ -294,7 +293,7 @@ export interface NativeAdapterOptions {
 }
 
 function readBody(
-  res: uWS.HttpResponse,
+  res: any,
   contentType: string = '',
   maxBodySize: number,
 ): Promise<{ body: any; tooLarge: boolean }> {
@@ -302,7 +301,7 @@ function readBody(
     let buffer = Buffer.alloc(0);
     let tooLarge = false;
 
-    res.onData((ab, isLast) => {
+    res.onData((ab: ArrayBuffer, isLast: boolean) => {
       if (tooLarge) return;
 
       const chunk = Buffer.from(ab);
@@ -335,7 +334,7 @@ function readBody(
 export class NativeAdapter {
   private app: Axiomify;
   private port: number;
-  private server: uWS.TemplatedApp;
+  private server: any;
   private listenSocket: any = null;
   private readonly maxBodySize: number;
 
@@ -354,12 +353,12 @@ export class NativeAdapter {
   private registerWs(opts: NativeWsOptions): void {
     const wsPath = opts.path ?? '/ws';
 
-    this.server.ws<WsUserData>(wsPath, {
+    this.server.ws(wsPath, {
       compression: opts.compression ?? uWS.SHARED_COMPRESSOR,
       maxPayloadLength: opts.maxPayloadLength ?? 16 * 1024 * 1024,
       idleTimeout: opts.idleTimeout ?? 120,
 
-      upgrade: (res, req, context) => {
+      upgrade: (res: any, req: any, context: any) => {
         const url = req.getUrl();
         const secWebSocketKey = req.getHeader('sec-websocket-key');
         const secWebSocketProtocol = req.getHeader('sec-websocket-protocol');
@@ -368,7 +367,7 @@ export class NativeAdapter {
         );
 
         const headers: Record<string, string> = {};
-        req.forEach((k, v) => {
+        req.forEach((k: string, v: string) => {
           headers[k] = v;
         });
 
@@ -392,12 +391,7 @@ export class NativeAdapter {
   }
 
   public listen(callback?: () => void, onError?: (err: Error) => void): void {
-<<<<<<< ours
-    assertNoNativeSseRoutes(this.app.registeredRoutes);
-
-=======
->>>>>>> theirs
-    this.server.any('/*', (res, req) => {
+    this.server.any('/*', (res: any, req: any) => {
       let aborted = false;
       res.onAborted(() => {
         aborted = true;
@@ -408,7 +402,7 @@ export class NativeAdapter {
       const queryStr = req.getQuery();
 
       const headers: Record<string, string> = {};
-      req.forEach((k, v) => {
+      req.forEach((k: string, v: string) => {
         headers[k] = v;
       });
       const ip = Buffer.from(res.getRemoteAddressAsText()).toString();
@@ -457,7 +451,7 @@ export class NativeAdapter {
       })();
     });
 
-    this.server.listen(this.port, (token) => {
+    this.server.listen(this.port, (token: unknown) => {
       if (token) {
         this.listenSocket = token;
         if (callback) callback();

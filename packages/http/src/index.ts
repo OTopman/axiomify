@@ -1,5 +1,5 @@
 import type { Axiomify, AxiomifyRequest, SerializerFn } from '@axiomify/core';
-import { sanitizeInput } from '../../core/src/sanitize';
+import { sanitizeInput } from '@axiomify/core';
 import crypto from 'crypto';
 import type { IncomingMessage } from 'http';
 import http from 'http';
@@ -258,7 +258,9 @@ export class HttpAdapter {
         let finalStatusCode = statusCode;
         try {
           const isError = statusCode >= 400;
-          const payload = serializer(data, message, statusCode, isError, req);
+          const payload = serializer.length <= 1
+            ? (serializer as any)({ data, message, statusCode, isError, req })
+            : (serializer as any)(data, message, statusCode, isError, req);
           body = JSON.stringify(payload);
         } catch {
           finalStatusCode = 500;
@@ -287,7 +289,15 @@ export class HttpAdapter {
         if (isSent) return;
         isSent = true;
         const message = err instanceof Error ? err.message : 'Unknown Error';
-        const payload = serializer(null, message, 500, true, req);
+        const payload = serializer.length <= 1
+          ? (serializer as any)({
+              data: null,
+              message,
+              statusCode: 500,
+              isError: true,
+              req,
+            })
+          : (serializer as any)(null, message, 500, true, req);
         res.setHeader('Content-Type', 'application/json');
         res.writeHead(500);
         res.end(JSON.stringify(payload));

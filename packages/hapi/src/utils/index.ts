@@ -1,3 +1,3 @@
-import { sanitizeInput } from '../../../core/src/sanitize';
+import { sanitizeInput } from '@axiomify/core';
 
 export const sanitize = sanitizeInput;

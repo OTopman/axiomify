@@ -17,7 +17,6 @@ export interface MetricsOptions {
   allowPublicInProduction?: boolean;
 }
 
-
 function ipv4ToInt(ip: string): number | null {
   const parts = ip.split('.');
   if (parts.length !== 4) return null;
@@ -41,7 +40,7 @@ function buildAllowlistMatchers(allowlist: string[]): IpMatcher[] {
       return [];
     }
 
-    const mask = bits === 0 ? 0 : (~((1 << (32 - bits)) - 1)) >>> 0;
+    const mask = bits === 0 ? 0 : ~((1 << (32 - bits)) - 1) >>> 0;
     return [
       (ip: string) => {
         const ipInt = ipv4ToInt(ip);
@@ -52,7 +51,10 @@ function buildAllowlistMatchers(allowlist: string[]): IpMatcher[] {
 }
 
 function escapeLabelValue(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n');
 }
 
 export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
@@ -60,7 +62,9 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
   let emittedPublicMetricsWarning = false;
 
   if (!options.protect && !options.allowlist && !options.requireToken) {
-    console.warn('[axiomify/metrics] Warning: /metrics is publicly accessible. Set protect, allowlist, or requireToken in production.');
+    console.warn(
+      '[axiomify/metrics] Warning: /metrics is publicly accessible. Set protect, allowlist, or requireToken in production.',
+    );
   }
 
   const allowlistMatchers = options.allowlist
@@ -148,8 +152,9 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
       }
 
       if (allowlistMatchers) {
-        const ip = req.ip ?? "";
-        if (!allowlistMatchers.some((match) => match(ip))) return res.status(403).send(null, 'Forbidden');
+        const ip = req.ip ?? '';
+        if (!allowlistMatchers.some((match) => match(ip)))
+          return res.status(403).send(null, 'Forbidden');
       }
 
       if (options.protect) {
@@ -197,8 +202,6 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
   });
 }
   const UNMATCHED_ROUTE_LABEL = '__unmatched__';
-<<<<<<< ours
-=======
   const tokenMatches = (supplied: string | undefined, expected: string) => {
     if (typeof supplied !== 'string') return false;
     const a = Buffer.from(supplied);
@@ -206,4 +209,3 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
     if (a.length !== b.length) return false;
     return timingSafeEqual(a, b);
   };
->>>>>>> theirs

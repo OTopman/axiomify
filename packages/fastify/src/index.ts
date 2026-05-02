@@ -4,7 +4,7 @@ import type {
   AxiomifyResponse,
   SerializerFn,
 } from '@axiomify/core';
-import { sanitizeInput } from '../../core/src/sanitize';
+import { sanitizeInput } from '@axiomify/core';
 import crypto from 'crypto';
 import fastify, {
   FastifyInstance,
@@ -13,6 +13,20 @@ import fastify, {
   FastifyServerOptions,
 } from 'fastify';
 import { Readable } from 'stream';
+
+function createRequestSignal(req: FastifyRequest): AbortSignal {
+  const controller = new AbortController();
+  const abort = () => {
+    if (!controller.signal.aborted) {
+      controller.abort(new Error('Client aborted request'));
+    }
+  };
+  req.raw.once('aborted', abort);
+  req.raw.once('close', () => {
+    if (req.raw.destroyed) abort();
+  });
+  return controller.signal;
+}
 
 export interface FastifyAdapterOptions {
   /** Maximum body size in bytes. Default: Fastify's 1MB default. */
@@ -56,13 +70,13 @@ export class FastifyAdapter {
             ? 'Bad Request'
             : 'Internal Server Error';
       const axiomifyReq = this.translateRequest(req);
-      const payload = this.core.serializer(
-        null,
+      const payload = this.core.serializer({
+        data: null,
         message,
         statusCode,
-        true,
-        axiomifyReq,
-      );
+        isError: true,
+        req: axiomifyReq,
+      });
       res.status(statusCode).send(payload);
     });
 
@@ -168,7 +182,9 @@ export class FastifyAdapter {
         if (isSent) return; // Idempotent: prevent double-write crashes.
         isSent = true;
         const isError = statusCode >= 400;
-        const payload = serializer(data, message, statusCode, isError, req);
+        const payload = serializer.length <= 1
+          ? (serializer as any)({ data, message, statusCode, isError, req })
+          : (serializer as any)(data, message, statusCode, isError, req);
         res.send(payload);
       },
 
@@ -183,7 +199,15 @@ export class FastifyAdapter {
         if (isSent) return;
         isSent = true;
         const message = err instanceof Error ? err.message : 'Unknown Error';
-        const payload = serializer(null, message, 500, true, req);
+        const payload = serializer.length <= 1
+          ? (serializer as any)({
+              data: null,
+              message,
+              statusCode: 500,
+              isError: true,
+              req,
+            })
+          : (serializer as any)(null, message, 500, true, req);
         res.status(500).send(payload);
       },
 

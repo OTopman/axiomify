@@ -3,8 +3,8 @@ import type {
   AxiomifyResponse,
   SerializerFn,
   SerializerInput,
-  sanitizeInput,
 } from '@axiomify/core';
+import { sanitizeInput } from '@axiomify/core';
 import crypto from 'crypto';
 import type { Request, Response } from 'express';
 import { Readable } from 'stream';

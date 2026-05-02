@@ -79,13 +79,13 @@ export class ExpressAdapter {
               ? 'Bad Request'
               : 'Internal Server Error';
         const axiomifyReq = translateRequest(req);
-        const payload = this.core.serializer(
-          null,
+        const payload = this.core.serializer({
+          data: null,
           message,
           statusCode,
-          true,
-          axiomifyReq,
-        );
+          isError: true,
+          req: axiomifyReq,
+        });
         res.status(statusCode).json(payload);
       },
     );
