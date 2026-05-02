@@ -97,27 +97,21 @@ export class RequestDispatcher {
   ) {
     Object.assign(req.params as object, params);
     const routeId = `${route.method}:${route.path}`;
-    let sendCallCount = 0;
-    const originalSend = res.send.bind(res);
-    res.send = (data: unknown, message?: string) => {
-      if (sendCallCount === 0) {
-        this.validator.validateResponse(routeId, data, res.statusCode);
-        (res as unknown as Record<string, unknown>).payload = data;
-        (res as unknown as Record<string, unknown>).responseMessage = message;
-      }
-      sendCallCount++;
-      if (req.method === 'HEAD') return originalSend(undefined, message);
-      return originalSend(data, message);
-    };
+    const validatedRes = new ValidatingResponse(
+      res,
+      this.validator,
+      req.method,
+      routeId,
+    );
 
     const pipeline = route._compiledPipeline!;
     for (let i = 0; i < pipeline.length; i++) {
-      if (res.headersSent) break;
-      await pipeline[i](req, res);
+      if (validatedRes.headersSent) break;
+      await pipeline[i](req, validatedRes);
     }
 
-    if (!res.headersSent) {
-      await this.hooks.run('onPostHandler', req, res, { route, params });
+    if (!validatedRes.headersSent) {
+      await this.hooks.run('onPostHandler', req, validatedRes, { route, params });
     }
   }
 
@@ -146,5 +140,62 @@ export class RequestDispatcher {
         ? { stack: typeof anyErr.stack === 'string' ? anyErr.stack : undefined }
         : null);
     res.status(statusCode).send(errorData, message);
+  }
+}
+
+class ValidatingResponse implements AxiomifyResponse {
+  private sendCallCount = 0;
+  constructor(
+    private readonly inner: AxiomifyResponse,
+    private readonly validator: ValidationCompiler,
+    private readonly method: string,
+    private readonly routeId: string,
+  ) {}
+
+  status(code: number): this {
+    this.inner.status(code);
+    return this;
+  }
+  header(key: string, value: string): this {
+    this.inner.header(key, value);
+    return this;
+  }
+  removeHeader(key: string): this {
+    this.inner.removeHeader(key);
+    return this;
+  }
+  send<T>(data: T, message?: string): void {
+    if (this.sendCallCount === 0) {
+      this.validator.validateResponse(this.routeId, data, this.inner.statusCode);
+      (this.inner as unknown as Record<string, unknown>).payload = data;
+      (this.inner as unknown as Record<string, unknown>).responseMessage = message;
+    }
+    this.sendCallCount++;
+    if (this.method === 'HEAD') return this.inner.send(undefined, message);
+    this.inner.send(data, message);
+  }
+  sendRaw(payload: any, contentType?: string): void {
+    this.inner.sendRaw(payload, contentType);
+  }
+  error(err: unknown): void {
+    this.inner.error(err);
+  }
+  stream(readable: import('stream').Readable, contentType?: string): void {
+    this.inner.stream(readable, contentType);
+  }
+  sseInit(sseHeartbeatMs?: number): void {
+    this.inner.sseInit(sseHeartbeatMs);
+  }
+  sseSend(data: any, event?: string): void {
+    this.inner.sseSend(data, event);
+  }
+  get statusCode(): number {
+    return this.inner.statusCode;
+  }
+  get raw(): unknown {
+    return this.inner.raw;
+  }
+  get headersSent(): boolean {
+    return this.inner.headersSent;
   }
 }
