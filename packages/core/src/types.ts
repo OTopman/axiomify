@@ -75,7 +75,7 @@ export interface AxiomifyRequest<
   readonly state: RequestState;
   readonly raw: unknown;
   readonly stream: import('stream').Readable;
-  readonly signal?: AbortSignal;
+  signal?: AbortSignal;
 }
 
 export interface AxiomifyResponse {

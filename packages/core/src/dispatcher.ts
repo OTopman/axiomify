@@ -14,6 +14,7 @@ function attachRequestSignal(req: AxiomifyRequest): {
 } {
   const controller = new AbortController();
   const upstreamSignal = req.signal;
+  const originalSignal = upstreamSignal;
   let cleanup = () => {};
 
   if (upstreamSignal) {
@@ -32,14 +33,15 @@ function attachRequestSignal(req: AxiomifyRequest): {
     }
   }
 
-  Object.defineProperty(req, 'signal', {
-    value: controller.signal,
-    writable: false,
-    enumerable: true,
-    configurable: true,
-  });
+  req.signal = controller.signal;
 
-  return { controller, cleanup };
+  return {
+    controller,
+    cleanup: () => {
+      req.signal = originalSignal;
+      cleanup();
+    },
+  };
 }
 
 export class RequestDispatcher {

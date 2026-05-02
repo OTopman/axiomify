@@ -91,8 +91,8 @@ describe('Auth — route plugin Bearer extraction', () => {
   const runRequest = async (authHeader: string | string[] | undefined) => {
     const app = new Axiomify();
     const requireAuth = createAuthPlugin({ secret });
-    app.route({ method: 'GET', path: '/', plugins: [requireAuth], handler: async (req, res) => res.send({ id: req.user?.id }) });
-    const req = { method: 'GET', path: '/', headers: authHeader ? { authorization: authHeader } : {}, id: 'r', params: {} } as any;
+    app.route({ method: 'GET', path: '/', plugins: [requireAuth], handler: async (req, res) => res.send({ id: getAuthUser(req)?.id }) });
+    const req = { method: 'GET', path: '/', headers: authHeader ? { authorization: authHeader } : {}, id: 'r', params: {}, state: {} } as any;
     const res = { status: vi.fn().mockReturnThis(), send: vi.fn(), header: vi.fn().mockReturnThis(), headersSent: false } as any;
     await app.handle(req, res);
     return res;
