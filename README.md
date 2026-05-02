@@ -634,7 +634,7 @@ A: Axiomify is schema-first and Zod is the recommended validation library. Howev
 
 **Q: How do I handle streaming responses?**
 
-A: Use `res.stream(readable)` or `res.sseInit()` / `res.sseSend()` — they're available across all adapters.
+A: Use `res.stream(readable)` on any adapter. For Server-Sent Events, mark the route with `sse: true` and use `res.sseInit()` / `res.sseSend()` on the HTTP, Express, Fastify, or Hapi adapters. `NativeAdapter` rejects SSE routes at startup because its transport does not support them.
 
 **Q: What about database integration?**
 

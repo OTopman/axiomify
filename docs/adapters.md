@@ -25,6 +25,8 @@ The Native Adapter is Axiomify’s hypercar. Powered under the hood by `uWebSock
 
 It natively supports massive file uploads, backpressured stream delivery, and real-time WebSockets.
 
+Server-Sent Events are not supported by `NativeAdapter`. Mark SSE endpoints with `sse: true`; the native adapter rejects those routes at startup so the mismatch is caught before deployment. Use `@axiomify/http`, `@axiomify/express`, `@axiomify/fastify`, or `@axiomify/hapi` for SSE.
+
 ### Installation
 ```bash
 npm install @axiomify/native

@@ -2,8 +2,8 @@ import { createAuthPlugin } from '@axiomify/auth';
 import { Axiomify, UnauthorizedError, z } from '@axiomify/core';
 import { useGraphQL } from '@axiomify/graphql';
 import { useHelmet } from '@axiomify/helmet';
+import { HttpAdapter } from '@axiomify/http';
 import { useLogger } from '@axiomify/logger';
-import { NativeAdapter } from '@axiomify/native';
 import { useOpenAPI } from '@axiomify/openapi';
 import { useUpload } from '@axiomify/upload';
 import { randomUUID } from 'crypto';
@@ -150,6 +150,7 @@ app.route({
 app.route({
   method: 'GET',
   path: '/live-feed',
+  sse: true,
   handler: async (req, res) => {
     res.sseInit();
     const interval = setInterval(() => {
@@ -160,8 +161,8 @@ app.route({
 });
 
 if (require.main === module) {
-  const adapter = new NativeAdapter(app, { port: 3000 });
-  const server = adapter.listen(() => {
+  const adapter = new HttpAdapter(app);
+  const server = adapter.listen(3000, () => {
     console.log('🚀 Axiomify engine online on port 3000');
     console.log('GraphQL ready at http://localhost:3000/graphql');
     console.log('Playground at   http://localhost:3000/graphql/playground');

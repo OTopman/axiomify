@@ -3,9 +3,12 @@ import type {
   AxiomifyRequest,
   AxiomifyResponse,
   HttpMethod,
+  SerializerFn,
+  SerializerInput,
 } from '@axiomify/core';
 import { randomUUID } from 'crypto';
 import uWS from 'uWebSockets.js';
+import { assertNoNativeSseRoutes } from './sse-guard';
 
 // RFC 7231 + common extensions
 const HTTP_STATUS_PHRASES: Record<number, string> = {
@@ -40,6 +43,18 @@ const HTTP_STATUS_PHRASES: Record<number, string> = {
 
 function statusLine(code: number): string {
   return `${code} ${HTTP_STATUS_PHRASES[code] ?? 'Unknown'}`;
+}
+
+function serialize(serializer: SerializerFn, input: SerializerInput): any {
+  return serializer.length <= 1
+    ? (serializer as (input: SerializerInput) => any)(input)
+    : (serializer as any)(
+        input.data,
+        input.message,
+        input.statusCode,
+        input.isError,
+        input.req,
+      );
 }
 
 // --- 1. THE FAST REQUEST SHAPE ---
@@ -122,6 +137,10 @@ class NativeResponse implements AxiomifyResponse {
     return this;
   }
 
+  getHeader(key: string) {
+    return this.outHeaders.get(key);
+  }
+
   removeHeader(key: string) {
     this.outHeaders.delete(key);
     return this;
@@ -131,13 +150,13 @@ class NativeResponse implements AxiomifyResponse {
     if (this.headersSent || this.aborted) return;
     this.headersSent = true;
 
-    (this as any).payload = this.app.serializer(
+    (this as any).payload = serialize(this.app.serializer, {
       data,
       message,
-      this.statusCode,
-      false,
-      this.req,
-    );
+      statusCode: this.statusCode,
+      isError: this.statusCode >= 400,
+      req: this.req,
+    });
     const jsonString = JSON.stringify((this as any).payload);
 
     this.raw.cork(() => {
@@ -228,9 +247,15 @@ class NativeResponse implements AxiomifyResponse {
   }
 
   sseInit() {
-    throw new Error('SSE not yet implemented in Native');
+    throw new Error(
+      '[Axiomify/native] NativeAdapter does not support Server-Sent Events (SSE). Use @axiomify/http, @axiomify/express, @axiomify/fastify, or @axiomify/hapi for SSE endpoints.',
+    );
   }
-  sseSend() {}
+  sseSend() {
+    throw new Error(
+      '[Axiomify/native] NativeAdapter does not support Server-Sent Events (SSE). Use @axiomify/http, @axiomify/express, @axiomify/fastify, or @axiomify/hapi for SSE endpoints.',
+    );
+  }
 }
 
 type WsUserData = { url: string; headers: Record<string, string> };
@@ -318,6 +343,7 @@ export class NativeAdapter {
     this.app = app;
     this.port = options.port || 3000;
     this.maxBodySize = options.maxBodySize ?? 1024 * 1024;
+    assertNoNativeSseRoutes(this.app.registeredRoutes);
     this.server = uWS.App();
 
     if (options.ws !== false && options.ws !== undefined) {
@@ -366,6 +392,8 @@ export class NativeAdapter {
   }
 
   public listen(callback?: () => void, onError?: (err: Error) => void): void {
+    assertNoNativeSseRoutes(this.app.registeredRoutes);
+
     this.server.any('/*', (res, req) => {
       let aborted = false;
       res.onAborted(() => {

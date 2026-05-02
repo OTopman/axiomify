@@ -12,6 +12,7 @@
     "@axiomify/auth": "*",
     "@axiomify/core": "*",
     "@axiomify/express": "*",
+    "@axiomify/http": "*",
     "@axiomify/metrics": "*",
     "@axiomify/openapi": "*",
     "@axiomify/static": "*",
