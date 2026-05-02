@@ -19,6 +19,20 @@ interface RegistryOptions {
   };
 }
 
+function createTimeoutError(): Error & { statusCode: number } {
+  return Object.assign(new Error('Request timed out'), { statusCode: 408 });
+}
+
+function rejectOnAbort(
+  signal: AbortSignal,
+  error: Error & { statusCode: number },
+): Promise<never> {
+  return new Promise((_, reject) => {
+    if (signal.aborted) return reject(error);
+    signal.addEventListener('abort', () => reject(error), { once: true });
+  });
+}
+
 export class RouteRegistry {
   public readonly router = new Router();
   public readonly validator = new ValidationCompiler();
@@ -55,6 +69,7 @@ export class RouteRegistry {
     }
 
     const effectiveTimeout = definition.timeout ?? this.options.timeout;
+    const timeoutError = createTimeoutError();
     pipeline.push(async (req, res) => {
       let span: { end(): void } | undefined;
       if (this.options.telemetry) {
@@ -66,24 +81,11 @@ export class RouteRegistry {
 
       try {
         if (effectiveTimeout > 0) {
-          let timeoutId: ReturnType<typeof setTimeout> | undefined;
-          const timeoutError = Object.assign(new Error('Request timed out'), {
-            statusCode: 408,
-          });
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            timeoutId = setTimeout(
-              () => reject(timeoutError),
-              effectiveTimeout,
-            );
-          });
-          try {
-            await Promise.race([
-              definition.handler(req as never, res),
-              timeoutPromise,
-            ]);
-          } finally {
-            if (timeoutId !== undefined) clearTimeout(timeoutId);
-          }
+          const timeoutSignal = AbortSignal.timeout(effectiveTimeout);
+          await Promise.race([
+            definition.handler(req as never, res),
+            rejectOnAbort(timeoutSignal, timeoutError),
+          ]);
         } else {
           await definition.handler(req as never, res);
         }
