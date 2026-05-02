@@ -11,6 +11,7 @@ import type {
   RouteMiddleware,
   RouteSchema,
   SerializerFn,
+  SerializerInput,
 } from './types';
 
 export interface AxiomifyOptions {
@@ -134,12 +135,20 @@ export class Axiomify {
     return this;
   }
 
+  private invokeSerializer(fn: SerializerFn, input: SerializerInput): any {
+    return fn.length <= 1
+      ? (fn as (input: SerializerInput) => any)(input)
+      : (fn as any)(
+          input.data,
+          input.message,
+          input.statusCode,
+          input.isError,
+          input.req,
+        );
+  }
+
   public serializer: SerializerFn = (
-    data,
-    message,
-    statusCode,
-    isError,
-    _req,
+    { data, message, statusCode, isError },
   ) => ({
     status: isError || (statusCode && statusCode >= 400) ? 'failed' : 'success',
     message:
@@ -151,7 +160,7 @@ export class Axiomify {
   });
 
   public setSerializer(fn: SerializerFn): this {
-    this.serializer = fn;
+    this.serializer = (input) => this.invokeSerializer(fn, input);
     return this;
   }
 

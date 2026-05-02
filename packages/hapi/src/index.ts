@@ -60,7 +60,13 @@ export class HapiAdapter {
           const axiomifyReq = this.translateRequest(req, undefined);
           return h
             .response(
-              this.core.serializer(null, message, statusCode, true, axiomifyReq),
+              this.core.serializer({
+                data: null,
+                message,
+                statusCode,
+                isError: true,
+                req: axiomifyReq,
+              }),
             )
             .code(statusCode);
         }
@@ -256,7 +262,7 @@ export class HapiAdapter {
       send(data: any, message?: string) {
         isSent = true;
         const isError = statusCode >= 400;
-        const payload = serializer(data, message, statusCode, isError, req);
+        const payload = serializer({ data, message, statusCode, isError, req });
         const response = h.response(payload).code(statusCode);
         resolve(applyHeaders(response));
       },
@@ -269,7 +275,7 @@ export class HapiAdapter {
       error(err: unknown) {
         isSent = true;
         const message = err instanceof Error ? err.message : 'Unknown Error';
-        const payload = serializer(null, message, 500, true, req);
+        const payload = serializer({ data: null, message, statusCode: 500, isError: true, req });
         const response = h.response(payload).code(500);
         resolve(applyHeaders(response));
       },

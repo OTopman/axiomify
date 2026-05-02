@@ -2,11 +2,40 @@ import type {
   AxiomifyRequest,
   AxiomifyResponse,
   SerializerFn,
+  SerializerInput,
 } from '@axiomify/core';
-import { sanitizeInput } from '../../core/src/sanitize';
 import crypto from 'crypto';
 import type { Request, Response } from 'express';
 import { Readable } from 'stream';
+import { sanitizeInput } from '../../core/src/sanitize';
+
+function createRequestSignal(req: Request): AbortSignal {
+  const controller = new AbortController();
+  const abort = () => {
+    if (!controller.signal.aborted) {
+      controller.abort(new Error('Client aborted request'));
+    }
+  };
+  if (typeof req.once === 'function') {
+    req.once('aborted', abort);
+    req.once('close', () => {
+      if (req.destroyed) abort();
+    });
+  }
+  return controller.signal;
+}
+
+function serialize(serializer: SerializerFn, input: SerializerInput): any {
+  return serializer.length <= 1
+    ? (serializer as (input: SerializerInput) => any)(input)
+    : (serializer as any)(
+        input.data,
+        input.message,
+        input.statusCode,
+        input.isError,
+        input.req,
+      );
+}
 
 export function translateRequest(req: Request): AxiomifyRequest {
   const state: Record<string, unknown> = {};
@@ -56,7 +85,7 @@ export function translateRequest(req: Request): AxiomifyRequest {
 
 export function translateResponse(
   res: Response,
-  serializer: SerializerFn = (data) => data,
+  serializer: SerializerFn = ({ data }) => data,
   req?: AxiomifyRequest,
 ): AxiomifyResponse {
   let statusCode = 200;
@@ -84,7 +113,13 @@ export function translateResponse(
       if (isSent) return;
       isSent = true;
       const isError = statusCode >= 400;
-      const payload = serializer(data, message, statusCode, isError, req);
+      const payload = serialize(serializer, {
+        data,
+        message,
+        statusCode,
+        isError,
+        req,
+      });
       res.status(statusCode).json(payload);
     },
 
@@ -99,7 +134,13 @@ export function translateResponse(
       if (isSent) return;
       isSent = true;
       const message = err instanceof Error ? err.message : 'Unknown Error';
-      const payload = serializer(null, message, 500, true, req);
+      const payload = serialize(serializer, {
+        data: null,
+        message,
+        statusCode: 500,
+        isError: true,
+        req,
+      });
       res.status(500).json(payload);
     },
 

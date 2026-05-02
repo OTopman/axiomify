@@ -39,13 +39,23 @@ export type HookType =
   | 'onError'
   | 'onClose';
 
-export type SerializerFn = (
-  data: any,
-  message?: string,
-  statusCode?: number,
-  isError?: boolean,
-  req?: AxiomifyRequest,
-) => any;
+export interface SerializerInput {
+  data: any;
+  message?: string;
+  statusCode?: number;
+  isError?: boolean;
+  req?: AxiomifyRequest;
+}
+
+export type SerializerFn =
+  | ((input: SerializerInput) => any)
+  | ((
+      data: any,
+      message?: string,
+      statusCode?: number,
+      isError?: boolean,
+      req?: AxiomifyRequest,
+    ) => any);
 
 /**
  * RequestState is intentionally empty.

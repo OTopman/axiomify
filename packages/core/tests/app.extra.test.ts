@@ -225,7 +225,7 @@ describe('Axiomify.healthCheck', () => {
 describe('Axiomify.setSerializer', () => {
   it('overrides the default response envelope', async () => {
     const app = new Axiomify();
-    app.setSerializer((data, message) => ({ result: data, note: message }));
+    app.setSerializer(({ data, message }) => ({ result: data, note: message }));
     app.route({
       method: 'GET',
       path: '/x',
