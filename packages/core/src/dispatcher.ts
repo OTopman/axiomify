@@ -5,6 +5,7 @@ import type {
   AxiomifyResponse,
   RouteDefinition,
 } from './types';
+import type { CompiledRouteDefinition } from './internal';
 import type { ValidationCompiler } from './validation';
 
 function attachRequestSignal(req: AxiomifyRequest): {
@@ -104,7 +105,7 @@ export class RequestDispatcher {
       routeId,
     );
 
-    const pipeline = route._compiledPipeline!;
+    const pipeline = (route as CompiledRouteDefinition)._compiledPipeline;
     for (let i = 0; i < pipeline.length; i++) {
       if (validatedRes.headersSent) break;
       await pipeline[i](req, validatedRes);

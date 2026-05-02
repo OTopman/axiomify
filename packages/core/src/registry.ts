@@ -1,3 +1,4 @@
+import type { CompiledRouteDefinition } from './internal';
 import type { HookManager } from './lifecycle';
 import { Router } from './router';
 import type {
@@ -70,10 +71,16 @@ export class RouteRegistry {
             statusCode: 408,
           });
           const timeoutPromise = new Promise<never>((_, reject) => {
-            timeoutId = setTimeout(() => reject(timeoutError), effectiveTimeout);
+            timeoutId = setTimeout(
+              () => reject(timeoutError),
+              effectiveTimeout,
+            );
           });
           try {
-            await Promise.race([definition.handler(req as never, res), timeoutPromise]);
+            await Promise.race([
+              definition.handler(req as never, res),
+              timeoutPromise,
+            ]);
           } finally {
             if (timeoutId !== undefined) clearTimeout(timeoutId);
           }
@@ -85,7 +92,7 @@ export class RouteRegistry {
       }
     });
 
-    definition._compiledPipeline = pipeline;
+    (definition as CompiledRouteDefinition)._compiledPipeline = pipeline;
     this.router.register(definition as RouteDefinition);
     this.routes.push(definition as RouteDefinition);
   }

@@ -183,6 +183,4 @@ export interface RouteDefinition<
   plugins?: RouteMiddleware[];
   timeout?: number; // milliseconds; overrides the global default when set
   handler: RouteHandler<B, Q, P, S['files']>;
-  // The fully flattened, pre-computed execution pipeline for this specific route.
-  _compiledPipeline?: Array<(req: AxiomifyRequest, res: AxiomifyResponse) => Promise<void> | void>;
 }
