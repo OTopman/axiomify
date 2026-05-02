@@ -1,20 +1,9 @@
 import type { Axiomify, AxiomifyRequest, SerializerFn } from '@axiomify/core';
+import { sanitizeInput } from '../../core/src/sanitize';
 import crypto from 'crypto';
 import type { IncomingMessage } from 'http';
 import http from 'http';
 import { Readable } from 'stream';
-
-function sanitize(obj: any): any {
-  if (obj === null || typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map(sanitize);
-  const clean: any = Object.create(null);
-  for (const key of Object.keys(obj)) {
-    if (key === '__proto__' || key === 'constructor' || key === 'prototype')
-      continue;
-    clean[key] = sanitize(obj[key]);
-  }
-  return clean;
-}
 
 function createRequestSignal(req: IncomingMessage): AbortSignal {
   const controller = new AbortController();
@@ -155,7 +144,7 @@ export class HttpAdapter {
         const body = Buffer.concat(chunks).toString('utf8');
         const contentType = req.headers['content-type'] || '';
         try {
-          resolve(sanitize(JSON.parse(body)));
+          resolve(sanitizeInput(JSON.parse(body)));
         } catch {
           if (
             typeof contentType === 'string' &&

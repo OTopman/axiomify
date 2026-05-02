@@ -3,39 +3,10 @@ import type {
   AxiomifyResponse,
   SerializerFn,
 } from '@axiomify/core';
+import { sanitizeInput } from '../../core/src/sanitize';
 import crypto from 'crypto';
 import type { Request, Response } from 'express';
 import { Readable } from 'stream';
-
-function sanitize(obj: unknown): unknown {
-  if (obj === null || typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return (obj as unknown[]).map(sanitize);
-  const clean: Record<string, unknown> = Object.create(null);
-  for (const key of Object.keys(obj as object)) {
-    if (key === '__proto__' || key === 'constructor' || key === 'prototype')
-      continue;
-    clean[key] = sanitize((obj as Record<string, unknown>)[key]);
-  }
-  return clean;
-}
-
-function createRequestSignal(req: Request): AbortSignal {
-  const controller = new AbortController();
-  const abort = () => {
-    if (!controller.signal.aborted) {
-      controller.abort(new Error('Client aborted request'));
-    }
-  };
-
-  if (typeof req.once === 'function') {
-    req.once('aborted', abort);
-    req.once('close', () => {
-      if (req.destroyed) abort();
-    });
-  }
-
-  return controller.signal;
-}
 
 export function translateRequest(req: Request): AxiomifyRequest {
   const state: Record<string, unknown> = {};
@@ -67,7 +38,7 @@ export function translateRequest(req: Request): AxiomifyRequest {
     get stream() {
       return req as unknown as Readable;
     },
-    body: sanitize(req.body),
+    body: sanitizeInput(req.body),
     query: req.query,
     params: req.params,
 

@@ -4,6 +4,7 @@ import type {
   AxiomifyResponse,
   SerializerFn,
 } from '@axiomify/core';
+import { sanitizeInput } from '../../core/src/sanitize';
 import crypto from 'crypto';
 import fastify, {
   FastifyInstance,
@@ -12,34 +13,6 @@ import fastify, {
   FastifyServerOptions,
 } from 'fastify';
 import { Readable } from 'stream';
-
-function sanitize(obj: any): any {
-  if (obj === null || typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map(sanitize);
-  const clean: any = Object.create(null);
-  for (const key of Object.keys(obj)) {
-    if (key === '__proto__' || key === 'constructor' || key === 'prototype')
-      continue;
-    clean[key] = sanitize(obj[key]);
-  }
-  return clean;
-}
-
-function createRequestSignal(req: FastifyRequest): AbortSignal {
-  const controller = new AbortController();
-  const abort = () => {
-    if (!controller.signal.aborted) {
-      controller.abort(new Error('Client aborted request'));
-    }
-  };
-
-  req.raw.once('aborted', abort);
-  req.raw.once('close', () => {
-    if (req.raw.destroyed) abort();
-  });
-
-  return controller.signal;
-}
 
 export interface FastifyAdapterOptions {
   /** Maximum body size in bytes. Default: Fastify's 1MB default. */
@@ -108,7 +81,7 @@ export class FastifyAdapter {
   private translateRequest(req: FastifyRequest): AxiomifyRequest {
     const _params = {};
     const _state = {};
-    const safeBody = sanitize(req.body);
+    const safeBody = sanitizeInput(req.body);
     const signal = createRequestSignal(req);
 
     // Compute path once at translation time. Avoids `new URL(...)` allocation
