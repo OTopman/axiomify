@@ -68,9 +68,9 @@ export interface AxiomifyRequest<
   readonly ip: string;
   readonly headers: Record<string, string | string[] | undefined>;
 
-  readonly body: Body;
-  readonly query: Query;
-  readonly params: Params;
+  body: Body;
+  query: Query;
+  params: Params;
 
   readonly state: RequestState;
   readonly raw: unknown;

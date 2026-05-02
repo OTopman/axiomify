@@ -90,12 +90,7 @@ export class ValidationCompiler {
         errors.body = result.errors!;
         hasErrors = true;
       } else {
-        Object.defineProperty(req, 'body', {
-          value: result.data,
-          writable: true,
-          enumerable: true,
-          configurable: true,
-        });
+        req.body = result.data;
       }
     }
 
@@ -105,12 +100,7 @@ export class ValidationCompiler {
         errors.query = result.errors!;
         hasErrors = true;
       } else {
-        Object.defineProperty(req, 'query', {
-          value: result.data,
-          writable: true,
-          enumerable: true,
-          configurable: true,
-        });
+        req.query = result.data;
       }
     }
 
@@ -120,12 +110,7 @@ export class ValidationCompiler {
         errors.params = result.errors!;
         hasErrors = true;
       } else {
-        Object.defineProperty(req, 'params', {
-          value: result.data,
-          writable: true,
-          enumerable: true,
-          configurable: true,
-        });
+        req.params = result.data;
       }
     }
 

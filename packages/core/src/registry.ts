@@ -1,4 +1,3 @@
-import type { CompiledRouteDefinition } from './internal';
 import type { HookManager } from './lifecycle';
 import { Router } from './router';
 import type {
@@ -7,6 +6,7 @@ import type {
   RouteDefinition,
   RouteSchema,
 } from './types';
+import type { CompiledRouteDefinition } from './internal';
 import { ValidationCompiler } from './validation';
 
 interface RegistryOptions {
