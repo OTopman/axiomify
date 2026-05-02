@@ -64,7 +64,10 @@ export interface MemoryStoreOptions {
 }
 
 export class MemoryStore implements RateLimitStore {
-  private hits = new Map<string, { timestamps: number[]; windowMs: number }>();
+  private hits = new Map<
+    string,
+    { timestamps: number[]; start: number; windowMs: number }
+  >();
   private timer: NodeJS.Timeout;
   private readonly maxKeys: number;
 
@@ -78,11 +81,19 @@ export class MemoryStore implements RateLimitStore {
     const now = Date.now();
     for (const [key, data] of this.hits.entries()) {
       const windowStart = now - data.windowMs;
-      const valid = data.timestamps.filter((t) => t > windowStart);
-      if (valid.length === 0) {
+      while (
+        data.start < data.timestamps.length &&
+        data.timestamps[data.start] <= windowStart
+      ) {
+        data.start++;
+      }
+      if (data.start >= data.timestamps.length) {
         this.hits.delete(key);
-      } else {
-        this.hits.set(key, { timestamps: valid, windowMs: data.windowMs });
+        continue;
+      }
+      if (data.start > 1024 && data.start * 2 > data.timestamps.length) {
+        data.timestamps = data.timestamps.slice(data.start);
+        data.start = 0;
       }
     }
   }
@@ -93,12 +104,20 @@ export class MemoryStore implements RateLimitStore {
   ): Promise<{ count: number; resetTime: number }> {
     const now = Date.now();
     const windowStart = now - windowMs;
+    const data = this.hits.get(key) ?? { timestamps: [], start: 0, windowMs };
+    while (
+      data.start < data.timestamps.length &&
+      data.timestamps[data.start] <= windowStart
+    ) {
+      data.start++;
+    }
+    data.timestamps.push(now);
+    if (data.start > 1024 && data.start * 2 > data.timestamps.length) {
+      data.timestamps = data.timestamps.slice(data.start);
+      data.start = 0;
+    }
+    this.hits.set(key, data);
 
-    const data = this.hits.get(key) || { timestamps: [], windowMs };
-    const timestamps = data.timestamps.filter((time) => time > windowStart);
-    timestamps.push(now);
-
-    this.hits.set(key, { timestamps, windowMs });
     if (this.hits.size > this.maxKeys) {
       this.prune();
       while (this.hits.size > this.maxKeys) {
@@ -108,10 +127,11 @@ export class MemoryStore implements RateLimitStore {
       }
     }
 
-    const oldest = timestamps[0] ?? now;
+    const count = data.timestamps.length - data.start;
+    const oldest = data.timestamps[data.start] ?? now;
     const resetTime = Math.ceil((oldest + windowMs) / 1000);
 
-    return { count: timestamps.length, resetTime };
+    return { count, resetTime };
   }
 
   public close(): void {
