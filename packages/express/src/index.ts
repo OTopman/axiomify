@@ -1,7 +1,9 @@
 import type { Axiomify } from '@axiomify/core';
 import type { NextFunction, Request, Response } from 'express';
 import express, { Express } from 'express';
+import cluster from 'cluster';
 import { Server } from 'http';
+import { cpus } from 'os';
 import { translateRequest, translateResponse } from './translator';
 
 export interface ExpressAdapterOptions {
@@ -23,17 +25,24 @@ export interface ExpressAdapterOptions {
    * @default false
    */
   trustProxy?: boolean | number | string;
+  /**
+   * Number of worker processes for `listenClustered()`. Defaults to the
+   * number of logical CPU cores.
+   */
+  workers?: number;
 }
 
 export class ExpressAdapter {
   private app: Express;
   private core: Axiomify;
   private server?: Server;
+  private readonly _workers: number;
 
   constructor(coreApp: Axiomify, options: ExpressAdapterOptions = {}) {
     const { bodyLimit = '1mb', trustProxy = false } = options;
 
     this.core = coreApp;
+    this._workers = options.workers ?? cpus().length;
     this.app = express();
 
     // Required for correct req.ip when deployed behind a proxy or load balancer.
@@ -124,6 +133,41 @@ export class ExpressAdapter {
   public listen(port: number, callback?: () => void): Server {
     this.server = this.app.listen(port, callback);
     return this.server;
+  }
+
+  /**
+   * Fork `workers` child processes and start Express on each. All workers bind
+   * the same port via Node.js cluster round-robin. Crashed workers restart automatically.
+   *
+   * @example
+   * const adapter = new ExpressAdapter(app, { workers: 4 });
+   * adapter.listenClustered(3000, {
+   *   onWorkerReady: (port) => console.log(`[${process.pid}] :${port}`),
+   *   onPrimary: (pids) => console.log('Workers:', pids),
+   * });
+   */
+  public listenClustered(
+    port: number,
+    opts: {
+      onWorkerReady?: (port: number) => void;
+      onPrimary?: (pids: number[]) => void;
+      onWorkerExit?: (pid: number, code: number | null) => void;
+    } = {},
+  ): void {
+    if (!cluster.isPrimary) {
+      this.listen(port, () => opts.onWorkerReady?.(port));
+      return;
+    }
+    const pids: number[] = [];
+    for (let i = 0; i < this._workers; i++) {
+      const w = cluster.fork();
+      pids.push(w.process.pid ?? 0);
+      w.on('exit', (code, signal) => {
+        opts.onWorkerExit?.(w.process.pid ?? 0, code);
+        if (code !== 0 && signal !== 'SIGTERM') cluster.fork();
+      });
+    }
+    opts.onPrimary?.(pids);
   }
 
   public async close(): Promise<void> {

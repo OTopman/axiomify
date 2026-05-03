@@ -1,7 +1,9 @@
 import type { Axiomify, AxiomifyRequest, SerializerFn } from '@axiomify/core';
 import type { Request } from '@hapi/hapi';
 import Hapi from '@hapi/hapi';
+import cluster from 'cluster';
 import crypto from 'crypto';
+import { cpus } from 'os';
 import { PassThrough, Readable } from 'stream';
 import { sanitize } from './utils';
 
@@ -23,6 +25,7 @@ function toHapiPath(path: string): string {
 export class HapiAdapter {
   private server: Hapi.Server;
   private readonly bodyLimitBytes: number;
+  private readonly _workers: number;
 
   constructor(
     private core: Axiomify,
@@ -33,6 +36,7 @@ export class HapiAdapter {
       typeof configuredPayload.maxBytes === 'number'
         ? configuredPayload.maxBytes
         : 1_048_576;
+    this._workers = cpus().length;
 
     // Keep `parse: false, output: 'stream'` so @axiomify/upload can pipe the
     // raw request into Busboy. JSON / urlencoded bodies are parsed per-request
@@ -393,6 +397,41 @@ export class HapiAdapter {
   public async listen(port: number): Promise<void> {
     this.server.settings.port = port;
     await this.server.start();
+  }
+
+  /**
+   * Fork `workers` child processes and start Hapi on each. All workers bind
+   * the same port via Node.js cluster round-robin. Crashed workers restart automatically.
+   *
+   * @example
+   * const adapter = new HapiAdapter(app);
+   * adapter.listenClustered(3000, {
+   *   onWorkerReady: () => console.log(`[${process.pid}] ready`),
+   *   onPrimary: (pids) => console.log('Workers:', pids),
+   * });
+   */
+  public listenClustered(
+    port: number,
+    opts: {
+      onWorkerReady?: () => void;
+      onPrimary?: (pids: number[]) => void;
+      onWorkerExit?: (pid: number, code: number | null) => void;
+    } = {},
+  ): void {
+    if (!cluster.isPrimary) {
+      this.listen(port).then(() => opts.onWorkerReady?.());
+      return;
+    }
+    const pids: number[] = [];
+    for (let i = 0; i < this._workers; i++) {
+      const w = cluster.fork();
+      pids.push(w.process.pid ?? 0);
+      w.on('exit', (code, signal) => {
+        opts.onWorkerExit?.(w.process.pid ?? 0, code);
+        if (code !== 0 && signal !== 'SIGTERM') cluster.fork();
+      });
+    }
+    opts.onPrimary?.(pids);
   }
 
   public async close(): Promise<void> {
