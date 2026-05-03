@@ -8,7 +8,15 @@ import { timingSafeEqual } from 'crypto';
 export interface MetricsOptions {
   path?: string;
   protect?: (req: AxiomifyRequest) => boolean | Promise<boolean>;
-  wsManager?: any;
+  /**
+   * Optional WebSocket manager integration. When provided, the metrics endpoint
+   * includes `wsConnections` and `wsRooms` from `WsManager.getStats()`.
+   *
+   * Pass the result of `getWsManager(app)` from `@axiomify/ws`.
+   */
+  wsManager?: {
+    getStats(): { connectedClients: number; rooms: Record<string, number> };
+  };
   allowlist?: string[];
   requireToken?: string;
   /**
