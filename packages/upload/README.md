@@ -1,97 +1,129 @@
 # @axiomify/upload
 
-The official, high-performance multipart file upload plugin for the Axiomify framework. 
+RAM-safe, stream-based multipart file upload for Axiomify. Files stream directly to disk via Busboy — no buffering in memory.
 
-`@axiomify/upload` is built for maximum efficiency and security. It bypasses memory-hogging buffers by streaming `multipart/form-data` directly to disk, making it completely RAM-safe for massive file payloads.
-
-## ✨ Features
-
-- **RAM-Safe Streaming:** Powered by `busboy` under the hood. Files are streamed directly to the hard drive or cloud storage buffer, preventing memory exhaustion attacks (OOM).
-- **Guaranteed Cleanup:** Hooks deep into Axiomify's `onError` lifecycle phase. If a route handler throws an error, validation fails, or the client aborts the connection, the plugin automatically deletes any orphaned or partially uploaded files.
-- **Pre-Validation Hook:** Executes perfectly during the `preHandler` phase, meaning `req.body` (text fields) and `req.files` (streams) are fully populated *before* your Zod schemas execute.
-- **Adapter Agnostic:** Seamlessly handles streams from Express, Fastify, Hapi, and native HTTP.
-
-## 📦 Installation
-
-Ensure you install the upload plugin alongside the Axiomify core and the underlying Busboy engine:
+## Install
 
 ```bash
 npm install @axiomify/upload @axiomify/core busboy zod
-````
+```
 
-## 🚀 Quick Start
-
-Attaching the upload engine to your Axiomify instance handles all the complex streaming logistics automatically.
+## Quick start
 
 ```typescript
 import { Axiomify } from '@axiomify/core';
 import { useUpload } from '@axiomify/upload';
 import { z } from 'zod';
 
-// 1. Initialize the Axiomify Core Engine
 const app = new Axiomify();
 
-// 2. Attach the Upload Plugin
-// This registers the 'preHandler' streaming parser and the 'onError' cleanup hook
-useUpload(app, {
-  dest: './tmp/uploads', // Local directory for streamed files
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit per file
-    files: 5 // Maximum of 5 files per request
-  }
-});
+// 1. Register the upload hook — once, before any routes
+useUpload(app);
 
-// 3. Register your routes
+// 2. Declare file fields in route schema
 app.route({
   method: 'POST',
-  path: '/users/avatar',
+  path: '/avatar',
   schema: {
-    // Standard text fields are automatically parsed from the multipart form
-    body: z.object({
-      userId: z.string() 
-    })
+    body: z.object({ userId: z.string() }),  // text fields
+    files: {
+      avatar: {
+        autoSaveTo: './uploads/avatars',
+        accept: ['image/jpeg', 'image/png', 'image/webp'],
+        maxSize: 5 * 1024 * 1024,  // 5 MB per file
+      },
+    },
   },
   handler: async (req, res) => {
-    // The plugin safely attaches the completed file metadata to req.files
-    const avatar = req.files['avatar'];
     const { userId } = req.body;
+    const file = req.files!.avatar;
 
-    if (!avatar) {
-      // If we throw here, the 'onError' hook automatically deletes 
-      // any other files that may have been uploaded in this request!
-      return res.status(400).send({ error: 'Avatar file is required' });
-    }
+    // file.path       — absolute path on disk
+    // file.originalName — original filename (sanitized)
+    // file.savedName    — name on disk
+    // file.mimeType   — detected MIME type
+    // file.size       — bytes written
 
-    return res.status(200).send({ 
-      success: true, 
-      message: `Avatar for ${userId} safely streamed to ${avatar.path}` 
-    });
-  }
+    res.send({ userId, avatarPath: file.path });
+  },
 });
-
-// 4. Mount to your preferred adapter
-// await app.handle(req, res);
 ```
 
-<!-- ## ⚠️ Important Note for Fastify Users
+## Options — `useUpload(app, options?)`
 
-If you are using `@axiomify/fastify`, Fastify natively rejects `multipart/form-data` with a `415 Unsupported Media Type` error before it reaches the Axiomify engine.
+| Option | Default | Description |
+|---|---|---|
+| `dest` | `os.tmpdir()` | Default save directory for files without `autoSaveTo`. |
+| `limits.fileSize` | `10 MiB` | Global max file size in bytes. Per-field `maxSize` overrides this. |
+| `limits.files` | `10` | Max number of files per request. |
+| `limits.fields` | `50` | Max number of text fields per request. |
+| `limits.fieldSize` | `1 MiB` | Max text field value size in bytes. |
 
-To unblock uploads, you must register a bypass parser on your Fastify instance *before* mounting the Axiomify adapter:
+## Per-field `files` schema
 
 ```typescript
-// Bypass Fastify's strict media parser so the raw stream reaches Axiomify
-fastifyApp.addContentTypeParser('multipart/form-data', (request, payload, done) => {
-  done(null, payload); 
+schema: {
+  files: {
+    // Field name in the multipart form
+    profilePhoto: {
+      autoSaveTo: './uploads/photos',   // directory to save to
+      accept: ['image/jpeg', 'image/png'],  // MIME type allowlist
+      maxSize: 2 * 1024 * 1024,         // 2 MB (overrides global limit)
+    },
+    resume: {
+      autoSaveTo: './uploads/resumes',
+      accept: ['application/pdf'],
+      maxSize: 10 * 1024 * 1024,        // 10 MB
+    },
+  },
+}
+```
+
+## Security
+
+- **Path traversal:** original filenames are sanitized — `../../../etc/passwd` attempts are rejected with 400.
+- **MIME type validation:** files with disallowed MIME types are rejected. Checks the actual content-type from Busboy, not just the file extension.
+- **Size limits:** enforced on the stream — clients cannot bypass the limit by omitting `Content-Length`.
+- **Automatic cleanup:** if the handler throws, validation fails, or the client disconnects, any partially written files are automatically deleted via the `onError` hook.
+
+## Multiple files, same field
+
+```typescript
+schema: {
+  files: {
+    attachments: {
+      autoSaveTo: './uploads/attachments',
+      accept: ['application/pdf', 'image/jpeg'],
+      maxSize: 5 * 1024 * 1024,
+    },
+  },
+},
+handler: async (req, res) => {
+  // req.files.attachments is an array when multiple files share the same field name
+  const files = Array.isArray(req.files!.attachments)
+    ? req.files!.attachments
+    : [req.files!.attachments];
+
+  res.send({ count: files.length, paths: files.map(f => f.path) });
+},
+```
+
+## Adapter compatibility
+
+Works with all Axiomify adapters:
+- **`@axiomify/http`** — raw stream passed through directly
+- **`@axiomify/express`** — adapter passes the raw Node.js `IncomingMessage` stream
+- **`@axiomify/fastify`** — the Fastify adapter registers a `multipart/form-data` content-type parser that passes the raw stream through; upload handles it normally
+- **`@axiomify/hapi`** — Hapi adapter configures `parse: false, output: 'stream'` for all routes
+- **`@axiomify/native`** — the uWS stream is passed to Busboy as a Node.js `Readable`
+
+## Graceful shutdown
+
+Files in progress when the server shuts down may be partially written. Call `adapter.close()` with a timeout to drain in-flight requests before exit:
+
+```typescript
+process.on('SIGTERM', async () => {
+  await adapter.close();
+  process.exit(0);
 });
-
-fastifyApp.register(FastifyAdapter(app));
-``` -->
-
-## 📚 Documentation
-
-For complete documentation, guides, and advanced plugin authoring, please visit the [Axiomify Master Repository](https://github.com/OTopman/axiomify).
-
-## 📄 License
-
-MIT
+```

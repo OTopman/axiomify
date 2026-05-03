@@ -1,85 +1,89 @@
 # @axiomify/cli
 
-The official Command Line Interface for the Axiomify framework. 
+The Axiomify command-line interface — scaffold projects, run the dev server, and inspect routes.
 
-`@axiomify/cli` provides a lightning-fast development experience, production-ready build steps, and powerful inspection tools for your Axiomify applications.
-
-## 📦 Installation
-
-We recommend installing the CLI locally as a development dependency in your project so your CI/CD pipelines can utilize it:
-
-```bash
-npm install @axiomify/cli -D
-````
-
-You can also install it globally if you want to use the `init` command anywhere on your machine:
+## Install
 
 ```bash
 npm install -g @axiomify/cli
+# or use without installing:
+npx @axiomify/cli init my-api
 ```
 
-## 🛠️ Commands
+## Commands
 
-| Command | Description |
-| :--- | :--- |
-| `axiomify init` | Scaffolds a new, production-ready Axiomify project. |
-| `axiomify dev <entry>` | Starts the development server with hot-module reloading (HMR). |
-| `axiomify build <entry>` | Compiles your TypeScript application for production. |
-| `axiomify routes <entry>`| Inspects your app and prints a visual table of all registered routes. |
+### `axiomify init <name>`
 
-## 🚀 Usage Guide
-
-### 1\. Project Scaffolding
-
-Quickly generate a new project with all the necessary TypeScript configurations and adapter boilerplates:
+Scaffolds a new Axiomify project with your chosen adapter.
 
 ```bash
-npx @axiomify/cli init my-new-app
+axiomify init my-api
 ```
 
-### 2\. Development Mode
+Prompts:
 
-Run your application locally. The CLI automatically watches your file system and restarts the server when it detects changes.
+1. **Adapter** — Native (uWS, fastest), Fastify *(default)*, Express, Hapi, or Node HTTP
+2. **Plugins** — Auth, CORS, Helmet, Rate Limit, Metrics, Logger, OpenAPI (multi-select)
+3. **Language** — TypeScript *(default)* or JavaScript
+
+Generates:
+```
+my-api/
+├── src/
+│   ├── index.ts          # Entry point with chosen adapter
+│   ├── routes/           # Example routes
+│   └── plugins/          # Plugin configuration
+├── package.json
+├── tsconfig.json
+└── README.md
+```
+
+### `axiomify dev`
+
+Starts the development server with hot-reload powered by esbuild.
 
 ```bash
-npx axiomify dev src/index.ts
+axiomify dev                 # watches src/, rebuilds on change
+axiomify dev --port 4000     # custom port
+axiomify dev --debug         # verbose logging
 ```
 
-### 3\. Route Inspector
+### `axiomify build`
 
-Having trouble debugging an endpoint? The route inspector parses your Radix tree and prints a clean, color-coded table of every available method, path, and attached schema directly to your terminal.
+Compiles the application for production.
 
 ```bash
-npx axiomify routes src/index.ts
+axiomify build               # outputs to dist/
+axiomify build --minify      # minified output
+axiomify build --sourcemap   # include source maps
 ```
 
-### 4\. Production Build
+### `axiomify routes`
 
-Compiles your application into highly optimized JavaScript ready for edge or serverless deployment.
+Visualises all registered routes in a table.
 
 ```bash
-npx axiomify build src/index.ts
+axiomify routes
+
+┌─────────────────────────────────────┬────────┬───────────────────────────────┐
+│ Path                                │ Method │ Plugins                       │
+├─────────────────────────────────────┼────────┼───────────────────────────────┤
+│ /users                              │ GET    │ requireAuth, rateLimiter       │
+│ /users                              │ POST   │ requireAuth                   │
+│ /users/:id                          │ GET    │ requireAuth                   │
+│ /auth/login                         │ POST   │ loginRateLimit                │
+│ /auth/refresh                       │ POST   │ refreshRateLimit              │
+│ /health                             │ GET    │ —                             │
+│ /metrics                            │ GET    │ —                             │
+└─────────────────────────────────────┴────────┴───────────────────────────────┘
 ```
 
-## 📖 Standard `package.json` Setup
+## Adapter choices in `axiomify init`
 
-For the best developer experience, map the CLI commands to your project's npm scripts:
-
-```json
-{
-  "scripts": {
-    "dev": "axiomify dev src/index.ts",
-    "build": "axiomify build src/index.ts",
-    "start": "node dist/index.js",
-    "routes": "axiomify routes src/index.ts"
-  }
-}
-```
-
-## 📚 Documentation
-
-For complete documentation, guides, and ecosystem packages, please visit the [Axiomify Master Repository](https://github.com/OTopman/axiomify).
-
-## 📄 License
-
-MIT
+| Adapter | Req/s (1 core) | Use case |
+|---|---:|---|
+| **Native (uWS)** | ~50k | Maximum throughput, production APIs |
+| **Fastify** | ~10k | Recommended default — best ecosystem balance |
+| **Express** | ~5k | Legacy migration, Express middleware ecosystem |
+| **Hapi** | ~5k | Enterprise Hapi plugin ecosystem |
+| **Node HTTP** | ~10k | Zero dependencies, edge/serverless |

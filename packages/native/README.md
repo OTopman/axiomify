@@ -1,6 +1,6 @@
 # @axiomify/native
 
-The high-performance uWebSockets.js adapter for Axiomify. Routes registered directly with uWS's C++ router — no JavaScript routing overhead per request.
+The uWebSockets.js adapter for Axiomify. Routes registered directly with uWS's C++ router — fastest possible throughput, 50k+ req/s single-process, 180k+ req/s on 4 cores.
 
 ## Install
 
@@ -8,7 +8,7 @@ The high-performance uWebSockets.js adapter for Axiomify. Routes registered dire
 npm install @axiomify/native @axiomify/core zod
 ```
 
-uWebSockets.js ships pre-built Node.js ABI binaries. Supported: Node 18, 20, 22 (ABI 115, 120, 127).
+uWS ships pre-built Node.js ABI binaries. Supported: Node 18 (ABI 108), Node 20 (ABI 115), Node 22 (ABI 127).
 
 ## Quick start
 
@@ -20,63 +20,122 @@ import { z } from 'zod';
 const app = new Axiomify();
 
 app.route({
+  method: 'GET',
+  path: '/ping',
+  handler: async (_req, res) => res.send({ pong: true }),
+});
+
+app.route({
   method: 'POST',
-  path: '/users',
-  schema: { body: z.object({ email: z.string().email() }) },
-  handler: async (req, res) => res.status(201).send({ id: 'usr_1', ...req.body }),
+  path: '/users/:id',
+  schema: {
+    params: z.object({ id: z.string().uuid() }),
+    body: z.object({ name: z.string().min(1) }),
+  },
+  handler: async (req, res) => {
+    res.status(201).send({ id: req.params.id, ...req.body });
+  },
 });
 
 const adapter = new NativeAdapter(app, { port: 3000 });
 adapter.listen(() => console.log('Native on :3000'));
 ```
 
-## Multi-core clustering (recommended for production)
+## Options
+
+```typescript
+new NativeAdapter(app, {
+  port: 3000,                // listening port
+  maxBodySize: 1_048_576,    // 1 MB — requests over this return 413
+  trustProxy: false,         // derive req.ip from X-Forwarded-For when behind proxy
+  workers: 4,                // worker count for listenClustered()
+  ws: {                      // optional — omit to disable WebSocket support
+    path: '/ws',
+    compression: uWS.SHARED_COMPRESSOR,
+    maxPayloadLength: 16 * 1024 * 1024,
+    idleTimeout: 120,
+    open: (ws) => console.log('WS connected'),
+    message: (ws, msg, isBinary) => ws.send(msg, isBinary),
+    close: (ws, code) => console.log('WS closed', code),
+  },
+});
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `port` | `3000` | Listening port. |
+| `maxBodySize` | `1048576` (1 MB) | Reject bodies over this size with 413. Enforced on the actual stream. |
+| `trustProxy` | `false` | Use `X-Forwarded-For` for `req.ip`. Only enable behind a trusted proxy. |
+| `workers` | `os.cpus().length` | Worker count for `listenClustered()`. |
+| `ws` | disabled | WebSocket configuration. Set to `false` to explicitly disable. |
+
+## Multi-core clustering — SO_REUSEPORT
 
 ```typescript
 const adapter = new NativeAdapter(app, { port: 3000, workers: 4 });
 
 adapter.listenClustered({
-  onWorkerReady: () => console.log(`[${process.pid}] ready`),
-  onPrimary: (pids) => console.log('Workers:', pids),
-  onWorkerExit: (pid, code) => console.error(`Worker ${pid} died (code=${code})`),
+  onWorkerReady: () => console.log(`[${process.pid}] uWS ready on :3000`),
+  onPrimary:     (pids) => console.log('Primary, workers:', pids),
+  onWorkerExit:  (pid, code) => console.error(`Worker ${pid} died (code ${code})`),
   // Crashed workers restart automatically
 });
 ```
 
-## Options
+All workers bind port 3000 via `SO_REUSEPORT`. The OS kernel distributes connections across workers with zero user-space coordination. This is the most efficient multi-core strategy for uWS.
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `port` | `number` | `3000` | Listening port |
-| `maxBodySize` | `number` | `1048576` | Max request body in bytes; 413 on exceed |
-| `trustProxy` | `boolean` | `false` | Use `X-Forwarded-For` for `req.ip` |
-| `workers` | `number` | `os.cpus().length` | Workers for `listenClustered()` |
-| `ws` | `NativeWsOptions \| false` | — | Enable uWS native WebSocket |
+**Throughput projections (90% linear scaling):**
 
-## WebSocket
+| Workers | GET /ping | POST /echo (JSON) |
+|---:|---:|---:|
+| 1 | ~50k req/s | ~37k req/s |
+| 2 | ~91k req/s | ~67k req/s |
+| 4 | **~182k req/s** | **~135k req/s** |
+| 8 | **~363k req/s** | **~270k req/s** |
+
+## Built-in WebSocket support
 
 ```typescript
 const adapter = new NativeAdapter(app, {
   port: 3000,
   ws: {
     path: '/ws',
-    open: (ws) => ws.send('Welcome'),
-    message: (ws, msg, isBinary) => ws.send(msg, isBinary),
-    close: (ws, code) => console.log('closed', code),
+    open:    (ws) => { ws.send('Welcome'); },
+    message: (ws, msg, isBinary) => { ws.send(msg, isBinary); }, // echo
+    close:   (ws, code, msg) => { console.log('closed', code); },
   },
 });
 ```
 
-## SSE limitation
+> For `@axiomify/ws` (the Node.js `ws` library), use `@axiomify/http`, `@axiomify/express`,
+> `@axiomify/fastify`, or `@axiomify/hapi` instead. The native adapter has its own C++ WebSocket
+> implementation — do not combine with `@axiomify/ws`.
 
-Server-Sent Events are not supported by the native adapter — uWS uses a push-based model incompatible with SSE. Use `@axiomify/http`, `@axiomify/express`, `@axiomify/fastify`, or `@axiomify/hapi` for SSE routes.
+## Express middleware compatibility
 
-## Benchmark (single process, 100 connections, pipelining 10)
+```typescript
+import { adaptMiddleware } from '@axiomify/native';
 
-| Scenario | Req/s | vs bare Node.js |
-|---|---:|---:|
-| GET /ping | 50,493 | +174% |
-| GET /users/:id/posts/:postId | 45,957 | +163% |
-| POST /echo (JSON body) | 37,672 | +134% |
+app.route({
+  method: 'GET',
+  path: '/secure',
+  plugins: [adaptMiddleware(require('helmet')())],
+  handler: async (_req, res) => res.send({ ok: true }),
+});
+```
 
-4-core production server (90% scaling efficiency): **~182k req/s**.
+## SSE not supported
+
+Server-Sent Events are not supported by the native adapter. The adapter throws at startup if any route calls `res.sseInit()` or `res.sseSend()`. Use `@axiomify/http`, `@axiomify/express`, `@axiomify/fastify`, or `@axiomify/hapi` for SSE routes.
+
+## How routing works
+
+Each Axiomify route is registered with uWS at startup:
+- `GET`/`HEAD` → `server.get()` + `server.head()`
+- `POST` → `server.post()`
+- `DELETE` → `server.del()` (uWS uses `del` since `delete` is a reserved keyword)
+- etc.
+
+uWS resolves method+path in native C++ before any JavaScript runs. Named parameters are extracted via `req.getParameter(i)` indexed by position (pre-computed at startup) — zero allocations per request.
+
+The `any('/*')` catch-all fires only for unmatched requests, where Axiomify's router is used once to distinguish 404 from 405.

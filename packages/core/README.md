@@ -1,28 +1,14 @@
 # @axiomify/core
 
-The high-performance, zero-dependency routing engine, lifecycle hook manager, and validation compiler at the heart of the Axiomify framework. 
+The routing engine, AJV-compiled validation, hook manager, and dispatcher at the heart of Axiomify.
 
-`@axiomify/core` is completely framework-agnostic. It processes HTTP abstractions and can be attached to any Node.js server environment (Express, Fastify, Hapi, or native HTTP) via its adapter ecosystem.
-
-## ✨ Features
-
-- **Blazing Fast Routing:** Custom `O(k), where k = path depth` Radix Trie implementation for deterministic, hyper-fast static and dynamic route matching (`/users/:id`).
-- **Robust Lifecycle Engine:** Full asynchronous hook support (`onRequest`, `preHandler`, `onPostHandler`, `onError`) for building powerful plugins.
-- **Native Zod Validation:** Built-in schema validation with safe, getter-bypassing request mutation.
-- **Centralized Error Dispatcher:** Guaranteed execution of `onError` hooks (like file cleanup) before standardizing the HTTP error response.
-- **Memory Safe:** Strict object reference persistence to prevent memory leaks and drop-outs during complex asynchronous request lifecycles.
-
-## 📦 Installation
-
-You typically install the core alongside your preferred validation library (like Zod):
+## Install
 
 ```bash
 npm install @axiomify/core zod
-````
+```
 
-## 🚀 Quick Start (Internal API)
-
-While developers usually interact with Axiomify through an adapter (e.g., `@axiomify/fastify`), the core engine can be utilized programmatically:
+## Quick start
 
 ```typescript
 import { Axiomify } from '@axiomify/core';
@@ -30,49 +16,130 @@ import { z } from 'zod';
 
 const app = new Axiomify();
 
-// 1. Register Global Hooks
-app.addHook('onRequest', async (req, res) => {
-  console.log(`[${req.id}] Incoming ${req.method} ${req.path}`);
-});
-
-// 2. Register Routes with Validation
 app.route({
   method: 'POST',
   path: '/users',
   schema: {
-    body: z.object({
-      email: z.string().email(),
-      name: z.string().min(2)
-    })
+    body: z.object({ name: z.string().min(1), email: z.string().email() }),
+    response: z.object({ id: z.string(), name: z.string() }),
   },
   handler: async (req, res) => {
-    // req.body is safely typed and validated by Zod
-    const { email, name } = req.body;
-    
-    return res.status(201).send({ 
-      success: true, 
-      user: { email, name } 
-    });
-  }
+    res.status(201).send({ id: '1', name: req.body.name });
+  },
 });
-
-// 3. Process Requests (Usually handled by your Adapter)
-// await app.handle(mockReq, mockRes);
 ```
 
-## 🧩 The Adapter Ecosystem
+Pair with an adapter to serve HTTP:
 
-`@axiomify/core` is designed to be the underlying engine. To use it in a real server, pair it with one of our official adapters:
+```typescript
+import { FastifyAdapter } from '@axiomify/fastify';
+new FastifyAdapter(app).listen(3000);
 
-  - [`@axiomify/fastify`](https://www.npmjs.com/package/@axiomify/fastify) - For maximum throughput.
-  - [`@axiomify/express`](https://www.npmjs.com/package/@axiomify/express) - For maximum compatibility.
-  - [`@axiomify/hapi`](https://www.npmjs.com/package/@axiomify/hapi) - For enterprise environments.
-  - [`@axiomify/http`](https://www.npmjs.com/package/@axiomify/http) - For zero-dependency edge deployments.
+// or: ExpressAdapter, HapiAdapter, HttpAdapter, NativeAdapter
+```
 
-## 📚 Documentation
+## Route definition
 
-For complete documentation, guides, and advanced plugin authoring, please visit the [Axiomify Master Repository](https://github.com/OTopman/axiomify).
+```typescript
+app.route({
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD',
+  path: '/path/:param',        // Axiomify :param syntax (adapters convert as needed)
+  schema: {                    // all fields optional
+    params:   z.object({ ... }),
+    query:    z.object({ ... }),
+    body:     z.object({ ... }),
+    response: z.object({ ... }) | { 200: z.object(...), 404: z.object(...) },
+    files:    { fieldName: { maxSize, allowedTypes } },
+    tags:     ['Users'],           // for OpenAPI
+    description: 'Route description',
+    security: [{ bearerAuth: [] }],
+  },
+  plugins: [requireAuth, rateLimiter],  // run before handler, in order
+  timeout: 5000,               // ms — overrides global timeout, 0 = disabled
+  handler: async (req, res) => { ... },
+});
+```
 
-## 📄 License
+## AJV-compiled validation
 
-MIT
+Zod schemas are converted to JSON Schema 2020-12 via `z.toJSONSchema()` at startup, then compiled by AJV. At runtime:
+
+| Path | Cost |
+|---|---|
+| Valid input | ~0.06µs (AJV compiled) |
+| Invalid input | ~0.12µs (AJV error collection) |
+| Zod safeParse valid | ~0.30µs |
+| Zod safeParse invalid | ~49.75µs |
+
+Zod transforms (`.default()`, `.coerce.*`, `.transform()`) are applied via `schema.parse()` after AJV validates structure — transforms always run.
+
+## Hooks
+
+```typescript
+app.addHook('onRequest',     (req, res) => { /* before routing */ });
+app.addHook('onPreHandler',  (req, res, match) => { /* route matched, before validation */ });
+app.addHook('onPostHandler', (req, res, match) => { /* after handler responded */ });
+app.addHook('onError',       (err, req, res) => { /* handler/hook threw */ });
+app.addHook('onClose',       (req, res) => { /* always last */ });
+```
+
+Hook execution order: `onRequest` → `onPreHandler` → handler → `onPostHandler` → `onClose`.
+
+`onError` fires instead of `onPostHandler` when the handler throws. `onClose` fires in both cases.
+
+Hooks are async-minimal: `HookManager.run()` returns synchronously for empty lists, calls single handlers without an async wrapper — no microtask boundary for routes that don't use a hook type.
+
+## Route groups
+
+```typescript
+app.group('/api/v1', { plugins: [requireAuth] }, (v1) => {
+  v1.route({ method: 'GET', path: '/me', handler: async (req, res) => res.send(req.state.authUser) });
+
+  v1.group('/admin', { plugins: [requireAdmin] }, (admin) => {
+    admin.route({ method: 'DELETE', path: '/users/:id', handler: deleteUser });
+  });
+});
+// Results in: GET /api/v1/me, DELETE /api/v1/admin/users/:id
+// Both inherit requireAuth; DELETE also has requireAdmin
+```
+
+## Response API
+
+```typescript
+res.status(201)                        // set status code (default 200)
+res.header('X-Custom', 'value')        // set response header
+res.send(data, message?)               // serialised envelope { status, message, data }
+res.sendRaw(payload, contentType?)     // bypass serialiser
+res.stream(readable, contentType?)     // stream a Readable
+res.sseInit(heartbeatMs?)              // Server-Sent Events (not on @axiomify/native)
+res.sseSend(data, event?)              // send SSE event
+res.error(err)                         // send 500 with error message
+```
+
+## Custom serialiser
+
+```typescript
+app.setSerializer((data, message, statusCode, isError, req) => ({
+  ok: !isError,
+  requestId: req?.id,
+  payload: data,
+  ...(message ? { message } : {}),
+}));
+```
+
+## Health checks
+
+```typescript
+app.healthCheck('/health', {
+  database: async () => db.$queryRaw`SELECT 1`.then(() => true).catch(() => false),
+  cache:    async () => redis.ping().then(() => true).catch(() => false),
+});
+// GET /health → 200 { status: 'ok', checks: { database: true, cache: true } }
+// Any check false → 503 { status: 'degraded', checks: { database: false, ... } }
+```
+
+## Router
+
+The radix-trie router uses character-by-character path walking with a pre-allocated flat param accumulator — no `split('/')` allocation per lookup, no spread per matched segment. Lookup is O(k) where k = path depth.
+
+In adapters, the router is never called twice: each adapter registers routes with its own framework's router (Express's, Fastify's, Hapi's, uWS's). Axiomify's router is consulted only in the 404/405 fallback.
