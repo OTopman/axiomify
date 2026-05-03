@@ -60,7 +60,16 @@ export class MemoryTokenStore implements TokenStore {
 
   async save(jti: string, ttlSeconds: number): Promise<void> {
     await this.revoke(jti);
-    const timer = setTimeout(() => this.tokens.delete(jti), ttlSeconds * 1000);
+
+    // Node.js setTimeout max delay is 2,147,483,647ms (~24.9 days). Multiplying
+    // a 30-day TTL (2,592,000s) by 1000 overflows signed 32-bit int, causing
+    // the timer to fire immediately and delete the token the instant it is saved.
+    // We cap the delay at the Node maximum. For production, use Redis which
+    // handles arbitrary TTLs natively via PEXPIRE.
+    const MAX_TIMEOUT_MS = 2_147_483_647;
+    const delayMs = Math.min(ttlSeconds * 1000, MAX_TIMEOUT_MS);
+
+    const timer = setTimeout(() => this.tokens.delete(jti), delayMs);
     timer.unref?.();
     this.tokens.set(jti, timer);
   }

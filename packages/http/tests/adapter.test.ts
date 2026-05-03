@@ -167,3 +167,41 @@ describe('HttpAdapter — routing via handleMatchedRoute (no double routing)', (
     expect(typeof adapter.listenClustered).toBe('function');
   });
 });
+
+// ─── Multi-value query params ─────────────────────────────────────────────────
+
+describe('HttpAdapter — multi-value query parameter handling', () => {
+  it('preserves all values for duplicate query keys as an array', async () => {
+    const { Axiomify } = await import('../../core/src/app');
+    const { HttpAdapter } = await import('../src/index');
+    const app = new Axiomify();
+
+    app.route({
+      method: 'GET',
+      path: '/search',
+      handler: async (req, res) => res.send({ query: req.query }),
+    });
+
+    const adapter = new HttpAdapter(app);
+    const server = adapter.listen(0);
+    await new Promise<void>((r) => server.once('listening', r));
+    const { port } = server.address() as { port: number };
+
+    const res = await new Promise<{ status: number; body: unknown }>((resolve, reject) => {
+      http.get(`http://localhost:${port}/search?tag=a&tag=b&tag=c&page=1`, (r) => {
+        let d = '';
+        r.on('data', (c) => (d += c));
+        r.on('end', () => resolve({ status: r.statusCode!, body: JSON.parse(d) }));
+      }).on('error', reject);
+    });
+
+    await adapter.close();
+
+    expect(res.status).toBe(200);
+    const q = (res.body as any).data.query;
+    // Must be an array, not just 'c' (last value)
+    expect(Array.isArray(q.tag)).toBe(true);
+    expect(q.tag).toEqual(['a', 'b', 'c']);
+    expect(q.page).toBe('1'); // single value stays a string
+  });
+});

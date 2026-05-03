@@ -12,7 +12,7 @@ npm install @axiomify/openapi
 
 ```typescript
 import { Axiomify } from '@axiomify/core';
-import { useSwagger } from '@axiomify/openapi';
+import { useOpenAPI } from '@axiomify/openapi';
 import { z } from 'zod';
 
 const app = new Axiomify();
@@ -29,7 +29,7 @@ app.route({
   handler: async (req, res) => res.status(201).send({ id: 'usr_1', ...req.body }),
 });
 
-useSwagger(app, {
+useOpenAPI(app, {
   info: { title: 'My API', version: '1.0.0' },
   routePrefix: '/docs',          // UI at /docs, spec at /docs/openapi.json
   protect: (req) => req.headers['x-internal-token'] === process.env.DOCS_TOKEN,
@@ -39,7 +39,7 @@ useSwagger(app, {
 ## Security schemes
 
 ```typescript
-useSwagger(app, {
+useOpenAPI(app, {
   info: { title: 'My API', version: '1.0.0' },
   components: {
     securitySchemes: {

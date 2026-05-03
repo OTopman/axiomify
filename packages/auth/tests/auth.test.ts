@@ -160,3 +160,32 @@ describe('createAuthPlugin — access token revocation via store', () => {
     expect(res.send).toHaveBeenCalledWith(null, expect.stringMatching(/jti/i));
   });
 });
+
+// ─── MemoryTokenStore: setTimeout overflow protection ─────────────────────────
+
+describe('MemoryTokenStore — long-TTL overflow protection', () => {
+  it('does not immediately delete tokens with TTL > 24.9 days', async () => {
+    const store = new MemoryTokenStore();
+    const jti = 'long-lived-token';
+
+    // 30-day token: 2,592,000 seconds — overflows Node's 32-bit setTimeout limit
+    await store.save(jti, 30 * 24 * 3600);
+
+    // Token must still exist immediately after save
+    const exists = await store.exists(jti);
+    expect(exists).toBe(true);
+
+    await store.revoke(jti);
+  });
+
+  it('still correctly expires short-TTL tokens', async () => {
+    const store = new MemoryTokenStore();
+    const jti = 'short-lived';
+
+    await store.save(jti, 0.001); // 1ms TTL
+    await new Promise((r) => setTimeout(r, 50)); // wait for expiry
+
+    const exists = await store.exists(jti);
+    expect(exists).toBe(false);
+  });
+});

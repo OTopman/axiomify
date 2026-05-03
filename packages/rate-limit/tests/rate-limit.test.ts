@@ -201,3 +201,60 @@ describe('RedisStore — EVALSHA caching', () => {
     expect(evalshaCallCount.n).toBe(2); // evalsha called on second request
   });
 });
+
+// ─── keyGenerator and skip safety ─────────────────────────────────────────────
+
+describe('buildLimiter — keyGenerator and skip error safety', () => {
+  it('fails closed when keyGenerator throws — uses IP fallback, does not bypass limiting', async () => {
+    const { createRateLimitPlugin, MemoryStore } = await import('../src/index');
+
+    const store = new MemoryStore();
+    const plugin = createRateLimitPlugin({
+      store,
+      max: 100,
+      windowMs: 60_000,
+      keyGenerator: () => { throw new Error('keyGenerator error'); },
+    });
+
+    const req: any = { ip: '1.2.3.4', headers: {}, state: {} };
+    const headers: Record<string, string> = {};
+    const res: any = {
+      header: (k: string, v: string) => { headers[k] = v; return res; },
+      status: vi.fn().mockReturnThis(),
+      send: vi.fn(),
+      headersSent: false,
+    };
+
+    // Should NOT throw — should fall back to IP
+    await expect(plugin(req, res)).resolves.not.toThrow();
+    // Rate limit headers should still be set (limiting is active)
+    expect(headers['X-RateLimit-Limit']).toBe('100');
+    store.close();
+  });
+
+  it('fails closed when skip() throws — request is NOT skipped', async () => {
+    const { createRateLimitPlugin, MemoryStore } = await import('../src/index');
+
+    const store = new MemoryStore();
+    let limitApplied = false;
+    const plugin = createRateLimitPlugin({
+      store,
+      max: 100,
+      windowMs: 60_000,
+      skip: () => { throw new Error('skip error'); },
+    });
+
+    const req: any = { ip: '1.2.3.4', headers: {}, state: {} };
+    const res: any = {
+      header: (k: string, v: string) => { if (k === 'X-RateLimit-Limit') limitApplied = true; return res; },
+      status: vi.fn().mockReturnThis(),
+      send: vi.fn(),
+      headersSent: false,
+    };
+
+    await expect(plugin(req, res)).resolves.not.toThrow();
+    // Limiting was applied — skip error did not bypass rate limiting
+    expect(limitApplied).toBe(true);
+    store.close();
+  });
+});

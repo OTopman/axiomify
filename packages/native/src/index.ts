@@ -768,7 +768,21 @@ export class NativeAdapter {
         axiomifyRes.aborted = aborted;
 
         await app.handleMatchedRoute(axiomifyReq, axiomifyRes, route, params);
-      })();
+      })().catch((err: unknown) => {
+        // A .catch() is mandatory on all uWS async handlers. Without it, any
+        // unhandled rejection (handler bug, DB drop, timeout) reaches Node's
+        // 'unhandledRejection' event, which crashes the process in Node 15+.
+        // Instead we try to send a 500 — if the response is already committed
+        // (headersSent) we swallow silently, which is still safe.
+        if (!aborted && !axiomifyRes.headersSent) {
+          try {
+            axiomifyRes.error(err);
+          } catch {
+            // res.error() itself threw (e.g. already aborted between the check
+            // and the call) — nothing more we can do.
+          }
+        }
+      });
     };
   }
 

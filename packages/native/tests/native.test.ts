@@ -377,3 +377,46 @@ describe.skipIf(!uwsSupported)('NativeAdapter: body size limit enforcement', () 
     expect(res.status).toBe(413);
   });
 });
+
+// ─── Handler rejection caught — no unhandled rejection crash ─────────────────
+
+describe.skipIf(!uwsSupported)('NativeAdapter — handler rejection safety', () => {
+  let adapter: any;
+  const PORT = 3002;
+
+  beforeAll(async () => {
+    const { Axiomify } = await import('@axiomify/core');
+    const { NativeAdapter } = await import('../src/index');
+
+    const app = new Axiomify();
+
+    // Route whose handler always throws — previously an unhandled rejection
+    app.route({
+      method: 'GET',
+      path: '/throws',
+      handler: async () => {
+        throw new Error('Intentional handler error');
+      },
+    });
+
+    return new Promise<void>((resolve) => {
+      adapter = new NativeAdapter(app, { port: PORT });
+      adapter.listen(() => resolve());
+    });
+  });
+
+  afterAll(() => adapter.close());
+
+  it('returns 500 instead of crashing the process on handler throw', async () => {
+    const res = await fetch(`http://localhost:${PORT}/throws`);
+    // The .catch() in the async IIFE must handle the rejection and send 500.
+    expect(res.status).toBe(500);
+  });
+
+  it('continues serving subsequent requests after a handler throw', async () => {
+    await fetch(`http://localhost:${PORT}/throws`);
+    // Server must still respond — not crashed from unhandled rejection
+    const r2 = await fetch(`http://localhost:${PORT}/throws`);
+    expect(r2.status).toBe(500);
+  });
+});

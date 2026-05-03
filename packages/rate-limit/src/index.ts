@@ -305,9 +305,23 @@ function buildLimiter(options: RateLimitOptions = {}) {
     options.keyGenerator ?? options.keyExtractor ?? createDefaultKeyGenerator();
 
   return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
-    if (options.skip?.(req)) return;
+    // Wrap skip() in try/catch — a throwing skip silently bypasses rate limiting.
+    try {
+      if (options.skip?.(req)) return;
+    } catch {
+      // Skip function threw — treat as "do not skip" (fail-closed).
+    }
 
-    const key = keyGenerator(req);
+    // Wrap keyGenerator in try/catch — a throwing keyGenerator (e.g. accessing
+    // req.body.email when body is undefined) would propagate as a 500 and bypass
+    // rate limiting entirely. Fail-closed: fall back to IP address.
+    let key: string;
+    try {
+      key = keyGenerator(req);
+    } catch {
+      key = req.ip ?? 'unknown';
+    }
+
     const { count, resetTime } = await store.increment(key, windowMs);
     const remaining = Math.max(0, max - count);
 

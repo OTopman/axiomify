@@ -123,6 +123,12 @@ export class WsManager<TUser = unknown> {
       this.heartbeatTimer.unref();
     }
 
+    // Clear the heartbeat timer if the WebSocket server itself encounters a
+    // fatal error (e.g. port bind failure during startup, unexpected close).
+    // Without this, the setInterval holds a reference and the process cannot exit.
+    this.wss.on('error', () => this._stopHeartbeat());
+    this.wss.on('close', () => this._stopHeartbeat());
+
     this.wss.on('connection', (ws: any) => {
       const client = ws as WsClient<TUser>;
       if (!client.id) client.id = crypto.randomUUID();
@@ -226,8 +232,19 @@ export class WsManager<TUser = unknown> {
 
   /** Call this during graceful shutdown to close all connections cleanly. */
   public close(): void {
-    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
     this.wss.close();
+  }
+
+  /** @internal — stops the heartbeat timer and clears state without closing wss */
+  private _stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
   }
 }
 

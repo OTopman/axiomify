@@ -226,7 +226,16 @@ export class HttpAdapter {
       // so the ValidationCompiler can assign the post-transform value back onto
       // the request object (e.g. `req.body = result.data` after Zod parse).
       body: parsedBody,
-      query: Object.fromEntries(query.entries()) as Record<string, string | string[]>,
+      // Preserve multi-value query params as string[] (e.g. ?tag=a&tag=b → { tag: ['a','b'] }).
+      // Object.fromEntries(q.entries()) only keeps the LAST value for duplicate keys.
+      query: (() => {
+        const out: Record<string, string | string[]> = {};
+        for (const key of new Set(query.keys())) {
+          const vals = query.getAll(key);
+          out[key] = vals.length === 1 ? vals[0] : vals;
+        }
+        return out;
+      })(),
       params: _params,
       state: _state,
       get raw() {

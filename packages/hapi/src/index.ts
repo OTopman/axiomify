@@ -29,22 +29,29 @@ export class HapiAdapter {
 
   constructor(
     private core: Axiomify,
-    config: Hapi.ServerOptions = {},
+    config: Hapi.ServerOptions & {
+      /**
+       * Number of worker processes for `listenClustered()`. Defaults to the
+       * number of logical CPU cores.
+       */
+      workers?: number;
+    } = {},
   ) {
-    const configuredPayload = config.routes?.payload || {};
+    const { workers, ...hapiConfig } = config;
+    const configuredPayload = hapiConfig.routes?.payload || {};
     this.bodyLimitBytes =
       typeof configuredPayload.maxBytes === 'number'
         ? configuredPayload.maxBytes
         : 1_048_576;
-    this._workers = cpus().length;
+    this._workers = workers ?? cpus().length;
 
     // Keep `parse: false, output: 'stream'` so @axiomify/upload can pipe the
     // raw request into Busboy. JSON / urlencoded bodies are parsed per-request
     // below so handlers see a plain object on every adapter.
     this.server = Hapi.server({
-      ...config,
+      ...hapiConfig,
       routes: {
-        ...(config.routes || {}),
+        ...(hapiConfig.routes || {}),
         payload: {
           ...configuredPayload,
           maxBytes: this.bodyLimitBytes,
@@ -371,7 +378,12 @@ export class HapiAdapter {
         const heartbeat = setInterval(() => {
           sseStream!.write(': keepalive\n\n');
         }, sseHeartbeatMs);
+        // .unref() ensures this interval does not prevent the process from
+        // exiting during graceful shutdown. clearInterval fires on stream close
+        // (normal disconnect) and on the 'error' event (abnormal disconnect).
+        heartbeat.unref();
         sseStream.on('close', () => clearInterval(heartbeat));
+        sseStream.on('error', () => clearInterval(heartbeat));
 
         resolve(applyHeaders(h.response(sseStream).code(200)));
       },
