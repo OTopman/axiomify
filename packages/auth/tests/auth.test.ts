@@ -1,8 +1,7 @@
 import { Axiomify } from '../../core/src/app';
 import jwt from 'jsonwebtoken';
 import { describe, expect, it, vi } from 'vitest';
-import { createAuthPlugin, getAuthUser, useAuth } from '../src/index';
-
+import { createAuthPlugin, createRefreshHandler, getAuthUser, MemoryTokenStore, useAuth } from '../src/index';
 describe('Auth Plugin & Refresh', () => {
   const secret = 'super-secret-key-that-is-at-least-32-chars-long!';
 
@@ -93,5 +92,71 @@ describe('Auth Plugin & Refresh', () => {
     } as any;
     await app.handle(req2, res2);
     expect(res2.status).toHaveBeenCalledWith(401);
+  });
+});
+
+// ─── Access token revocation via store ────────────────────────────────────────
+
+describe('createAuthPlugin — access token revocation via store', () => {
+  const secret = 'a-very-long-secret-for-testing-purposes-only-12345';
+  const store = new MemoryTokenStore();
+
+  it('accepts a token whose jti exists in the store', async () => {
+    const jti = 'test-jti-valid';
+    const { sign } = await import('jsonwebtoken');
+    const token = sign({ id: 'user-1', jti }, secret, { expiresIn: 60 });
+
+    await store.save(jti, 60);
+
+    const plugin = createAuthPlugin({ secret, store });
+    const req: any = {
+      headers: { authorization: `Bearer ${token}` },
+      state: {},
+    };
+    const res: any = { status: vi.fn().mockReturnThis(), send: vi.fn() };
+
+    await plugin(req, res);
+
+    expect(res.status).not.toHaveBeenCalled();
+    expect(req.state.authUser).toBeDefined();
+    expect(req.state.authUser.id).toBe('user-1');
+  });
+
+  it('rejects a token whose jti was revoked from the store', async () => {
+    const jti = 'test-jti-revoked';
+    const { sign } = await import('jsonwebtoken');
+    const token = sign({ id: 'user-2', jti }, secret, { expiresIn: 60 });
+
+    await store.save(jti, 60);
+    await store.revoke(jti);
+
+    const plugin = createAuthPlugin({ secret, store });
+    const req: any = {
+      headers: { authorization: `Bearer ${token}` },
+      state: {},
+    };
+    const res: any = { status: vi.fn().mockReturnThis(), send: vi.fn() };
+
+    await plugin(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.send).toHaveBeenCalledWith(null, expect.stringMatching(/revoked/i));
+  });
+
+  it('rejects a token with no jti when store is configured', async () => {
+    const { sign } = await import('jsonwebtoken');
+    const token = sign({ id: 'user-3' }, secret, { expiresIn: 60 }); // no jti
+
+    const plugin = createAuthPlugin({ secret, store });
+    const req: any = {
+      headers: { authorization: `Bearer ${token}` },
+      state: {},
+    };
+    const res: any = { status: vi.fn().mockReturnThis(), send: vi.fn() };
+
+    await plugin(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.send).toHaveBeenCalledWith(null, expect.stringMatching(/jti/i));
   });
 });

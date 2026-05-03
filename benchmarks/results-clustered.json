@@ -1,0 +1,101 @@
+[
+  {
+    "id": "native-1w",
+    "label": "Native (uWS)    — 1 worker",
+    "workers": 1,
+    "reqPerSec": 50493.34,
+    "latAvg": 19.53,
+    "latP99": 38,
+    "errors": 0,
+    "proj4cReqPerSec": 181776,
+    "proj8cReqPerSec": 363552
+  },
+  {
+    "id": "native-2w",
+    "label": "Native (uWS)    — 2 workers",
+    "workers": 2,
+    "reqPerSec": 44368,
+    "latAvg": 22.32,
+    "latP99": 44,
+    "errors": 0,
+    "proj4cReqPerSec": null,
+    "proj8cReqPerSec": null
+  },
+  {
+    "id": "native-4w",
+    "label": "Native (uWS)    — 4 workers",
+    "workers": 4,
+    "reqPerSec": 36813.34,
+    "latAvg": 27.1,
+    "latP99": 53,
+    "errors": 0,
+    "proj4cReqPerSec": null,
+    "proj8cReqPerSec": null
+  },
+  {
+    "id": "fastify-1w",
+    "label": "Fastify adapter — 1 worker",
+    "workers": 1,
+    "reqPerSec": 10486.67,
+    "latAvg": 94.73,
+    "latP99": 180,
+    "errors": 0,
+    "proj4cReqPerSec": 37752,
+    "proj8cReqPerSec": 75504
+  },
+  {
+    "id": "fastify-2w",
+    "label": "Fastify adapter — 2 workers",
+    "workers": 2,
+    "reqPerSec": 11884.5,
+    "latAvg": 83.81,
+    "latP99": 169,
+    "errors": 0,
+    "proj4cReqPerSec": null,
+    "proj8cReqPerSec": null
+  },
+  {
+    "id": "fastify-4w",
+    "label": "Fastify adapter — 4 workers",
+    "workers": 4,
+    "reqPerSec": 11005.59,
+    "latAvg": 91.51,
+    "latP99": 221,
+    "errors": 0,
+    "proj4cReqPerSec": null,
+    "proj8cReqPerSec": null
+  },
+  {
+    "id": "http-1w",
+    "label": "HTTP adapter    — 1 worker",
+    "workers": 1,
+    "reqPerSec": 9964.67,
+    "latAvg": 99.82,
+    "latP99": 191,
+    "errors": 0,
+    "proj4cReqPerSec": 35873,
+    "proj8cReqPerSec": 71746
+  },
+  {
+    "id": "http-2w",
+    "label": "HTTP adapter    — 2 workers",
+    "workers": 2,
+    "reqPerSec": 11569.5,
+    "latAvg": 86.01,
+    "latP99": 173,
+    "errors": 0,
+    "proj4cReqPerSec": null,
+    "proj8cReqPerSec": null
+  },
+  {
+    "id": "http-4w",
+    "label": "HTTP adapter    — 4 workers",
+    "workers": 4,
+    "reqPerSec": 10720.75,
+    "latAvg": 94.05,
+    "latP99": 226,
+    "errors": 0,
+    "proj4cReqPerSec": null,
+    "proj8cReqPerSec": null
+  }
+]

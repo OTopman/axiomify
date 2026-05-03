@@ -1,40 +1,27 @@
 # @axiomify/static
 
-Static file serving from an Axiomify app.
+Static file serving for Axiomify.
 
-## Install
+## API
 
-```bash
-npm install @axiomify/static
-```
-
-## Export
-
-- `serveStatic(app, options)`
+`serveStatic(app, options)` registers a wildcard GET route under `prefix`.
 
 ## Options
 
-- `prefix`
-- `root`
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `prefix` | `string` | required | URL prefix (e.g. `/assets`) |
+| `root` | `string` | required | Filesystem root directory |
+| `cacheControl` | `string` | `'public, max-age=86400'` | Cache-Control header value |
+| `forceDownloadExtensions` | `string[]` | `['.svg', '.html', '.htm', '.xml']` | Served as `attachment` (download) |
+| `serveIndex` | `boolean` | `true` | Serve `index.html` for directory paths |
 
-`root` should be an absolute path or a path you resolve intentionally.
+## Supported MIME types
 
-## Example
+Covers 40+ types including WebP, AVIF, WASM, WOFF2, MP3, CSV, YAML, and all common web assets. Unknown extensions default to `application/octet-stream`.
 
-```ts
-import path from 'path';
-import { serveStatic } from '@axiomify/static';
+## Security
 
-serveStatic(app, {
-  prefix: '/assets',
-  root: path.join(process.cwd(), 'public'),
-});
-```
-
-## Behavior
-
-- registers a wildcard `GET` route
-- streams file contents
-- emits ETags
-- supports `304 Not Modified`
-- blocks path traversal outside the configured root
+- Path traversal blocked via `realpath` comparison before serving
+- SVG/HTML forced to `Content-Disposition: attachment` by default — they execute JS when rendered inline
+- ETag-based conditional GET (`If-None-Match` → 304) included automatically

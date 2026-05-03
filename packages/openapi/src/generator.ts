@@ -1,5 +1,5 @@
 import type { Axiomify, RouteDefinition } from '@axiomify/core';
-import { zodToJsonSchema } from 'zod-to-json-schema';
+import type { ZodTypeAny } from 'zod';
 
 export interface OpenApiOptions {
   info: {
@@ -7,82 +7,105 @@ export interface OpenApiOptions {
     version: string;
     description?: string;
   };
+  /** Automatically infer 200 response schema from `schema.response`. Default: true */
   autoInferResponses?: boolean;
-
   /**
-   * OpenAPI 3.0 Components Object.
-   * Used to define reusable documentation assets, such as global `securitySchemes`
-   * (e.g., Bearer tokens, API keys) that can be referenced by individual routes.
+   * OpenAPI 3.0 Components Object. Used to define reusable assets such as
+   * global `securitySchemes` referenced by individual routes.
    * @example { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer' } } }
    */
   components?: Record<string, unknown>;
-
   /**
-   * Global OpenAPI 3.0 Security Requirement Object.
-   * Applies the specified security configuration to ALL routes in the application by default.
-   * Individual routes can override this by defining their own `schema.security` array.
+   * Global OpenAPI 3.0 Security Requirement Object. Applies to ALL routes by
+   * default. Individual routes can override via `schema.security`.
    * @example [{ bearerAuth: [] }]
    */
   security?: Array<Record<string, string[]>>;
 }
 
-/**
- * Duck-types a value as a Zod schema without reaching into `_def` (internal,
- * unstable across Zod majors). Anything exposing `safeParse` is treated as a
- * single validator; otherwise we assume a `Record<statusCode, ZodTypeAny>`.
- */
-function isZodSchema(value: unknown): boolean {
+// ─── Zod → JSON Schema conversion ────────────────────────────────────────────
+// Zod v4 ships `z.toJSONSchema()` built-in. zod-to-json-schema (v3.x) does
+// NOT support Zod v4 — it returns `{}` for every schema.
+// We use the built-in method when available; fall back to zod-to-json-schema
+// only for Zod v3 installations.
+
+type ZodLike = ZodTypeAny & { toJSONSchema?: (opts?: Record<string, unknown>) => Record<string, unknown> };
+
+function zodSchemaToOpenApi(schema: ZodTypeAny): Record<string, unknown> {
+  const s = schema as ZodLike;
+
+  // Zod v4 native path
+  if (typeof s.toJSONSchema === 'function') {
+    const full = s.toJSONSchema({ target: 'openApi3_1' }) as Record<string, unknown>;
+    // Strip the $schema meta key — OpenAPI objects don't include it inline.
+    const { $schema: _dropped, ...rest } = full as Record<string, unknown>;
+    return rest;
+  }
+
+  // Zod v3 fallback via zod-to-json-schema
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { zodToJsonSchema } = require('zod-to-json-schema');
+    return zodToJsonSchema(schema, { target: 'openApi3' }) as Record<string, unknown>;
+  } catch {
+    return { type: 'object' };
+  }
+}
+
+function isZodSchema(value: unknown): value is ZodTypeAny {
   return (
     typeof value === 'object' &&
     value !== null &&
-    typeof (value as any).safeParse === 'function'
+    typeof (value as Record<string, unknown>).safeParse === 'function'
   );
 }
 
-export class OpenApiGenerator {
-  constructor(private app: Axiomify, private options: OpenApiOptions) {}
+// ─── Generator ────────────────────────────────────────────────────────────────
 
-  public generate(): Record<string, any> {
-    const spec: any = {
+export class OpenApiGenerator {
+  constructor(
+    private readonly app: Axiomify,
+    private readonly options: OpenApiOptions,
+  ) {}
+
+  public generate(): Record<string, unknown> {
+    const spec: Record<string, unknown> = {
       openapi: '3.0.3',
       info: this.options.info,
-      paths: {},
+      paths: {} as Record<string, unknown>,
     };
 
-    if (this.options.components) {
-      spec.components = this.options.components;
-    }
-
-    if (this.options.security) {
-      spec.security = this.options.security;
-    }
+    if (this.options.components) spec.components = this.options.components;
+    if (this.options.security) spec.security = this.options.security;
 
     for (const route of this.app.registeredRoutes) {
       const openApiPath = this.formatPath(route.path);
       const method = route.method.toLowerCase();
+      const paths = spec.paths as Record<string, Record<string, unknown>>;
 
-      if (!spec.paths[openApiPath]) {
-        spec.paths[openApiPath] = {};
-      }
+      if (!paths[openApiPath]) paths[openApiPath] = {};
 
-      spec.paths[openApiPath][method] = {
-        summary: `Handler for ${route.method} ${route.path}`,
-        description: route.schema?.description,
-        tags: route.schema?.tags,
+      const operation: Record<string, unknown> = {
+        summary: `${route.method} ${route.path}`,
         parameters: this.extractParameters(route),
-        requestBody: this.extractBody(route),
-        responses: this.extractResponse(route), // Pass route directly
-        ...(route.schema?.security && { security: route.schema.security }),
+        responses: this.extractResponses(route),
       };
+
+      if (route.schema?.description) operation.description = route.schema.description;
+      if (route.schema?.tags) operation.tags = route.schema.tags;
+      if (route.schema?.security) operation.security = route.schema.security;
+
+      const body = this.extractBody(route);
+      if (body) operation.requestBody = body;
+
+      paths[openApiPath][method] = operation;
     }
 
     return spec;
   }
 
-  /**
-   * Translates /users/:id to /users/{id}
-   */
-  private formatPath(path: string): string {
+  /** Translates Axiomify path syntax to OpenAPI: `/users/:id` → `/users/{id}` */
+  public formatPath(path: string): string {
     return path.replace(/:([a-zA-Z0-9_]+)/g, '{$1}');
   }
 
@@ -90,33 +113,22 @@ export class OpenApiGenerator {
     const parameters: unknown[] = [];
 
     if (route.schema?.params) {
-      const paramSchema = zodToJsonSchema(route.schema.params as any, {
-        target: 'openApi3',
-      });
-      for (const [key, prop] of Object.entries(
-        (paramSchema as any).properties || {},
-      )) {
-        parameters.push({
-          name: key,
-          in: 'path',
-          // OpenAPI 3 requires `required: true` for every path parameter.
-          // The previous expression was `paramSchema.required?.includes(key) || true`
-          // — the trailing `|| true` made the whole left side dead code.
-          required: true,
-          schema: prop,
-        });
+      const paramSchema = zodSchemaToOpenApi(route.schema.params as unknown as ZodTypeAny);
+      const properties = (paramSchema.properties as Record<string, unknown>) ?? {};
+      for (const [key, prop] of Object.entries(properties)) {
+        parameters.push({ name: key, in: 'path', required: true, schema: prop });
       }
     }
 
     if (route.schema?.query) {
-      const querySchema = zodToJsonSchema(route.schema.query as any, {
-        target: 'openApi3',
-      }) as any;
-      for (const [key, prop] of Object.entries(querySchema.properties || {})) {
+      const querySchema = zodSchemaToOpenApi(route.schema.query as unknown as ZodTypeAny);
+      const properties = (querySchema.properties as Record<string, unknown>) ?? {};
+      const required = (querySchema.required as string[]) ?? [];
+      for (const [key, prop] of Object.entries(properties)) {
         parameters.push({
           name: key,
           in: 'query',
-          required: querySchema.required?.includes(key) ?? false,
+          required: required.includes(key),
           schema: prop,
         });
       }
@@ -125,96 +137,81 @@ export class OpenApiGenerator {
     return parameters;
   }
 
-  private extractBody(route: RouteDefinition): any {
-    if (!route.schema || (!route.schema.body && !route.schema.files)) {
-      return undefined;
-    }
+  private extractBody(route: RouteDefinition): unknown {
+    if (!route.schema?.body && !route.schema?.files) return undefined;
 
     const hasFiles = !!route.schema.files;
     const contentType = hasFiles ? 'multipart/form-data' : 'application/json';
 
-    let finalSchema: any = { type: 'object', properties: {} };
+    let finalSchema: Record<string, unknown> = { type: 'object', properties: {} };
 
     if (route.schema.body) {
-      const bodySchema = zodToJsonSchema(route.schema.body as any, {
-        target: 'openApi3',
-      }) as any;
+      const bodySchema = zodSchemaToOpenApi(route.schema.body as unknown as ZodTypeAny);
 
       if (bodySchema.type === 'object') {
-        // Standard JSON object payload
-        finalSchema.properties = { ...bodySchema.properties };
+        finalSchema.properties = { ...(bodySchema.properties as Record<string, unknown>) };
         if (bodySchema.required) finalSchema.required = bodySchema.required;
-      } else {
-        // Arrays or Primitives (e.g., z.array(z.string()))
-        if (!hasFiles) {
-          finalSchema = bodySchema; // Output the array schema directly
-        } else {
-          // Mixed multipart: Wrap the array inside a generic payload property
-          finalSchema.properties['payload'] = bodySchema;
+        if (bodySchema.additionalProperties !== undefined) {
+          finalSchema.additionalProperties = bodySchema.additionalProperties;
         }
+      } else {
+        // Arrays or primitives — output directly unless mixing with files
+        finalSchema = hasFiles
+          ? { type: 'object', properties: { payload: bodySchema } }
+          : bodySchema;
       }
     }
 
     if (hasFiles) {
-      // Tell TypeScript to treat the generic files object as a standard record
-      for (const [fieldName, config] of Object.entries(
-        route.schema.files as Record<string, any>,
-      )) {
-        finalSchema.properties[fieldName] = {
+      const files = route.schema.files as Record<string, { maxSize?: number; description?: string }>;
+      const props = (finalSchema.properties as Record<string, unknown>) ?? {};
+      for (const [fieldName, config] of Object.entries(files)) {
+        props[fieldName] = {
           type: 'string',
           format: 'binary',
-          description: `Max size: ${config.maxSize} bytes`,
+          ...(config.description ? { description: config.description } : {}),
+          ...(config.maxSize ? { description: `Max size: ${config.maxSize} bytes` } : {}),
         };
       }
+      finalSchema.properties = props;
     }
 
-    return {
-      content: {
-        [contentType]: { schema: finalSchema },
-      },
-    };
+    return { required: true, content: { [contentType]: { schema: finalSchema } } };
   }
 
-  private extractResponse(route: RouteDefinition): any {
-    if (!route.schema?.response) {
-      return {
-        '200': {
-          description: 'Successful response',
-          content: { 'application/json': { schema: { type: 'object' } } },
-        },
-      };
-    }
+  private extractResponses(route: RouteDefinition): Record<string, unknown> {
+    const defaultResponse = {
+      '200': {
+        description: 'Successful response',
+        content: { 'application/json': { schema: { type: 'object' } } },
+      },
+    };
+
+    if (!route.schema?.response) return defaultResponse;
 
     const responseSchema = route.schema.response;
-
-    const responses: any = {};
+    const responses: Record<string, unknown> = {};
 
     if (isZodSchema(responseSchema)) {
-      // Single schema defaults to 200
       responses['200'] = {
         description: 'Successful response',
         content: {
-          'application/json': {
-            schema: zodToJsonSchema(responseSchema as any, {
-              target: 'openApi3',
-            }),
-          },
+          'application/json': { schema: zodSchemaToOpenApi(responseSchema) },
         },
       };
     } else if (typeof responseSchema === 'object' && responseSchema !== null) {
-      // Handle custom Record mapping (e.g., { 200: z.object, 400: z.object })
-      for (const [code, schema] of Object.entries(responseSchema)) {
+      for (const [code, schema] of Object.entries(
+        responseSchema as unknown as Record<string, ZodTypeAny>,
+      )) {
         responses[code] = {
           description: `Response ${code}`,
           content: {
-            'application/json': {
-              schema: zodToJsonSchema(schema as any, { target: 'openApi3' }),
-            },
+            'application/json': { schema: zodSchemaToOpenApi(schema) },
           },
         };
       }
     }
 
-    return responses;
+    return Object.keys(responses).length > 0 ? responses : defaultResponse;
   }
 }

@@ -1,50 +1,44 @@
 # @axiomify/auth
 
-JWT authentication helpers for Axiomify route plugins.
+JWT authentication and refresh-token rotation for Axiomify.
 
-## Install
+## API
 
-```bash
-npm install @axiomify/auth jsonwebtoken
-```
+- `createAuthPlugin(options)` — route plugin that validates Bearer tokens
+- `createRefreshHandler(options)` — route handler that rotates refresh tokens
+- `getAuthUser(req)` — retrieves the authenticated user from `req.state`
+- `MemoryTokenStore` — in-process token store (testing / single-process only)
 
-## Exports
+## Access token revocation
 
-- `createAuthPlugin(options)`
-- `createRefreshHandler(options)`
-- `useAuth(options)` as an alias of `createAuthPlugin`
+Pass `store` to `createAuthPlugin` to check the store on every request:
 
-## Typical Usage
-
-```ts
-import { createAuthPlugin } from '@axiomify/auth';
-
+```typescript
 const requireAuth = createAuthPlugin({
   secret: process.env.JWT_SECRET!,
-});
-
-app.route({
-  method: 'GET',
-  path: '/me',
-  plugins: [requireAuth],
-  handler: async (req, res) => {
-    res.send({ id: req.user?.id });
-  },
+  store: redisTokenStore, // store.exists(jti) called on every request
 });
 ```
 
-## Options
+When `store` is configured, tokens **must** have a `jti` claim. Tokens without `jti` are rejected with 401.
 
-`AuthOptions` supports:
+To revoke an access token immediately:
+```typescript
+await store.revoke(jti); // subsequent requests with this token → 401
+```
 
-- `secret`
-- `algorithms`
-- `getToken`
+## Refresh token rotation
 
-The plugin populates `req.user` after a successful verify.
+`createRefreshHandler` with `store`:
+- Verifies the incoming refresh token
+- Calls `store.exists(jti)` — rejects if missing (revoked or never saved)
+- Calls `store.revoke(jti)` — invalidates the old token
+- Issues a new access token and refresh token
+- Calls `store.save(newJti, refreshTtl)` — saves the new JTI
 
-## Refresh Flow
+## Production notes
 
-`createRefreshHandler(...)` creates a normal route handler, not a route plugin.
-
-Use it for routes like `POST /auth/refresh`.
+- Use Redis-backed `TokenStore` in production — `MemoryTokenStore` is per-process
+- Set `accessTokenTtl: 900` (15 min) and `refreshTokenTtl: 2592000` (30 days)
+- Rate-limit `/auth/refresh` with `@axiomify/rate-limit`
+- Secrets must be ≥32 chars, loaded from environment variables only

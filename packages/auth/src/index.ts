@@ -18,6 +18,24 @@ export interface AuthOptions {
   getToken?: (req: AxiomifyRequest) => string | null;
   issuer?: string;
   audience?: string | string[];
+  /**
+   * Optional token store for access token revocation.
+   *
+   * When provided, `createAuthPlugin` calls `store.exists(jti)` on every
+   * authenticated request. If `exists()` returns `false` (jti was revoked or
+   * never saved), the request is rejected with 401.
+   *
+   * Use case: immediate logout. When a user logs out, call `store.revoke(jti)`
+   * — all subsequent requests using that access token fail immediately without
+   * waiting for the token to expire.
+   *
+   * ⚠️  Every authenticated request hits the store. Use Redis in production.
+   * `MemoryTokenStore` is per-process and not shared across cluster workers.
+   *
+   * When using a store, you must call `store.save(jti, ttlSeconds)` when
+   * issuing access tokens so they exist in the store before use.
+   */
+  store?: TokenStore;
 }
 
 export interface TokenStore {
@@ -176,7 +194,18 @@ export function createAuthPlugin(options: AuthOptions): PluginHandler {
     const token = getToken(req);
     if (!token) return res.status(401).send(null, 'Unauthorized: Missing token');
     try {
-      const decoded = (await verifyAsync(token, options.secret, { algorithms, ...issuerAudience })) as AuthUser;
+      const decoded = (await verifyAsync(token, options.secret, { algorithms, ...issuerAudience })) as AuthUser & { jti?: string };
+
+      // Optional access token revocation — check the store if one was provided.
+      // If the jti is absent from the store (was never saved or was revoked),
+      // reject the request immediately without waiting for token expiry.
+      if (options.store) {
+        const jti = decoded.jti;
+        if (!jti) return res.status(401).send(null, 'Unauthorized: Token missing jti claim');
+        const active = await options.store.exists(jti);
+        if (!active) return res.status(401).send(null, 'Unauthorized: Token has been revoked');
+      }
+
       req.state.authUser = decoded;
     } catch {
       return res.status(401).send(null, 'Unauthorized: Invalid or expired token');

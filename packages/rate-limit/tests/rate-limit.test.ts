@@ -132,3 +132,72 @@ describe('createRateLimitPlugin aliases', () => {
     expect(res.status).toHaveBeenCalledWith(429);
   });
 });
+
+// ─── RedisStore EVALSHA caching ───────────────────────────────────────────────
+
+describe('RedisStore — EVALSHA caching', () => {
+  it('calls eval() on first call, then evalsha() on subsequent calls', async () => {
+    const evalCalls: string[] = [];
+    const evalshaCalls: string[] = [];
+
+    const mockClient = {
+      eval: vi.fn().mockImplementation((_script: unknown, numkeys: unknown, ...rest: unknown[]) => {
+        evalCalls.push('eval');
+        return Promise.resolve([1, Math.ceil(Date.now() / 1000) + 60]);
+      }),
+      evalsha: vi.fn().mockImplementation((_sha: unknown, numkeys: unknown, ...rest: unknown[]) => {
+        evalshaCalls.push('evalsha');
+        return Promise.resolve([1, Math.ceil(Date.now() / 1000) + 60]);
+      }),
+    };
+
+    const { RedisStore } = await import('../src/index');
+    const store = new RedisStore(mockClient as any);
+
+    await store.increment('key1', 60_000);
+    expect(evalCalls).toHaveLength(1);
+    expect(evalshaCalls).toHaveLength(0);
+
+    await store.increment('key1', 60_000);
+    expect(evalCalls).toHaveLength(1);   // no new eval call
+    expect(evalshaCalls).toHaveLength(1); // evalsha used
+  });
+
+  it('falls back to eval() on NOSCRIPT error and retries evalsha after', async () => {
+    let evalshaShouldFail = true;
+    const evalCallCount = { n: 0 };
+    const evalshaCallCount = { n: 0 };
+
+    const mockClient = {
+      eval: vi.fn().mockImplementation((..._args: unknown[]) => {
+        evalCallCount.n++;
+        return Promise.resolve([evalCallCount.n, Math.ceil(Date.now() / 1000) + 60]);
+      }),
+      evalsha: vi.fn().mockImplementation((..._args: unknown[]) => {
+        evalshaCallCount.n++;
+        if (evalshaShouldFail) {
+          evalshaShouldFail = false;
+          return Promise.reject(new Error('NOSCRIPT No matching script'));
+        }
+        return Promise.resolve([99, Math.ceil(Date.now() / 1000) + 60]);
+      }),
+    };
+
+    const { RedisStore } = await import('../src/index');
+    const store = new RedisStore(mockClient as any);
+
+    // Force _scriptLoaded = true so EVALSHA fires first
+    (store as any)._scriptLoaded = true;
+
+    // First call: EVALSHA throws NOSCRIPT → falls back to EVAL
+    await store.increment('key1', 60_000);
+    expect(evalCallCount.n).toBe(1);    // eval was called once
+    expect(evalshaCallCount.n).toBe(1); // evalsha was tried
+
+    // After fallback, _scriptLoaded is reset to true, so next call uses EVALSHA again
+    const r2 = await store.increment('key1', 60_000);
+    expect(r2.count).toBe(99);          // evalsha succeeded this time
+    expect(evalCallCount.n).toBe(1);    // eval NOT called again
+    expect(evalshaCallCount.n).toBe(2); // evalsha called on second request
+  });
+});

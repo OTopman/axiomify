@@ -1,60 +1,42 @@
 # @axiomify/ws
 
-WebSocket management with schema validation and room support.
+WebSocket support for Axiomify. Works with all adapters.
 
-## Install
+## Adapter compatibility
 
-```bash
-npm install @axiomify/ws ws zod
+`WsManager` requires a raw `http.Server`. Use `getServerFromAdapter` to extract it:
+
+```typescript
+import { getServerFromAdapter, WsManager } from '@axiomify/ws';
+
+// @axiomify/http
+const server = adapter.listen(3000);
+const ws = new WsManager({ server, path: '/ws' });
+
+// @axiomify/fastify
+await adapter.listen(3000);
+const ws = new WsManager({ server: getServerFromAdapter(adapter), path: '/ws' });
+
+// @axiomify/express, @axiomify/hapi — same pattern
+const ws = new WsManager({ server: getServerFromAdapter(adapter), path: '/ws' });
 ```
-
-## Exports
-
-- `useWebSockets(app, options)`
-- `WsManager`
 
 ## Options
 
-- `server`
-- `path`
-- `heartbeatIntervalMs`
-- `maxMessageBytes`
-- `authenticate`
-- `onBinary`
+| Option | Type | Default |
+|---|---|---|
+| `server` | `http.Server` | required |
+| `path` | `string` | `/ws` |
+| `heartbeatIntervalMs` | `number` | `30000` |
+| `maxMessageBytes` | `number` | `65536` |
+| `maxConnections` | `number` | `10000` |
+| `maxBufferedBytes` | `number` | `1048576` |
+| `authenticate` | `async (req) => User \| null` | — |
 
-`server` is a Node `http.Server`, not a `ws.Server`.
+## Events and rooms
 
-## Example
-
-```ts
-const adapter = new ExpressAdapter(app);
-const server = adapter.listen(3000);
-
-useWebSockets(app, {
-  server,
-  path: '/ws',
-  authenticate: async (_req) => ({ id: 'user-1' }),
-});
-
-const ws = (app as any).ws as WsManager;
-
-ws.on(
-  'chat:message',
-  z.object({ room: z.string(), text: z.string() }),
-  (client, data) => {
-    ws.joinRoom(client, data.room);
-    ws.broadcastToRoom(data.room, 'chat:message', {
-      sender: client.user?.id,
-      text: data.text,
-    });
-  },
-);
+```typescript
+ws.on('message', (client, data) => ws.broadcast('message', data));
+client.join('room:general');
+ws.toRoom('room:general').emit('join', { user: client.user });
 ```
-
-## Features
-
-- per-event Zod validation
-- room join and leave support
-- room broadcast support
-- heartbeat and termination of dead clients
-- optional binary frame handling

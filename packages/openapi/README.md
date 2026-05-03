@@ -1,80 +1,80 @@
 # @axiomify/openapi
 
-The official OpenAPI 3.0 specification generator and Swagger UI plugin for the Axiomify framework.
+Auto-generates OpenAPI 3.0 documentation from your Axiomify routes and Zod schemas. Supports Zod v4 natively via `z.toJSONSchema()`.
 
-`@axiomify/openapi` completely eliminates the need to maintain separate API documentation. It automatically introspects your Axiomify Radix router, parses your Zod validation schemas, and serves a fully interactive Swagger UI—guaranteeing that your documentation perfectly matches your runtime validation.
-
-## ✨ Features
-
-- **Zero-Touch Documentation:** Automatically converts your Zod request and response schemas into standard OpenAPI v3 JSON.
-- **Embedded Swagger UI:** Serves a beautiful, interactive API explorer directly from your application without requiring external hosting.
-- **Robust Pathing:** Bulletproof route prefix normalization ensures your documentation paths never break, regardless of trailing slashes in your configuration.
-- **Always in Sync:** Because your route definitions drive the documentation, your API specs can never drift from your actual codebase.
-
-## 📦 Installation
-
-Ensure you install the OpenAPI plugin alongside the Axiomify core and your validation library:
+## Install
 
 ```bash
-npm install @axiomify/openapi @axiomify/core zod
-````
+npm install @axiomify/openapi
+```
 
-## 🚀 Quick Start
-
-Attaching the OpenAPI generator to your Axiomify instance takes only one line of code.
+## Quick start
 
 ```typescript
 import { Axiomify } from '@axiomify/core';
-import { useOpenAPI } from '@axiomify/openapi';
+import { useSwagger } from '@axiomify/openapi';
 import { z } from 'zod';
 
-// 1. Initialize the Axiomify Core Engine
 const app = new Axiomify();
 
-// 2. Attach the OpenAPI Plugin
-// This automatically mounts /docs (Swagger UI) and /docs/openapi.json (Raw Spec)
-useOpenAPI(app, {
-  routePrefix: '/docs', // Automatically handles trailing slash normalization
-  info: {
-    title: 'My Axiomify API',
-    version: '1.0.0',
-    description: 'Auto-generated API documentation.'
-  }
-});
-
-// 3. Register your routes
-// The plugin automatically detects this route, extracts the Zod schema,
-// and builds the OpenAPI parameter definitions.
 app.route({
   method: 'POST',
   path: '/users',
   schema: {
-    body: z.object({
-      email: z.string().email().openapi({ description: 'User email address' }),
-      name: z.string().min(2).openapi({ description: 'Full name' })
-    })
+    body: z.object({ email: z.string().email(), name: z.string() }),
+    response: z.object({ id: z.string(), email: z.string(), name: z.string() }),
+    tags: ['Users'],
+    description: 'Create a new user',
   },
-  handler: async (req, res) => {
-    const { email, name } = req.body;
-    return res.status(201).send({ success: true, user: { email, name } });
-  }
+  handler: async (req, res) => res.status(201).send({ id: 'usr_1', ...req.body }),
 });
 
-// 4. Mount to your preferred adapter and navigate to http://localhost:3000/docs
-// await app.handle(req, res);
+useSwagger(app, {
+  info: { title: 'My API', version: '1.0.0' },
+  routePrefix: '/docs',          // UI at /docs, spec at /docs/openapi.json
+  protect: (req) => req.headers['x-internal-token'] === process.env.DOCS_TOKEN,
+});
 ```
 
-## 🛠️ Configuration Options
+## Security schemes
 
-| Option | Type | Description |
-| :--- | :--- | :--- |
-| `routePrefix` | `string` | The base URL where the Swagger UI will be hosted (e.g., `/docs`). |
-| `info` | `object` | Standard OpenAPI info object containing `title`, `version`, and `description`. |
+```typescript
+useSwagger(app, {
+  info: { title: 'My API', version: '1.0.0' },
+  components: {
+    securitySchemes: {
+      bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+    },
+  },
+  security: [{ bearerAuth: [] }],  // applied globally
+});
 
-## 📚 Documentation
+// Per-route override
+app.route({
+  method: 'GET',
+  path: '/public',
+  schema: { security: [] }, // opt out of global security for this route
+  handler: async (_req, res) => res.send({ public: true }),
+});
+```
 
-For complete documentation, guides, and advanced plugin authoring, please visit the [Axiomify Master Repository](https://github.com/OTopman/axiomify).
+## Multiple response schemas
 
-## 📄 License
-
-MIT
+```typescript
+app.route({
+  method: 'GET',
+  path: '/users/:id',
+  schema: {
+    params: z.object({ id: z.string().uuid() }),
+    response: {
+      200: z.object({ id: z.string(), name: z.string() }),
+      404: z.object({ message: z.string() }),
+    },
+  },
+  handler: async (req, res) => {
+    const user = await db.users.findById(req.params.id);
+    if (!user) return res.status(404).send(null, 'Not Found');
+    res.send(user);
+  },
+});
+```

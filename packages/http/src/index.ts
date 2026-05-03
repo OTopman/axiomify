@@ -59,17 +59,35 @@ export class HttpAdapter {
 
     this.server = http.createServer(async (req, res) => {
       try {
-        const parsedBody = await this.parseBody(
-          req,
-          options.bodyLimitBytes ?? 1_048_576,
-        );
+        const urlParts = (req.url || '/').split('?');
+        const path = urlParts[0];
+        const method = (req.method || 'GET').toUpperCase();
+
+        // Resolve the route using Axiomify's router once — result is passed
+        // directly to handleMatchedRoute so the router is never called again.
+        const match = this.core.router.lookup(method as never, path);
+
+        if (!match) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ status: 'failed', message: 'Route not found' }));
+          return;
+        }
+
+        if ('error' in match) {
+          res.writeHead(405, {
+            'Content-Type': 'application/json',
+            Allow: match.allowed.join(', '),
+          });
+          res.end(JSON.stringify({ status: 'failed', message: 'Method Not Allowed' }));
+          return;
+        }
+
+        const parsedBody = await this.parseBody(req, options.bodyLimitBytes ?? 1_048_576);
         const axiomifyReq = this.translateRequest(req, parsedBody);
-        const axiomifyRes = this.translateResponse(
-          res,
-          this.core.serializer,
-          axiomifyReq,
-        );
-        await this.core.handle(axiomifyReq, axiomifyRes);
+        const axiomifyRes = this.translateResponse(res, this.core.serializer, axiomifyReq);
+
+        // Pass the pre-resolved route and params — no second lookup.
+        await this.core.handleMatchedRoute(axiomifyReq, axiomifyRes, match.route, match.params);
       } catch (err) {
         this.handleAdapterError(err);
         if (!res.headersSent) {
@@ -82,14 +100,8 @@ export class HttpAdapter {
               : statusCode === 400
                 ? 'Bad Request'
                 : 'Internal Server Error';
-
           res.writeHead(statusCode, { 'Content-Type': 'application/json' });
-          res.end(
-            JSON.stringify({
-              status: 'failed',
-              message,
-            }),
-          );
+          res.end(JSON.stringify({ status: 'failed', message }));
         }
       }
     });
@@ -210,18 +222,13 @@ export class HttpAdapter {
       get headers() {
         return req.headers as Record<string, string | string[] | undefined>;
       },
-      get body() {
-        return parsedBody;
-      },
-      get query() {
-        return Object.fromEntries(query.entries());
-      },
-      get params() {
-        return _params;
-      },
-      get state() {
-        return _state;
-      },
+      // body, query, and params are declared as writable properties (not getters)
+      // so the ValidationCompiler can assign the post-transform value back onto
+      // the request object (e.g. `req.body = result.data` after Zod parse).
+      body: parsedBody,
+      query: Object.fromEntries(query.entries()) as Record<string, string | string[]>,
+      params: _params,
+      state: _state,
       get raw() {
         return req;
       },

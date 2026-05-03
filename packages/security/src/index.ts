@@ -42,13 +42,12 @@ export interface SecurityOptions {
   sanitizerMaxDepth?: number;
 }
 
-function patchRequestProperty(req: unknown, key: string, newValue: unknown) {
-  Object.defineProperty(req, key, {
-    value: newValue,
-    writable: true,
-    configurable: true,
-    enumerable: true,
-  });
+function patchRequestProperty(req: AxiomifyRequest, key: keyof AxiomifyRequest, newValue: unknown) {
+  // Direct assignment is faster than Object.defineProperty — defineProperty
+  // switches V8's hidden-class optimisation off for the object, degrading all
+  // subsequent property accesses. req.body / req.query / req.params are
+  // already writable on every adapter's AxiomifyRequest implementation.
+  (req as unknown as Record<string, unknown>)[key as string] = newValue;
 }
 
 export function useSecurity(

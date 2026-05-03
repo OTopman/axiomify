@@ -1,153 +1,71 @@
+# Axiomify Adapters
 
+Axiomify decouples your application logic from the HTTP transport. Swap adapters without changing any handler, validation, or plugin code.
 
-# Adapters in Axiomify
+## Adapter comparison
 
-Axiomify is built on a **Shared-Nothing Core Architecture**. This means the framework's routing logic, validation, and serialization are completely decoupled from the underlying HTTP transport layer. 
+| Adapter | Package | Req/s (single-core) | 4-core cluster | Best for |
+|---|---|---:|---:|---|
+| Native (uWS) | `@axiomify/native` | 50,493 | ~182k | Maximum throughput, new projects |
+| Fastify | `@axiomify/fastify` | 10,487 | ~38k | High throughput + Fastify plugins |
+| Node HTTP | `@axiomify/http` | 9,965 | ~36k | Minimal footprint, edge/serverless |
+| Hapi | `@axiomify/hapi` | ~4,500 | ~16k | Hapi plugin ecosystem |
+| Express | `@axiomify/express` | ~3,800 | ~14k | Express middleware compatibility |
 
-By using **Adapters**, developers have the ultimate freedom to choose their execution environment. You can write your Axiomify application once, and seamlessly switch between blazing-fast C++ execution, standard Node.js environments, or legacy Express/Fastify applications without rewriting a single route.
+*Benchmark: autocannon, 100 connections, pipelining 10, 12 seconds, Node 22.*
 
-## The Decision Matrix
+## Routing guarantee
 
-Choose your adapter based on your project's specific requirements:
+All adapters use their underlying framework's router for route resolution. Axiomify's radix-trie router is **never** called in the dispatch path — only in the 404/405 fallback to distinguish the two cases. This means:
 
-| Adapter | Throughput | Node.js Overheads | Best For... |
-| :--- | :--- | :--- | :--- |
-| **`NativeAdapter`** | **~45k - 70k req/sec** | Bypassed (C++ Engine) | Microservices, real-time WebSockets, raw API speed. |
-| **`FastifyAdapter`** | ~30k req/sec | Medium | High-performance apps reliant on Fastify plugins. |
-| **`HttpAdapter`** | ~25k req/sec | High | Serverless, Edge computing, zero-dependency deployments. |
-| **`ExpressAdapter`** | ~12k req/sec | Maximum | Legacy migrations, maximum NPM ecosystem compatibility. |
+- Express uses Express's router
+- Fastify uses Fastify's C++ radix trie
+- Hapi uses Hapi's router with `{param}` path syntax
+- Native uses uWS's C++ router via per-route `server.get()`, `server.post()` etc.
+- HTTP uses Axiomify's router once, then passes the matched route directly — no second lookup
 
----
+## Cross-adapter parity
 
-## 1. The Native Adapter (`@axiomify/native`)
+Every adapter produces identical behaviour for the same request:
 
-The Native Adapter is Axiomify’s hypercar. Powered under the hood by `uWebSockets.js`, it bypasses the standard Node.js HTTP parser entirely, mapping your routes directly to the V8 C++ event loop. 
+- Same response envelope `{ status, message, data }`
+- Same `X-Request-Id` header
+- Same Zod validation errors (400 with field-level detail)
+- Same 404/405 detection
+- Same hook execution order (`onRequest` → `onPreHandler` → handler → `onPostHandler`)
 
-It natively supports massive file uploads, backpressured stream delivery, and real-time WebSockets.
+## Multi-core (all adapters)
 
-Server-Sent Events are not supported by `NativeAdapter`. Mark SSE endpoints with `sse: true`; the native adapter rejects those routes at startup so the mismatch is caught before deployment. Use `@axiomify/http`, `@axiomify/express`, `@axiomify/fastify`, or `@axiomify/hapi` for SSE.
-
-### Installation
-```bash
-npm install @axiomify/native
-```
-
-### Basic Initialization
-```typescript
-import { Axiomify } from '@axiomify/core';
-import { NativeAdapter } from '@axiomify/native';
-
-const app = new Axiomify();
-
-app.route({
-  method: 'GET',
-  path: '/api/speed',
-  handler: async (req, res) => {
-    res.send({ message: 'Running at C++ speeds' });
-  }
-});
-
-// Initialize the adapter and bind it to a port
-const server = new NativeAdapter(app, { port: 3000 });
-server.listen(() => {
-  console.log('Native Engine active on port 3000');
-});
-```
-
-### Native WebSockets
-The Native Adapter comes with an enterprise-grade WebSocket server built directly into the C++ core. By default, it automatically accepts connection upgrades on the `/ws` path, sharing the exact same port and memory space as your HTTP routes with zero collisions.
+All adapters expose `listenClustered()`. Workers bind the same port via the OS.
 
 ```typescript
-// Clients can connect immediately via:
-// const ws = new WebSocket('ws://localhost:3000/ws');
+// Native — SO_REUSEPORT (kernel-level load balancing)
+const adapter = new NativeAdapter(app, { port: 3000, workers: 4 });
+adapter.listenClustered({ onWorkerReady: () => console.log(`[${process.pid}] ready`) });
+
+// Fastify, HTTP, Express, Hapi — Node.js cluster
+const adapter = new FastifyAdapter(app, { workers: 4 });
+adapter.listenClustered(3000, { onWorkerReady: (p) => console.log(`[${process.pid}] :${p}`) });
 ```
 
-### The Express Compatibility Bridge
-The Native Adapter prioritizes raw speed by using highly optimized `NativeRequest` and `NativeResponse` objects. However, if you need to use standard Express/Connect middleware (like `cors` or `helmet`), Axiomify provides a Just-In-Time (JIT) Polyfill bridge.
+## SSE support
 
-Use the `adaptMiddleware` utility to securely wrap legacy middleware so it runs flawlessly on the native engine.
+| Adapter | SSE |
+|---|---|
+| Native | ❌ (uWS push model incompatible) |
+| HTTP | ✅ |
+| Express | ✅ |
+| Fastify | ✅ |
+| Hapi | ✅ |
 
-```typescript
-import cors from 'cors';
-import { Axiomify } from '@axiomify/core';
-import { NativeAdapter, adaptMiddleware } from '@axiomify/native';
+## WebSocket
 
-const app = new Axiomify();
-
-// Wrap standard Express middleware for the C++ engine
-app.use(adaptMiddleware(cors()));
-
-app.route({
-  method: 'GET',
-  path: '/secure',
-  handler: async (req, res) => {
-    res.send({ status: 'CORS enabled natively' });
-  }
-});
-
-const server = new NativeAdapter(app, { port: 3000 });
-server.listen();
-```
-> **Note:** Bridging Express middleware incurs a slight performance penalty (~15k req/sec drop) due to memory allocation for the Node.js polyfills. For maximum performance, use Axiomify's first-party native plugins (e.g., `@axiomify/cors`).
-
----
-
-## 2. The HTTP Adapter (`@axiomify/http`)
-
-The Universal Standard. This adapter uses the native `node:http` module. It requires zero external C++ binaries, making it the perfect choice for highly restrictive CI/CD pipelines, Docker containers, or Edge environments.
+Use `@axiomify/ws` with any adapter via `getServerFromAdapter()`, or the native adapter's built-in uWS WebSocket for maximum performance.
 
 ```typescript
-import { Axiomify } from '@axiomify/core';
-import { HttpAdapter } from '@axiomify/http';
+import { getServerFromAdapter, WsManager } from '@axiomify/ws';
 
-const app = new Axiomify();
-// ... define routes ...
-
-const server = new HttpAdapter(app);
-server.listen(3000, () => console.log('Node HTTP server active'));
-```
-
----
-
-## 3. The Migration Adapters (Express & Fastify)
-
-If you are migrating a massive legacy application, you do not need to rewrite your entire codebase at once. You can mount your blazing-fast Axiomify application *inside* your existing Express or Fastify server.
-
-### Express Adapter Example
-```typescript
-import express from 'express';
-import { Axiomify } from '@axiomify/core';
-import { ExpressAdapter } from '@axiomify/express';
-
-const legacyApp = express();
-const axiomifyApp = new Axiomify();
-
-// Define your modern Axiomify routes
-axiomifyApp.route({
-  method: 'GET',
-  path: '/v2/users',
-  handler: async (req, res) => res.send({ modern: true })
-});
-
-// Mount Axiomify onto the legacy Express app
-legacyApp.use('/api', ExpressAdapter(axiomifyApp));
-
-legacyApp.listen(3000);
-```
-
-### Fastify Adapter Example
-```typescript
-import Fastify from 'fastify';
-import { Axiomify } from '@axiomify/core';
-import { FastifyAdapter } from '@axiomify/fastify';
-
-const fastify = Fastify();
-const axiomifyApp = new Axiomify();
-
-// ... define Axiomify routes ...
-
-// Register Axiomify as a Fastify plugin
-fastify.register(FastifyAdapter(axiomifyApp));
-
-fastify.listen({ port: 3000 });
+const adapter = new FastifyAdapter(app);
+await adapter.listen(3000);
+const ws = new WsManager({ server: getServerFromAdapter(adapter), path: '/ws' });
 ```

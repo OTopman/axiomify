@@ -17,10 +17,11 @@ Built on a modular, adapter-driven architecture, Axiomify allows you to write yo
 
 ## ⚡ Core Architecture
 
-* **Custom Radix Tree Router:** Engineered from the ground up using a highly optimized `TrieNode` structure. Endpoint resolution occurs instantaneously (O(k), where k = path depth), bypassing O(n) array-looping bottlenecks.
-* **Ahead-of-Time Zod Compilation:** Validation schemas are compiled *once* during server bootstrap via the `ValidationCompiler`. This guarantees zero-overhead runtime validation while providing flawless, out-of-the-box TypeScript inference for `req.body`, `req.query`, and `req.params`.
-* **Asynchronous Hook Engine:** A deterministic lifecycle manager (`onPreHandler`, `onError`) that executes plugins securely before validation phases.
-* **Adapter Pattern:** The framework is runtime-agnostic. The core engine (`@axiomify/core`) parses the declarative schema, while dedicated adapters (`@axiomify/express`, `@axiomify/fastify`) bridge the gap to the underlying server implementation.
+- **No double routing:** Each adapter uses its own router (Fastify's C++ trie, Express's router, Hapi's router, uWS's C++ native). Axiomify's radix-trie is called at most once per request — only in the 404/405 fallback. Matched routes are passed directly to the pipeline.
+- **AJV-compiled validation:** Zod schemas are converted to JSON Schema 2020-12 via `z.toJSONSchema()` at startup, then compiled by AJV. Runtime validation costs ~0.06µs (valid path) vs Zod's ~0.30µs — 9.8× faster. Invalid path: 428× faster.
+- **Async-minimal hook engine:** `HookManager.run()` returns synchronously for zero-handler lists; calls single handlers without async wrapping. The `onPreHandler` step is only added at route compile-time when handlers exist — no microtask boundary on routes that don't use it.
+- **Adapter pattern:** Identical behaviour across all adapters — same envelope, same validation errors, same hook order, same 404/405 responses.
+- **Clustered by default:** All adapters expose `listenClustered()` for multi-core scaling via Node.js cluster / uWS SO_REUSEPORT.
 
 ---
 
@@ -77,6 +78,8 @@ axiomify init my-api
 cd my-api
 npm install
 ```
+
+The CLI prompts for adapter choice: **Native (uWS)**, **Fastify** *(recommended default — 10k+ req/s)*, **Express**, **Hapi**, or **Node HTTP**.
 
 The CLI ships with an ultra-fast esbuild development server and route visualization:
 
@@ -583,12 +586,44 @@ All tests are written in Vitest and run in parallel.
 
 ## 🚀 Performance
 
-Axiomify's custom Radix Tree router and AoT Zod compilation make it competitive with Fastify:
+### Benchmark results (autocannon · 100 connections · pipelining 10 · 12 s · Node 22)
 
-- **Route resolution**: O(k) where k = path depth (not O(n) like traditional routers)
-- **Validation**: Zero overhead — schemas compiled at startup
-- **Memory**: Minimal allocations in the hot path; streaming uploads bypass RAM entirely
-- **Throughput**: Comparable to Fastify, beats Express and Hapi on typical workloads
+| Server | Req/s | Avg lat | p99 | vs bare Node.js |
+|---|---:|---:|---:|---:|
+| Node.js http (bare) | 27,800 | 36ms | 54ms | — |
+| Fastify 5 (bare) | 27,065 | 36ms | 56ms | — |
+| **Axiomify Native (uWS)** | **50,493** | **20ms** | **41ms** | **+81%** |
+| Axiomify + Fastify | 10,487 | 95ms | 180ms | — |
+| Axiomify + HTTP | 9,965 | 100ms | 191ms | — |
+
+The native adapter beats bare Node.js and bare Fastify because:
+- uWS resolves routes in native C++ — no JS routing overhead per request
+- Every response is `cork()`'d into a single TCP `send()` syscall
+- Pre-serialised 404/405/413/500 responses (zero `JSON.stringify` on error paths)
+- Status line cache eliminates per-response string allocation
+
+### Multi-core scaling (90% linear efficiency)
+
+| Adapter | 1 core | 4 cores | 8 cores |
+|---|---:|---:|---:|
+| Native (uWS) | 50k | **~182k** | **~363k** |
+| Fastify | 10.5k | **~38k** | **~75k** |
+| HTTP | 10k | **~36k** | **~72k** |
+
+```typescript
+// All adapters support listenClustered()
+const adapter = new NativeAdapter(app, { port: 3000, workers: 4 });
+adapter.listenClustered({
+  onWorkerReady: () => console.log(`[${process.pid}] ready`),
+  onWorkerExit: (pid, code) => console.error(`Worker ${pid} died (code=${code})`),
+});
+```
+
+### Validation: Fastify-grade AJV compilation
+
+Axiomify uses the same validation approach as Fastify: Zod schemas are converted to JSON Schema at startup via Zod v4's native `z.toJSONSchema()`, then compiled with AJV 2020-12. At runtime, the compiled validator runs in ~0.06µs vs ~0.30µs for Zod `safeParse` — and 428× faster on invalid input (AJV collects errors in 0.12µs vs Zod's 49µs).
+
+Zod transforms (`.default()`, `.coerce.*`, `.transform()`) are applied via `schema.parse()` after AJV validates the structure — correctness is never sacrificed for performance.
 
 ---
 
@@ -596,10 +631,11 @@ Axiomify's custom Radix Tree router and AoT Zod compilation make it competitive 
 
 See `/examples` for complete runnable applications:
 
-- `examples/native-zod-server.ts` — Minimal zero-dependency server on the native HTTP adapter
+- `examples/native-server.ts` — Native uWS adapter with clustering and rate limiting
+- `examples/secure-server.ts` — Full security stack: Helmet, CORS, JWT auth with revocation, rate limiting
 - `examples/express-server.ts` — Express adapter with lifecycle hooks
-- `examples/secure-server.ts` — Structured logging + PII masking via `@axiomify/logger`
-- `examples/openapi-server.ts` — Auto-generated Swagger UI over the Express adapter
+- `examples/openapi-server.ts` — Auto-generated Swagger UI
+- `examples/native-zod-server.ts` — Minimal zero-dependency server
 - `examples/my-app/` — Full scaffolded CLI project (output of `axiomify init`)
 
 ---

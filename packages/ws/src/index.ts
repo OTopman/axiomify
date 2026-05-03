@@ -253,6 +253,57 @@ export function useWebSockets<TUser = unknown>(app: Axiomify, options: WsOptions
   setWsManager(app, manager);
 }
 
+// ─── Adapter extraction helpers ───────────────────────────────────────────────
+// @axiomify/ws requires a raw `http.Server` to attach WebSocket upgrade
+// listeners. Each adapter wraps a different underlying server type. These
+// helpers extract the underlying server so `WsManager` works with any adapter.
+
+/**
+ * Extract the underlying `http.Server` from any Axiomify adapter, then pass
+ * it to `WsManager` or `useWebSockets`.
+ *
+ * @example
+ * // Express
+ * const server = adapter.listen(3000);
+ * useWebSockets(app, { server, path: '/ws' });
+ *
+ * // Fastify
+ * await adapter.listen(3000);
+ * const server = getServerFromAdapter(adapter);
+ * useWebSockets(app, { server, path: '/ws' });
+ */
+export function getServerFromAdapter(adapter: unknown): Server {
+  const a = adapter as Record<string, unknown>;
+
+  // @axiomify/http — HttpAdapter.listen() returns the server
+  if (a['server'] && typeof (a['server'] as { on?: unknown }).on === 'function') {
+    return a['server'] as Server;
+  }
+
+  // @axiomify/express — ExpressAdapter.native is the Express app;
+  // the server is available after listen() is called
+  if (a['server'] && (a['server'] as { listening?: boolean }).listening !== undefined) {
+    return a['server'] as Server;
+  }
+
+  // @axiomify/fastify — underlying server is at app.server (Fastify instance)
+  const fastifyApp = a['app'] as Record<string, unknown> | undefined;
+  if (fastifyApp?.['server']) {
+    return fastifyApp['server'] as Server;
+  }
+
+  // @axiomify/hapi — Hapi exposes .server.listener
+  const hapiServer = a['server'] as Record<string, unknown> | undefined;
+  if (hapiServer?.['listener']) {
+    return hapiServer['listener'] as Server;
+  }
+
+  throw new Error(
+    '[axiomify/ws] Could not extract http.Server from adapter. ' +
+      'Pass the server manually: `useWebSockets(app, { server: yourHttpServer })`.',
+  );
+}
+
 const WS_MANAGER_KEY = Symbol.for('axiomify.ws.manager');
 
 export function setWsManager<TUser = unknown>(

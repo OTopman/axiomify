@@ -235,8 +235,10 @@ export class HapiAdapter {
     req: Request,
     parsedBody: unknown,
   ): AxiomifyRequest {
-    const _params = {};
-    const _state = {};
+    const _params: Record<string, string> = {};
+    const _state: Record<string, unknown> = {};
+    let _body: unknown = parsedBody;
+    let _query: Record<string, string | string[]> = req.query as Record<string, string | string[]>;
     const controller = new AbortController();
     const rawReq = req.raw.req;
 
@@ -258,42 +260,21 @@ export class HapiAdapter {
           crypto.randomUUID()
         );
       },
-      get method() {
-        return req.method.toUpperCase() as AxiomifyRequest['method'];
-      },
-      get url() {
-        return req.url.href;
-      },
-      get path() {
-        return req.path;
-      },
-      get ip() {
-        return req.info.remoteAddress;
-      },
-      get headers() {
-        return req.headers as Record<string, string | string[] | undefined>;
-      },
-      get body() {
-        return parsedBody;
-      },
-      get query() {
-        return req.query as Record<string, string | string[]>;
-      },
-      get params() {
-        return _params;
-      },
-      get state() {
-        return _state;
-      },
-      get raw() {
-        return req;
-      },
-      get stream() {
-        return rawReq;
-      },
-      get signal() {
-        return controller.signal;
-      },
+      get method() { return req.method.toUpperCase() as AxiomifyRequest['method']; },
+      get url() { return req.url.href; },
+      get path() { return req.path; },
+      get ip() { return req.info.remoteAddress; },
+      get headers() { return req.headers as Record<string, string | string[] | undefined>; },
+      get body() { return _body; },
+      set body(val: unknown) { _body = val; },
+      get query() { return _query; },
+      set query(val: Record<string, string | string[]>) { _query = val; },
+      get params() { return _params; },
+      set params(val: Record<string, string>) { Object.assign(_params, val); },
+      get state() { return _state; },
+      get raw() { return req; },
+      get stream() { return rawReq; },
+      get signal() { return controller.signal; },
     };
   }
 

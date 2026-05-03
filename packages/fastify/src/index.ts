@@ -179,13 +179,12 @@ export class FastifyAdapter {
   }
 
   private translateRequest(req: FastifyRequest): AxiomifyRequest {
-    const _params = {};
-    const _state = {};
-    const safeBody = sanitizeInput(req.body);
+    const _params: Record<string, string> = {};
+    const _state: Record<string, unknown> = {};
+    let _body: unknown = sanitizeInput(req.body);
+    let _query: Record<string, string | string[]> = req.query as Record<string, string | string[]>;
     const signal = createRequestSignal(req);
 
-    // Pre-compute path at translation time. Avoids repeated URL parsing and
-    // handles protocol-relative paths like `//x` that URL() would mis-parse.
     const queryIdx = req.url.indexOf('?');
     const path = queryIdx === -1 ? req.url : req.url.slice(0, queryIdx);
 
@@ -197,42 +196,21 @@ export class FastifyAdapter {
           crypto.randomUUID()
         );
       },
-      get method() {
-        return req.method as AxiomifyRequest['method'];
-      },
-      get url() {
-        return req.url;
-      },
-      get path() {
-        return path;
-      },
-      get ip() {
-        return req.ip;
-      },
-      get headers() {
-        return req.headers as Record<string, string | string[] | undefined>;
-      },
-      get body() {
-        return safeBody;
-      },
-      get query() {
-        return req.query as Record<string, string | string[]>;
-      },
-      get params() {
-        return _params;
-      },
-      get state() {
-        return _state;
-      },
-      get raw() {
-        return req;
-      },
-      get stream() {
-        return req.raw;
-      },
-      get signal() {
-        return signal;
-      },
+      get method() { return req.method as AxiomifyRequest['method']; },
+      get url() { return req.url; },
+      get path() { return path; },
+      get ip() { return req.ip; },
+      get headers() { return req.headers as Record<string, string | string[] | undefined>; },
+      get body() { return _body; },
+      set body(val: unknown) { _body = val; },
+      get query() { return _query; },
+      set query(val: Record<string, string | string[]>) { _query = val; },
+      get params() { return _params; },
+      set params(val: Record<string, string>) { Object.assign(_params, val); },
+      get state() { return _state; },
+      get raw() { return req; },
+      get stream() { return req.raw; },
+      get signal() { return signal; },
     };
   }
 

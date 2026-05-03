@@ -1,49 +1,39 @@
 # @axiomify/rate-limit
 
-Sliding-window rate limiting for global or route-level enforcement.
+Sliding-window rate limiting for Axiomify with Redis EVALSHA caching.
 
-## Install
+## API
 
-```bash
-npm install @axiomify/rate-limit
+- `createRateLimitPlugin(options)` — per-route plugin
+- `useRateLimit(app, options)` — global rate limit via `onPreHandler` hook
+- `MemoryStore` — in-process store (testing only)
+- `RedisStore` — Redis-backed store; compatible with `redis@4` and `ioredis`
+
+## EVALSHA caching
+
+`RedisStore` sends the Lua script to Redis once on first call, then uses `EVALSHA` (script hash) on subsequent calls. No script re-upload on every request — the script is identified by SHA1 only.
+
+On `NOSCRIPT` errors (Redis flush/restart), `RedisStore` falls back to `EVAL` automatically and re-establishes EVALSHA for the next call.
+
+## Redis client compatibility
+
+```typescript
+// redis@4
+import { createClient } from 'redis';
+const redis = createClient({ url: process.env.REDIS_URL });
+await redis.connect();
+new RedisStore(redis);
+
+// ioredis
+import Redis from 'ioredis';
+new RedisStore(new Redis(process.env.REDIS_URL));
 ```
 
-## Exports
+## Response headers
 
-- `createRateLimitPlugin(options?)`
-- `useRateLimit(app, options?)`
-- `MemoryStore`
-- `RedisStore`
-
-## Options
-
-- `windowMs`
-- `max`
-- `maxRequests`
-- `store`
-- `keyGenerator`
-- `keyExtractor`
-- `skip`
-
-`maxRequests` and `keyExtractor` are supported aliases for the documented route examples.
-
-## Example
-
-```ts
-const limiter = createRateLimitPlugin({
-  windowMs: 60_000,
-  maxRequests: 100,
-  keyExtractor: (req) => req.user?.id ?? req.ip,
-});
-
-app.route({
-  method: 'POST',
-  path: '/jobs',
-  plugins: [requireAuth, limiter],
-  handler: async (_req, res) => res.send({ ok: true }),
-});
 ```
-
-## Global Mode
-
-Use `useRateLimit(app, ...)` when you want one limiter to apply broadly in `onPreHandler`.
+X-RateLimit-Limit:     100
+X-RateLimit-Remaining: 73
+X-RateLimit-Reset:     1718000000
+Retry-After:           60          (on 429 only)
+```

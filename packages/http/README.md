@@ -1,77 +1,91 @@
 # @axiomify/http
 
-The official native Node.js HTTP adapter for the Axiomify framework. 
+The native Node.js HTTP adapter for Axiomify. Zero external dependencies — wraps `node:http` directly.
 
-`@axiomify/http` provides a pure, zero-dependency bridge between Axiomify's high-performance Radix routing engine and the native Node.js `http` server. It is incredibly lightweight, making it the absolute best choice for edge computing, serverless functions, and hyper-minimalist microservices.
-
-## ✨ Features
-
-- **Zero Dependencies:** Built entirely on the native Node.js `http` module. No middleware bloat.
-- **Edge-Ready:** Incredibly small bundle size, perfect for Vercel Edge, AWS Lambda, or Cloudflare Workers.
-- **Stable Request Identity:** Generates and locks a stable UUID (or inherits `x-request-id`) once per request, guaranteeing deterministic trace correlation across complex plugin lifecycles.
-- **Stable Object References:** Implements memory-safe proxying for `req.params` and `req.state` to ensure data persists perfectly across the asynchronous hook pipeline.
-- **Native Zod Integration:** Fully supports Axiomify's core validation compilation and request mutations.
-
-## 📦 Installation
-
-Install the adapter alongside the Axiomify core and your validation library of choice (like Zod):
+## Install
 
 ```bash
 npm install @axiomify/http @axiomify/core zod
-````
+```
 
-## 🚀 Quick Start
-
-Integrating Axiomify natively requires no third-party server frameworks.
+## Quick start
 
 ```typescript
-import http from 'node:http';
 import { Axiomify } from '@axiomify/core';
 import { HttpAdapter } from '@axiomify/http';
 import { z } from 'zod';
 
-// 1. Initialize the Axiomify Core Engine
 const app = new Axiomify();
 
-// 2. Register your Axiomify Routes
 app.route({
   method: 'POST',
   path: '/users',
   schema: {
-    body: z.object({
-      email: z.string().email(),
-      name: z.string().min(2)
-    })
+    body: z.object({ name: z.string().min(1), email: z.string().email() }),
   },
   handler: async (req, res) => {
-    // req.body is safely typed and validated by Zod
-    const { email, name } = req.body;
-    return res.status(201).send({ success: true, user: { email, name } });
-  }
+    res.status(201).send({ id: 1, ...req.body });
+  },
 });
 
-// 3. Mount Axiomify onto a Native Node.js Server
-// The adapter safely processes raw Node.js IncomingMessage and ServerResponse streams
-const server = http.createServer(HttpAdapter(app));
+const adapter = new HttpAdapter(app);
+adapter.listen(3000, () => console.log('Listening on :3000'));
+```
 
-// 4. Start the Server
-server.listen(3000, () => {
-  console.log('🚀 Native HTTP Server listening on http://localhost:3000');
+## Options
+
+```typescript
+new HttpAdapter(app, {
+  bodyLimitBytes: 1_048_576, // 1 MB (default)
+  trustProxy: false,         // set true when behind nginx / ALB
+  workers: 4,                // used by listenClustered()
 });
 ```
 
-## 🧩 The Adapter Ecosystem
+| Option | Default | Description |
+|---|---|---|
+| `bodyLimitBytes` | `1048576` (1 MB) | Maximum request body size. Requests over this limit return 413. |
+| `trustProxy` | `false` | Derive `req.ip` from `X-Forwarded-For`. Only enable behind a trusted proxy. |
+| `workers` | `os.cpus().length` | Worker count for `listenClustered()`. |
 
-If your application outgrows the native HTTP module and requires a massive middleware ecosystem, you can swap adapters with zero changes to your business logic:
+## Single process
 
-  - [`@axiomify/fastify`](https://www.npmjs.com/package/@axiomify/fastify) - For maximum throughput.
-  - [`@axiomify/express`](https://www.npmjs.com/package/@axiomify/express) - For maximum middleware compatibility.
-  - [`@axiomify/hapi`](https://www.npmjs.com/package/@axiomify/hapi) - For enterprise environments.
+```typescript
+const server = adapter.listen(3000, () => console.log('Ready'));
+// Returns the raw http.Server — use it with @axiomify/ws
+```
 
-## 📚 Documentation
+## Multi-core clustering
 
-For complete documentation, guides, and advanced plugin authoring, please visit the [Axiomify Master Repository](https://github.com/OTopman/axiomify).
+```typescript
+// server.ts — run with: node server.ts
+import cluster from 'cluster';
 
-## 📄 License
+const adapter = new HttpAdapter(app, { workers: 4 });
 
-MIT
+adapter.listenClustered(3000, {
+  onWorkerReady: (port) => console.log(`[${process.pid}] Worker ready on :${port}`),
+  onPrimary:     (pids) => console.log(`Primary ${process.pid} → workers: ${pids.join(', ')}`),
+  onWorkerExit:  (pid, code) => console.error(`Worker ${pid} exited (code ${code})`),
+  // Crashed workers restart automatically
+});
+```
+
+> On a 4-core server, `listenClustered()` multiplies throughput ~4×. Node.js cluster
+> distributes connections across workers via round-robin. Each worker runs independently
+> with its own V8 heap and event loop.
+
+## Routing
+
+The adapter calls `core.router.lookup()` **once** per request, then passes the resolved route
+directly to `core.handleMatchedRoute()`. Axiomify's router is never called a second time —
+there is no double routing.
+
+## When to use @axiomify/http
+
+- Zero-dependency microservices or serverless functions
+- When you need the raw `http.Server` for WebSocket upgrades (`@axiomify/ws`)
+- Environments where Fastify or Express are too heavy
+
+For maximum throughput on persistent servers, use [`@axiomify/native`](../native/) (uWebSockets.js)
+or [`@axiomify/fastify`](../fastify/) instead.
