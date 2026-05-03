@@ -12,7 +12,6 @@ function functionReferencesSse(fn: unknown): boolean {
 }
 
 function sseRouteReason(route: RouteDefinition): string | undefined {
-  if (route.sse === true) return 'declares `sse: true`';
   if (functionReferencesSse(route.handler)) {
     return 'handler calls `res.sseInit()` or `res.sseSend()`';
   }

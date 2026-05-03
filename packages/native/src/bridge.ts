@@ -1,6 +1,16 @@
 import type { AxiomifyRequest, AxiomifyResponse } from '@axiomify/core';
 
-export function createNodeReqPolyfill(req: AxiomifyRequest) {
+/**
+ * Minimal Node.js IncomingMessage polyfill for NativeRequest.
+ *
+ * Express / Connect middleware typically reads from:
+ *   req.headers, req.method, req.url, req.socket.remoteAddress
+ * and may call req.on('data', ...) / req.on('end', ...).
+ *
+ * This stub satisfies those contracts so standard middleware can run inside
+ * the native adapter via `adaptMiddleware`.
+ */
+export function createNodeReqPolyfill(req: AxiomifyRequest): Record<string, unknown> {
   return {
     headers: req.headers,
     method: req.method,
@@ -9,19 +19,31 @@ export function createNodeReqPolyfill(req: AxiomifyRequest) {
     ip: req.ip,
     socket: { remoteAddress: req.ip },
     connection: { remoteAddress: req.ip },
-    on: (event: string, callback: any) => {
-      // Stream stub for standard middleware compatibility
-      if (event === 'data' && req.body) {
-        callback(Buffer.from(JSON.stringify(req.body)));
+    on(event: string, cb: (data?: unknown) => void): void {
+      // Emit buffered body data so middleware that reads the stream
+      // (e.g. body parsers) receives the already-parsed content.
+      if (event === 'data' && req.body !== undefined) {
+        const raw =
+          req.body instanceof Buffer
+            ? req.body
+            : Buffer.from(JSON.stringify(req.body));
+        // Defer to give the caller time to attach all event handlers.
+        queueMicrotask(() => cb(raw));
       }
       if (event === 'end') {
-        callback();
+        queueMicrotask(() => cb());
       }
     },
   };
 }
 
-export function createNodeResPolyfill(res: AxiomifyResponse) {
+/**
+ * Minimal Node.js ServerResponse polyfill for NativeResponse.
+ *
+ * Express / Connect middleware typically reads or writes:
+ *   res.statusCode, res.setHeader, res.getHeader, res.removeHeader, res.end
+ */
+export function createNodeResPolyfill(res: AxiomifyResponse): Record<string, unknown> {
   return {
     get statusCode() {
       return res.statusCode;
@@ -30,49 +52,68 @@ export function createNodeResPolyfill(res: AxiomifyResponse) {
       res.status(code);
     },
 
-    setHeader(name: string, value: string | string[]) {
+    setHeader(name: string, value: string | string[]): void {
       if (Array.isArray(value)) {
         res.header(name, value.join(', '));
       } else {
         res.header(name, value);
       }
-      return this;
     },
 
-    getHeader(name: string) {
-      // In a full implementation, you'd track this in AxiomifyResponse
-      return undefined;
+    getHeader(name: string): string | undefined {
+      // Delegate to AxiomifyResponse which tracks headers correctly.
+      return res.getHeader(name);
     },
 
-    removeHeader(name: string) {
+    removeHeader(name: string): void {
       res.removeHeader(name);
-      return this;
     },
 
-    end(chunk?: any) {
-      res.sendRaw(chunk || '');
-      return this;
+    end(chunk?: string | Buffer): void {
+      if (chunk) {
+        const contentType = res.getHeader('Content-Type') ?? 'text/plain';
+        res.sendRaw(chunk, contentType);
+      } else {
+        res.sendRaw('');
+      }
     },
 
-    write(chunk: any) {
+    write(_chunk: unknown): void {
       throw new Error(
-        'Chunked encoding via res.write() is not supported in the Native Bridge yet.',
+        '[Axiomify/native] Chunked writes via res.write() are not supported in ' +
+          'the native bridge. For streaming responses, use res.stream() directly.',
       );
     },
   };
 }
 
-// The Universal Wrapper
-export function adaptMiddleware(middleware: Function) {
-  return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
+/**
+ * Wraps a standard Express/Connect middleware function so it can run inside
+ * any Axiomify adapter — including the native uWS adapter.
+ *
+ * @example
+ * import { adaptMiddleware } from '@axiomify/native';
+ * import helmet from 'helmet';
+ *
+ * app.route({
+ *   method: 'GET',
+ *   path: '/secure',
+ *   plugins: [adaptMiddleware(helmet())],
+ *   handler: async (req, res) => res.send({ ok: true }),
+ * });
+ */
+export function adaptMiddleware(
+  middleware: (req: unknown, res: unknown, next: (err?: unknown) => void) => void,
+) {
+  return (req: AxiomifyRequest, res: AxiomifyResponse): Promise<void> => {
     return new Promise<void>((resolve, reject) => {
       const nodeReq = createNodeReqPolyfill(req);
       const nodeRes = createNodeResPolyfill(res);
 
       try {
-        middleware(nodeReq, nodeRes, (err?: any) => {
-          if (err) return reject(err);
-          resolve();
+        middleware(nodeReq, nodeRes, (err?: unknown) => {
+          if (err) reject(err);
+          else resolve();
         });
       } catch (err) {
         reject(err);

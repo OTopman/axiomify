@@ -1,5 +1,4 @@
 import { Axiomify } from '@axiomify/core';
-import { Maskify } from 'maskify-ts';
 import pc from 'picocolors';
 
 export interface LoggerOptions {
@@ -87,12 +86,8 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
     if (LEVEL_RANK[level] < LEVEL_RANK[logLevel]) return;
 
     const timestamp = new Date().toISOString();
-    const autoMasked =
-      typeof Maskify.autoMask === 'function'
-        ? Maskify.autoMask(meta)
-        : meta;
     const maskedMeta = fallbackMaskObject(
-      autoMasked,
+      meta,
       sensitiveFieldSet,
     ) as Record<string, unknown>;
 

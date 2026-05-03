@@ -15,18 +15,7 @@ describe('Native SSE guard', () => {
     expect(() => assertNoNativeSseRoutes([route({})])).not.toThrow();
   });
 
-  it('throws for routes declared as SSE', () => {
-    expect(() =>
-      assertNoNativeSseRoutes([
-        route({
-          path: '/events',
-          sse: true,
-        }),
-      ]),
-    ).toThrow(/NativeAdapter does not support Server-Sent Events.*GET \/events/s);
-  });
-
-  it('throws for route handlers that directly call SSE helpers', () => {
+  it('throws for route handlers that explicitly call res.sseInit()', () => {
     expect(() =>
       assertNoNativeSseRoutes([
         route({

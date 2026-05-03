@@ -1,8 +1,10 @@
 import type { Axiomify, AxiomifyRequest, SerializerFn } from '@axiomify/core';
 import { sanitizeInput } from '@axiomify/core';
+import cluster from 'cluster';
 import crypto from 'crypto';
 import type { IncomingMessage } from 'http';
 import http from 'http';
+import { cpus } from 'os';
 import { Readable } from 'stream';
 
 function createRequestSignal(req: IncomingMessage): AbortSignal {
@@ -31,16 +33,21 @@ export interface HttpAdapterOptions {
   trustProxy?: boolean;
   /**
    * Optional error sink for uncaught adapter errors. When omitted, errors
-   * are silently swallowed in production and logged in development —
-   * `console.error` is never used unconditionally.
+   * are silently swallowed in production and logged in development.
    */
   onAdapterError?: (err: unknown) => void;
+  /**
+   * Number of worker processes for `listenClustered()`. Defaults to the
+   * number of logical CPU cores.
+   */
+  workers?: number;
 }
 
 export class HttpAdapter {
   private server: http.Server;
   private readonly trustProxy: boolean;
   private readonly onAdapterError?: (err: unknown) => void;
+  private readonly _workers: number;
 
   constructor(
     private core: Axiomify,
@@ -48,6 +55,7 @@ export class HttpAdapter {
   ) {
     this.trustProxy = options.trustProxy ?? false;
     this.onAdapterError = options.onAdapterError;
+    this._workers = options.workers ?? cpus().length;
 
     this.server = http.createServer(async (req, res) => {
       try {
@@ -347,6 +355,49 @@ export class HttpAdapter {
 
   public listen(port: number, callback?: () => void): http.Server {
     return this.server.listen(port, callback);
+  }
+
+  /**
+   * Fork `workers` child processes and start the server on each, all bound
+   * to the same port via the OS. The primary process manages workers and
+   * does not handle requests itself.
+   *
+   * Node.js cluster distributes connections using round-robin (Linux default).
+   * Each worker runs independently with its own event loop and V8 heap.
+   *
+   * @example
+   * const adapter = new HttpAdapter(app, { port: 3000, workers: 4 });
+   * adapter.listenClustered(3000, {
+   *   onWorkerReady: () => console.log(`[${process.pid}] Ready`),
+   *   onPrimary: (pids) => console.log('Managing workers:', pids),
+   * });
+   */
+  public listenClustered(
+    port: number,
+    opts: {
+      onWorkerReady?: (port: number) => void;
+      onPrimary?: (pids: number[]) => void;
+      onWorkerExit?: (pid: number, code: number | null) => void;
+    } = {},
+  ): void {
+    if (!cluster.isPrimary) {
+      this.listen(port, () => opts.onWorkerReady?.(port));
+      return;
+    }
+    const numWorkers = this._workers;
+    const pids: number[] = [];
+    for (let i = 0; i < numWorkers; i++) {
+      const w = cluster.fork();
+      pids.push(w.process.pid ?? 0);
+      w.on('exit', (code, signal) => {
+        opts.onWorkerExit?.(w.process.pid ?? 0, code);
+        if (code !== 0 && signal !== 'SIGTERM') {
+          const r = cluster.fork();
+          pids.push(r.process.pid ?? 0);
+        }
+      });
+    }
+    opts.onPrimary?.(pids);
   }
 
   public async close(): Promise<void> {

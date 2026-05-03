@@ -85,7 +85,7 @@ export function translateRequest(req: Request): AxiomifyRequest {
 
 export function translateResponse(
   res: Response,
-  serializer: SerializerFn = ({ data }) => data,
+  serializer: SerializerFn = (input: SerializerInput) => input.data,
   req?: AxiomifyRequest,
 ): AxiomifyResponse {
   let statusCode = 200;

@@ -5,6 +5,21 @@ import crypto from 'crypto';
 import { PassThrough, Readable } from 'stream';
 import { sanitize } from './utils';
 
+/**
+ * Converts an Axiomify route path to Hapi's path syntax.
+ *
+ * Axiomify: /users/:id/posts/:postId
+ * Hapi:     /users/{id}/posts/{postId}
+ *
+ * Axiomify wildcard: /static/*
+ * Hapi wildcard:     /static/{wild*}
+ */
+function toHapiPath(path: string): string {
+  return path
+    .replace(/:([^/]+)/g, '{$1}')   // :param  → {param}
+    .replace(/\/\*$/,    '/{wild*}'); // trailing /* → /{wild*}
+}
+
 export class HapiAdapter {
   private server: Hapi.Server;
   private readonly bodyLimitBytes: number;
@@ -19,11 +34,9 @@ export class HapiAdapter {
         ? configuredPayload.maxBytes
         : 1_048_576;
 
-    // We keep `parse: false, output: 'stream'` so that @axiomify/upload can
-    // pipe the raw request into Busboy. That means JSON / urlencoded bodies
-    // arrive here as an unread stream — we parse them ourselves per-request
-    // below so route handlers see a plain object like they do on every other
-    // adapter.
+    // Keep `parse: false, output: 'stream'` so @axiomify/upload can pipe the
+    // raw request into Busboy. JSON / urlencoded bodies are parsed per-request
+    // below so handlers see a plain object on every adapter.
     this.server = Hapi.server({
       ...config,
       routes: {
@@ -37,83 +50,135 @@ export class HapiAdapter {
       },
     });
 
+    // --- HAPI'S OWN ROUTER HANDLES ALL ROUTING ---
+    // Each Axiomify route is registered with Hapi using the exact HTTP method
+    // and a Hapi-format path. Hapi resolves the route, populates req.params,
+    // and invokes the handler. Axiomify's internal router is NOT consulted in
+    // the dispatch path — there is no double routing.
+    for (const route of this.core.registeredRoutes) {
+      const capturedRoute = route;
+      const hapiPath = toHapiPath(route.path);
+
+      this.server.route({
+        method: route.method as Hapi.HTTP_METHODS_PARTIAL,
+        path: hapiPath,
+        handler: async (req: Hapi.Request, h: Hapi.ResponseToolkit) => {
+          let parsedBody: unknown;
+          try {
+            parsedBody = await this.parseBody(req);
+          } catch (err: unknown) {
+            const anyErr = err as Record<string, unknown>;
+            const statusCode =
+              typeof anyErr.statusCode === 'number'
+                ? anyErr.statusCode
+                : typeof anyErr.status === 'number'
+                  ? anyErr.status
+                  : 500;
+            const message =
+              statusCode === 413
+                ? 'Payload Too Large'
+                : statusCode === 400
+                  ? 'Bad Request'
+                  : 'Internal Server Error';
+            const axiomifyReq = this.translateRequest(req, undefined);
+            return h
+              .response(
+                this.core.serializer({
+                  data: null,
+                  message,
+                  statusCode,
+                  isError: true,
+                  req: axiomifyReq,
+                }),
+              )
+              .code(statusCode);
+          }
+
+          return new Promise((resolve, reject) => {
+            const axiomifyReq = this.translateRequest(req, parsedBody);
+            const axiomifyRes = this.translateResponse(
+              h,
+              resolve,
+              this.core.serializer,
+              axiomifyReq,
+            );
+
+            // req.params is populated by Hapi's router — no re-routing.
+            // Hapi uses {param} syntax internally; .params returns plain keys.
+            this.core
+              .handleMatchedRoute(
+                axiomifyReq,
+                axiomifyRes,
+                capturedRoute,
+                req.params as Record<string, string>,
+              )
+              .catch((err) => axiomifyRes.error(err));
+
+            // Safety net when the core timeout is disabled (timeout=0).
+            const coreTimeout = this.core.timeout;
+            if (coreTimeout === 0) {
+              const backstopMs = 30_000;
+              setTimeout(() => {
+                if (!axiomifyRes.headersSent) {
+                  reject(
+                    new Error(
+                      `Handler did not respond within the ${backstopMs}ms backstop timeout.`,
+                    ),
+                  );
+                }
+              }, backstopMs).unref();
+            }
+          });
+        },
+      });
+    }
+
+    // 404 / 405 catch-all — Hapi exhausted its specific route table before
+    // reaching this handler. Axiomify's router is consulted ONLY to distinguish
+    // 405 from 404, never as a primary dispatch path.
     this.server.route({
       method: '*',
       path: '/{any*}',
-      handler: async (req: any, h: any) => {
-        let parsedBody: unknown;
-        try {
-          parsedBody = await this.parseBody(req);
-        } catch (err: any) {
-          const statusCode =
-            typeof err?.statusCode === 'number'
-              ? err.statusCode
-              : typeof err?.status === 'number'
-                ? err.status
-                : 500;
-          const message =
-            statusCode === 413
-              ? 'Payload Too Large'
-              : statusCode === 400
-                ? 'Bad Request'
-                : 'Internal Server Error';
-          const axiomifyReq = this.translateRequest(req, undefined);
-          return h
-            .response(
-              this.core.serializer({
-                data: null,
-                message,
-                statusCode,
-                isError: true,
-                req: axiomifyReq,
-              }),
-            )
-            .code(statusCode);
-        }
-        return new Promise((resolve, reject) => {
-          const axiomifyReq = this.translateRequest(req, parsedBody);
-          // Inject the serializer here
-          const axiomifyRes = this.translateResponse(
-            h,
-            resolve,
-            this.core.serializer,
-            axiomifyReq,
-          );
+      handler: async (req: Hapi.Request, h: Hapi.ResponseToolkit) => {
+        const axiomifyReq = this.translateRequest(req, undefined);
+        const headers: Record<string, string> = {};
 
-          this.core.handle(axiomifyReq, axiomifyRes).catch((err) => {
-            axiomifyRes.error(err);
+        const match = this.core.router.lookup(
+          req.method.toUpperCase() as never,
+          req.path,
+        );
+        if (match && 'error' in match) {
+          headers['Allow'] = match.allowed.join(', ');
+          const payload = this.core.serializer({
+            data: null,
+            message: 'Method Not Allowed',
+            statusCode: 405,
+            isError: true,
+            req: axiomifyReq,
           });
+          const response = h.response(payload).code(405);
+          response.header('Allow', match.allowed.join(', '));
+          return response;
+        }
 
-          // Respects timeout:0 as "disabled"; core already handles timeout
-          // internally, so the Hapi adapter does not add a second independent timeout.
-          // The core's own timeout mechanism (Promise.race + setTimeout) fires first
-          // and rejects the handler promise, which our .catch() above will handle.
-          // We only add the Hapi-level safety net when the core timeout is disabled (0)
-          // so a runaway handler can't stall a Hapi request forever.
-          const coreTimeout = this.core.timeout;
-          if (coreTimeout === 0) {
-            const backstopMs = 30_000;
-            setTimeout(() => {
-              if (!axiomifyRes.headersSent) {
-                reject(
-                  new Error(
-                    `Handler did not respond within the ${backstopMs}ms backstop timeout.`,
-                  ),
-                );
-              }
-            }, backstopMs).unref();
-          }
+        const payload = this.core.serializer({
+          data: null,
+          message: 'Route not found',
+          statusCode: 404,
+          isError: true,
+          req: axiomifyReq,
         });
+        return h.response(payload).code(404);
       },
     });
   }
 
   /**
    * Parses the request payload stream for non-multipart content types.
-   * Multipart is left untouched so @axiomify/upload can drive it; GET/HEAD/
-   * OPTIONS never have a body to parse.
+   * Multipart is left untouched so @axiomify/upload can drive it.
+   * GET / HEAD / OPTIONS never have a body to parse.
    */
-  private async parseBody(req: any): Promise<unknown> {
+  private async parseBody(req: Hapi.Request): Promise<unknown> {
     const method = (req.method || '').toUpperCase();
     if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
       return undefined;
@@ -122,16 +187,17 @@ export class HapiAdapter {
     const contentType = (req.headers['content-type'] || '').toLowerCase();
     if (contentType.includes('multipart/form-data')) return undefined;
 
-    const stream = req.payload;
-    if (!stream || typeof stream.on !== 'function') return undefined;
+    const stream = req.payload as NodeJS.ReadableStream | undefined;
+    if (!stream || typeof (stream as any).on !== 'function') return undefined;
 
     return new Promise<unknown>((resolve, reject) => {
       const chunks: Buffer[] = [];
       let receivedBytes = 0;
-      stream.on('data', (chunk: Buffer) => {
+
+      (stream as NodeJS.ReadableStream).on('data', (chunk: Buffer) => {
         receivedBytes += chunk.length;
         if (receivedBytes > this.bodyLimitBytes) {
-          stream.destroy(
+          (stream as any).destroy(
             Object.assign(new Error('Payload Too Large'), {
               statusCode: 413,
             }),
@@ -140,7 +206,8 @@ export class HapiAdapter {
         }
         chunks.push(chunk);
       });
-      stream.on('end', () => {
+
+      (stream as NodeJS.ReadableStream).on('end', () => {
         if (chunks.length === 0) return resolve(undefined);
         const body = Buffer.concat(chunks).toString('utf8');
         if (contentType.includes('application/json')) {
@@ -159,15 +226,20 @@ export class HapiAdapter {
           resolve(body);
         }
       });
-      stream.on('error', reject);
+
+      (stream as NodeJS.ReadableStream).on('error', reject);
     });
   }
 
-  private translateRequest(req: Request, parsedBody: unknown): AxiomifyRequest {
+  private translateRequest(
+    req: Request,
+    parsedBody: unknown,
+  ): AxiomifyRequest {
     const _params = {};
     const _state = {};
     const controller = new AbortController();
     const rawReq = req.raw.req;
+
     const abort = () => {
       if (!controller.signal.aborted) {
         controller.abort(new Error('Client aborted request'));
@@ -199,13 +271,13 @@ export class HapiAdapter {
         return req.info.remoteAddress;
       },
       get headers() {
-        return req.headers;
+        return req.headers as Record<string, string | string[] | undefined>;
       },
       get body() {
         return parsedBody;
       },
       get query() {
-        return req.query;
+        return req.query as Record<string, string | string[]>;
       },
       get params() {
         return _params;
@@ -226,24 +298,35 @@ export class HapiAdapter {
   }
 
   private translateResponse(
-    h: any,
-    resolve: (val: any) => void,
+    h: Hapi.ResponseToolkit,
+    resolve: (val: Hapi.ResponseObject) => void,
     serializer: SerializerFn,
     req: AxiomifyRequest,
-  ): any {
+  ): AxiomifyResponse {
     let statusCode = 200;
     let isSent = false;
     let sseStream: PassThrough | null = null;
     const headers: Record<string, string> = {};
 
-    const applyHeaders = (response: any) => {
+    const applyHeaders = (response: Hapi.ResponseObject) => {
       for (const [key, value] of Object.entries(headers)) {
         response.header(key, value);
       }
       return response;
     };
 
-    return {
+    const invoke = (input: Parameters<SerializerFn>[0]) =>
+      serializer.length <= 1
+        ? (serializer as (i: typeof input) => unknown)(input)
+        : (serializer as Function)(
+            input.data,
+            input.message,
+            input.statusCode,
+            input.isError,
+            input.req,
+          );
+
+    const self: AxiomifyResponse = {
       status(code: number) {
         statusCode = code;
         return this;
@@ -259,37 +342,40 @@ export class HapiAdapter {
         delete headers[key];
         return this;
       },
-      send(data: any, message?: string) {
+      send(data: unknown, message?: string) {
+        if (isSent) return;
         isSent = true;
         const isError = statusCode >= 400;
-        const payload = serializer({ data, message, statusCode, isError, req });
-        const response = h.response(payload).code(statusCode);
-        resolve(applyHeaders(response));
+        const payload = invoke({ data, message, statusCode, isError, req });
+        resolve(applyHeaders(h.response(payload).code(statusCode)));
       },
-      sendRaw(payload: any, contentType = 'text/plain') {
+      sendRaw(payload: unknown, contentType = 'text/plain') {
+        if (isSent) return;
         isSent = true;
         headers['Content-Type'] = contentType;
-        const response = h.response(payload).code(statusCode);
-        resolve(applyHeaders(response));
+        resolve(applyHeaders(h.response(payload as Hapi.ResponseValue).code(statusCode)));
       },
       error(err: unknown) {
+        if (isSent) return;
         isSent = true;
         const message = err instanceof Error ? err.message : 'Unknown Error';
-        const payload = serializer({ data: null, message, statusCode: 500, isError: true, req });
-        const response = h.response(payload).code(500);
-        resolve(applyHeaders(response));
+        const payload = invoke({
+          data: null,
+          message,
+          statusCode: 500,
+          isError: true,
+          req,
+        });
+        resolve(applyHeaders(h.response(payload).code(500)));
       },
-
-      // Hapi Stream implementation
       stream(readable: Readable, contentType = 'application/octet-stream') {
+        if (isSent) return;
         isSent = true;
         headers['Content-Type'] = contentType;
-        const response = h.response(readable).code(statusCode);
-        resolve(applyHeaders(response));
+        resolve(applyHeaders(h.response(readable).code(statusCode)));
       },
-
-      // Hapi SSE Init (Creates and returns a PassThrough stream)
-      sseInit(sseHeartbeatMs: number = 15_000) {
+      sseInit(sseHeartbeatMs = 15_000) {
+        if (isSent) return;
         isSent = true;
         sseStream = new PassThrough();
 
@@ -302,28 +388,25 @@ export class HapiAdapter {
         }, sseHeartbeatMs);
         sseStream.on('close', () => clearInterval(heartbeat));
 
-        const response = h.response(sseStream).code(200);
-        resolve(applyHeaders(response));
+        resolve(applyHeaders(h.response(sseStream).code(200)));
       },
-
-      // Hapi SSE Send (Writes to the PassThrough stream)
-      sseSend(data: any, event?: string) {
+      sseSend(data: unknown, event?: string) {
         if (!sseStream) return;
         if (event) sseStream.write(`event: ${event}\n`);
         sseStream.write(`data: ${JSON.stringify(data)}\n\n`);
       },
-
       get statusCode() {
         return statusCode;
       },
-
       get raw() {
-        return h;
+        return h as unknown;
       },
       get headersSent() {
         return isSent;
       },
     };
+
+    return self;
   }
 
   public async listen(port: number): Promise<void> {
@@ -332,6 +415,9 @@ export class HapiAdapter {
   }
 
   public async close(): Promise<void> {
-    await this.server.stop({ timeout: 10000 }); // Graceful drain
+    await this.server.stop({ timeout: 10_000 });
   }
 }
+
+// Re-export AxiomifyResponse type for the private translateResponse method above.
+import type { AxiomifyResponse } from '@axiomify/core';

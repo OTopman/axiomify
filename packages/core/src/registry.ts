@@ -55,12 +55,21 @@ export class RouteRegistry {
       (req: AxiomifyRequest, res: AxiomifyResponse) => Promise<void> | void
     > = [];
 
-    pipeline.push(async (req, res) => {
-      await this.hooks.run('onPreHandler', req, res, {
-        route: definition as RouteDefinition,
-        params: req.params as Record<string, string>,
-      });
-    });
+    // Only push the onPreHandler step if there are registered handlers.
+    // This avoids an async wrapper and a microtask boundary on every request
+    // for routes that don't use pre-handler hooks.
+    // Note: hooks registered after route compilation will still fire because
+    // we capture the hooks reference and check .length at call-time.
+    if (this.hooks.hooks.onPreHandler.length > 0) {
+      const hookRef = this.hooks;
+      const defRef = definition as RouteDefinition;
+      pipeline.push((req, res) =>
+        hookRef.run('onPreHandler', req, res, {
+          route: defRef,
+          params: req.params as Record<string, string>,
+        }),
+      );
+    }
 
     if (definition.plugins) pipeline.push(...definition.plugins);
 
@@ -69,30 +78,40 @@ export class RouteRegistry {
     }
 
     const effectiveTimeout = definition.timeout ?? this.options.timeout;
-    const timeoutError = createTimeoutError();
-    pipeline.push(async (req, res) => {
-      let span: { end(): void } | undefined;
-      if (this.options.telemetry) {
-        span = this.options.telemetry.startSpan('http.request', {
-          method: req.method,
-          path: definition.path,
-        });
-      }
+    const hasTelemetry = !!this.options.telemetry;
 
-      try {
-        if (effectiveTimeout > 0) {
-          const timeoutSignal = AbortSignal.timeout(effectiveTimeout);
-          await Promise.race([
-            definition.handler(req as never, res),
-            rejectOnAbort(timeoutSignal, timeoutError),
-          ]);
-        } else {
-          await definition.handler(req as never, res);
+    if (effectiveTimeout > 0 || hasTelemetry) {
+      // Full path: supports timeout and/or tracing.
+      const timeoutError = createTimeoutError();
+      const telemetry = this.options.telemetry;
+      pipeline.push(async (req, res) => {
+        let span: { end(): void } | undefined;
+        if (telemetry) {
+          span = telemetry.startSpan('http.request', {
+            method: req.method,
+            path: definition.path,
+          });
         }
-      } finally {
-        if (span) span.end();
-      }
-    });
+        try {
+          if (effectiveTimeout > 0) {
+            const timeoutSignal = AbortSignal.timeout(effectiveTimeout);
+            await Promise.race([
+              definition.handler(req as never, res),
+              rejectOnAbort(timeoutSignal, timeoutError),
+            ]);
+          } else {
+            await definition.handler(req as never, res);
+          }
+        } finally {
+          if (span) span.end();
+        }
+      });
+    } else {
+      // Fast path: no timeout, no telemetry — call handler directly.
+      // Avoids one async wrapper and reduces microtask pressure.
+      const handler = definition.handler;
+      pipeline.push((req, res) => handler(req as never, res));
+    }
 
     (definition as CompiledRouteDefinition)._compiledPipeline = pipeline;
     this.router.register(definition as RouteDefinition);

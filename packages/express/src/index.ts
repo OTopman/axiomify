@@ -1,22 +1,23 @@
 import type { Axiomify } from '@axiomify/core';
-import type { Express, NextFunction, Request, Response } from 'express';
-import express from 'express';
+import type { NextFunction, Request, Response } from 'express';
+import express, { Express } from 'express';
 import { Server } from 'http';
 import { translateRequest, translateResponse } from './translator';
 
 export interface ExpressAdapterOptions {
   /**
    * Maximum body size for JSON and URL-encoded payloads.
-   * Enforced by the Express body parsers — not dependent on Content-Length.
+   * Enforced by Express body parsers on the actual stream — not a Content-Length
+   * check — making this resilient to chunked transfer encoding bypasses.
    * @default '1mb'
    */
   bodyLimit?: string;
   /**
    * Express trust proxy setting. Required for correct req.ip behind load
    * balancers, nginx, or any reverse proxy. Without this, req.ip returns the
-   * proxy's IP instead of the client's, breaking rate limiting and fingerprinting.
+   * proxy's IP, breaking rate limiting and fingerprinting.
    *
-   * Set to `1` for a single proxy hop, `2` for two hops, or `true` to trust all.
+   * Set to `1` for a single proxy hop, `2` for two hops.
    * Never set to `true` in production unless you fully control the proxy chain.
    *
    * @default false
@@ -35,42 +36,71 @@ export class ExpressAdapter {
     this.core = coreApp;
     this.app = express();
 
-    // Required for correct req.ip when deployed behind a proxy/load balancer.
-    // Without this, all requests appear to originate from the proxy IP, which
-    // breaks rate limiting, fingerprinting, and audit logs.
+    // Required for correct req.ip when deployed behind a proxy or load balancer.
     this.app.set('trust proxy', trustProxy);
 
-    // Instantiate parsers once at boot with explicit size limits.
-    // These limits are enforced on the actual body stream, unlike the
-    // Content-Length header check in @axiomify/security which can be bypassed
-    // by chunked transfer encoding.
-    const jsonParser = express.json({ limit: bodyLimit });
-    const urlencodedParser = express.urlencoded({
-      extended: true,
-      limit: bodyLimit,
-    });
+    // Apply body parsers globally. Express checks Content-Type before parsing
+    // so these are safe to register unconditionally — they only fire for
+    // matching content types.
+    this.app.use(express.json({ limit: bodyLimit }));
+    this.app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
 
-    this.app.use((req, res, next) => {
+    // --- EXPRESS'S OWN ROUTER HANDLES ALL ROUTING ---
+    // Each Axiomify route is registered directly with Express using its exact
+    // HTTP method and path. Express resolves the route, extracts named params,
+    // and invokes the handler. Axiomify's internal router is NOT consulted in
+    // the request dispatch path — there is no double routing.
+    for (const route of this.core.registeredRoutes) {
+      this.app[route.method.toLowerCase() as 'get'](
+        route.path,
+        async (req: Request, res: Response) => {
+          const axiomifyReq = translateRequest(req);
+          const axiomifyRes = translateResponse(
+            res,
+            this.core.serializer,
+            axiomifyReq,
+          );
+          // req.params populated by Express — no re-routing needed.
+          await this.core.handleMatchedRoute(
+            axiomifyReq,
+            axiomifyRes,
+            route,
+            req.params as Record<string, string>,
+          );
+        },
+      );
+    }
+
+    // 404 / 405 fallback — Express exhausted its own route table before reaching
+    // this handler. Axiomify's router is consulted ONLY to distinguish 405 from
+    // 404, never as a primary dispatch path. No matched request ever hits this.
+    this.app.use(async (req: Request, res: Response) => {
+      const axiomifyReq = translateRequest(req);
+      const axiomifyRes = translateResponse(
+        res,
+        this.core.serializer,
+        axiomifyReq,
+      );
       const match = this.core.router.lookup(req.method as never, req.path);
-      if (!match) return next();
-
-      const contentType = req.headers['content-type'] || '';
-      if (contentType.includes('application/json'))
-        return jsonParser(req, res, next);
-      if (contentType.includes('application/x-www-form-urlencoded'))
-        return urlencodedParser(req, res, next);
-
-      next();
+      if (match && 'error' in match) {
+        axiomifyRes.header('Allow', match.allowed.join(', '));
+        return axiomifyRes.status(405).send(null, 'Method Not Allowed');
+      }
+      return axiomifyRes.status(404).send(null, 'Route not found');
     });
 
+    // Error handler for body-parser failures (413 Payload Too Large, 400 Bad
+    // Request from malformed JSON). Must be registered AFTER all routes — this
+    // is an Express constraint for 4-argument error handlers.
     this.app.use(
-      (err: any, req: Request, res: Response, next: NextFunction) => {
+      (err: unknown, req: Request, res: Response, next: NextFunction) => {
         if (res.headersSent) return next(err);
+        const anyErr = err as Record<string, unknown>;
         const statusCode =
-          typeof err?.statusCode === 'number'
-            ? err.statusCode
-            : typeof err?.status === 'number'
-              ? err.status
+          typeof anyErr.statusCode === 'number'
+            ? anyErr.statusCode
+            : typeof anyErr.status === 'number'
+              ? anyErr.status
               : 500;
         const message =
           statusCode === 413
@@ -89,41 +119,6 @@ export class ExpressAdapter {
         res.status(statusCode).json(payload);
       },
     );
-
-    for (const route of this.core.registeredRoutes) {
-      this.app[route.method.toLowerCase() as 'get'](
-        route.path,
-        async (req: Request, res: Response) => {
-          const axiomifyReq = translateRequest(req);
-          const axiomifyRes = translateResponse(
-            res,
-            this.core.serializer,
-            axiomifyReq,
-          );
-          await this.core.handleMatchedRoute(
-            axiomifyReq,
-            axiomifyRes,
-            route,
-            req.params as Record<string, string>,
-          );
-        },
-      );
-    }
-
-    this.app.all('*', async (req: Request, res: Response) => {
-      const axiomifyReq = translateRequest(req);
-      const axiomifyRes = translateResponse(
-        res,
-        this.core.serializer,
-        axiomifyReq,
-      );
-      const match = this.core.router.lookup(req.method as never, req.path);
-      if (match && 'error' in match) {
-        axiomifyRes.header('Allow', match.allowed.join(', '));
-        return axiomifyRes.status(405).send(null, 'Method Not Allowed');
-      }
-      return axiomifyRes.status(404).send(null, 'Route not found');
-    });
   }
 
   public listen(port: number, callback?: () => void): Server {

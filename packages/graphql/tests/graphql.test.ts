@@ -11,8 +11,15 @@ const graphqlModule = (() => {
 })();
 const describeGraphQL = graphqlModule ? describe : describe.skip;
 const useGraphQL = graphqlModule
-  ? (require('../src') as typeof import('../src')).useGraphQL
+  ? (require('../dist/index.js') as typeof import('../src')).useGraphQL
   : null;
+
+// Destructure GraphQL types so tests can use bare names regardless of whether
+// graphqlModule is available. When null, these are never called because
+// describeGraphQL is describe.skip.
+const GraphQLSchema = graphqlModule?.GraphQLSchema ?? (null as any);
+const GraphQLObjectType = graphqlModule?.GraphQLObjectType ?? (null as any);
+const GraphQLString = graphqlModule?.GraphQLString ?? (null as any);
 
 // ─── Shared test schema ───────────────────────────────────────────────────────
 

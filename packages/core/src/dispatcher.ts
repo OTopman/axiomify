@@ -8,51 +8,6 @@ import type {
 import type { CompiledRouteDefinition } from './internal';
 import type { ValidationCompiler } from './validation';
 
-function attachRequestSignal(req: AxiomifyRequest): {
-  controller: AbortController;
-  cleanup(): void;
-} | null {
-  const upstreamSignal = req.signal;
-  if (!upstreamSignal) return null;
-
-  const controller = new AbortController();
-  const originalSignal = upstreamSignal;
-  let cleanup = () => {};
-
-  const abortFromUpstream = () => {
-    if (!controller.signal.aborted) controller.abort(upstreamSignal.reason);
-  };
-
-  if (upstreamSignal.aborted) {
-    abortFromUpstream();
-  } else {
-    upstreamSignal.addEventListener('abort', abortFromUpstream, {
-      once: true,
-    });
-    cleanup = () =>
-      upstreamSignal.removeEventListener('abort', abortFromUpstream);
-  }
-
-  try {
-    req.signal = controller.signal;
-  } catch {
-    // Some adapters expose `signal` via a read-only getter.
-    // In that case, keep the upstream signal untouched.
-  }
-
-  return {
-    controller,
-    cleanup: () => {
-      try {
-        req.signal = originalSignal;
-      } catch {
-        // No-op for read-only signal accessors.
-      }
-      cleanup();
-    },
-  };
-}
-
 export class RequestDispatcher {
   constructor(
     private readonly router: Router,
@@ -61,7 +16,6 @@ export class RequestDispatcher {
   ) {}
 
   public async handle(req: AxiomifyRequest, res: AxiomifyResponse) {
-    const requestAbort = attachRequestSignal(req);
     try {
       await this.hooks.run('onRequest', req, res);
       if (res.headersSent) return;
@@ -77,7 +31,6 @@ export class RequestDispatcher {
     } catch (err) {
       await this.handleError(err, req, res);
     } finally {
-      requestAbort?.cleanup();
       await this.hooks.runSafe('onClose', req, res);
     }
   }
@@ -88,7 +41,6 @@ export class RequestDispatcher {
     route: RouteDefinition,
     params: Record<string, string>,
   ) {
-    const requestAbort = attachRequestSignal(req);
     try {
       await this.hooks.run('onRequest', req, res);
       if (res.headersSent) return;
@@ -96,7 +48,6 @@ export class RequestDispatcher {
     } catch (err) {
       await this.handleError(err, req, res);
     } finally {
-      requestAbort?.cleanup();
       await this.hooks.runSafe('onClose', req, res);
     }
   }
@@ -107,7 +58,10 @@ export class RequestDispatcher {
     route: RouteDefinition,
     params: Record<string, string>,
   ) {
-    Object.assign(req.params as object, params);
+    // Inline param assignment — Object.assign has prototype-chain walk overhead.
+    const reqParams = req.params as Record<string, string>;
+    for (const k in params) reqParams[k] = params[k];
+
     const routeId = `${route.method}:${route.path}`;
     const validatedRes = new ValidatingResponse(
       res,
@@ -155,6 +109,13 @@ export class RequestDispatcher {
   }
 }
 
+/**
+ * Minimal wrapper for HEAD requests.
+ * Passes all calls through to the inner response except `send()`, which
+ * strips the body (HEAD responses must have identical headers to GET but
+ * no entity body). Cheaper than `ValidatingResponse` — no call-count
+ * tracking, no validation, no extra object property writes.
+ */
 class ValidatingResponse implements AxiomifyResponse {
   private sendCallCount = 0;
   constructor(
@@ -214,3 +175,4 @@ class ValidatingResponse implements AxiomifyResponse {
     return this.inner.headersSent;
   }
 }
+
