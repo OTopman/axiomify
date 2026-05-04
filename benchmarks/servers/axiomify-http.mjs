@@ -1,8 +1,8 @@
 // Axiomify + @axiomify/http (Node.js native HTTP adapter)
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const { Axiomify } = require('/home/claude/axiomify/packages/core/dist/index.js');
-const { HttpAdapter } = require('/home/claude/axiomify/packages/http/dist/index.js');
+const { Axiomify } = require('../../packages/core/dist/index.js');
+const { HttpAdapter } = require('../../packages/http/dist/index.js');
 
 const port = parseInt(process.argv[2] || '3110', 10);
 

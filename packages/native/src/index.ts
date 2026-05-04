@@ -588,6 +588,7 @@ export class NativeAdapter {
 
   constructor(app: Axiomify, options: NativeAdapterOptions = {}) {
     this._app = app;
+    (this._app as any).lockRoutes?.('@axiomify/native');
     this._port = options.port ?? 3000;
     this._maxBodySize = options.maxBodySize ?? 1_048_576;
     this._trustProxy = options.trustProxy ?? false;

@@ -1,8 +1,8 @@
 // Axiomify + @axiomify/express
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const { Axiomify } = require('/home/claude/axiomify/packages/core/dist/index.js');
-const { ExpressAdapter } = require('/home/claude/axiomify/packages/express/dist/index.js');
+const { Axiomify } = require('../../packages/core/dist/index.js');
+const { ExpressAdapter } = require('../../packages/express/dist/index.js');
 
 const port = parseInt(process.argv[2] || '3111', 10);
 

@@ -60,6 +60,7 @@ export class FastifyAdapter {
   private readonly _workers: number;
 
   constructor(private core: Axiomify, options: FastifyAdapterOptions = {}) {
+    (this.core as any).lockRoutes?.('@axiomify/fastify');
     this._workers = options.workers ?? cpus().length;
     this.app = fastify({
       logger: false,

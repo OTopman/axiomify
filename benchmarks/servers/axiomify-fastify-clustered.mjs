@@ -16,8 +16,8 @@ if (!cluster.isPrimary) {
     process.exit(1);
   });
 
-  const { Axiomify } = require('/home/claude/axiomify/packages/core/dist/index.js');
-  const { FastifyAdapter } = require('/home/claude/axiomify/packages/fastify/dist/index.js');
+  const { Axiomify } = require('../../packages/core/dist/index.js');
+  const { FastifyAdapter } = require('../../packages/fastify/dist/index.js');
 
   const app = new Axiomify();
   app.route({
@@ -28,13 +28,20 @@ if (!cluster.isPrimary) {
 
   const adapter = new FastifyAdapter(app);
   await adapter.listen(port);
-  try { process.send?.('WORKER_READY'); } catch { /* EPIPE — primary already gone */ }
+  try {
+    process.send?.('WORKER_READY');
+  } catch {
+    /* EPIPE — primary already gone */
+  }
 
   process.on('SIGTERM', async () => {
-    try { await adapter.close(); } catch { /* ignore */ }
+    try {
+      await adapter.close();
+    } catch {
+      /* ignore */
+    }
     process.exit(0);
   });
-
 } else {
   let readyCount = 0;
 
@@ -47,7 +54,8 @@ if (!cluster.isPrimary) {
       }
     });
     worker.on('exit', (code, signal) => {
-      if (code !== 0 && signal !== 'SIGTERM') cluster.fork({ NODE_ENV: 'production' });
+      if (code !== 0 && signal !== 'SIGTERM')
+        cluster.fork({ NODE_ENV: 'production' });
     });
   }
 

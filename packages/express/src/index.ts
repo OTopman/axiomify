@@ -42,6 +42,7 @@ export class ExpressAdapter {
     const { bodyLimit = '1mb', trustProxy = false } = options;
 
     this.core = coreApp;
+    (this.core as any).lockRoutes?.('@axiomify/express');
     this._workers = options.workers ?? cpus().length;
     this.app = express();
 

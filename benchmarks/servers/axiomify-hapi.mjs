@@ -1,8 +1,8 @@
 // Axiomify + @axiomify/hapi
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const { Axiomify } = require('/home/claude/axiomify/packages/core/dist/index.js');
-const { HapiAdapter } = require('/home/claude/axiomify/packages/hapi/dist/index.js');
+const { Axiomify } = require('../../packages/core/dist/index.js');
+const { HapiAdapter } = require('../../packages/hapi/dist/index.js');
 
 const port = parseInt(process.argv[2] || '3113', 10);
 

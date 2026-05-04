@@ -78,16 +78,25 @@ function inferSchemaFromPayload<T = unknown>(data: T, depth = 0): T {
 }
 
 export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
+  // Default the prefix so an omitted `routePrefix` doesn't register routes
+  // at the literal path "undefined/openapi.json". Also normalize trailing
+  // slashes so "/docs" and "/docs/" behave identically.
   const rawPrefix = options.routePrefix ?? '/docs';
   const normalizedPrefix = rawPrefix.startsWith('/')
     ? rawPrefix
     : `/${rawPrefix}`;
-  const prefix = normalizedPrefix.endsWith('/')
+  const prefix = normalizedPrefix === '/'
+    ? '/'
+    : normalizedPrefix.endsWith('/')
     ? normalizedPrefix.slice(0, -1)
     : normalizedPrefix;
+  const docsPaths = prefix === '/' ? ['/'] : [prefix, `${prefix}/`];
+  const docsPathSet = new Set(docsPaths);
+  const specPath = prefix === '/' ? '/openapi.json' : `${prefix}/openapi.json`;
 
   const generator = new OpenApiGenerator(app, options);
   let cachedSpec: any = null;
+  let cachedSpecJson: string | null = null;
   let emittedPublicDocsWarning = false;
 
   if (options.autoInferResponses) {
@@ -98,7 +107,12 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
       if (!match?.route) return;
 
       // Skip self-requests to docs endpoints.
-      if (req.path === `${prefix}/openapi.json` || req.path === prefix) return;
+      if (
+        req.path === specPath ||
+        docsPathSet.has(req.path)
+      ) {
+        return;
+      }
 
       const payload = (res as any).payload;
       if (payload === undefined) return;
@@ -134,6 +148,7 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
             'application/json': { schema: inferSchemaFromPayload(parsedData) },
           },
         };
+        cachedSpecJson = null;
       }
     });
   }
@@ -158,38 +173,37 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
 
   app.route({
     method: 'GET',
-    path: `${prefix}/openapi.json`,
+    path: specPath,
     handler: async (req, res) => {
       if (!(await guard(req))) return res.status(403).send(null, 'Forbidden');
       if (!cachedSpec) cachedSpec = generator.generate();
-      res.status(200).sendRaw(JSON.stringify(cachedSpec), 'application/json');
+      if (!cachedSpecJson) cachedSpecJson = JSON.stringify(cachedSpec);
+      res.status(200).sendRaw(cachedSpecJson, 'application/json');
     },
   });
 
-  app.route({
-    method: 'GET',
-    path: `${prefix}`,
-    handler: async (req, res) => {
-      if (!(await guard(req))) return res.status(403).send(null, 'Forbidden');
+  const docsHandler = async (req: AxiomifyRequest, res: any) => {
+    if (!(await guard(req))) return res.status(403).send(null, 'Forbidden');
 
-      // Cache-bust only in non-production. In production the spec is stable,
-      // so allow the browser to cache the URL.
-      const isDev = process.env.NODE_ENV !== 'production';
-      const specUrl = isDev
-        ? `${prefix}/openapi.json?t=${Date.now()}`
-        : `${prefix}/openapi.json`;
+    // Cache-bust only in non-production. In production the spec is stable,
+    // so allow the browser to cache the URL.
+    const isDev = process.env.NODE_ENV !== 'production';
+    const specUrl = isDev
+      ? `${specPath}?t=${Date.now()}`
+      : specPath;
 
-      const html = `<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(options.info.title)} - API Docs</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://cdnjs.cloudflare.com; style-src 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: https:; connect-src 'self'; font-src https://cdnjs.cloudflare.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css" integrity="sha384-bIuUyBV7i6P7z/kPAs1oeBIf8PMIqVkPVDzzaOL+QH7kWmvCT9HDTWwGVs0L4/9Q" crossorigin="anonymous" referrerpolicy="no-referrer" />
 </head>
 <body style="margin: 0; padding: 0;">
   <div id="swagger-ui"></div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js" integrity="sha384-XHDYRdiHvBq7oL4CtkiJKfdVVA5PydxYtssHVtRrvPlha1m+zz8kboiyx/MAsyl3" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script>
     window.onload = () => {
       window.ui = SwaggerUIBundle({
@@ -200,7 +214,13 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
   </script>
 </body>
 </html>`;
-      res.status(200).sendRaw(html, 'text/html');
-    },
-  });
+    res.status(200).sendRaw(html, 'text/html');
+  };
+  for (const docsPath of docsPaths) {
+    app.route({
+      method: 'GET',
+      path: docsPath,
+      handler: docsHandler,
+    });
+  }
 }

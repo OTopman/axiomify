@@ -56,7 +56,7 @@ export async function initProject(
         'Hapi (Enterprise, plugin-first)',
         'Node HTTP (Zero dependency)',
       ],
-      initial: 1, // Fastify is the recommended default
+      initial: 0, // Native is the recommended default
     },
     {
       type: 'input',

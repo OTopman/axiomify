@@ -37,6 +37,7 @@ export class HapiAdapter {
       workers?: number;
     } = {},
   ) {
+    (this.core as any).lockRoutes?.('@axiomify/hapi');
     const { workers, ...hapiConfig } = config;
     const configuredPayload = hapiConfig.routes?.payload || {};
     this.bodyLimitBytes =

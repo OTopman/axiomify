@@ -53,6 +53,7 @@ export class HttpAdapter {
     private core: Axiomify,
     options: HttpAdapterOptions = {},
   ) {
+    (this.core as any).lockRoutes?.('@axiomify/http');
     this.trustProxy = options.trustProxy ?? false;
     this.onAdapterError = options.onAdapterError;
     this._workers = options.workers ?? cpus().length;

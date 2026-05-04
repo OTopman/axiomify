@@ -76,9 +76,7 @@ export class RequestDispatcher {
       await pipeline[i](req, validatedRes);
     }
 
-    if (!validatedRes.headersSent) {
-      await this.hooks.run('onPostHandler', req, validatedRes, { route, params });
-    }
+    await this.hooks.run('onPostHandler', req, validatedRes, { route, params });
   }
 
   private async handleError(

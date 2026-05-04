@@ -9,8 +9,8 @@ const port = parseInt(process.argv[2] || '3142', 10);
 const numWorkers = parseInt(process.env.WORKERS || '2', 10);
 
 if (!cluster.isPrimary) {
-  const { Axiomify } = require('/home/claude/axiomify/packages/core/dist/index.js');
-  const { HttpAdapter } = require('/home/claude/axiomify/packages/http/dist/index.js');
+  const { Axiomify } = require('../../packages/core/dist/index.js');
+  const { HttpAdapter } = require('../../packages/http/dist/index.js');
 
   const app = new Axiomify();
   app.route({
@@ -22,8 +22,10 @@ if (!cluster.isPrimary) {
   const adapter = new HttpAdapter(app);
   adapter.listen(port, () => process.send?.('WORKER_READY'));
 
-  process.on('SIGTERM', async () => { await adapter.close(); process.exit(0); });
-
+  process.on('SIGTERM', async () => {
+    await adapter.close();
+    process.exit(0);
+  });
 } else {
   let readyCount = 0;
 
@@ -36,7 +38,8 @@ if (!cluster.isPrimary) {
       }
     });
     worker.on('exit', (code, signal) => {
-      if (code !== 0 && signal !== 'SIGTERM') cluster.fork({ NODE_ENV: 'production' });
+      if (code !== 0 && signal !== 'SIGTERM')
+        cluster.fork({ NODE_ENV: 'production' });
     });
   }
 

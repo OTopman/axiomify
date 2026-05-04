@@ -1,8 +1,8 @@
 // Axiomify + @axiomify/fastify
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const { Axiomify } = require('/home/claude/axiomify/packages/core/dist/index.js');
-const { FastifyAdapter } = require('/home/claude/axiomify/packages/fastify/dist/index.js');
+const { Axiomify } = require('../../packages/core/dist/index.js');
+const { FastifyAdapter } = require('../../packages/fastify/dist/index.js');
 
 const port = parseInt(process.argv[2] || '3112', 10);
 

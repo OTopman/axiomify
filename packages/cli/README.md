@@ -22,7 +22,7 @@ axiomify init my-api
 
 Prompts:
 
-1. **Adapter** — Native (uWS, fastest), Fastify *(default)*, Express, Hapi, or Node HTTP
+1. **Adapter** — Native (uWS, fastest) *(default)*, Fastify, Express, Hapi, or Node HTTP
 2. **Plugins** — Auth, CORS, Helmet, Rate Limit, Metrics, Logger, OpenAPI (multi-select)
 3. **Language** — TypeScript *(default)* or JavaScript
 

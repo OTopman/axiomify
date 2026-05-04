@@ -60,6 +60,8 @@ export class Axiomify {
   private readonly _telemetry?: AxiomifyOptions['telemetry'];
   private readonly _services = new Map<string, unknown>();
   private readonly _modules = new Set<string>();
+  private _routesLocked = false;
+  private _routesLockedReason?: string;
 
   public get registeredRoutes(): readonly RouteDefinition[] {
     return this.registry.registeredRoutes;
@@ -142,7 +144,26 @@ export class Axiomify {
   }
 
   public route<S extends RouteSchema>(definition: RouteDefinition<S>): this {
+    if (this._routesLocked) {
+      const reason = this._routesLockedReason
+        ? ` (${this._routesLockedReason})`
+        : '';
+      throw new Error(
+        `Cannot register route ${definition.method} ${definition.path} after adapter binding${reason}. Register all routes before creating an adapter.`,
+      );
+    }
     this.registry.register(definition);
+    return this;
+  }
+
+  /**
+   * Locks route registration once an adapter has bound transport routes.
+   * This prevents silent route drift where late-registered routes never get
+   * mounted by adapters that snapshot routes at construction time.
+   */
+  public lockRoutes(reason?: string): this {
+    this._routesLocked = true;
+    this._routesLockedReason = reason;
     return this;
   }
 

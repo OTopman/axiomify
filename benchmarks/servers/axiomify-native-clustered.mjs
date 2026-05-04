@@ -20,8 +20,8 @@ const numWorkers = parseInt(process.env.WORKERS || '2', 10);
 
 if (!cluster.isPrimary) {
   // ── Worker process ────────────────────────────────────────────────────────
-  const { Axiomify } = require('/home/claude/axiomify/packages/core/dist/index.js');
-  const { NativeAdapter } = require('/home/claude/axiomify/packages/native/dist/index.js');
+  const { Axiomify } = require('../../packages/core/dist/index.js');
+  const { NativeAdapter } = require('../../packages/native/dist/index.js');
 
   const app = new Axiomify();
   app.route({
@@ -37,7 +37,8 @@ if (!cluster.isPrimary) {
   app.route({
     method: 'GET',
     path: '/users/:id/posts/:postId',
-    handler: async (req, res) => res.send({ id: req.params.id, postId: req.params.postId }),
+    handler: async (req, res) =>
+      res.send({ id: req.params.id, postId: req.params.postId }),
   });
 
   const adapter = new NativeAdapter(app, { port, trustProxy: false });
@@ -45,8 +46,10 @@ if (!cluster.isPrimary) {
     process.send?.('WORKER_READY');
   });
 
-  process.on('SIGTERM', () => { adapter.close(); process.exit(0); });
-
+  process.on('SIGTERM', () => {
+    adapter.close();
+    process.exit(0);
+  });
 } else {
   // ── Primary process ───────────────────────────────────────────────────────
   let readyCount = 0;
@@ -70,7 +73,9 @@ if (!cluster.isPrimary) {
         const replacement = cluster.fork({ NODE_ENV: 'production' });
         replacement.on('message', (msg) => {
           if (msg === 'WORKER_READY') {
-            process.stderr.write(`[primary] Replacement worker ${replacement.process.pid} ready\n`);
+            process.stderr.write(
+              `[primary] Replacement worker ${replacement.process.pid} ready\n`,
+            );
           }
         });
       }

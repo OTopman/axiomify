@@ -50,6 +50,119 @@ describe('Unified HookEngine Lifecycle', () => {
     ]);
   });
 
+  it('runs onPostHandler even when handler sends the response', async () => {
+    const app = new Axiomify();
+    const executionOrder: string[] = [];
+
+    app.addHook('onPostHandler', async () => {
+      executionOrder.push('onPostHandler');
+    });
+
+    app.route({
+      method: 'GET',
+      path: '/post-after-send',
+      handler: async (_req, res) => {
+        executionOrder.push('handler');
+        res.status(200).send('ok');
+      },
+    });
+
+    const mockReq = {
+      method: 'GET',
+      path: '/post-after-send',
+      params: {},
+      id: 'test-req',
+      state: {},
+    } as any;
+    const mockRes = {
+      headersSent: false,
+      status: () => mockRes,
+      send: () => {
+        mockRes.headersSent = true;
+      },
+      header: () => mockRes,
+      getHeader: () => undefined,
+      removeHeader: () => mockRes,
+      sendRaw: () => {
+        mockRes.headersSent = true;
+      },
+      error: () => {
+        mockRes.headersSent = true;
+      },
+      stream: () => {
+        mockRes.headersSent = true;
+      },
+      sseInit: () => {
+        mockRes.headersSent = true;
+      },
+      sseSend: () => {},
+      statusCode: 200,
+      raw: {},
+    } as any;
+
+    await app.handle(mockReq, mockRes);
+    expect(executionOrder).toEqual(['handler', 'onPostHandler']);
+  });
+
+  it('executes onPreHandler hooks added after route registration', async () => {
+    const app = new Axiomify();
+    const executionOrder: string[] = [];
+
+    app.route({
+      method: 'GET',
+      path: '/late-pre-hook',
+      handler: async (_req, res) => {
+        executionOrder.push('handler');
+        res.status(200).send('ok');
+      },
+    });
+
+    app.addHook('onPreHandler', async () => {
+      executionOrder.push('onPreHandler');
+    });
+
+    const mockReq = {
+      method: 'GET',
+      path: '/late-pre-hook',
+      params: {},
+      id: 'test-req',
+      state: {},
+    } as any;
+    const mockRes = {
+      status: () => mockRes,
+      send: () => {},
+      header: () => mockRes,
+      getHeader: () => undefined,
+      removeHeader: () => mockRes,
+      sendRaw: () => {},
+      error: () => {},
+      stream: () => {},
+      sseInit: () => {},
+      sseSend: () => {},
+      headersSent: false,
+      statusCode: 200,
+      raw: {},
+    } as any;
+
+    await app.handle(mockReq, mockRes);
+    expect(executionOrder).toEqual(['onPreHandler', 'handler']);
+  });
+
+  it('rejects route registration after routes are locked', () => {
+    const app = new Axiomify();
+    app.lockRoutes('test-adapter');
+
+    expect(() =>
+      app.route({
+        method: 'GET',
+        path: '/locked',
+        handler: async (_req, res) => {
+          res.send({ ok: true });
+        },
+      }),
+    ).toThrow('after adapter binding');
+  });
+
   it('catches handler errors and dispatches to onError', async () => {
     const app = new Axiomify();
     let errorCaught = false;
