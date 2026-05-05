@@ -50,7 +50,7 @@ describe('useOpenAPI plugin routes', () => {
   });
 
   it('serves docs UI on routePrefix with trailing slash', async () => {
-    const res = await request('/docs/');
+    const res = await request('/docs');
     expect(res.status).toBe(200);
     expect(res.body).toContain('SwaggerUIBundle');
   });
