@@ -1,9 +1,9 @@
 import { createAuthPlugin } from '@axiomify/auth';
 import { Axiomify, z } from '@axiomify/core';
+import { FastifyAdapter } from '@axiomify/fastify';
 import { useGraphQL } from '@axiomify/graphql';
 import { useHelmet } from '@axiomify/helmet';
 import { useLogger } from '@axiomify/logger';
-import { FastifyAdapter } from '@axiomify/fastify';
 import { useOpenAPI } from '@axiomify/openapi';
 import { serveStatic } from '@axiomify/static';
 import { useUpload } from '@axiomify/upload';
@@ -24,15 +24,13 @@ const requireAuth = createAuthPlugin({
   secret: getRequiredEnv('JWT_SECRET'),
 });
 
-useHelmet(app, {
-  contentSecurityPolicy:
-    "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'",
-});
+useHelmet(app);
 
 useLogger(app);
 serveStatic(app, {
   prefix: '/assets',
   root: path.join(process.cwd(), 'public'),
+  serveIndex: true,
 });
 
 const schema = new GraphQLSchema({
@@ -79,7 +77,7 @@ app.route({
   path: '/api/users/avatar',
   schema: {
     body: z.object({
-      userId: z.string().uuid(),
+      userId: z.string(),
     }),
     files: {
       avatar: {
@@ -154,7 +152,9 @@ app.route({
       return;
     }
     const fileStream = createReadStream(filePath);
-    fileStream.on('error', () => res.status(500).send(null, 'Failed to read file'));
+    fileStream.on('error', () =>
+      res.status(500).send(null, 'Failed to read file'),
+    );
     res.stream(fileStream, 'video/mp4');
   },
 });
@@ -173,12 +173,12 @@ app.route({
 }); */
 
 useOpenAPI(app, {
-  // routePrefix: '/docs',
+  routePrefix: '/docs',
   info: { title: 'Axiomify Test API', version: '1.0.0' },
 });
 
 if (require.main === module) {
-  const adapter = new FastifyAdapter(app, /* { port: 3000 } */);
+  const adapter = new FastifyAdapter(app /* { port: 3000 } */);
   adapter.listen(3000, () => {
     console.log('🚀 Axiomify engine online on port 3000');
     console.log('GraphQL ready at http://localhost:3000/graphql');

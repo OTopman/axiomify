@@ -14,6 +14,11 @@ export interface SwaggerPluginOptions extends OpenApiOptions {
   allowPublicInProduction?: boolean;
 }
 
+
+const DOCS_CSP =
+  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https://validator.swagger.io; worker-src 'self' blob:;";
+
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -85,11 +90,12 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
   const normalizedPrefix = rawPrefix.startsWith('/')
     ? rawPrefix
     : `/${rawPrefix}`;
-  const prefix = normalizedPrefix === '/'
-    ? '/'
-    : normalizedPrefix.endsWith('/')
-    ? normalizedPrefix.slice(0, -1)
-    : normalizedPrefix;
+  const prefix =
+    normalizedPrefix === '/'
+      ? '/'
+      : normalizedPrefix.endsWith('/')
+      ? normalizedPrefix.slice(0, -1)
+      : normalizedPrefix;
   const docsPaths = prefix === '/' ? ['/'] : [prefix, `${prefix}/`];
   const docsPathSet = new Set(docsPaths);
   const specPath = prefix === '/' ? '/openapi.json' : `${prefix}/openapi.json`;
@@ -107,10 +113,7 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
       if (!match?.route) return;
 
       // Skip self-requests to docs endpoints.
-      if (
-        req.path === specPath ||
-        docsPathSet.has(req.path)
-      ) {
+      if (req.path === specPath || docsPathSet.has(req.path)) {
         return;
       }
 
@@ -185,42 +188,44 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
   const docsHandler = async (req: AxiomifyRequest, res: any) => {
     if (!(await guard(req))) return res.status(403).send(null, 'Forbidden');
 
+    if (typeof res.setHeader === 'function') {
+      res.setHeader('Content-Security-Policy', DOCS_CSP);
+    } else if (typeof res.header === 'function') {
+      res.header('Content-Security-Policy', DOCS_CSP);
+    }
+
     // Cache-bust only in non-production. In production the spec is stable,
     // so allow the browser to cache the URL.
     const isDev = process.env.NODE_ENV !== 'production';
-    const specUrl = isDev
-      ? `${specPath}?t=${Date.now()}`
-      : specPath;
+    const specUrl = isDev ? `${specPath}?t=${Date.now()}` : specPath;
 
     const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escapeHtml(options.info.title)} - API Docs</title>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://cdnjs.cloudflare.com; style-src 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: https:; connect-src 'self'; font-src https://cdnjs.cloudflare.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css" integrity="sha384-bIuUyBV7i6P7z/kPAs1oeBIf8PMIqVkPVDzzaOL+QH7kWmvCT9HDTWwGVs0L4/9Q" crossorigin="anonymous" referrerpolicy="no-referrer" />
-</head>
-<body style="margin: 0; padding: 0;">
-  <div id="swagger-ui"></div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js" integrity="sha384-XHDYRdiHvBq7oL4CtkiJKfdVVA5PydxYtssHVtRrvPlha1m+zz8kboiyx/MAsyl3" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script>
-    window.onload = () => {
-      window.ui = SwaggerUIBundle({
-        url: '${escapeJsString(specUrl)}',
-        dom_id: '#swagger-ui',
-      });
-    };
-  </script>
-</body>
-</html>`;
+        <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>${escapeHtml(options.info.title)} - API Docs</title> 
+          <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui.min.css" integrity="sha384-bIuUyBV7i6P7z/kPAs1oeBIf8PMIqVkPVDzzaOL+QH7kWmvCT9HDTWwGVs0L4/9Q" crossorigin="anonymous" referrerpolicy="no-referrer" />
+        </head>
+        <body style="margin: 0; padding: 0;">
+          <div id="swagger-ui"></div>
+          <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.11.0/swagger-ui-bundle.min.js" integrity="sha384-XHDYRdiHvBq7oL4CtkiJKfdVVA5PydxYtssHVtRrvPlha1m+zz8kboiyx/MAsyl3" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+          <script>
+            window.onload = () => {
+              window.ui = SwaggerUIBundle({
+                url: '${escapeJsString(specUrl)}',
+                dom_id: '#swagger-ui',
+              });
+            };
+          </script>
+        </body>
+        </html>`;
     res.status(200).sendRaw(html, 'text/html');
   };
-  for (const docsPath of docsPaths) {
-    app.route({
-      method: 'GET',
-      path: docsPath,
-      handler: docsHandler,
-    });
-  }
+
+  app.route({
+    method: 'GET',
+    path: prefix,
+    handler: docsHandler,
+  });
 }

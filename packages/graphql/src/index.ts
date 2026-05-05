@@ -387,6 +387,10 @@ export function useGraphQL<TContext = Record<string, unknown>>(
       method: 'GET',
       path: pgPath,
       handler: async (_req, res) => {
+        res.header(
+          'Content-Security-Policy',
+          "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data:; fetch-src 'self';",
+        );
         res.status(200).sendRaw(buildPlaygroundHtml(gqlPath), 'text/html');
       },
     });

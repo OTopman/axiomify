@@ -24,11 +24,7 @@ export interface HelmetOptions {
   xRobotsTag?: string | false;
   removeHeaders?: string[];
   removePoweredBy?: boolean;
-  docsPath?: string | false;
 }
-
-const DOCS_CSP =
-  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https://validator.swagger.io; worker-src 'self' blob:;";
 
 function setIfEnabled(
   res: AxiomifyResponse,
@@ -40,16 +36,6 @@ function setIfEnabled(
   res.header(headerName, typeof value === 'string' ? value : fallback);
 }
 
-/**
- * Returns true only when the request path is exactly the docs path or
- * starts with it followed by a `/`. Uses req.path (no query string) and
- * requires the match to be at a segment boundary so `/docs-extra` does NOT
- * match a docsPath of `/docs`.
- */
-function isDocsRequest(reqPath: string, docsPath: string | false): boolean {
-  if (!docsPath) return false;
-  return reqPath === docsPath || reqPath.startsWith(docsPath + '/');
-}
 
 export function useHelmet(app: Axiomify, options: HelmetOptions = {}): void {
   const {
@@ -75,14 +61,12 @@ export function useHelmet(app: Axiomify, options: HelmetOptions = {}): void {
       'X-AspNet-Version',
       'X-AspNetMvc-Version',
     ],
-    docsPath = '/docs',
   } = options;
 
   app.addHook('onRequest', (req: AxiomifyRequest, res: AxiomifyResponse) => {
     // Exact prefix match at a path segment boundary — prevents `/other-docs`
     // or `?ref=/docs` from matching and receiving the permissive Docs CSP.
-    const isDocPath = isDocsRequest(req.path, docsPath);
-
+ 
     setIfEnabled(res, 'X-Content-Type-Options', xContentTypeOptions, 'nosniff');
     setIfEnabled(res, 'X-Frame-Options', xFrameOptions, 'DENY');
     setIfEnabled(res, 'X-XSS-Protection', xXssProtection, '0');
@@ -95,21 +79,20 @@ export function useHelmet(app: Axiomify, options: HelmetOptions = {}): void {
       'none',
     );
     setIfEnabled(res, 'X-DNS-Prefetch-Control', xDnsPrefetchControl, 'off');
-
     if (contentSecurityPolicy) {
       res.header(
         'Content-Security-Policy',
-        isDocPath ? DOCS_CSP : contentSecurityPolicy,
+        contentSecurityPolicy,
       );
     }
 
-    if (crossOriginEmbedderPolicy && !isDocPath) {
+    if (crossOriginEmbedderPolicy) {
       res.header('Cross-Origin-Embedder-Policy', crossOriginEmbedderPolicy);
     }
-    if (crossOriginOpenerPolicy && !isDocPath) {
+    if (crossOriginOpenerPolicy) {
       res.header('Cross-Origin-Opener-Policy', crossOriginOpenerPolicy);
     }
-    if (crossOriginResourcePolicy && !isDocPath) {
+    if (crossOriginResourcePolicy) {
       res.header('Cross-Origin-Resource-Policy', crossOriginResourcePolicy);
     }
 
