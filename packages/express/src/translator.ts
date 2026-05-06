@@ -1,6 +1,8 @@
 import type {
   AxiomifyRequest,
   AxiomifyResponse,
+  HttpMethod,
+  ResponseCapabilities,
   SerializerFn,
   SerializerInput,
 } from '@axiomify/core';
@@ -8,6 +10,11 @@ import { sanitizeInput } from '@axiomify/core';
 import crypto from 'crypto';
 import type { Request, Response } from 'express';
 import { Readable } from 'stream';
+
+const EXPRESS_CAPABILITIES: ResponseCapabilities = {
+  sse: true,
+  streaming: true,
+};
 
 function createRequestSignal(req: Request): AbortSignal {
   const controller = new AbortController();
@@ -25,61 +32,46 @@ function createRequestSignal(req: Request): AbortSignal {
   return controller.signal;
 }
 
-function serialize(serializer: SerializerFn, input: SerializerInput): any {
-  return serializer.length <= 1
-    ? (serializer as (input: SerializerInput) => any)(input)
-    : (serializer as any)(
-        input.data,
-        input.message,
-        input.statusCode,
-        input.isError,
-        input.req,
-      );
+/** Cache serializer arity once — avoids fn.length check on every send(). */
+function makeSerialize(fn: SerializerFn): (input: SerializerInput) => unknown {
+  if (fn.length <= 1) {
+    return (input) => (fn as (i: SerializerInput) => unknown)(input);
+  }
+  return (input) =>
+    (fn as Function)(
+      input.data,
+      input.message,
+      input.statusCode,
+      input.isError,
+      input.req,
+    );
 }
 
-export function translateRequest(req: Request): AxiomifyRequest {
-  const state: Record<string, unknown> = {};
-  const id = (req.headers['x-request-id'] as string) || crypto.randomUUID();
+export function translateRequest(
+  req: Request,
+  sanitize = true,
+): AxiomifyRequest {
+  // Plain property assignment — no per-property closure overhead.
+  const id =
+    (req.headers['x-request-id'] as string | undefined) ?? crypto.randomUUID();
   const signal = createRequestSignal(req);
+  const state: Record<string, unknown> = {};
+  const body = sanitize ? sanitizeInput(req.body) : req.body;
 
   return {
-    get id() {
-      return id;
-    },
-    get method() {
-      return req.method as AxiomifyRequest['method'];
-    },
-    get url() {
-      return req.url;
-    },
-    get path() {
-      return req.path;
-    },
-    get ip() {
-      // req.ip returns the real client IP when Express trust proxy is configured
-      // (set in ExpressAdapter constructor).  Fall back through the chain so
-      // tests that don't go through the full adapter still get a value.
-      return req.ip ?? req.socket.remoteAddress ?? '0.0.0.0';
-    },
-    get headers() {
-      return req.headers as Record<string, string | string[] | undefined>;
-    },
-    get stream() {
-      return req as unknown as Readable;
-    },
-    body: sanitizeInput(req.body),
-    query: req.query,
+    id,
+    method: req.method as HttpMethod,
+    url: req.url,
+    path: req.path,
+    ip: req.ip ?? req.socket?.remoteAddress ?? '0.0.0.0',
+    headers: req.headers as Record<string, string | string[] | undefined>,
+    stream: req as unknown as Readable,
+    body,
+    query: req.query as Record<string, string | string[]>,
     params: req.params,
-
-    get state() {
-      return state;
-    },
-    get raw() {
-      return req;
-    },
-    get signal() {
-      return signal;
-    },
+    state,
+    raw: req,
+    signal,
   };
 }
 
@@ -88,10 +80,15 @@ export function translateResponse(
   serializer: SerializerFn = (input: SerializerInput) => input.data,
   req?: AxiomifyRequest,
 ): AxiomifyResponse {
+  // Cache arity once per call — the result is stored in the closure and
+  // reused on every send() call from this response object.
+  const serialize = makeSerialize(serializer);
   let statusCode = 200;
   let isSent = false;
 
   return {
+    capabilities: EXPRESS_CAPABILITIES,
+
     status(code: number) {
       statusCode = code;
       return this;
@@ -113,13 +110,7 @@ export function translateResponse(
       if (isSent) return;
       isSent = true;
       const isError = statusCode >= 400;
-      const payload = serialize(serializer, {
-        data,
-        message,
-        statusCode,
-        isError,
-        req,
-      });
+      const payload = serialize({ data, message, statusCode, isError, req });
       res.status(statusCode).json(payload);
     },
 
@@ -134,7 +125,7 @@ export function translateResponse(
       if (isSent) return;
       isSent = true;
       const message = err instanceof Error ? err.message : 'Unknown Error';
-      const payload = serialize(serializer, {
+      const payload = serialize({
         data: null,
         message,
         statusCode: 500,
@@ -159,7 +150,6 @@ export function translateResponse(
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       res.flushHeaders();
-
       const heartbeat = setInterval(() => {
         res.write(': keepalive\n\n');
       }, sseHeartbeatMs);

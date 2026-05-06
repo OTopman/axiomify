@@ -1,3 +1,4 @@
+import type { CompiledRouteDefinition } from './internal';
 import type { HookManager } from './lifecycle';
 import { Router } from './router';
 import type {
@@ -6,7 +7,6 @@ import type {
   RouteDefinition,
   RouteSchema,
 } from './types';
-import type { CompiledRouteDefinition } from './internal';
 import { ValidationCompiler } from './validation';
 
 interface RegistryOptions {
@@ -55,16 +55,11 @@ export class RouteRegistry {
       (req: AxiomifyRequest, res: AxiomifyResponse) => Promise<void> | void
     > = [];
 
-    // Always include the onPreHandler stage so hooks added after route
-    // registration still execute deterministically for all routes.
-    const hookRef = this.hooks;
-    const defRef = definition as RouteDefinition;
-    pipeline.push((req, res) =>
-      hookRef.run('onPreHandler', req, res, {
-        route: defRef,
-        params: req.params as Record<string, string>,
-      }),
-    );
+    // onPreHandler hooks are NOT baked into the per-route pipeline.
+    // The dispatcher runs them directly before entering the pipeline so that
+    // (a) we pay zero cost when no onPreHandler hooks are registered, and
+    // (b) hooks added after route registration still execute — the dispatcher
+    //     reads the live hooks array at dispatch time, not at compile time.
 
     if (definition.plugins) pipeline.push(...definition.plugins);
 
@@ -103,12 +98,15 @@ export class RouteRegistry {
       });
     } else {
       // Fast path: no timeout, no telemetry — call handler directly.
-      // Avoids one async wrapper and reduces microtask pressure.
       const handler = definition.handler;
       pipeline.push((req, res) => handler(req as never, res));
     }
 
     (definition as CompiledRouteDefinition)._compiledPipeline = pipeline;
+    // Stamp whether this route has a response schema so the dispatcher can
+    // skip the ValidatingResponse wrapper on schema-less routes.
+    (definition as CompiledRouteDefinition)._hasResponseSchema =
+      !!definition.schema?.response;
     this.router.register(definition as RouteDefinition);
     this.routes.push(definition as RouteDefinition);
   }

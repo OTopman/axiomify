@@ -91,9 +91,26 @@ describe('Auth — route plugin Bearer extraction', () => {
   const runRequest = async (authHeader: string | string[] | undefined) => {
     const app = new Axiomify();
     const requireAuth = createAuthPlugin({ secret });
-    app.route({ method: 'GET', path: '/', plugins: [requireAuth], handler: async (req, res) => res.send({ id: getAuthUser(req)?.id }) });
-    const req = { method: 'GET', path: '/', headers: authHeader ? { authorization: authHeader } : {}, id: 'r', params: {}, state: {} } as any;
-    const res = { status: vi.fn().mockReturnThis(), send: vi.fn(), header: vi.fn().mockReturnThis(), headersSent: false } as any;
+    app.route({
+      method: 'GET',
+      path: '/',
+      plugins: [requireAuth],
+      handler: async (req, res) => res.send({ id: getAuthUser(req)?.id }),
+    });
+    const req = {
+      method: 'GET',
+      path: '/',
+      headers: authHeader ? { authorization: authHeader } : {},
+      id: 'r',
+      params: {},
+      state: {},
+    } as any;
+    const res = {
+      status: vi.fn().mockReturnThis(),
+      send: vi.fn(),
+      header: vi.fn().mockReturnThis(),
+      headersSent: false,
+    } as any;
     await app.handle(req, res);
     return res;
   };
@@ -101,7 +118,7 @@ describe('Auth — route plugin Bearer extraction', () => {
   it('populates auth user in request state on a successful verify', async () => {
     const token = jwt.sign({ id: 'user-1' }, secret);
     const res = await runRequest(`Bearer ${token}`);
-    expect((res as any).payload).toEqual({ id: 'user-1' });
+    expect(res.send.mock.calls[0][0]).toEqual({ id: 'user-1' });
   });
 
   it('rejects string JWT payloads for auth plugin', async () => {

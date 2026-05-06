@@ -1,7 +1,7 @@
 import type { Axiomify } from '@axiomify/core';
+import cluster from 'cluster';
 import type { NextFunction, Request, Response } from 'express';
 import express, { Express } from 'express';
-import cluster from 'cluster';
 import { Server } from 'http';
 import { cpus } from 'os';
 import { translateRequest, translateResponse } from './translator';
@@ -9,19 +9,13 @@ import { translateRequest, translateResponse } from './translator';
 export interface ExpressAdapterOptions {
   /**
    * Maximum body size for JSON and URL-encoded payloads.
-   * Enforced by Express body parsers on the actual stream — not a Content-Length
-   * check — making this resilient to chunked transfer encoding bypasses.
    * @default '1mb'
    */
   bodyLimit?: string;
   /**
    * Express trust proxy setting. Required for correct req.ip behind load
-   * balancers, nginx, or any reverse proxy. Without this, req.ip returns the
-   * proxy's IP, breaking rate limiting and fingerprinting.
-   *
-   * Set to `1` for a single proxy hop, `2` for two hops.
+   * balancers or nginx. Set to `1` for a single proxy hop, `2` for two hops.
    * Never set to `true` in production unless you fully control the proxy chain.
-   *
    * @default false
    */
   trustProxy?: boolean | number | string;
@@ -30,6 +24,12 @@ export interface ExpressAdapterOptions {
    * number of logical CPU cores.
    */
   workers?: number;
+  /**
+   * When true (default), request bodies are recursively sanitized to strip
+   * prototype-pollution keys. Set to false for fully trusted body sources.
+   * @default true
+   */
+  sanitize?: boolean;
 }
 
 export class ExpressAdapter {
@@ -42,35 +42,29 @@ export class ExpressAdapter {
     const { bodyLimit = '1mb', trustProxy = false } = options;
 
     this.core = coreApp;
-    (this.core as any).lockRoutes?.('@axiomify/express');
+    // Use the public lockRoutes — no more any-cast.
+    this.core.lockRoutes('@axiomify/express');
     this._workers = options.workers ?? cpus().length;
     this.app = express();
 
     // Required for correct req.ip when deployed behind a proxy or load balancer.
     this.app.set('trust proxy', trustProxy);
 
-    // Apply body parsers globally. Express checks Content-Type before parsing
-    // so these are safe to register unconditionally — they only fire for
-    // matching content types.
     this.app.use(express.json({ limit: bodyLimit }));
     this.app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
 
-    // --- EXPRESS'S OWN ROUTER HANDLES ALL ROUTING ---
-    // Each Axiomify route is registered directly with Express using its exact
-    // HTTP method and path. Express resolves the route, extracts named params,
-    // and invokes the handler. Axiomify's internal router is NOT consulted in
-    // the request dispatch path — there is no double routing.
+    const sanitize = options.sanitize ?? true;
+
     for (const route of this.core.registeredRoutes) {
       this.app[route.method.toLowerCase() as 'get'](
         route.path,
         async (req: Request, res: Response) => {
-          const axiomifyReq = translateRequest(req);
+          const axiomifyReq = translateRequest(req, sanitize);
           const axiomifyRes = translateResponse(
             res,
             this.core.serializer,
             axiomifyReq,
           );
-          // req.params populated by Express — no re-routing needed.
           await this.core.handleMatchedRoute(
             axiomifyReq,
             axiomifyRes,
@@ -110,14 +104,14 @@ export class ExpressAdapter {
           typeof anyErr.statusCode === 'number'
             ? anyErr.statusCode
             : typeof anyErr.status === 'number'
-              ? anyErr.status
-              : 500;
+            ? anyErr.status
+            : 500;
         const message =
           statusCode === 413
             ? 'Payload Too Large'
             : statusCode === 400
-              ? 'Bad Request'
-              : 'Internal Server Error';
+            ? 'Bad Request'
+            : 'Internal Server Error';
         const axiomifyReq = translateRequest(req);
         const payload = this.core.serializer({
           data: null,
@@ -137,15 +131,9 @@ export class ExpressAdapter {
   }
 
   /**
-   * Fork `workers` child processes and start Express on each. All workers bind
-   * the same port via Node.js cluster round-robin. Crashed workers restart automatically.
-   *
-   * @example
-   * const adapter = new ExpressAdapter(app, { workers: 4 });
-   * adapter.listenClustered(3000, {
-   *   onWorkerReady: (port) => console.log(`[${process.pid}] :${port}`),
-   *   onPrimary: (pids) => console.log('Workers:', pids),
-   * });
+   * Fork `workers` child processes and start Express on each.
+   * SIGTERM is forwarded to workers. `onPrimary` fires only after all workers
+   * are ready — not immediately after forking.
    */
   public listenClustered(
     port: number,
@@ -156,19 +144,46 @@ export class ExpressAdapter {
     } = {},
   ): void {
     if (!cluster.isPrimary) {
-      this.listen(port, () => opts.onWorkerReady?.(port));
+      this.listen(port, () => {
+        opts.onWorkerReady?.(port);
+        process.send?.({ type: 'WORKER_READY', pid: process.pid });
+      });
+      process.once('SIGTERM', () => {
+        this.close().finally(() => process.exit(0));
+      });
       return;
     }
-    const pids: number[] = [];
-    for (let i = 0; i < this._workers; i++) {
+
+    const numWorkers = this._workers;
+    const liveWorkers = new Map<number, cluster.Worker>();
+    let readyCount = 0;
+
+    const spawnWorker = () => {
       const w = cluster.fork();
-      pids.push(w.process.pid ?? 0);
-      w.on('exit', (code, signal) => {
-        opts.onWorkerExit?.(w.process.pid ?? 0, code);
-        if (code !== 0 && signal !== 'SIGTERM') cluster.fork();
+      w.once('online', () => {
+        if (w.process.pid) liveWorkers.set(w.process.pid, w);
       });
-    }
-    opts.onPrimary?.(pids);
+      w.on('message', (msg: { type?: string }) => {
+        if (msg?.type === 'WORKER_READY') {
+          readyCount++;
+          if (readyCount === numWorkers)
+            opts.onPrimary?.([...liveWorkers.keys()]);
+        }
+      });
+      w.on('exit', (code, signal) => {
+        const pid = w.process.pid ?? 0;
+        liveWorkers.delete(pid);
+        opts.onWorkerExit?.(pid, code);
+        if (code !== 0 && signal !== 'SIGTERM') spawnWorker();
+      });
+    };
+
+    process.once('SIGTERM', () => {
+      for (const w of liveWorkers.values()) w.process.kill('SIGTERM');
+      process.exit(0);
+    });
+
+    for (let i = 0; i < numWorkers; i++) spawnWorker();
   }
 
   public async close(): Promise<void> {

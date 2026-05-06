@@ -88,6 +88,17 @@ export interface AxiomifyRequest<
   signal?: AbortSignal;
 }
 
+/**
+ * Describes which optional capabilities a specific transport adapter
+ * supports. Check before calling optional response methods.
+ */
+export interface ResponseCapabilities {
+  /** True when `sseInit()` / `sseSend()` are available on this response. */
+  readonly sse: boolean;
+  /** True when `stream()` is available on this response. */
+  readonly streaming: boolean;
+}
+
 export interface AxiomifyResponse {
   status(code: number): this;
   header(key: string, value: string): this;
@@ -98,12 +109,42 @@ export interface AxiomifyResponse {
   error(err: unknown): void;
 
   stream(readable: Readable, contentType?: string): void;
-  sseInit(sseHeartbeatMs?: number): void;
-  sseSend(data: any, event?: string): void;
+
+  /**
+   * Describes which optional methods are available on the current transport.
+   * Check `res.capabilities.sse` before calling `sseInit()` / `sseSend()`.
+   */
+  readonly capabilities: ResponseCapabilities;
+
+  /**
+   * Initialise an SSE stream. Only available when `res.capabilities.sse` is
+   * true. Throws on transports that do not support SSE (e.g. native/uWS).
+   */
+  sseInit?(sseHeartbeatMs?: number): void;
+  /**
+   * Push an event over an SSE stream that was opened with `sseInit()`.
+   * Only available when `res.capabilities.sse` is true.
+   */
+  sseSend?(data: any, event?: string): void;
 
   readonly statusCode: number;
   readonly raw: unknown;
   readonly headersSent: boolean;
+}
+
+/**
+ * Narrowed response type for routes that use Server-Sent Events.
+ * Cast `res` to this type after checking `res.capabilities.sse === true`.
+ *
+ * @example
+ * if (!res.capabilities.sse) throw new Error('SSE not supported on this adapter');
+ * const sse = res as SseCapableResponse;
+ * sse.sseInit();
+ * sse.sseSend({ tick: 1 });
+ */
+export interface SseCapableResponse extends AxiomifyResponse {
+  sseInit(sseHeartbeatMs?: number): void;
+  sseSend(data: any, event?: string): void;
 }
 
 export interface RouteGroup {
@@ -166,12 +207,13 @@ export type RouteHandler<
   res: AxiomifyResponse,
 ) => Promise<void> | void;
 
-export type PluginHandler = (
+export type RouteMiddleware = (
   req: AxiomifyRequest,
   res: AxiomifyResponse,
 ) => void | Promise<void>;
 
-export type RouteMiddleware = PluginHandler;
+/** @deprecated Use RouteMiddleware instead. */
+export type PluginHandler = RouteMiddleware;
 /** @deprecated Use RouteMiddleware instead. */
 export type RoutePlugin = RouteMiddleware;
 

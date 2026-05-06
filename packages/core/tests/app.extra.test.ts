@@ -11,7 +11,7 @@ const makeReq = (path: string, method = 'GET') =>
     headers: {},
     id: 'test',
     state: {},
-  }) as any;
+  } as any);
 
 const makeRes = () => {
   let sendPayload: unknown;
@@ -252,7 +252,15 @@ describe('Axiomify.use', () => {
     });
 
     app.use(installer);
-    expect(installer).toHaveBeenCalledWith(app);
+    // use() now always calls the configurator with (app, context).
+    // A 1-arg function ignores the second argument — this is fine.
+    expect(installer).toHaveBeenCalledWith(
+      app,
+      expect.objectContaining({
+        provide: expect.any(Function),
+        resolve: expect.any(Function),
+      }),
+    );
 
     app.route({
       method: 'GET',
@@ -271,7 +279,7 @@ describe('Axiomify.use', () => {
     const res = makeRes();
     await app.handle(req, res);
 
-    expect((res as any).payload).toEqual({ installed: true });
+    expect(res._payload).toEqual({ installed: true });
   });
 });
 

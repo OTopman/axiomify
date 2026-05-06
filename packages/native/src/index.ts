@@ -3,6 +3,7 @@ import type {
   AxiomifyRequest,
   AxiomifyResponse,
   HttpMethod,
+  ResponseCapabilities,
   SerializerFn,
   SerializerInput,
 } from '@axiomify/core';
@@ -10,13 +11,40 @@ import cluster from 'cluster';
 import { cpus } from 'os';
 import { Readable } from 'stream';
 import type {
+  TemplatedApp,
   HttpRequest as UWSRequest,
   HttpResponse as UWSResponse,
-  TemplatedApp,
   WebSocketBehavior,
 } from 'uWebSockets.js';
 import uWS from 'uWebSockets.js';
 import { assertNoNativeSseRoutes } from './sse-guard';
+
+// ---------------------------------------------------------------------------
+// Capabilities — native uWS adapter supports streaming but NOT SSE
+// ---------------------------------------------------------------------------
+
+const NATIVE_CAPABILITIES: ResponseCapabilities = {
+  sse: false,
+  streaming: true,
+};
+
+// ---------------------------------------------------------------------------
+// Serializer arity: cached once at adapter construction, not per request
+// ---------------------------------------------------------------------------
+
+function makeSerialize(fn: SerializerFn): (input: SerializerInput) => unknown {
+  if (fn.length <= 1) {
+    return (input) => (fn as (i: SerializerInput) => unknown)(input);
+  }
+  return (input) =>
+    (fn as Function)(
+      input.data,
+      input.message,
+      input.statusCode,
+      input.isError,
+      input.req,
+    );
+}
 
 // ---------------------------------------------------------------------------
 // Status line cache
@@ -75,29 +103,22 @@ let CACHED_413: CachedError;
 let CACHED_500: CachedError;
 
 function buildErrorCache(serializer: SerializerFn): void {
+  // Use the same arity-normalising helper so the ternary isn't repeated here.
+  const serialize = makeSerialize(serializer);
   const make = (statusCode: number, message: string): CachedError => ({
     statusLine: statusLine(statusCode),
     body: JSON.stringify(
-      serializer.length <= 1
-        ? (serializer as (i: SerializerInput) => unknown)({
-            data: null,
-            message,
-            statusCode,
-            isError: true,
-          })
-        : (serializer as Function)(null, message, statusCode, true),
+      serialize({ data: null, message, statusCode, isError: true }),
     ),
   });
   CACHED_404 = make(404, 'Route not found');
   CACHED_405_BODY = JSON.stringify(
-    serializer.length <= 1
-      ? (serializer as (i: SerializerInput) => unknown)({
-          data: null,
-          message: 'Method Not Allowed',
-          statusCode: 405,
-          isError: true,
-        })
-      : (serializer as Function)(null, 'Method Not Allowed', 405, true),
+    serialize({
+      data: null,
+      message: 'Method Not Allowed',
+      statusCode: 405,
+      isError: true,
+    }),
   );
   CACHED_413 = make(413, 'Payload Too Large');
   CACHED_500 = make(500, 'Internal Server Error');
@@ -130,7 +151,9 @@ function extractParamKeys(path: string): string[] {
  * uWS uses `del` because `delete` is a reserved JS keyword.
  */
 function uwsMethod(method: HttpMethod): keyof TemplatedApp {
-  return (method === 'DELETE' ? 'del' : method.toLowerCase()) as keyof TemplatedApp;
+  return (
+    method === 'DELETE' ? 'del' : method.toLowerCase()
+  ) as keyof TemplatedApp;
 }
 
 // ---------------------------------------------------------------------------
@@ -272,7 +295,9 @@ class NativeRequest implements AxiomifyRequest {
 
   get id(): string {
     if (!this._id) {
-      this._id = this.headers['x-request-id'] ?? `${_nativePidHex}-${(++_nativeReqCounter).toString(36)}`;
+      this._id =
+        this.headers['x-request-id'] ??
+        `${_nativePidHex}-${(++_nativeReqCounter).toString(36)}`;
     }
     return this._id;
   }
@@ -302,7 +327,8 @@ class NativeRequest implements AxiomifyRequest {
   get signal(): AbortSignal {
     if (!this._controller) {
       this._controller = new AbortController();
-      if (this._aborted) this._controller.abort(new Error('Client aborted request'));
+      if (this._aborted)
+        this._controller.abort(new Error('Client aborted request'));
     }
     return this._controller.signal;
   }
@@ -323,10 +349,12 @@ class NativeResponse implements AxiomifyResponse {
   public headersSent = false;
   public aborted = false;
   public raw: UWSResponse;
+  public readonly capabilities: ResponseCapabilities = NATIVE_CAPABILITIES;
 
   private readonly _app: Axiomify;
   private readonly _req: NativeRequest;
   private readonly _method: HttpMethod;
+  private readonly _serialize: (input: SerializerInput) => unknown;
   // Use a plain object for small header counts; Map for large counts.
   // In practice most responses have ≤10 headers — object wins on V8.
   private _headers: Record<string, string> = {};
@@ -336,11 +364,13 @@ class NativeResponse implements AxiomifyResponse {
     app: Axiomify,
     req: NativeRequest,
     method: HttpMethod,
+    serialize: (input: SerializerInput) => unknown,
   ) {
     this.raw = res;
     this._app = app;
     this._req = req;
     this._method = method;
+    this._serialize = serialize;
   }
 
   status(code: number): this {
@@ -367,17 +397,14 @@ class NativeResponse implements AxiomifyResponse {
     this.headersSent = true;
 
     const isError = this.statusCode >= 400;
-    const serializer = this._app.serializer;
-    const payload =
-      serializer.length <= 1
-        ? (serializer as (i: SerializerInput) => unknown)({
-            data,
-            message,
-            statusCode: this.statusCode,
-            isError,
-            req: this._req,
-          })
-        : (serializer as Function)(data, message, this.statusCode, isError, this._req);
+    // Use the arity-cached serializer stored at adapter construction time.
+    const payload = this._serialize({
+      data,
+      message,
+      statusCode: this.statusCode,
+      isError,
+      req: this._req,
+    });
 
     // Store payload for ValidatingResponse introspection.
     (this as unknown as Record<string, unknown>).payload = payload;
@@ -406,8 +433,8 @@ class NativeResponse implements AxiomifyResponse {
       typeof payload === 'string'
         ? payload
         : Buffer.isBuffer(payload)
-          ? payload
-          : String(payload);
+        ? payload
+        : String(payload);
     const sl = statusLine(this.statusCode);
     const headers = this._headers;
 
@@ -436,7 +463,10 @@ class NativeResponse implements AxiomifyResponse {
     });
   }
 
-  stream(readable: import('stream').Readable, contentType = 'application/octet-stream'): void {
+  stream(
+    readable: import('stream').Readable,
+    contentType = 'application/octet-stream',
+  ): void {
     if (this.headersSent || this.aborted) return;
     this.headersSent = true;
 
@@ -461,7 +491,12 @@ class NativeResponse implements AxiomifyResponse {
       if (self.aborted) return true;
       while (pending.length > 0) {
         const chunk = pending[0];
-        const ok = res.write(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength) as ArrayBuffer);
+        const ok = res.write(
+          chunk.buffer.slice(
+            chunk.byteOffset,
+            chunk.byteOffset + chunk.byteLength,
+          ) as ArrayBuffer,
+        );
         if (!ok) {
           readable.pause();
           if (!flushing) {
@@ -505,19 +540,10 @@ class NativeResponse implements AxiomifyResponse {
     });
   }
 
-  sseInit(): never {
-    throw new Error(
-      '[Axiomify/native] NativeAdapter does not support Server-Sent Events (SSE). ' +
-        'Use @axiomify/http, @axiomify/express, @axiomify/fastify, or @axiomify/hapi for SSE endpoints.',
-    );
-  }
-
-  sseSend(): never {
-    throw new Error(
-      '[Axiomify/native] NativeAdapter does not support Server-Sent Events (SSE). ' +
-        'Use @axiomify/http, @axiomify/express, @axiomify/fastify, or @axiomify/hapi for SSE endpoints.',
-    );
-  }
+  // sseInit / sseSend are intentionally absent — NativeResponse.capabilities.sse
+  // is false, so callers that check before casting will never reach these.
+  // The assertNoNativeSseRoutes() guard at adapter construction provides an
+  // early, readable error for handlers that reference SSE methods.
 }
 
 // ---------------------------------------------------------------------------
@@ -584,15 +610,19 @@ export class NativeAdapter {
   private readonly _maxBodySize: number;
   private readonly _trustProxy: boolean;
   private readonly _workers: number;
+  /** Serializer arity cached at construction time — not re-checked per request. */
+  private readonly _serialize: (input: SerializerInput) => unknown;
   private _listenSocket: unknown = null;
 
   constructor(app: Axiomify, options: NativeAdapterOptions = {}) {
     this._app = app;
-    (this._app as any).lockRoutes?.('@axiomify/native');
+    // Use the public lockRoutes — no more casting to any.
+    this._app.lockRoutes('@axiomify/native');
     this._port = options.port ?? 3000;
     this._maxBodySize = options.maxBodySize ?? 1_048_576;
     this._trustProxy = options.trustProxy ?? false;
     this._workers = options.workers ?? cpus().length;
+    this._serialize = makeSerialize(this._app.serializer);
 
     assertNoNativeSseRoutes(this._app.registeredRoutes);
     buildErrorCache(this._app.serializer);
@@ -689,9 +719,13 @@ export class NativeAdapter {
     const app = this._app;
     const maxBodySize = this._maxBodySize;
     const trustProxy = this._trustProxy;
+    const serialize = this._serialize; // captured once per route, not per request
     const method = route.method;
     const needsBody =
-      method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE';
+      method === 'POST' ||
+      method === 'PUT' ||
+      method === 'PATCH' ||
+      method === 'DELETE';
 
     return (res: UWSResponse, req: UWSRequest): void => {
       // --- SYNCHRONOUS SECTION ---
@@ -710,7 +744,9 @@ export class NativeAdapter {
 
       // Collect all request headers in one pass.
       const headers: Record<string, string> = {};
-      req.forEach((k: string, v: string) => { headers[k] = v; });
+      req.forEach((k: string, v: string) => {
+        headers[k] = v;
+      });
 
       const url = req.getUrl();
       const queryStr = req.getQuery();
@@ -727,9 +763,22 @@ export class NativeAdapter {
       });
 
       // Construct request and response objects.
-      const axiomifyReq = new NativeRequest(method, url, ip, headers, queryStr, undefined);
+      const axiomifyReq = new NativeRequest(
+        method,
+        url,
+        ip,
+        headers,
+        queryStr,
+        undefined,
+      );
       axiomifyReq.params = params;
-      const axiomifyRes = new NativeResponse(res, app, axiomifyReq, method);
+      const axiomifyRes = new NativeResponse(
+        res,
+        app,
+        axiomifyReq,
+        method,
+        serialize,
+      );
 
       // --- ASYNC SECTION ---
       (async () => {
@@ -803,10 +852,14 @@ export class NativeAdapter {
         const url = req.getUrl();
         const secWebSocketKey = req.getHeader('sec-websocket-key');
         const secWebSocketProtocol = req.getHeader('sec-websocket-protocol');
-        const secWebSocketExtensions = req.getHeader('sec-websocket-extensions');
+        const secWebSocketExtensions = req.getHeader(
+          'sec-websocket-extensions',
+        );
 
         const headers: Record<string, string> = {};
-        req.forEach((k: string, v: string) => { headers[k] = v; });
+        req.forEach((k: string, v: string) => {
+          headers[k] = v;
+        });
 
         res.onAborted(() => {});
 
@@ -843,11 +896,15 @@ export class NativeAdapter {
         this._listenSocket = token;
         callback?.();
       } else {
-        const err = new Error(`[Axiomify/native] Port ${this._port} is occupied.`);
+        const err = new Error(
+          `[Axiomify/native] Port ${this._port} is occupied.`,
+        );
         if (onError) {
           onError(err);
         } else {
-          queueMicrotask(() => { throw err; });
+          queueMicrotask(() => {
+            throw err;
+          });
         }
       }
     });
@@ -855,55 +912,81 @@ export class NativeAdapter {
 
   /**
    * Spawn `workers` child processes (default: one per CPU core) and start the
-   * server on each. All workers bind the same port via `SO_REUSEPORT` — the
-   * kernel distributes connections across them with no coordination overhead.
+   * server on each. All workers bind the same port directly via uWS's
+   * `SO_REUSEPORT` — the kernel load-balances connections with no IPC overhead.
    *
-   * This is the recommended way to saturate multi-core machines. At 4 cores
-   * and 46k req/s per worker, total throughput approaches 180k req/s (minus
-   * kernel scheduling variance).
-   *
-   * **In worker processes:** calls `listen()` and returns.
-   * **In the primary process:** forks `workers` children, calls `onPrimary`
-   * (if provided), and returns. The primary process itself does NOT bind the port.
+   * SIGTERM is forwarded to all live workers for graceful drain. `onPrimary`
+   * fires only once ALL workers have signalled readiness — not immediately
+   * after forking.
    *
    * @example
    * const adapter = new NativeAdapter(app, { port: 3000 });
    * adapter.listenClustered({
    *   onWorkerReady: () => console.log(`Worker ${process.pid} listening`),
-   *   onPrimary: (workerPids) => console.log('Primary', process.pid, '→ workers', workerPids),
+   *   onPrimary: (pids) => console.log('Primary', process.pid, '→ workers', pids),
    * });
    */
-  public listenClustered(opts: {
-    onWorkerReady?: () => void;
-    onPrimary?: (pids: number[]) => void;
-    onWorkerExit?: (pid: number, code: number | null) => void;
-  } = {}): void {
+  public listenClustered(
+    opts: {
+      onWorkerReady?: () => void;
+      onPrimary?: (pids: number[]) => void;
+      onWorkerExit?: (pid: number, code: number | null) => void;
+    } = {},
+  ): void {
     if (!cluster.isPrimary) {
-      // We are already inside a worker — just bind and serve.
-      this.listen(opts.onWorkerReady);
+      // Worker: bind port directly (SO_REUSEPORT), then notify primary.
+      this.listen(() => {
+        opts.onWorkerReady?.();
+        process.send?.({ type: 'WORKER_READY', pid: process.pid });
+      });
+      // Workers handle SIGTERM by closing their uWS socket gracefully.
+      process.once('SIGTERM', () => {
+        this.close();
+        process.exit(0);
+      });
       return;
     }
 
+    // Primary: manage worker lifecycle.
     const numWorkers = this._workers;
-    const pids: number[] = [];
+    // Map prevents stale entries — dead PIDs are removed on exit.
+    const liveWorkers = new Map<number, cluster.Worker>();
+    let readyCount = 0;
 
-    for (let i = 0; i < numWorkers; i++) {
+    const spawnWorker = () => {
       const w = cluster.fork();
-      pids.push(w.process.pid ?? 0);
+
+      // PID is only guaranteed available after 'online' on all platforms.
+      w.once('online', () => {
+        if (w.process.pid) liveWorkers.set(w.process.pid, w);
+      });
+
+      w.on('message', (msg: { type?: string }) => {
+        if (msg?.type === 'WORKER_READY') {
+          readyCount++;
+          if (readyCount === numWorkers) {
+            // All workers ready — advertise the cluster.
+            opts.onPrimary?.([...liveWorkers.keys()]);
+          }
+        }
+      });
 
       w.on('exit', (code, signal) => {
         const pid = w.process.pid ?? 0;
+        liveWorkers.delete(pid); // Remove stale entry immediately.
         opts.onWorkerExit?.(pid, code);
-        // Auto-restart crashed workers. Intentional shutdowns (SIGTERM) exit
-        // with code 0 — those are not restarted.
-        if (code !== 0 && signal !== 'SIGTERM') {
-          const replacement = cluster.fork();
-          pids.push(replacement.process.pid ?? 0);
-        }
+        // Restart on crash. Code 0 or SIGTERM = intentional — do not restart.
+        if (code !== 0 && signal !== 'SIGTERM') spawnWorker();
       });
-    }
+    };
 
-    opts.onPrimary?.(pids);
+    // Forward SIGTERM to every live worker before the primary exits.
+    process.once('SIGTERM', () => {
+      for (const w of liveWorkers.values()) w.process.kill('SIGTERM');
+      process.exit(0);
+    });
+
+    for (let i = 0; i < numWorkers; i++) spawnWorker();
   }
 
   public close(): void {

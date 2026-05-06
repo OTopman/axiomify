@@ -62,21 +62,41 @@ export class RequestDispatcher {
     const reqParams = req.params as Record<string, string>;
     for (const k in params) reqParams[k] = params[k];
 
-    const routeId = `${route.method}:${route.path}`;
-    const validatedRes = new ValidatingResponse(
-      res,
-      this.validator,
-      req.method,
-      routeId,
-    );
-
-    const pipeline = (route as CompiledRouteDefinition)._compiledPipeline;
-    for (let i = 0; i < pipeline.length; i++) {
-      if (validatedRes.headersSent) break;
-      await pipeline[i](req, validatedRes);
+    // Run onPreHandler hooks directly here — not baked into the compiled
+    // pipeline — so we pay zero cost when no handlers are registered.
+    // The live hooks array is read at dispatch time, preserving late-registration
+    // semantics without the closure allocation per route.
+    const preHandlerList = this.hooks.hooks.onPreHandler;
+    if (preHandlerList.length > 0) {
+      await this.hooks.run('onPreHandler', req, res, {
+        route,
+        params: reqParams,
+      });
+      if (res.headersSent) return;
     }
 
-    await this.hooks.run('onPostHandler', req, validatedRes, { route, params });
+    const compiled = route as CompiledRouteDefinition;
+    const routeId = `${route.method}:${route.path}`;
+
+    // Wrap in ValidatingResponse when:
+    //  (a) the route has a response schema — validate the outgoing payload, OR
+    //  (b) the HTTP method is HEAD — strip the response body (HEAD must have
+    //      identical headers to GET but zero entity body, per RFC 9110 §9.3.2).
+    //
+    // For schema-less non-HEAD requests we skip the wrapper entirely, saving
+    // one object allocation and one extra property-access chain per request.
+    const needsWrapper = compiled._hasResponseSchema || req.method === 'HEAD';
+    const dispatchRes: AxiomifyResponse = needsWrapper
+      ? new ValidatingResponse(res, this.validator, req.method, routeId)
+      : res;
+
+    const pipeline = compiled._compiledPipeline;
+    for (let i = 0; i < pipeline.length; i++) {
+      if (dispatchRes.headersSent) break;
+      await pipeline[i](req, dispatchRes);
+    }
+
+    await this.hooks.run('onPostHandler', req, dispatchRes, { route, params });
   }
 
   private async handleError(
@@ -91,8 +111,8 @@ export class RequestDispatcher {
       typeof anyErr.statusCode === 'number'
         ? anyErr.statusCode
         : typeof anyErr.status === 'number'
-          ? anyErr.status
-          : 500;
+        ? anyErr.status
+        : 500;
     const message =
       typeof anyErr.message === 'string'
         ? anyErr.message
@@ -108,14 +128,12 @@ export class RequestDispatcher {
 }
 
 /**
- * Minimal wrapper for HEAD requests.
- * Passes all calls through to the inner response except `send()`, which
- * strips the body (HEAD responses must have identical headers to GET but
- * no entity body). Cheaper than `ValidatingResponse` — no call-count
- * tracking, no validation, no extra object property writes.
+ * Wraps a response to perform response-schema validation on the first `send()`
+ * call, and to handle HEAD-method body suppression.
+ * Only instantiated when the route has a `schema.response` defined.
  */
 class ValidatingResponse implements AxiomifyResponse {
-  private sendCallCount = 0;
+  private _sent = false;
   constructor(
     private readonly inner: AxiomifyResponse,
     private readonly validator: ValidationCompiler,
@@ -139,12 +157,17 @@ class ValidatingResponse implements AxiomifyResponse {
     return this;
   }
   send<T>(data: T, message?: string): void {
-    if (this.sendCallCount === 0) {
-      this.validator.validateResponse(this.routeId, data, this.inner.statusCode);
+    if (!this._sent) {
+      this._sent = true;
+      this.validator.validateResponse(
+        this.routeId,
+        data,
+        this.inner.statusCode,
+      );
       (this.inner as unknown as Record<string, unknown>).payload = data;
-      (this.inner as unknown as Record<string, unknown>).responseMessage = message;
+      (this.inner as unknown as Record<string, unknown>).responseMessage =
+        message;
     }
-    this.sendCallCount++;
     if (this.method === 'HEAD') return this.inner.send(undefined, message);
     this.inner.send(data, message);
   }
@@ -157,11 +180,14 @@ class ValidatingResponse implements AxiomifyResponse {
   stream(readable: import('stream').Readable, contentType?: string): void {
     this.inner.stream(readable, contentType);
   }
+  get capabilities() {
+    return this.inner.capabilities ?? { sse: false, streaming: false };
+  }
   sseInit(sseHeartbeatMs?: number): void {
-    this.inner.sseInit(sseHeartbeatMs);
+    this.inner.sseInit?.(sseHeartbeatMs);
   }
   sseSend(data: any, event?: string): void {
-    this.inner.sseSend(data, event);
+    this.inner.sseSend?.(data, event);
   }
   get statusCode(): number {
     return this.inner.statusCode;
@@ -173,4 +199,3 @@ class ValidatingResponse implements AxiomifyResponse {
     return this.inner.headersSent;
   }
 }
-

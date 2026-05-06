@@ -1,7 +1,13 @@
 import { Axiomify } from '../../core/src/app';
 import jwt from 'jsonwebtoken';
 import { describe, expect, it, vi } from 'vitest';
-import { createAuthPlugin, createRefreshHandler, getAuthUser, MemoryTokenStore, useAuth } from '../src/index';
+import {
+  createAuthPlugin,
+  createRefreshHandler,
+  getAuthUser,
+  MemoryTokenStore,
+  useAuth,
+} from '../src/index';
 describe('Auth Plugin & Refresh', () => {
   const secret = 'super-secret-key-that-is-at-least-32-chars-long!';
 
@@ -44,7 +50,9 @@ describe('Auth Plugin & Refresh', () => {
     } as any;
 
     await app.handle(req, res);
-    expect((res as any).payload).toEqual({ id: 123 });
+    // .payload was set by ValidatingResponse as a side-effect; schema-less routes
+    // now bypass that wrapper. Read directly from the send() mock call instead.
+    expect(res.send.mock.calls[0][0]).toEqual({ id: 123 });
   });
 
   it('returns 401 on wrong secret or expired token', async () => {
@@ -140,7 +148,10 @@ describe('createAuthPlugin — access token revocation via store', () => {
     await plugin(req, res);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.send).toHaveBeenCalledWith(null, expect.stringMatching(/revoked/i));
+    expect(res.send).toHaveBeenCalledWith(
+      null,
+      expect.stringMatching(/revoked/i),
+    );
   });
 
   it('rejects a token with no jti when store is configured', async () => {

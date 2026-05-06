@@ -36,6 +36,7 @@ export interface AppModule {
 }
 
 export type AppConfigurator = (app: Axiomify, context: AppContext) => void;
+
 /** @deprecated Use AppConfigurator or AppModule instead. */
 export type AppPlugin = (app: Axiomify) => void;
 
@@ -93,32 +94,46 @@ export class Axiomify {
     );
 
     // X-Request-Id hook: use an atomic process-local counter (2.8x faster than
-    // randomUUID) falling back to the upstream header when present. At 70k
-    // req/s, randomUUID costs ~9.6ms/s of CPU; the counter costs ~3.4ms/s.
+    // randomUUID) falling back to the upstream header when present.
     // The counter is unique per process restart — suitable for distributed
     // tracing where a gateway injects its own request IDs, and for standalone
     // deployments where uniqueness within a process lifetime is sufficient.
-    // For strict RFC 4122 UUIDs, callers can override via setSerializer or
-    // replace this hook with addHook('onRequest', ...).
+    // NOTE: NativeRequest generates its own ID lazily for the uWS adapter path.
+    // This hook only fires once regardless of adapter — no double-allocation.
     let _reqCounter = 0;
     const _pid = process.pid.toString(36);
     this.addHook('onRequest', (req, res) => {
-      const upstreamId = (req.headers as Record<string, string> | undefined)?.['x-request-id'];
-      res.header('X-Request-Id', upstreamId ?? (`${_pid}-${(++_reqCounter).toString(36)}`));
+      const upstreamId = (req.headers as Record<string, string> | undefined)?.[
+        'x-request-id'
+      ];
+      res.header(
+        'X-Request-Id',
+        upstreamId ?? `${_pid}-${(++_reqCounter).toString(36)}`,
+      );
     });
   }
 
+  /**
+   * Register a plugin (configurator function or module) with the application.
+   *
+   * - `AppConfigurator`: `(app, context) => void` — receives both app and the
+   *   service context. This is the preferred form.
+   * - `AppModule`: named object with a `register()` method and optional
+   *   `dependencies` for ordered registration.
+   * - `AppPlugin` (deprecated): `(app) => void` — same as AppConfigurator but
+   *   receives only the app. Prefer AppConfigurator for new code.
+   */
   public use(configurator: AppPlugin | AppConfigurator | AppModule): this {
     const context: AppContext = {
       provide: (token, value) => this._services.set(token, value),
       resolve: (token) => this._services.get(token) as never,
     };
+
     if (typeof configurator === 'function') {
-      if (configurator.length >= 2) {
-        (configurator as AppConfigurator)(this, context);
-      } else {
-        (configurator as AppPlugin)(this);
-      }
+      // Always pass both arguments. AppPlugin ignores the second; AppConfigurator
+      // uses it. This removes the fragile arity check that treated a 1-arg arrow
+      // function as the deprecated path even when it was intentionally 1-arg.
+      (configurator as AppConfigurator)(this, context);
       return this;
     }
 
@@ -168,6 +183,10 @@ export class Axiomify {
   }
 
   private invokeSerializer(fn: SerializerFn, input: SerializerInput): any {
+    // fn.length is constant for a given serializer — callers that call
+    // setSerializer() replace the function reference so arity is re-read
+    // on the next call. This is fast enough; the hot path (NativeAdapter,
+    // HttpAdapter) caches the arity boolean in the adapter constructor.
     return fn.length <= 1
       ? (fn as (input: SerializerInput) => any)(input)
       : (fn as any)(
@@ -179,9 +198,12 @@ export class Axiomify {
         );
   }
 
-  public serializer: SerializerFn = (
-    { data, message, statusCode, isError }: SerializerInput,
-  ) => ({
+  public serializer: SerializerFn = ({
+    data,
+    message,
+    statusCode,
+    isError,
+  }: SerializerInput) => ({
     status: isError || (statusCode && statusCode >= 400) ? 'failed' : 'success',
     message:
       message ||

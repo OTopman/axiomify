@@ -3,7 +3,9 @@ import type {
   AxiomifyRequest,
   AxiomifyResponse,
   HttpMethod,
+  ResponseCapabilities,
   SerializerFn,
+  SerializerInput,
 } from '@axiomify/core';
 import { sanitizeInput } from '@axiomify/core';
 import cluster from 'cluster';
@@ -16,6 +18,33 @@ import fastify, {
 } from 'fastify';
 import { cpus } from 'os';
 import { Readable } from 'stream';
+
+// ---------------------------------------------------------------------------
+// Capabilities — Fastify adapter supports both SSE and streaming
+// ---------------------------------------------------------------------------
+
+const FASTIFY_CAPABILITIES: ResponseCapabilities = {
+  sse: true,
+  streaming: true,
+};
+
+// ---------------------------------------------------------------------------
+// Serializer arity: normalised once, not re-checked on every send()
+// ---------------------------------------------------------------------------
+
+function makeSerialize(fn: SerializerFn): (input: SerializerInput) => unknown {
+  if (fn.length <= 1) {
+    return (input) => (fn as (i: SerializerInput) => unknown)(input);
+  }
+  return (input) =>
+    (fn as Function)(
+      input.data,
+      input.message,
+      input.statusCode,
+      input.isError,
+      input.req,
+    );
+}
 
 function createRequestSignal(req: FastifyRequest): AbortSignal {
   const controller = new AbortController();
@@ -41,10 +70,15 @@ export interface FastifyAdapterOptions {
    * number of logical CPU cores.
    */
   workers?: number;
+  /**
+   * When true (default), request bodies are recursively sanitized to strip
+   * prototype-pollution keys. Set to false for fully trusted body sources.
+   * @default true
+   */
+  sanitize?: boolean;
 }
 
 // Maps Axiomify HTTP method to the Fastify instance method name.
-// Fastify exposes .delete() (not .del()), so no special casing needed.
 const METHOD_MAP: Record<HttpMethod, string> = {
   GET: 'get',
   POST: 'post',
@@ -58,10 +92,12 @@ const METHOD_MAP: Record<HttpMethod, string> = {
 export class FastifyAdapter {
   private app: FastifyInstance;
   private readonly _workers: number;
+  private readonly _sanitize: boolean;
 
   constructor(private core: Axiomify, options: FastifyAdapterOptions = {}) {
-    (this.core as any).lockRoutes?.('@axiomify/fastify');
+    this.core.lockRoutes('@axiomify/fastify');
     this._workers = options.workers ?? cpus().length;
+    this._sanitize = options.sanitize ?? true;
     this.app = fastify({
       logger: false,
       bodyLimit: options.bodyLimit,
@@ -77,9 +113,15 @@ export class FastifyAdapter {
       'application/json',
       { parseAs: 'buffer' },
       (_req, body: Buffer, done) => {
-        if (!body || body.length === 0) { done(null, undefined); return; }
-        try { done(null, JSON.parse(body.toString('utf8'))); }
-        catch (e) { done(e as Error); }
+        if (!body || body.length === 0) {
+          done(null, undefined);
+          return;
+        }
+        try {
+          done(null, JSON.parse(body.toString('utf8')));
+        } catch (e) {
+          done(e as Error);
+        }
       },
     );
 
@@ -99,15 +141,20 @@ export class FastifyAdapter {
         typeof anyErr.statusCode === 'number'
           ? anyErr.statusCode
           : typeof anyErr.status === 'number'
-            ? anyErr.status
-            : 500;
+          ? anyErr.status
+          : 500;
 
       // Fastify sends 405 Method Not Allowed through the error handler, not
       // the notFoundHandler. Preserve the Allow header Fastify has already set.
       if (statusCode === 405) {
-        const axiomifyReq = this.translateRequest(req);
-        const axiomifyRes = this.translateResponse(reply, this.core.serializer, axiomifyReq);
-        const allow = (err as any).header?.Allow ?? reply.getHeader('Allow') ?? '';
+        const axiomifyReq = this.translateRequest(req, this._sanitize);
+        const axiomifyRes = this.translateResponse(
+          reply,
+          this.core.serializer,
+          axiomifyReq,
+        );
+        const allow =
+          (err as any).header?.Allow ?? reply.getHeader('Allow') ?? '';
         if (allow) axiomifyRes.header('Allow', allow as string);
         return axiomifyRes.status(405).send(null, 'Method Not Allowed');
       }
@@ -116,9 +163,9 @@ export class FastifyAdapter {
         statusCode === 413
           ? 'Payload Too Large'
           : statusCode === 400
-            ? 'Bad Request'
-            : 'Internal Server Error';
-      const axiomifyReq = this.translateRequest(req);
+          ? 'Bad Request'
+          : 'Internal Server Error';
+      const axiomifyReq = this.translateRequest(req, this._sanitize);
       const payload = this.core.serializer({
         data: null,
         message,
@@ -142,7 +189,7 @@ export class FastifyAdapter {
       (this.app as unknown as Record<string, Function>)[fastifyMethod](
         route.path,
         async (req: FastifyRequest, reply: FastifyReply) => {
-          const axiomifyReq = this.translateRequest(req);
+          const axiomifyReq = this.translateRequest(req, this._sanitize);
           const axiomifyRes = this.translateResponse(
             reply,
             this.core.serializer,
@@ -161,57 +208,52 @@ export class FastifyAdapter {
 
     // 404 / 405 fallback — Fastify exhausted its own route table.
     // Axiomify's router is consulted ONLY to distinguish 405 from 404.
-    this.app.setNotFoundHandler(async (req: FastifyRequest, reply: FastifyReply) => {
-      const axiomifyReq = this.translateRequest(req);
-      const axiomifyRes = this.translateResponse(
-        reply,
-        this.core.serializer,
-        axiomifyReq,
-      );
-      const queryIdx = req.url.indexOf('?');
-      const path = queryIdx === -1 ? req.url : req.url.slice(0, queryIdx);
-      const match = this.core.router.lookup(req.method as HttpMethod, path);
-      if (match && 'error' in match) {
-        axiomifyRes.header('Allow', match.allowed.join(', '));
-        return axiomifyRes.status(405).send(null, 'Method Not Allowed');
-      }
-      return axiomifyRes.status(404).send(null, 'Route not found');
-    });
+    this.app.setNotFoundHandler(
+      async (req: FastifyRequest, reply: FastifyReply) => {
+        const axiomifyReq = this.translateRequest(req, this._sanitize);
+        const axiomifyRes = this.translateResponse(
+          reply,
+          this.core.serializer,
+          axiomifyReq,
+        );
+        const queryIdx = req.url.indexOf('?');
+        const path = queryIdx === -1 ? req.url : req.url.slice(0, queryIdx);
+        const match = this.core.router.lookup(req.method as HttpMethod, path);
+        if (match && 'error' in match) {
+          axiomifyRes.header('Allow', match.allowed.join(', '));
+          return axiomifyRes.status(405).send(null, 'Method Not Allowed');
+        }
+        return axiomifyRes.status(404).send(null, 'Route not found');
+      },
+    );
   }
 
-  private translateRequest(req: FastifyRequest): AxiomifyRequest {
-    const _params: Record<string, string> = {};
-    const _state: Record<string, unknown> = {};
-    let _body: unknown = sanitizeInput(req.body);
-    let _query: Record<string, string | string[]> = req.query as Record<string, string | string[]>;
-    const signal = createRequestSignal(req);
-
+  private translateRequest(
+    req: FastifyRequest,
+    sanitize = true,
+  ): AxiomifyRequest {
     const queryIdx = req.url.indexOf('?');
     const path = queryIdx === -1 ? req.url : req.url.slice(0, queryIdx);
+    const signal = createRequestSignal(req);
 
     return {
-      get id() {
-        return (
-          (req.headers['x-request-id'] as string) ||
-          req.id ||
-          crypto.randomUUID()
-        );
-      },
-      get method() { return req.method as AxiomifyRequest['method']; },
-      get url() { return req.url; },
-      get path() { return path; },
-      get ip() { return req.ip; },
-      get headers() { return req.headers as Record<string, string | string[] | undefined>; },
-      get body() { return _body; },
-      set body(val: unknown) { _body = val; },
-      get query() { return _query; },
-      set query(val: Record<string, string | string[]>) { _query = val; },
-      get params() { return _params; },
-      set params(val: Record<string, string>) { Object.assign(_params, val); },
-      get state() { return _state; },
-      get raw() { return req; },
-      get stream() { return req.raw; },
-      get signal() { return signal; },
+      id:
+        (req.headers['x-request-id'] as string | undefined) ??
+        req.id ??
+        crypto.randomUUID(),
+      method: req.method as AxiomifyRequest['method'],
+      url: req.url,
+      path,
+      ip: req.ip,
+      headers: req.headers as Record<string, string | string[] | undefined>,
+      body:
+        sanitize && req.body !== undefined ? sanitizeInput(req.body) : req.body,
+      query: req.query as Record<string, string | string[]>,
+      params: {} as Record<string, string>,
+      state: {} as Record<string, unknown>,
+      raw: req,
+      stream: req.raw,
+      signal,
     };
   }
 
@@ -223,18 +265,12 @@ export class FastifyAdapter {
     let statusCode = 200;
     let isSent = false;
 
-    const invoke = (input: Parameters<SerializerFn>[0]) =>
-      serializer.length <= 1
-        ? (serializer as (i: typeof input) => unknown)(input)
-        : (serializer as Function)(
-            input.data,
-            input.message,
-            input.statusCode,
-            input.isError,
-            input.req,
-          );
+    // Cache arity once per response construction — not on every send().
+    const invoke = makeSerialize(serializer);
 
     return {
+      capabilities: FASTIFY_CAPABILITIES,
+
       status(code: number) {
         statusCode = code;
         res.status(code);
@@ -331,15 +367,9 @@ export class FastifyAdapter {
   }
 
   /**
-   * Fork `workers` child processes and start Fastify on each. All workers
-   * bind the same port via Node.js cluster's OS-level load balancing.
-   *
-   * @example
-   * const adapter = new FastifyAdapter(app, { workers: 4 });
-   * adapter.listenClustered(3000, {
-   *   onWorkerReady: () => console.log(`[${process.pid}] Ready`),
-   *   onPrimary: (pids) => console.log('Primary, workers:', pids),
-   * });
+   * Fork `workers` child processes and start Fastify on each.
+   * SIGTERM is forwarded to workers. `onPrimary` fires only once all workers
+   * are ready — not immediately after forking.
    */
   public listenClustered(
     port: number,
@@ -350,23 +380,46 @@ export class FastifyAdapter {
     } = {},
   ): void {
     if (!cluster.isPrimary) {
-      this.listen(port, () => opts.onWorkerReady?.(port));
+      this.listen(port, () => {
+        opts.onWorkerReady?.(port);
+        process.send?.({ type: 'WORKER_READY', pid: process.pid });
+      });
+      process.once('SIGTERM', () => {
+        this.close().finally(() => process.exit(0));
+      });
       return;
     }
+
     const numWorkers = this._workers;
-    const pids: number[] = [];
-    for (let i = 0; i < numWorkers; i++) {
+    const liveWorkers = new Map<number, cluster.Worker>();
+    let readyCount = 0;
+
+    const spawnWorker = () => {
       const w = cluster.fork();
-      pids.push(w.process.pid ?? 0);
-      w.on('exit', (code, signal) => {
-        opts.onWorkerExit?.(w.process.pid ?? 0, code);
-        if (code !== 0 && signal !== 'SIGTERM') {
-          const r = cluster.fork();
-          pids.push(r.process.pid ?? 0);
+      w.once('online', () => {
+        if (w.process.pid) liveWorkers.set(w.process.pid, w);
+      });
+      w.on('message', (msg: { type?: string }) => {
+        if (msg?.type === 'WORKER_READY') {
+          readyCount++;
+          if (readyCount === numWorkers)
+            opts.onPrimary?.([...liveWorkers.keys()]);
         }
       });
-    }
-    opts.onPrimary?.(pids);
+      w.on('exit', (code, signal) => {
+        const pid = w.process.pid ?? 0;
+        liveWorkers.delete(pid);
+        opts.onWorkerExit?.(pid, code);
+        if (code !== 0 && signal !== 'SIGTERM') spawnWorker();
+      });
+    };
+
+    process.once('SIGTERM', () => {
+      for (const w of liveWorkers.values()) w.process.kill('SIGTERM');
+      process.exit(0);
+    });
+
+    for (let i = 0; i < numWorkers; i++) spawnWorker();
   }
 
   public async close(): Promise<void> {
