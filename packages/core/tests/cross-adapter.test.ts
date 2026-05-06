@@ -124,6 +124,8 @@ describe.each(ADAPTERS)('Cross-adapter parity — $name', ({ setup }) => {
 
   beforeAll(async () => {
     const app = new Axiomify();
+    // X-Request-Id is opt-in — enable it for the cross-adapter parity suite.
+    app.enableRequestId();
 
     // GET /ping — simple JSON response
     app.route({

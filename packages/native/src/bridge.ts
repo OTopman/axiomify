@@ -89,16 +89,45 @@ export function createNodeResPolyfill(res: AxiomifyResponse): Record<string, unk
 
 /**
  * Wraps a standard Express/Connect middleware function so it can run inside
- * any Axiomify adapter — including the native uWS adapter.
+ * the native uWS adapter.
+ *
+ * ⚠️  SAFE ONLY FOR A NARROW CLASS OF MIDDLEWARE — READ BEFORE USING.
+ *
+ * `adaptMiddleware` provides a polyfill of Node.js `IncomingMessage` and
+ * `ServerResponse` via {@link createNodeReqPolyfill} and
+ * {@link createNodeResPolyfill}. These polyfills are NOT full stream
+ * implementations. The following middleware categories will SILENTLY
+ * MALFUNCTION or CORRUPT request state:
+ *
+ *   ✗  Body parsers  (multer, busboy, formidable, express.json, body-parser)
+ *      — The body has already been consumed and parsed by the adapter before
+ *        your middleware runs. Any middleware that calls `req.on('data')`
+ *        will receive stale buffered data via queueMicrotask, causing it to
+ *        double-parse and overwrite the already-correct `req.body`.
+ *
+ *   ✗  Streaming middleware  (compression, proxy middleware, http-proxy)
+ *      — `res.write()` in the polyfill throws immediately. Middleware that
+ *        writes chunks rather than calling `end()` once will crash.
+ *
+ *   ✗  Cookie parsers that depend on `req.connection.remoteAddress`
+ *      — The polyfill returns a stub socket. Some middleware reads properties
+ *        not present on the stub and throws.
+ *
+ * ✓  SAFE classes of middleware (read-headers / set-headers / call-next):
+ *      cors, helmet, express-rate-limit (memory store only), basic-auth,
+ *      custom auth/logging middleware that only reads req.headers.
+ *
+ * If your middleware falls outside the safe class, rewrite it as a native
+ * Axiomify RouteMiddleware or use `addHook('onRequest', ...)` instead.
  *
  * @example
  * import { adaptMiddleware } from '@axiomify/native';
- * import helmet from 'helmet';
+ * import cors from 'cors';
  *
  * app.route({
  *   method: 'GET',
- *   path: '/secure',
- *   plugins: [adaptMiddleware(helmet())],
+ *   path: '/data',
+ *   plugins: [adaptMiddleware(cors())],
  *   handler: async (req, res) => res.send({ ok: true }),
  * });
  */

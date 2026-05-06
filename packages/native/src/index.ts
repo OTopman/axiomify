@@ -7,6 +7,7 @@ import type {
   SerializerFn,
   SerializerInput,
 } from '@axiomify/core';
+import { makeSerialize } from '@axiomify/core';
 import cluster from 'cluster';
 import { cpus } from 'os';
 import { Readable } from 'stream';
@@ -27,24 +28,6 @@ const NATIVE_CAPABILITIES: ResponseCapabilities = {
   sse: false,
   streaming: true,
 };
-
-// ---------------------------------------------------------------------------
-// Serializer arity: cached once at adapter construction, not per request
-// ---------------------------------------------------------------------------
-
-function makeSerialize(fn: SerializerFn): (input: SerializerInput) => unknown {
-  if (fn.length <= 1) {
-    return (input) => (fn as (i: SerializerInput) => unknown)(input);
-  }
-  return (input) =>
-    (fn as Function)(
-      input.data,
-      input.message,
-      input.statusCode,
-      input.isError,
-      input.req,
-    );
-}
 
 // ---------------------------------------------------------------------------
 // Status line cache
@@ -358,6 +341,10 @@ class NativeResponse implements AxiomifyResponse {
   // Use a plain object for small header counts; Map for large counts.
   // In practice most responses have ≤10 headers — object wins on V8.
   private _headers: Record<string, string> = {};
+  // Pre-allocated serializer input bag — mutated in place on every send()
+  // instead of allocating a new object per response. Safe because _serialize
+  // is always called synchronously within send(), with no re-entrancy risk.
+  private readonly _serializeInput: SerializerInput;
 
   constructor(
     res: UWSResponse,
@@ -371,6 +358,7 @@ class NativeResponse implements AxiomifyResponse {
     this._req = req;
     this._method = method;
     this._serialize = serialize;
+    this._serializeInput = { data: undefined, message: undefined, statusCode: 200, isError: false, req };
   }
 
   status(code: number): this {
@@ -396,15 +384,14 @@ class NativeResponse implements AxiomifyResponse {
     if (this.headersSent || this.aborted) return;
     this.headersSent = true;
 
-    const isError = this.statusCode >= 400;
-    // Use the arity-cached serializer stored at adapter construction time.
-    const payload = this._serialize({
-      data,
-      message,
-      statusCode: this.statusCode,
-      isError,
-      req: this._req,
-    });
+    // Mutate the pre-allocated input bag rather than allocating a new object.
+    // _serialize is always synchronous within this call — no re-entrancy risk.
+    const inp = this._serializeInput;
+    inp.data = data;
+    inp.message = message;
+    inp.statusCode = this.statusCode;
+    inp.isError = this.statusCode >= 400;
+    const payload = this._serialize(inp);
 
     // Store payload for ValidatingResponse introspection.
     (this as unknown as Record<string, unknown>).payload = payload;
@@ -931,59 +918,111 @@ export class NativeAdapter {
       onWorkerReady?: () => void;
       onPrimary?: (pids: number[]) => void;
       onWorkerExit?: (pid: number, code: number | null) => void;
+      /**
+       * Maximum milliseconds to wait for a worker to drain in-flight
+       * requests after receiving SIGTERM before force-exiting.
+       *
+       * NOTE FOR uWS USERS: clustering only improves throughput when you
+       * have more physical CPU cores than the number of workers you are
+       * running. uWS is extremely efficient on a single thread — on a 2-core
+       * machine, spawning 4 workers will REDUCE throughput due to context
+       * switching overhead. Set workers = physical core count, not logical.
+       *
+       * @default 10000
+       */
+      gracefulTimeoutMs?: number;
     } = {},
   ): void {
+    const gracefulTimeoutMs = opts.gracefulTimeoutMs ?? 10_000;
+
     if (!cluster.isPrimary) {
-      // Worker: bind port directly (SO_REUSEPORT), then notify primary.
+      // Worker: bind port directly via uWS SO_REUSEPORT, then notify primary.
       this.listen(() => {
         opts.onWorkerReady?.();
         process.send?.({ type: 'WORKER_READY', pid: process.pid });
       });
-      // Workers handle SIGTERM by closing their uWS socket gracefully.
+
       process.once('SIGTERM', () => {
+        // Close the uWS listen socket — stops accepting new connections.
         this.close();
-        process.exit(0);
+
+        // DO NOT call process.exit() here. After closing the listen socket:
+        //
+        //   - If there are no in-flight async handlers, the event loop goes
+        //     idle and Node exits naturally with code 0.
+        //
+        //   - If there ARE in-flight handlers, their pending Promises keep the
+        //     event loop alive. They run to completion, then the loop goes idle
+        //     and Node exits naturally with code 0.
+        //
+        // The deadline below is the only timer that MUST NOT be unref()'d —
+        // it serves two roles:
+        //   (a) Forces exit if a handler is stuck (hangs indefinitely).
+        //   (b) Keeps the process alive long enough for handlers that finish
+        //       quickly to do so before the OS kills the process.
+        //
+        // The previous code set this deadline then immediately called
+        // process.exit(0), making the deadline completely unreachable.
+        //
+        setTimeout(() => process.exit(1), gracefulTimeoutMs);
       });
       return;
     }
 
-    // Primary: manage worker lifecycle.
+    // ── Primary ──────────────────────────────────────────────────────────
+
     const numWorkers = this._workers;
-    // Map prevents stale entries — dead PIDs are removed on exit.
     const liveWorkers = new Map<number, cluster.Worker>();
     let readyCount = 0;
+    let allReadyFired = false;
 
-    const spawnWorker = () => {
-      const w = cluster.fork();
+    const spawnWorker = (respawnDelayMs = 0): void => {
+      setTimeout(() => {
+        const w = cluster.fork();
 
-      // PID is only guaranteed available after 'online' on all platforms.
-      w.once('online', () => {
-        if (w.process.pid) liveWorkers.set(w.process.pid, w);
-      });
+        w.once('online', () => {
+          if (w.process.pid) liveWorkers.set(w.process.pid, w);
+        });
 
-      w.on('message', (msg: { type?: string }) => {
-        if (msg?.type === 'WORKER_READY') {
+        w.on('message', (msg: { type?: string }) => {
+          if (msg?.type !== 'WORKER_READY') return;
           readyCount++;
-          if (readyCount === numWorkers) {
-            // All workers ready — advertise the cluster.
+          // Guard: onPrimary fires exactly once for the initial cohort.
+          // Restarted workers send WORKER_READY again — allReadyFired prevents
+          // duplicate invocations and stale PID lists.
+          if (!allReadyFired && readyCount >= numWorkers) {
+            allReadyFired = true;
             opts.onPrimary?.([...liveWorkers.keys()]);
           }
-        }
-      });
+        });
 
-      w.on('exit', (code, signal) => {
-        const pid = w.process.pid ?? 0;
-        liveWorkers.delete(pid); // Remove stale entry immediately.
-        opts.onWorkerExit?.(pid, code);
-        // Restart on crash. Code 0 or SIGTERM = intentional — do not restart.
-        if (code !== 0 && signal !== 'SIGTERM') spawnWorker();
-      });
+        w.on('exit', (code, signal) => {
+          const pid = w.process.pid ?? 0;
+          liveWorkers.delete(pid);
+          opts.onWorkerExit?.(pid, code);
+          if (code === 0 || signal === 'SIGTERM') return; // intentional
+          // Crash: restart with exponential backoff to avoid thrashing.
+          // 100ms → 200ms → 400ms → ... → 5000ms cap.
+          const nextDelay = Math.min((respawnDelayMs || 50) * 2, 5_000);
+          spawnWorker(nextDelay);
+        });
+      }, respawnDelayMs);
     };
 
-    // Forward SIGTERM to every live worker before the primary exits.
+    // SIGTERM: primary waits for all workers to exit before it exits.
+    // The old implementation called process.exit(0) immediately after
+    // forwarding SIGTERM, orphaning workers mid-drain.
     process.once('SIGTERM', () => {
-      for (const w of liveWorkers.values()) w.process.kill('SIGTERM');
-      process.exit(0);
+      if (liveWorkers.size === 0) { process.exit(0); return; }
+
+      let pending = liveWorkers.size;
+      for (const w of liveWorkers.values()) {
+        w.once('exit', () => { if (--pending === 0) process.exit(0); });
+        w.process.kill('SIGTERM');
+      }
+
+      // Primary hard deadline: give workers their full budget + 2s buffer.
+      setTimeout(() => process.exit(1), gracefulTimeoutMs + 2_000).unref();
     });
 
     for (let i = 0; i < numWorkers; i++) spawnWorker();

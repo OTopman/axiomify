@@ -1,4 +1,5 @@
 import type { Axiomify } from '@axiomify/core';
+import { makeSerialize } from '@axiomify/core';
 import cluster from 'cluster';
 import type { NextFunction, Request, Response } from 'express';
 import express, { Express } from 'express';
@@ -25,8 +26,8 @@ export interface ExpressAdapterOptions {
    */
   workers?: number;
   /**
-   * When true (default), request bodies are recursively sanitized to strip
-   * prototype-pollution keys. Set to false for fully trusted body sources.
+   * When true, request bodies are recursively cloned to strip
+   * prototype-pollution keys (default: false). JSON.parse in V8 does not produce
    * @default true
    */
   sanitize?: boolean;
@@ -39,6 +40,12 @@ export class ExpressAdapter {
   private readonly _workers: number;
 
   constructor(coreApp: Axiomify, options: ExpressAdapterOptions = {}) {
+    console.warn(
+      '[axiomify] The @axiomify/express adapter is deprecated and will be removed in v5. ' +
+      'It routes all requests through Axiomify\'s own dispatcher, then re-wraps them for ' +
+      'express — adding overhead without any benefit from express\'s native performance. ' +
+      'Use @axiomify/http or @axiomify/native instead.',
+    );
     const { bodyLimit = '1mb', trustProxy = false } = options;
 
     this.core = coreApp;
@@ -53,7 +60,7 @@ export class ExpressAdapter {
     this.app.use(express.json({ limit: bodyLimit }));
     this.app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
 
-    const sanitize = options.sanitize ?? true;
+    const sanitize = options.sanitize ?? false;
 
     for (const route of this.core.registeredRoutes) {
       this.app[route.method.toLowerCase() as 'get'](
@@ -135,21 +142,26 @@ export class ExpressAdapter {
    * SIGTERM is forwarded to workers. `onPrimary` fires only after all workers
    * are ready — not immediately after forking.
    */
-  public listenClustered(
     port: number,
     opts: {
       onWorkerReady?: (port: number) => void;
       onPrimary?: (pids: number[]) => void;
       onWorkerExit?: (pid: number, code: number | null) => void;
+      /** Max ms to wait for in-flight requests before force-exit. @default 10000 */
+      gracefulTimeoutMs?: number;
     } = {},
   ): void {
+    const gracefulTimeoutMs = opts.gracefulTimeoutMs ?? 10_000;
+
     if (!cluster.isPrimary) {
       this.listen(port, () => {
         opts.onWorkerReady?.(port);
         process.send?.({ type: 'WORKER_READY', pid: process.pid });
       });
       process.once('SIGTERM', () => {
-        this.close().finally(() => process.exit(0));
+        const deadline = setTimeout(() => process.exit(1), gracefulTimeoutMs);
+        deadline.unref();
+        this.close().finally(() => { clearTimeout(deadline); process.exit(0); });
       });
       return;
     }
@@ -157,30 +169,38 @@ export class ExpressAdapter {
     const numWorkers = this._workers;
     const liveWorkers = new Map<number, cluster.Worker>();
     let readyCount = 0;
+    let allReadyFired = false;
 
-    const spawnWorker = () => {
-      const w = cluster.fork();
-      w.once('online', () => {
-        if (w.process.pid) liveWorkers.set(w.process.pid, w);
-      });
-      w.on('message', (msg: { type?: string }) => {
-        if (msg?.type === 'WORKER_READY') {
+    const spawnWorker = (respawnDelayMs = 0): void => {
+      setTimeout(() => {
+        const w = cluster.fork();
+        w.once('online', () => { if (w.process.pid) liveWorkers.set(w.process.pid, w); });
+        w.on('message', (msg: { type?: string }) => {
+          if (msg?.type !== 'WORKER_READY') return;
           readyCount++;
-          if (readyCount === numWorkers)
+          if (!allReadyFired && readyCount >= numWorkers) {
+            allReadyFired = true;
             opts.onPrimary?.([...liveWorkers.keys()]);
-        }
-      });
-      w.on('exit', (code, signal) => {
-        const pid = w.process.pid ?? 0;
-        liveWorkers.delete(pid);
-        opts.onWorkerExit?.(pid, code);
-        if (code !== 0 && signal !== 'SIGTERM') spawnWorker();
-      });
+          }
+        });
+        w.on('exit', (code, signal) => {
+          const pid = w.process.pid ?? 0;
+          liveWorkers.delete(pid);
+          opts.onWorkerExit?.(pid, code);
+          if (code === 0 || signal === 'SIGTERM') return;
+          spawnWorker(Math.min((respawnDelayMs || 50) * 2, 5_000));
+        });
+      }, respawnDelayMs);
     };
 
     process.once('SIGTERM', () => {
-      for (const w of liveWorkers.values()) w.process.kill('SIGTERM');
-      process.exit(0);
+      if (liveWorkers.size === 0) { process.exit(0); return; }
+      let pending = liveWorkers.size;
+      for (const w of liveWorkers.values()) {
+        w.once('exit', () => { if (--pending === 0) process.exit(0); });
+        w.process.kill('SIGTERM');
+      }
+      setTimeout(() => process.exit(1), gracefulTimeoutMs + 2_000).unref();
     });
 
     for (let i = 0; i < numWorkers; i++) spawnWorker();

@@ -1,4 +1,4 @@
-import type { CompiledRouteDefinition } from './internal';
+import { compiledStates } from './compiled';
 import type { HookManager } from './lifecycle';
 import { Router } from './router';
 import type {
@@ -12,10 +12,7 @@ import { ValidationCompiler } from './validation';
 interface RegistryOptions {
   timeout: number;
   telemetry?: {
-    startSpan: (
-      name: string,
-      attributes: Record<string, string>,
-    ) => { end(): void };
+    startSpan: (name: string, attributes: Record<string, string>) => { end(): void };
   };
 }
 
@@ -23,10 +20,7 @@ function createTimeoutError(): Error & { statusCode: number } {
   return Object.assign(new Error('Request timed out'), { statusCode: 408 });
 }
 
-function rejectOnAbort(
-  signal: AbortSignal,
-  error: Error & { statusCode: number },
-): Promise<never> {
+function rejectOnAbort(signal: AbortSignal, error: Error & { statusCode: number }): Promise<never> {
   return new Promise((_, reject) => {
     if (signal.aborted) return reject(error);
     signal.addEventListener('abort', () => reject(error), { once: true });
@@ -51,18 +45,16 @@ export class RouteRegistry {
     const routeId = `${definition.method}:${definition.path}`;
     if (definition.schema) this.validator.compile(routeId, definition.schema);
 
-    const pipeline: Array<
-      (req: AxiomifyRequest, res: AxiomifyResponse) => Promise<void> | void
-    > = [];
+    const pipeline: Array<(req: AxiomifyRequest, res: AxiomifyResponse) => Promise<void> | void> =
+      [];
 
     // onPreHandler hooks are NOT baked into the per-route pipeline.
-    // The dispatcher runs them directly before entering the pipeline so that
-    // (a) we pay zero cost when no onPreHandler hooks are registered, and
-    // (b) hooks added after route registration still execute — the dispatcher
-    //     reads the live hooks array at dispatch time, not at compile time.
+    // The dispatcher runs them directly before entering the pipeline so that:
+    //   (a) we pay zero cost when no onPreHandler hooks are registered, and
+    //   (b) hooks added after route registration still execute — the dispatcher
+    //       reads the live hooks list at dispatch time, not at compile time.
 
     if (definition.plugins) pipeline.push(...definition.plugins);
-
     if (definition.schema) {
       pipeline.push((req) => this.validator.execute(routeId, req));
     }
@@ -77,10 +69,7 @@ export class RouteRegistry {
       pipeline.push(async (req, res) => {
         let span: { end(): void } | undefined;
         if (telemetry) {
-          span = telemetry.startSpan('http.request', {
-            method: req.method,
-            path: definition.path,
-          });
+          span = telemetry.startSpan('http.request', { method: req.method, path: definition.path });
         }
         try {
           if (effectiveTimeout > 0) {
@@ -93,7 +82,7 @@ export class RouteRegistry {
             await definition.handler(req as never, res);
           }
         } finally {
-          if (span) span.end();
+          span?.end();
         }
       });
     } else {
@@ -102,11 +91,12 @@ export class RouteRegistry {
       pipeline.push((req, res) => handler(req as never, res));
     }
 
-    (definition as CompiledRouteDefinition)._compiledPipeline = pipeline;
-    // Stamp whether this route has a response schema so the dispatcher can
-    // skip the ValidatingResponse wrapper on schema-less routes.
-    (definition as CompiledRouteDefinition)._hasResponseSchema =
-      !!definition.schema?.response;
+    // Store compiled state in a WeakMap — never mutate the caller's object.
+    compiledStates.set(definition as RouteDefinition, {
+      pipeline,
+      hasResponseSchema: !!definition.schema?.response,
+    });
+
     this.router.register(definition as RouteDefinition);
     this.routes.push(definition as RouteDefinition);
   }

@@ -1,17 +1,12 @@
-import type {
-  AxiomifyRequest,
-  AxiomifyResponse,
-  RouteDefinition,
-} from './types';
-
-export interface CompiledRouteDefinition extends RouteDefinition {
-  _compiledPipeline: Array<
-    (req: AxiomifyRequest, res: AxiomifyResponse) => Promise<void> | void
-  >;
-  /**
-   * True when the route's schema includes a `response` validator.
-   * Used by the dispatcher to skip the ValidatingResponse wrapper on routes
-   * that have no response schema — avoiding one object allocation per request.
-   */
-  _hasResponseSchema: boolean;
-}
+/**
+ * @deprecated This module previously exported CompiledRouteDefinition, which
+ * extended RouteDefinition and was stamped onto user-supplied route definition
+ * objects at registration time — mutating caller-provided data.
+ *
+ * It has been replaced by the WeakMap-based approach in compiled.ts.
+ * Import from compiled.ts instead.
+ *
+ * This file is kept temporarily to avoid breaking any external code that
+ * imports from it. It will be removed in v5.
+ */
+export type { CompiledState as CompiledRouteDefinition } from './compiled';

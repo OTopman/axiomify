@@ -86,14 +86,21 @@ export class OpenApiGenerator {
       if (!paths[openApiPath]) paths[openApiPath] = {};
 
       const operation: Record<string, unknown> = {
-        summary: `${route.method} ${route.path}`,
+        // meta.summary takes priority over the default method+path string.
+        summary: route.meta?.summary ?? `${route.method} ${route.path}`,
         parameters: this.extractParameters(route),
         responses: this.extractResponses(route),
       };
 
-      if (route.schema?.description) operation.description = route.schema.description;
-      if (route.schema?.tags) operation.tags = route.schema.tags;
-      if (route.schema?.security) operation.security = route.schema.security;
+      // Read from meta (new canonical location) with fallback to schema fields
+      // (deprecated location) for backward compatibility.
+      const description = route.meta?.description ?? (route.schema as any)?.description;
+      const tags = route.meta?.tags ?? (route.schema as any)?.tags;
+      const security = route.meta?.security ?? (route.schema as any)?.security;
+
+      if (description) operation.description = description;
+      if (tags) operation.tags = tags;
+      if (security) operation.security = security;
 
       const body = this.extractBody(route);
       if (body) operation.requestBody = body;

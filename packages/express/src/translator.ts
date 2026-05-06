@@ -6,8 +6,7 @@ import type {
   SerializerFn,
   SerializerInput,
 } from '@axiomify/core';
-import { sanitizeInput } from '@axiomify/core';
-import crypto from 'crypto';
+import { makeSerialize, sanitizeInput } from '@axiomify/core';
 import type { Request, Response } from 'express';
 import { Readable } from 'stream';
 
@@ -16,50 +15,50 @@ const EXPRESS_CAPABILITIES: ResponseCapabilities = {
   streaming: true,
 };
 
-function createRequestSignal(req: Request): AbortSignal {
-  const controller = new AbortController();
-  const abort = () => {
-    if (!controller.signal.aborted) {
-      controller.abort(new Error('Client aborted request'));
-    }
-  };
-  if (typeof req.once === 'function') {
-    req.once('aborted', abort);
-    req.once('close', () => {
-      if (req.destroyed) abort();
-    });
-  }
-  return controller.signal;
-}
+// Per-process counter — avoids crypto.randomUUID() (~0.137µs) on every request.
+let _expressCounter = 0;
+const _expressPid = process.pid.toString(36);
 
-/** Cache serializer arity once — avoids fn.length check on every send(). */
-function makeSerialize(fn: SerializerFn): (input: SerializerInput) => unknown {
-  if (fn.length <= 1) {
-    return (input) => (fn as (i: SerializerInput) => unknown)(input);
-  }
-  return (input) =>
-    (fn as Function)(
-      input.data,
-      input.message,
-      input.statusCode,
-      input.isError,
-      input.req,
-    );
-}
-
+/**
+ * Translate an Express Request into an AxiomifyRequest.
+ *
+ * LAZY PROPERTIES — only materialised on first access:
+ *   signal  — AbortController skipped entirely for handlers that don't
+ *              perform cancellable async work (the common case).
+ *
+ * sanitize now defaults to false. See HttpAdapterOptions.sanitize for rationale.
+ */
 export function translateRequest(
   req: Request,
-  sanitize = true,
+  sanitize = false,
 ): AxiomifyRequest {
-  // Plain property assignment — no per-property closure overhead.
-  const id =
-    (req.headers['x-request-id'] as string | undefined) ?? crypto.randomUUID();
-  const signal = createRequestSignal(req);
-  const state: Record<string, unknown> = {};
   const body = sanitize ? sanitizeInput(req.body) : req.body;
 
+  // Lazy AbortController — allocated only when `signal` is first accessed.
+  let _controller: AbortController | undefined;
+  let _aborted = false;
+
+  const onAbort = () => {
+    _aborted = true;
+    _controller?.abort(new Error('Client aborted request'));
+  };
+  if (typeof req.once === 'function') {
+    req.once('aborted', onAbort);
+    req.once('close', () => { if (req.destroyed) onAbort(); });
+  }
+
+  // Lazy ID — avoids randomUUID() for handlers that never read req.id.
+  let _id: string | undefined;
+
   return {
-    id,
+    get id(): string {
+      if (!_id) {
+        _id = (req.headers['x-request-id'] as string | undefined)
+          ?? `${_expressPid}-${(++_expressCounter).toString(36)}`;
+      }
+      return _id;
+    },
+
     method: req.method as HttpMethod,
     url: req.url,
     path: req.path,
@@ -69,9 +68,16 @@ export function translateRequest(
     body,
     query: req.query as Record<string, string | string[]>,
     params: req.params,
-    state,
+    state: {},
     raw: req,
-    signal,
+
+    get signal(): AbortSignal {
+      if (!_controller) {
+        _controller = new AbortController();
+        if (_aborted) _controller.abort(new Error('Client aborted request'));
+      }
+      return _controller.signal;
+    },
   };
 }
 
@@ -80,9 +86,18 @@ export function translateResponse(
   serializer: SerializerFn = (input: SerializerInput) => input.data,
   req?: AxiomifyRequest,
 ): AxiomifyResponse {
-  // Cache arity once per call — the result is stored in the closure and
-  // reused on every send() call from this response object.
+  // makeSerialize imported from @axiomify/core — single source of truth.
+  // Arity normalised once per response, never per send() call.
   const serialize = makeSerialize(serializer);
+  // Pre-allocate the input bag — mutated in place on every send() call
+  // instead of creating a new object each time.
+  const _input: SerializerInput = {
+    data: undefined,
+    message: undefined,
+    statusCode: 200,
+    isError: false,
+    req,
+  };
   let statusCode = 200;
   let isSent = false;
 
@@ -109,8 +124,11 @@ export function translateResponse(
     send<T>(data: T, message?: string) {
       if (isSent) return;
       isSent = true;
-      const isError = statusCode >= 400;
-      const payload = serialize({ data, message, statusCode, isError, req });
+      _input.data = data;
+      _input.message = message;
+      _input.statusCode = statusCode;
+      _input.isError = statusCode >= 400;
+      const payload = serialize(_input);
       res.status(statusCode).json(payload);
     },
 
@@ -121,18 +139,17 @@ export function translateResponse(
       res.status(statusCode).send(payload);
     },
 
+    /** @deprecated Use res.status(code).send(null, message) instead. */
     error(err: unknown) {
       if (isSent) return;
       isSent = true;
       const message = err instanceof Error ? err.message : 'Unknown Error';
-      const payload = serialize({
-        data: null,
-        message,
-        statusCode: 500,
-        isError: true,
-        req,
-      });
-      res.status(500).json(payload);
+      const errCode = (err as Record<string, unknown>).statusCode as number ?? 500;
+      _input.data = null;
+      _input.message = message;
+      _input.statusCode = errCode;
+      _input.isError = true;
+      res.status(errCode).json(serialize(_input));
     },
 
     stream(readable: Readable, contentType = 'application/octet-stream') {
@@ -150,9 +167,7 @@ export function translateResponse(
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       res.flushHeaders();
-      const heartbeat = setInterval(() => {
-        res.write(': keepalive\n\n');
-      }, sseHeartbeatMs);
+      const heartbeat = setInterval(() => { res.write(': keepalive\n\n'); }, sseHeartbeatMs);
       heartbeat.unref();
       res.on('close', () => clearInterval(heartbeat));
     },
@@ -162,14 +177,8 @@ export function translateResponse(
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     },
 
-    get statusCode() {
-      return statusCode;
-    },
-    get raw() {
-      return res;
-    },
-    get headersSent() {
-      return isSent;
-    },
+    get statusCode() { return statusCode; },
+    get raw() { return res; },
+    get headersSent() { return isSent; },
   };
 }

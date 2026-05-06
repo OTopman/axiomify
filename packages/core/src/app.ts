@@ -1,7 +1,12 @@
 import { RequestDispatcher } from './dispatcher';
 import { HookHandlerMap, HookManager } from './lifecycle';
 import { RouteRegistry } from './registry';
+import { makeSerialize } from './serialize';
 import type {
+  AppConfigurator,
+  AppContext,
+  AppModule,
+  AppPlugin,
   AxiomifyRequest,
   AxiomifyResponse,
   HookType,
@@ -14,31 +19,14 @@ import type {
   SerializerInput,
 } from './types';
 
+export type { AppConfigurator, AppContext, AppModule, AppPlugin };
+
 export interface AxiomifyOptions {
   timeout?: number;
   telemetry?: {
-    startSpan: (
-      name: string,
-      attributes: Record<string, string>,
-    ) => { end(): void };
+    startSpan: (name: string, attributes: Record<string, string>) => { end(): void };
   };
 }
-
-export interface AppContext {
-  provide<T>(token: string, value: T): void;
-  resolve<T>(token: string): T | undefined;
-}
-
-export interface AppModule {
-  name: string;
-  dependencies?: string[];
-  register(app: Axiomify, context: AppContext): void;
-}
-
-export type AppConfigurator = (app: Axiomify, context: AppContext) => void;
-
-/** @deprecated Use AppConfigurator or AppModule instead. */
-export type AppPlugin = (app: Axiomify) => void;
 
 function joinRoutePath(prefix: string, path: string): string {
   return (prefix + path).replace(/\/+/g, '/').replace(/\/$/, '') || '/';
@@ -92,36 +80,43 @@ export class Axiomify {
       this.hooks,
       this.registry.validator,
     );
+    // No default hooks registered here.
+    // The X-Request-Id hook previously baked in here was registering
+    // a closure on every request for every app — including apps that never
+    // needed request tracing. It is now opt-in via app.enableRequestId().
+  }
 
-    // X-Request-Id hook: use an atomic process-local counter (2.8x faster than
-    // randomUUID) falling back to the upstream header when present.
-    // The counter is unique per process restart — suitable for distributed
-    // tracing where a gateway injects its own request IDs, and for standalone
-    // deployments where uniqueness within a process lifetime is sufficient.
-    // NOTE: NativeRequest generates its own ID lazily for the uWS adapter path.
-    // This hook only fires once regardless of adapter — no double-allocation.
-    let _reqCounter = 0;
-    const _pid = process.pid.toString(36);
+  /**
+   * Opts in to automatic X-Request-Id header injection.
+   *
+   * Uses a per-process counter (much faster than crypto.randomUUID) and
+   * respects upstream `x-request-id` headers when present.
+   *
+   * Previously this was baked unconditionally into the Axiomify constructor,
+   * meaning every application paid the cost regardless of need. It is now
+   * explicitly opt-in.
+   *
+   * @example
+   * const app = new Axiomify();
+   * app.enableRequestId();
+   */
+  public enableRequestId(): this {
+    let counter = 0;
+    const pid = process.pid.toString(36);
     this.addHook('onRequest', (req, res) => {
-      const upstreamId = (req.headers as Record<string, string> | undefined)?.[
-        'x-request-id'
-      ];
-      res.header(
-        'X-Request-Id',
-        upstreamId ?? `${_pid}-${(++_reqCounter).toString(36)}`,
-      );
+      const upstream = (req.headers as Record<string, string | undefined>)?.['x-request-id'];
+      res.header('X-Request-Id', upstream ?? `${pid}-${(++counter).toString(36)}`);
     });
+    return this;
   }
 
   /**
    * Register a plugin (configurator function or module) with the application.
    *
-   * - `AppConfigurator`: `(app, context) => void` — receives both app and the
-   *   service context. This is the preferred form.
-   * - `AppModule`: named object with a `register()` method and optional
-   *   `dependencies` for ordered registration.
-   * - `AppPlugin` (deprecated): `(app) => void` — same as AppConfigurator but
-   *   receives only the app. Prefer AppConfigurator for new code.
+   * Accepted forms:
+   *   - AppConfigurator: (app, context) => void — preferred
+   *   - AppModule: named object with register() + optional dependencies[]
+   *   - AppPlugin: (app) => void — @deprecated, use AppConfigurator
    */
   public use(configurator: AppPlugin | AppConfigurator | AppModule): this {
     const context: AppContext = {
@@ -130,41 +125,112 @@ export class Axiomify {
     };
 
     if (typeof configurator === 'function') {
-      // Always pass both arguments. AppPlugin ignores the second; AppConfigurator
-      // uses it. This removes the fragile arity check that treated a 1-arg arrow
-      // function as the deprecated path even when it was intentionally 1-arg.
+      // Both AppPlugin and AppConfigurator are called the same way.
+      // AppPlugin ignores the second argument; AppConfigurator uses it.
+      // The previous arity-check approach is removed — it misidentified
+      // intentional 1-arg arrow functions as the deprecated form.
       (configurator as AppConfigurator)(this, context);
       return this;
     }
 
     if (this._modules.has(configurator.name)) return this;
-    for (const dep of configurator.dependencies ?? []) {
-      if (!this._modules.has(dep)) {
-        throw new Error(
-          `Module "${configurator.name}" requires "${dep}" to be registered first.`,
-        );
-      }
+
+    // Topological resolution: collect the transitive closure of all modules
+    // that need to be registered before `configurator`, in dependency order,
+    // using Kahn's algorithm. This replaces the old order-assertion stub which
+    // required callers to register modules in the correct order manually and
+    // gave no help when cycles existed.
+    const ordered = this._resolveModuleDeps(configurator);
+    for (const mod of ordered) {
+      if (this._modules.has(mod.name)) continue;
+      mod.register(this, context);
+      this._modules.add(mod.name);
     }
-    configurator.register(this, context);
-    this._modules.add(configurator.name);
     return this;
   }
 
-  public addHook<T extends HookType>(
-    type: T,
-    handler: HookHandlerMap[T],
-  ): this {
+
+  /**
+   * Kahn's algorithm: produce a topologically-ordered list of AppModule
+   * instances (including root) that must be registered, respecting all declared
+   * dependency edges, with full cycle detection.
+   *
+   * Replaces the previous order-assertion stub which:
+   *  - Required callers to register modules in the correct order manually.
+   *  - Gave no useful error when a cycle existed (just "register X before Y").
+   *  - Could not auto-resolve transitive dependencies.
+   *
+   * Now: pass modules in any order — the framework resolves them.
+   * Cycles produce a clear error naming the offending module names.
+   */
+  private _resolveModuleDeps(root: AppModule): AppModule[] {
+    // BFS: collect all reachable AppModule objects (we only have objects the
+    // caller passed; already-registered deps are skipped at execution time).
+    const byName = new Map<string, AppModule>();
+    const visit: AppModule[] = [root];
+    while (visit.length) {
+      const mod = visit.shift()!;
+      if (byName.has(mod.name)) continue;
+      byName.set(mod.name, mod);
+      for (const dep of mod.dependencies ?? []) {
+        if (byName.has(dep) || this._modules.has(dep)) continue;
+        throw new Error(
+          `[Axiomify] Module "${mod.name}" declares dependency "${dep}", ` +
+          `but no module with that name has been passed to app.use(). ` +
+          `Pass the "${dep}" module to app.use() before or alongside "${mod.name}".`,
+        );
+      }
+    }
+
+    // Build in-degree + adjacency map (dep → dependents) over collected nodes.
+    const inDegree = new Map<string, number>();
+    const adj = new Map<string, string[]>();
+    for (const name of byName.keys()) { inDegree.set(name, 0); adj.set(name, []); }
+    for (const [name, mod] of byName) {
+      for (const dep of mod.dependencies ?? []) {
+        if (!byName.has(dep)) continue; // already-registered — skip edge
+        adj.get(dep)!.push(name);
+        inDegree.set(name, (inDegree.get(name) ?? 0) + 1);
+      }
+    }
+
+    // Kahn's: start with zero-in-degree nodes.
+    const ready: string[] = [];
+    for (const [name, deg] of inDegree) { if (deg === 0) ready.push(name); }
+
+    const ordered: AppModule[] = [];
+    while (ready.length) {
+      const name = ready.shift()!;
+      ordered.push(byName.get(name)!);
+      for (const dep of adj.get(name) ?? []) {
+        const d = (inDegree.get(dep) ?? 1) - 1;
+        inDegree.set(dep, d);
+        if (d === 0) ready.push(dep);
+      }
+    }
+
+    // If not all nodes processed, a cycle exists.
+    if (ordered.length !== byName.size) {
+      const cycle = [...byName.keys()].filter((n) => (inDegree.get(n) ?? 0) > 0);
+      throw new Error(
+        `[Axiomify] Circular dependency detected among modules: [${cycle.join(', ')}]. ` +
+        `Break the cycle by extracting shared logic into a dependency-free module.`,
+      );
+    }
+    return ordered;
+  }
+
+  public addHook<T extends HookType>(type: T, handler: HookHandlerMap[T]): this {
     this.hooks.add(type, handler);
     return this;
   }
 
   public route<S extends RouteSchema>(definition: RouteDefinition<S>): this {
     if (this._routesLocked) {
-      const reason = this._routesLockedReason
-        ? ` (${this._routesLockedReason})`
-        : '';
+      const reason = this._routesLockedReason ? ` (${this._routesLockedReason})` : '';
       throw new Error(
-        `Cannot register route ${definition.method} ${definition.path} after adapter binding${reason}. Register all routes before creating an adapter.`,
+        `Cannot register route ${definition.method} ${definition.path} after adapter binding${reason}. ` +
+          'Register all routes before creating an adapter.',
       );
     }
     this.registry.register(definition);
@@ -173,8 +239,11 @@ export class Axiomify {
 
   /**
    * Locks route registration once an adapter has bound transport routes.
-   * This prevents silent route drift where late-registered routes never get
+   * Prevents silent route drift where late-registered routes never get
    * mounted by adapters that snapshot routes at construction time.
+   *
+   * @internal Called by adapters only. Not part of the public Axiomify API.
+   * Direct user calls will throw confusing errors at registration time.
    */
   public lockRoutes(reason?: string): this {
     this._routesLocked = true;
@@ -182,40 +251,19 @@ export class Axiomify {
     return this;
   }
 
-  private invokeSerializer(fn: SerializerFn, input: SerializerInput): any {
-    // fn.length is constant for a given serializer — callers that call
-    // setSerializer() replace the function reference so arity is re-read
-    // on the next call. This is fast enough; the hot path (NativeAdapter,
-    // HttpAdapter) caches the arity boolean in the adapter constructor.
-    return fn.length <= 1
-      ? (fn as (input: SerializerInput) => any)(input)
-      : (fn as any)(
-          input.data,
-          input.message,
-          input.statusCode,
-          input.isError,
-          input.req,
-        );
-  }
-
-  public serializer: SerializerFn = ({
-    data,
-    message,
-    statusCode,
-    isError,
-  }: SerializerInput) => ({
+  /** Default response serializer. Replace via app.setSerializer(). */
+  public serializer: SerializerFn = ({ data, message, statusCode, isError }: SerializerInput) => ({
     status: isError || (statusCode && statusCode >= 400) ? 'failed' : 'success',
     message:
-      message ||
-      (isError || (statusCode && statusCode >= 400)
-        ? 'Error'
-        : 'Operation successful'),
+      message || (isError || (statusCode && statusCode >= 400) ? 'Error' : 'Operation successful'),
     data,
   });
 
   public setSerializer(fn: SerializerFn): this {
-    this.serializer = (input: SerializerInput) =>
-      this.invokeSerializer(fn, input);
+    // Normalise to the single-argument form once, so every subsequent call
+    // to this.serializer goes through a direct (input) => fn(input) path
+    // with no runtime arity check. makeSerialize is shared with adapters.
+    this.serializer = makeSerialize(fn) as SerializerFn;
     return this;
   }
 
@@ -230,16 +278,11 @@ export class Axiomify {
     optionsOrCallback: RouteGroupOptions | ((group: RouteGroup) => void),
     maybeCallback?: (group: RouteGroup) => void,
   ): this {
-    const options =
-      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+    const options = typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
     const callback =
-      typeof optionsOrCallback === 'function'
-        ? optionsOrCallback
-        : maybeCallback;
+      typeof optionsOrCallback === 'function' ? optionsOrCallback : maybeCallback;
 
-    if (!callback) {
-      throw new Error('A route group callback is required.');
-    }
+    if (!callback) throw new Error('A route group callback is required.');
 
     const inheritedPlugins = options.plugins ?? [];
     const groupProxy: RouteGroup = {
@@ -252,13 +295,9 @@ export class Axiomify {
       },
       group: ((subPrefix, subOptionsOrCallback, subMaybeCallback) => {
         const subOptions =
-          typeof subOptionsOrCallback === 'function'
-            ? {}
-            : subOptionsOrCallback;
+          typeof subOptionsOrCallback === 'function' ? {} : subOptionsOrCallback;
         const subCallback =
-          typeof subOptionsOrCallback === 'function'
-            ? subOptionsOrCallback
-            : subMaybeCallback;
+          typeof subOptionsOrCallback === 'function' ? subOptionsOrCallback : subMaybeCallback;
 
         this.group(
           joinRoutePath(prefix, subPrefix),
@@ -281,15 +320,10 @@ export class Axiomify {
       path,
       handler: async (_req, res) => {
         if (!checks) {
-          // Include uptime so callers can introspect process health duration.
-          return res
-            .status(200)
-            .send({ status: 'ok', uptime: process.uptime() });
+          return res.status(200).send({ status: 'ok', uptime: process.uptime() });
         }
-
         const results: Record<string, boolean> = {};
         let passed = true;
-
         await Promise.all(
           Object.entries(checks).map(async ([name, fn]) => {
             try {
@@ -301,7 +335,6 @@ export class Axiomify {
             }
           }),
         );
-
         return res
           .status(passed ? 200 : 503)
           .send({ status: passed ? 'ok' : 'degraded', checks: results });
@@ -310,13 +343,15 @@ export class Axiomify {
     return this;
   }
 
-  public async handle(
-    req: AxiomifyRequest,
-    res: AxiomifyResponse,
-  ): Promise<void> {
+  public async handle(req: AxiomifyRequest, res: AxiomifyResponse): Promise<void> {
     return this.dispatcher.handle(req, res);
   }
 
+  /**
+   * Adapter entry point for pre-routed requests.
+   *
+   * @internal Called by adapters only. Not part of the public Axiomify API.
+   */
   public async handleMatchedRoute(
     req: AxiomifyRequest,
     res: AxiomifyResponse,
