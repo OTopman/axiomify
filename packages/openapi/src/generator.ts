@@ -92,15 +92,20 @@ export class OpenApiGenerator {
         responses: this.extractResponses(route),
       };
 
-      // Read from meta (new canonical location) with fallback to schema fields
-      // (deprecated location) for backward compatibility.
-      const description = route.meta?.description ?? (route.schema as any)?.description;
-      const tags = route.meta?.tags ?? (route.schema as any)?.tags;
-      const security = route.meta?.security ?? (route.schema as any)?.security;
+      // Read from route.meta (canonical location, added in v4.x) with a
+      // typed fallback to the deprecated schema-level fields for projects
+      // that haven't migrated yet. The LegacySchema intersection avoids
+      // the (any) cast while keeping backward compatibility.
+      type LegacySchema = { description?: string; tags?: string[]; security?: Array<Record<string, string[]>> };
+      const legacySchema = (route.schema ?? {}) as LegacySchema;
+
+      const description = route.meta?.description ?? legacySchema.description;
+      const tags        = route.meta?.tags        ?? legacySchema.tags;
+      const security    = route.meta?.security    ?? legacySchema.security;
 
       if (description) operation.description = description;
-      if (tags) operation.tags = tags;
-      if (security) operation.security = security;
+      if (tags)        operation.tags        = tags;
+      if (security)    operation.security    = security;
 
       const body = this.extractBody(route);
       if (body) operation.requestBody = body;

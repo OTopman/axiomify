@@ -1,8 +1,15 @@
 import type { Axiomify } from '@axiomify/core';
-import crypto from 'crypto';
 import type { IncomingMessage, Server } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { ZodTypeAny } from 'zod';
+
+// Counter-based client IDs. Avoids crypto.randomUUID() (~0.137µs) on every
+// WebSocket upgrade. Monotonically increasing within a process; prefixed with
+// PID so IDs from different workers or restart cycles don't collide in shared
+// state (Redis presence sets, broadcast maps, etc.).
+let _wsCounter = 0;
+const _wsPid = process.pid.toString(36);
+const nextWsId = () => `ws-${_wsPid}-${(++_wsCounter).toString(36)}`;
 
 export interface WsClient<TUser = unknown> extends WebSocket {
   id: string;
@@ -85,7 +92,7 @@ export class WsManager<TUser = unknown> {
 
             this.wss.handleUpgrade(request, socket, head, (ws: any) => {
               const client = ws as WsClient<TUser>;
-              client.id = crypto.randomUUID();
+              client.id = nextWsId();
               client.rooms = new Set();
               client.user = user;
               client._lastPong = Date.now();
@@ -131,7 +138,7 @@ export class WsManager<TUser = unknown> {
 
     this.wss.on('connection', (ws: any) => {
       const client = ws as WsClient<TUser>;
-      if (!client.id) client.id = crypto.randomUUID();
+      if (!client.id) client.id = nextWsId();
       if (!client.rooms) client.rooms = new Set();
       if (!this.clients.has(client.id)) this.clients.set(client.id, client);
       if (!client._lastPong) client._lastPong = Date.now();

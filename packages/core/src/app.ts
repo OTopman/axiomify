@@ -121,7 +121,11 @@ export class Axiomify {
   public use(configurator: AppPlugin | AppConfigurator | AppModule): this {
     const context: AppContext = {
       provide: (token, value) => this._services.set(token, value),
-      resolve: (token) => this._services.get(token) as never,
+      // Double-cast through unknown: the Map stores `unknown` values but the
+      // AppContext interface exposes resolve<T>() so callers get type safety at
+      // the call site. The alternative (Map<string, T>) would require a generic
+      // Axiomify class which breaks the plugin registration API.
+      resolve: <T>(token: string) => this._services.get(token) as unknown as T,
     };
 
     if (typeof configurator === 'function') {

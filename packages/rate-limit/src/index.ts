@@ -4,7 +4,14 @@ import type {
   AxiomifyResponse,
 } from '@axiomify/core';
 import { createHash } from 'crypto';
-import { randomUUID } from 'crypto';
+
+// Counter-based ZADD member suffix. Cheaper than randomUUID() and strictly
+// more unique under high load: two requests at the same millisecond in the
+// same process get different counters, whereas UUID has a (negligible but
+// real) collision probability. PID-prefixed for multi-process safety.
+let _rlCounter = 0;
+const _rlPid = process.pid.toString(36);
+const nextMember = (now: number) => `${now}:${_rlPid}:${(++_rlCounter).toString(36)}`;
 
 const REDIS_SLIDING_WINDOW_SCRIPT = `
   local key = KEYS[1]
@@ -61,7 +68,7 @@ export class RedisStore {
     windowMs: number,
   ): Promise<{ count: number; resetTime: number }> {
     const now = Date.now();
-    const member = `${now}:${randomUUID()}`;
+    const member = nextMember(now);
     const keys = [key];
     const args = [now.toString(), windowMs.toString(), member];
 

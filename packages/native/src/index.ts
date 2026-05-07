@@ -813,10 +813,21 @@ export class NativeAdapter {
         // (headersSent) we swallow silently, which is still safe.
         if (!aborted && !axiomifyRes.headersSent) {
           try {
-            axiomifyRes.error(err);
+            // Do NOT use axiomifyRes.error(err) — that deprecated method always
+            // sends 500 and does not respect err.statusCode. Inline the same
+            // logic used by RequestDispatcher.handleError so HTTP error status
+            // codes thrown by handlers are preserved.
+            const anyErr = err as Record<string, unknown>;
+            const errStatus =
+              typeof anyErr.statusCode === 'number' ? anyErr.statusCode
+              : typeof anyErr.status === 'number' ? anyErr.status
+              : 500;
+            const errMsg =
+              typeof anyErr.message === 'string' ? anyErr.message : 'Internal Server Error';
+            axiomifyRes.status(errStatus).send(null, errMsg);
           } catch {
-            // res.error() itself threw (e.g. already aborted between the check
-            // and the call) — nothing more we can do.
+            // axiomifyRes.send() itself threw (e.g. already aborted between the
+            // check and the call) — nothing more we can do.
           }
         }
       });
@@ -1023,6 +1034,27 @@ export class NativeAdapter {
 
       // Primary hard deadline: give workers their full budget + 2s buffer.
       setTimeout(() => process.exit(1), gracefulTimeoutMs + 2_000).unref();
+    });
+
+    // SIGUSR2: zero-downtime rolling restart.
+    //
+    // Kills workers one at a time. The existing spawnWorker() exit handler
+    // automatically spawns a replacement for each killed worker. We wait
+    // gracefulTimeoutMs between kills so each worker can drain and its
+    // replacement can come up before we kill the next.
+    //
+    // Usage:  kill -USR2 <primary-pid>
+    process.on('SIGUSR2', () => {
+      const snapshot = [...liveWorkers.values()];
+      if (snapshot.length === 0) return;
+      let i = 0;
+      const killNext = () => {
+        if (i >= snapshot.length) return;
+        const w = snapshot[i++];
+        if (liveWorkers.has(w.process.pid ?? -1)) w.process.kill('SIGTERM');
+        setTimeout(killNext, gracefulTimeoutMs);
+      };
+      killNext();
     });
 
     for (let i = 0; i < numWorkers; i++) spawnWorker();

@@ -272,6 +272,22 @@ export class ValidationCompiler {
 
     const result = validator(data);
     if (!result.valid) {
+      const isProduction = process.env['NODE_ENV'] === 'production';
+      if (isProduction) {
+        // In production: log and continue — a response-schema mismatch is a
+        // developer bug, not a user-facing error. Throwing a 500 here would
+        // replace a valid (but mis-typed) payload with an error response,
+        // making the bug harder to diagnose and worsening user impact.
+        console.error(
+          `[Axiomify] Response validation failed for ${routeId} (status ${statusCode}). ` +
+          `The handler returned data that does not match schema.response. ` +
+          `Set NODE_ENV=development to surface this as a thrown error. ` +
+          `Errors: ${JSON.stringify(result.errors ?? {})}`,
+        );
+        return;
+      }
+      // In development / test: throw so the developer catches the mismatch
+      // immediately rather than discovering it through a monitoring alert.
       throw new ValidationError(
         'Response validation failed',
         { response: result.errors ?? {} },

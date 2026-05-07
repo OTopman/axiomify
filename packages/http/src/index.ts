@@ -593,6 +593,34 @@ export class HttpAdapter {
       ).unref();
     });
 
+    // SIGUSR2: zero-downtime rolling restart.
+    //
+    // Kills one worker at a time and relies on the existing spawnWorker()
+    // exit-handler to spawn a replacement automatically. Waits
+    // _gracefulTimeoutMs between each kill so the old worker can drain and
+    // its replacement can come up before the next worker is restarted.
+    //
+    // Usage:  kill -USR2 <primary-pid>
+    //
+    // Safe to send while a rolling restart is already in progress — the new
+    // signal resets to the current worker list, so any workers not yet
+    // restarted in the previous pass are included in the new one.
+    process.on('SIGUSR2', () => {
+      const snapshot = [...liveWorkers.values()];
+      if (snapshot.length === 0) return;
+      let i = 0;
+      const killNext = () => {
+        if (i >= snapshot.length) return;
+        const w = snapshot[i++];
+        // Only kill if the worker is still live (could have died since snapshot).
+        if (liveWorkers.has(w.process.pid ?? -1)) {
+          w.process.kill('SIGTERM');
+        }
+        setTimeout(killNext, this._gracefulTimeoutMs);
+      };
+      killNext();
+    });
+
     for (let i = 0; i < numWorkers; i++) spawnWorker();
   }
 

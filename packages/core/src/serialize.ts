@@ -20,6 +20,16 @@ export function makeSerialize(
   if (fn.length <= 1) {
     return (input) => (fn as (i: import('./types').SerializerInput) => unknown)(input);
   }
+  // 5-argument positional form detected. Emit a one-time warning in non-production
+  // environments so developers know to migrate to the object form.
+  if (process.env['NODE_ENV'] !== 'production') {
+    console.warn(
+      '[Axiomify] SerializerFn: the 5-argument positional form ' +
+      '(data, message, statusCode, isError, req) is deprecated and will be ' +
+      'removed in v5. Migrate to the single-argument object form: ' +
+      '({ data, message, statusCode, isError, req }) => ...',
+    );
+  }
   return (input) =>
     (
       fn as (
