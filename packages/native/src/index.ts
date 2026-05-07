@@ -9,7 +9,7 @@ import type {
 } from '@axiomify/core';
 import { makeSerialize } from '@axiomify/core';
 import cluster from 'cluster';
-import { cpus } from 'os';
+import { availableParallelism, cpus } from 'os';
 import { Readable } from 'stream';
 import type {
   TemplatedApp,
@@ -608,7 +608,7 @@ export class NativeAdapter {
     this._port = options.port ?? 3000;
     this._maxBodySize = options.maxBodySize ?? 1_048_576;
     this._trustProxy = options.trustProxy ?? false;
-    this._workers = options.workers ?? cpus().length;
+    this._workers = options.workers ?? availableParallelism();
     this._serialize = makeSerialize(this._app.serializer);
 
     assertNoNativeSseRoutes(this._app.registeredRoutes);
@@ -983,6 +983,27 @@ export class NativeAdapter {
     // ── Primary ──────────────────────────────────────────────────────────
 
     const numWorkers = this._workers;
+    const parallelism = availableParallelism();
+
+    // uWS already binds independently per-worker using SO_REUSEPORT at the
+    // C++ level — it does not go through Node.js cluster's socket sharing at
+    // all. The performance benefit of multiple workers therefore depends
+    // entirely on having multiple physical CPU cores available.
+    //
+    // If workers > parallelism, each "extra" worker shares a physical core
+    // with another worker. uWS is fast enough that even a tiny amount of
+    // context switching overhead destroys the benefit. This is why the
+    // benchmarks show 2 workers SLOWER than 1 worker on a single-core
+    // machine — process overhead, not IPC, is the bottleneck.
+    if (numWorkers > parallelism) {
+      console.warn(
+        `[Axiomify/native] listenClustered: workers (${numWorkers}) > ` +
+        `availableParallelism (${parallelism}). ` +
+        `uWS is CPU-bound; oversubscription causes context-switch thrashing ` +
+        `and DEGRADES throughput below single-worker performance. ` +
+        `Set workers: ${parallelism} or omit the option to use the correct default.`,
+      );
+    }
     const liveWorkers = new Map<number, cluster.Worker>();
     let readyCount = 0;
     let allReadyFired = false;

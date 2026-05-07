@@ -10,7 +10,7 @@ import { makeSerialize, sanitizeInput } from '@axiomify/core';
 import cluster from 'cluster';
 import type { IncomingMessage } from 'http';
 import http from 'http';
-import { cpus } from 'os';
+import { availableParallelism, cpus } from 'os';
 import { Readable } from 'stream';
 
 // ---------------------------------------------------------------------------
@@ -322,7 +322,18 @@ export class HttpAdapter {
     // Default sanitize is now false — see option docs above.
     this._sanitize = options.sanitize ?? false;
     this._onAdapterError = options.onAdapterError;
-    this._workers = options.workers ?? cpus().length;
+    // availableParallelism() (Node 18.14+) is the correct default:
+    //   - Respects cgroup CPU limits in Docker/Kubernetes containers.
+    //     cpus().length returns the HOST machine's logical core count and
+    //     ignores container limits, causing massive oversubscription in
+    //     containerised deployments.
+    //   - Returns logical CPUs, which is correct for mixed I/O + CPU workloads
+    //     like HTTP servers (more threads = better I/O concurrency).
+    //
+    // availableParallelism is unavailable on Node < 18.14 — fall back to
+    // cpus().length in that case.
+    const defaultWorkers = availableParallelism();
+    this._workers = options.workers ?? defaultWorkers;
     this._gracefulTimeoutMs = options.gracefulTimeoutMs ?? 10_000;
     // makeSerialize is now imported from @axiomify/core — single source of truth.
     this._serialize = makeSerialize(this.core.serializer);
@@ -487,14 +498,34 @@ export class HttpAdapter {
     } = {},
   ): void {
     if (!cluster.isPrimary) {
-      // On Linux: { exclusive: true } causes the kernel to give each worker its
-      // own socket via SO_REUSEPORT, so connections are distributed at the kernel
-      // level with no IPC round-trip. On other platforms this falls back to the
-      // cluster module's normal (IPC-mediated) distribution.
-      const listenTarget =
-        process.platform === 'linux' ? { port, exclusive: true } : port;
+      // Each worker must bind its OWN socket on the port rather than sharing
+      // the primary's socket. This is the critical step that eliminates the
+      // primary-IPC bottleneck.
+      //
+      // Two mechanisms, used in order of availability:
+      //
+      //   reusePort: true  (Node.js 16.9+ / net module)
+      //     Sets SO_REUSEPORT on the socket explicitly. The kernel load-
+      //     balances incoming connections across all sockets bound to the
+      //     same port. Zero IPC overhead — connections go straight to the
+      //     worker that owns the socket.
+      //
+      //   exclusive: true  (all Node.js versions, cluster module)
+      //     Tells the cluster module to bypass shared-socket mode and let
+      //     this worker create its own socket. Requires SCHED_NONE in the
+      //     primary (set below). Works on Linux, macOS, and partially on
+      //     Windows (SO_REUSEPORT semantics differ on Windows but exclusive
+      //     still bypasses the primary's IPC dispatch).
+      //
+      // Without one of these two options, even with SCHED_NONE set, the
+      // cluster module falls back to primary-mediated IPC dispatch — which
+      // is the single biggest performance bottleneck in cluster mode.
+      const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
+      const listenOpts = nodeMajor >= 16
+        ? { port, reusePort: true }   // explicit SO_REUSEPORT, all platforms
+        : { port, exclusive: true };  // SCHED_NONE bypass, all platforms
 
-      this.server.listen(listenTarget, () => {
+      this.server.listen(listenOpts, () => {
         opts.onWorkerReady?.(port);
         process.send?.({ type: 'WORKER_READY', pid: process.pid });
       });
@@ -525,13 +556,41 @@ export class HttpAdapter {
 
     // ── Primary ──────────────────────────────────────────────────────────
 
-    // SO_REUSEPORT: on Linux, disable the round-robin IPC dispatcher so
-    // workers bind independently. Each worker calls exclusive listen() above.
-    if (process.platform === 'linux') {
-      cluster.schedulingPolicy = cluster.SCHED_NONE;
-    }
+    // SCHED_NONE must be set BEFORE the first cluster.fork() call — it is
+    // frozen after the first fork.
+    //
+    // Why this matters:
+    //   Default (SCHED_RR): The primary accepts every connection and
+    //   forwards file descriptors to workers via IPC. The primary's event
+    //   loop becomes the bottleneck — more workers = more IPC traffic to
+    //   the same primary = worse throughput, not better.
+    //
+    //   SCHED_NONE: Workers create their own sockets (via reusePort/exclusive
+    //   in the listen() call above). The OS kernel distributes connections
+    //   directly. Zero IPC overhead. The primary process only manages worker
+    //   lifecycle — it is never in the request hot path.
+    //
+    // Previously this was guarded by `process.platform === 'linux'`, which
+    // left macOS and Windows using the slow SCHED_RR default. SCHED_NONE
+    // works on macOS (SO_REUSEPORT since macOS 10.x) and on Windows (with
+    // reduced but still meaningful benefit over full IPC dispatch).
+    cluster.schedulingPolicy = cluster.SCHED_NONE;
 
     const numWorkers = this._workers;
+    const parallelism = availableParallelism();
+    if (numWorkers > parallelism) {
+      // Oversubscription: more workers than the OS will run concurrently.
+      // Each extra worker above parallelism adds process overhead (V8 heap,
+      // GC, event loop) without adding CPU capacity, producing net degradation.
+      // The most common cause is cpus().length returning logical (hyperthreaded)
+      // core count on a container with fewer allocated CPUs.
+      console.warn(
+        `[Axiomify/http] listenClustered: workers (${numWorkers}) > ` +
+        `availableParallelism (${parallelism}). ` +
+        `This causes oversubscription and DEGRADES throughput. ` +
+        `Set workers: ${parallelism} or omit the option to use the correct default.`,
+      );
+    }
     const liveWorkers = new Map<number, cluster.Worker>();
     let readyCount = 0;
     let allReadyFired = false;
