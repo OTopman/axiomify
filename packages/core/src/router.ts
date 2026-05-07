@@ -2,8 +2,6 @@ import type { HttpMethod, RouteDefinition } from './types';
 
 interface RoutePayload {
   definition: RouteDefinition;
-  /** Param key names in order of appearance in the path. */
-  paramKeys: string[];
 }
 
 export type RouterLookupResult =
@@ -32,8 +30,9 @@ class TrieNode {
 // 2 intermediate array allocations per lookup.
 //
 // Instead we pass a single flat reusable array (keys and values interleaved)
-// and a length counter through the recursion. The output `Record<string,string>`
-// is built only once at the end, from the flat array.
+// and a length counter through the recursion. The accumulator is written
+// directly into the caller-provided params object at the end of a successful
+// match — no intermediate object allocation.
 
 interface ParamAccum {
   keys: string[];
@@ -53,7 +52,6 @@ export class Router {
   // ── Registration ────────────────────────────────────────────────────────────
 
   public register(route: RouteDefinition): void {
-    const paramKeys: string[] = [];
     let node = this.root;
     let start = route.path.startsWith('/') ? 1 : 0;
     const path = route.path;
@@ -68,7 +66,6 @@ export class Router {
 
       if (seg.startsWith(':')) {
         const key = seg.slice(1);
-        paramKeys.push(key);
         let found: TrieNode | undefined;
         for (const entry of node.paramChildren) {
           if (entry.key === key) { found = entry.node; break; }
@@ -100,22 +97,32 @@ export class Router {
         `Route collision: ${route.method} ${route.path} is already registered.`,
       );
     }
-    node.routes.set(route.method, { definition: route, paramKeys });
+    node.routes.set(route.method, { definition: route });
   }
 
   // ── Lookup ──────────────────────────────────────────────────────────────────
 
   /**
    * Looks up an incoming request. Returns:
-   * - `{ route, params }` on match
+   * - `{ route, params }` on match — `params` is the same object passed as
+   *   `paramsOut` (or a fresh `{}` when omitted), populated in place.
    * - `{ error: 'MethodNotAllowed', allowed }` when path matches but method doesn't
    * - `null` on 404
    *
    * The path MUST NOT include a query string — strip it before calling.
+   *
+   * `paramsOut` lets the caller (typically the dispatcher) provide its own
+   * params object — usually `req.params` — so the router never allocates one.
+   * For 1M+ req/day workloads this saves one Object allocation per request.
    */
-  public lookup(method: HttpMethod, path: string): RouterLookupResult {
+  public lookup(
+    method: HttpMethod,
+    path: string,
+    paramsOut?: Record<string, string>,
+  ): RouterLookupResult {
     const accum = makeParamAccum();
-    const match = this._lookupNode(this.root, path, path.startsWith('/') ? 1 : 0, method, accum);
+    const out = paramsOut ?? {};
+    const match = this._lookupNode(this.root, path, path.startsWith('/') ? 1 : 0, method, accum, out);
     if (match) return match;
 
     const allowed = this._collectAllowed(this.root, path, path.startsWith('/') ? 1 : 0);
@@ -132,6 +139,7 @@ export class Router {
     pos: number,
     method: HttpMethod,
     accum: ParamAccum,
+    out: Record<string, string>,
   ): { route: RouteDefinition; params: Record<string, string> } | null {
     // ── End of path: try to match a route ───────────────────────────────────
     if (pos > path.length) {
@@ -139,14 +147,11 @@ export class Router {
       if (!payload && method === 'HEAD') payload = node.routes.get('GET');
       if (!payload) return null;
 
-      // Build output params object only once, from the flat accumulator.
-      const params: Record<string, string> = {};
-      const { paramKeys } = payload;
-      // paramKeys are in registration order; accum.keys/vals are in traversal order
+      // Write accumulated params directly into the caller-provided object.
       for (let i = 0; i < accum.len; i++) {
-        params[accum.keys[i]] = accum.vals[i];
+        out[accum.keys[i]] = accum.vals[i];
       }
-      return { route: payload.definition, params };
+      return { route: payload.definition, params: out };
     }
 
     // ── Find next segment end ────────────────────────────────────────────────
@@ -158,7 +163,7 @@ export class Router {
     // ── Static child (fastest path) ─────────────────────────────────────────
     const staticChild = node.children.get(seg);
     if (staticChild) {
-      const match = this._lookupNode(staticChild, path, nextPos, method, accum);
+      const match = this._lookupNode(staticChild, path, nextPos, method, accum, out);
       if (match) return match;
     }
 
@@ -168,7 +173,7 @@ export class Router {
       accum.keys[accum.len] = key;
       accum.vals[accum.len] = seg;
       accum.len = savedLen + 1;
-      const match = this._lookupNode(paramNode, path, nextPos, method, accum);
+      const match = this._lookupNode(paramNode, path, nextPos, method, accum, out);
       if (match) return match;
       accum.len = savedLen; // backtrack
     }
@@ -178,7 +183,7 @@ export class Router {
       accum.keys[accum.len] = '*';
       accum.vals[accum.len] = path.slice(pos);
       accum.len = savedLen + 1;
-      const match = this._lookupNode(node.wildcardChild, path, path.length + 1, method, accum);
+      const match = this._lookupNode(node.wildcardChild, path, path.length + 1, method, accum, out);
       if (match) return match;
       accum.len = savedLen;
     }

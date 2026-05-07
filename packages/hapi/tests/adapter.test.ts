@@ -67,6 +67,8 @@ describe('HapiAdapter: routing via Hapi router', () => {
 
   beforeAll(async () => {
     const app = new Axiomify();
+    // X-Request-Id is opt-in.
+    app.enableRequestId();
 
     app.route({
       method: 'GET',
@@ -92,7 +94,8 @@ describe('HapiAdapter: routing via Hapi router', () => {
       handler: async (req, res) => res.send(req.body),
     });
 
-    adapter = new HapiAdapter(app);
+    // sanitize: true strips __proto__ / constructor / prototype keys.
+    adapter = new HapiAdapter(app, { sanitize: true });
     const native = (adapter as any).server as import('@hapi/hapi').Server;
     native.settings.port = 0;
     await native.start();

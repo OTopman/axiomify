@@ -6,7 +6,7 @@ import type {
   ResponseCapabilities,
   SerializerFn,
 } from '@axiomify/core';
-import { makeSerialize, sanitizeInput } from '@axiomify/core';
+import { ADAPTER_LOCK_TOKEN, makeSerialize, sanitizeInput } from '@axiomify/core';
 import cluster from 'cluster';
 import fastify, {
   FastifyInstance,
@@ -14,7 +14,8 @@ import fastify, {
   FastifyRequest,
   FastifyServerOptions,
 } from 'fastify';
-import { cpus } from 'os';
+import type { ListenOptions } from 'net';
+import { availableParallelism } from 'os';
 import { Readable } from 'stream';
 
 // ---------------------------------------------------------------------------
@@ -75,8 +76,8 @@ export class FastifyAdapter {
         "fastify — adding overhead without any benefit from fastify's native performance. " +
         'Use @axiomify/http or @axiomify/native instead.',
     );
-    this.core.lockRoutes('@axiomify/fastify');
-    this._workers = options.workers ?? cpus().length;
+    this.core.lockRoutes(ADAPTER_LOCK_TOKEN, '@axiomify/fastify');
+    this._workers = options.workers ?? availableParallelism();
     this._sanitize = options.sanitize ?? false;
     this.app = fastify({
       logger: false,
@@ -177,6 +178,7 @@ export class FastifyAdapter {
           );
           // req.params is populated by Fastify's router — no re-routing.
           await this.core.handleMatchedRoute(
+            ADAPTER_LOCK_TOKEN,
             axiomifyReq,
             axiomifyRes,
             capturedRoute,
@@ -365,16 +367,43 @@ export class FastifyAdapter {
   /**
    * Resolves when the server is listening. Rejects with the underlying error
    * on bind failure — does NOT call process.exit.
+   *
+   * In clustered mode, workers should not call this directly; listenClustered
+   * handles socket binding with the correct reusePort / exclusive options.
    */
   public async listen(port: number, callback?: () => void): Promise<void> {
-    await this.app.listen({ port });
+    await this.app.listen({ port, host: '0.0.0.0' });
     callback?.();
   }
 
   /**
    * Fork `workers` child processes and start Fastify on each.
-   * SIGTERM is forwarded to workers. `onPrimary` fires only once all workers
-   * are ready — not immediately after forking.
+   *
+   * KEY BEHAVIOURS — fixed in this revision:
+   *
+   * 1. SO_REUSEPORT (Linux) / exclusive (other platforms):
+   *    Workers bind their own socket via `reusePort: true` (Node ≥ 16.9) or
+   *    `exclusive: true` (older Node). Without this, cluster falls back to
+   *    SCHED_RR — the primary accepts every connection and forwards FDs via IPC,
+   *    bottlenecking on a single-threaded accept() loop regardless of worker count.
+   *
+   * 2. SCHED_NONE before first fork:
+   *    Required so worker listen() calls are not silently intercepted and
+   *    routed back to the primary. Must be set before cluster.fork().
+   *
+   * 3. Crash circuit breaker:
+   *    5+ crashes within 30 s → primary aborts. Prevents runaway respawn loops
+   *    on broken config (missing env, failed migration, port already in use).
+   *
+   * 4. Graceful SIGTERM drain:
+   *    Workers call fastify.close() which drains in-flight requests. Hard
+   *    deadline force-exits after gracefulTimeoutMs to prevent hung handlers
+   *    from blocking deployment forever.
+   *
+   * 5. SIGUSR2 rolling restart for zero-downtime reload:
+   *    `kill -USR2 <primary-pid>` restarts workers one at a time, spacing
+   *    each kill by gracefulTimeoutMs so a fresh replacement is always serving
+   *    before the old one is terminated.
    */
   public listenClustered(
     port: number,
@@ -388,11 +417,26 @@ export class FastifyAdapter {
   ): void {
     const gracefulTimeoutMs = opts.gracefulTimeoutMs ?? 10_000;
 
+    // ── Worker ──────────────────────────────────────────────────────────────
     if (!cluster.isPrimary) {
-      this.listen(port, () => {
-        opts.onWorkerReady?.(port);
-        process.send?.({ type: 'WORKER_READY', pid: process.pid });
-      });
+      // Bind worker's own socket directly — bypasses cluster IPC dispatch.
+      const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
+      const listenOpts: ListenOptions =
+        nodeMajor >= 16
+          ? { port, host: '0.0.0.0', reusePort: true }
+          : { port, host: '0.0.0.0', exclusive: true };
+
+      this.app.listen(listenOpts).then(
+        () => {
+          opts.onWorkerReady?.(port);
+          process.send?.({ type: 'WORKER_READY', pid: process.pid });
+        },
+        (err: Error) => {
+          console.error(`[Axiomify/fastify] Worker ${process.pid} failed to bind port ${port}:`, err);
+          process.exit(1);
+        },
+      );
+
       process.once('SIGTERM', () => {
         // close() drains in-flight requests then resolves.
         // Hard deadline prevents a hung handler from blocking forever.
@@ -406,10 +450,32 @@ export class FastifyAdapter {
       return;
     }
 
+    // ── Primary ─────────────────────────────────────────────────────────────
+
+    // Must be set BEFORE the first cluster.fork() — frozen after first fork.
+    // Required so worker reusePort/exclusive listen calls are not re-routed
+    // through the primary by the cluster module.
+    cluster.schedulingPolicy = cluster.SCHED_NONE;
+
     const numWorkers = this._workers;
+    const parallelism = availableParallelism();
+    if (numWorkers > parallelism) {
+      console.warn(
+        `[Axiomify/fastify] listenClustered: workers (${numWorkers}) > ` +
+        `availableParallelism (${parallelism}). ` +
+        `Oversubscription degrades throughput. ` +
+        `Set workers: ${parallelism} or omit for the correct default.`,
+      );
+    }
+
     const liveWorkers = new Map<number, cluster.Worker>();
     let readyCount = 0;
     let allReadyFired = false;
+
+    // Crash circuit breaker — 5 crashes within 30 s = abort.
+    const CRASH_THRESHOLD = 5;
+    const CRASH_WINDOW_MS = 30_000;
+    const crashTimes: number[] = [];
 
     const spawnWorker = (respawnDelayMs = 0): void => {
       setTimeout(() => {
@@ -430,15 +496,24 @@ export class FastifyAdapter {
           liveWorkers.delete(pid);
           opts.onWorkerExit?.(pid, code);
           if (code === 0 || signal === 'SIGTERM') return;
-          // Exponential backoff: 100 → 200 → 400 → ... capped at 5 000ms.
+
+          const now = Date.now();
+          crashTimes.push(now);
+          while (crashTimes.length && crashTimes[0] < now - CRASH_WINDOW_MS) crashTimes.shift();
+          if (crashTimes.length >= CRASH_THRESHOLD) {
+            console.error(
+              `[Axiomify/fastify] ${crashTimes.length} workers crashed within ` +
+              `${CRASH_WINDOW_MS}ms. Aborting to prevent runaway respawn loop.`,
+            );
+            process.exit(1);
+          }
+
           spawnWorker(Math.min((respawnDelayMs || 50) * 2, 5_000));
         });
       }, respawnDelayMs);
     };
 
     // Primary waits for all workers to exit before exiting itself.
-    // Old code called process.exit(0) immediately after kill(), dropping
-    // workers that were still draining in-flight requests.
     process.once('SIGTERM', () => {
       if (liveWorkers.size === 0) {
         process.exit(0);
@@ -452,6 +527,22 @@ export class FastifyAdapter {
         w.process.kill('SIGTERM');
       }
       setTimeout(() => process.exit(1), gracefulTimeoutMs + 2_000).unref();
+    });
+
+    // Zero-downtime rolling restart — kill -USR2 <primary-pid>.
+    process.on('SIGUSR2', () => {
+      const snapshot = [...liveWorkers.values()];
+      if (snapshot.length === 0) return;
+      let i = 0;
+      const killNext = () => {
+        if (i >= snapshot.length) return;
+        const w = snapshot[i++];
+        if (liveWorkers.has(w.process.pid ?? -1)) {
+          w.process.kill('SIGTERM');
+        }
+        setTimeout(killNext, gracefulTimeoutMs);
+      };
+      killNext();
     });
 
     for (let i = 0; i < numWorkers; i++) spawnWorker();

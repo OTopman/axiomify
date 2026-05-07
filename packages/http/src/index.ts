@@ -6,7 +6,7 @@ import type {
   ResponseCapabilities,
   SerializerInput,
 } from '@axiomify/core';
-import { makeSerialize, sanitizeInput } from '@axiomify/core';
+import { ADAPTER_LOCK_TOKEN, makeSerialize, sanitizeInput } from '@axiomify/core';
 import cluster from 'cluster';
 import type { IncomingMessage } from 'http';
 import http from 'http';
@@ -317,7 +317,7 @@ export class HttpAdapter {
   private readonly _serialize: (input: SerializerInput) => unknown;
 
   constructor(private readonly core: Axiomify, options: HttpAdapterOptions = {}) {
-    this.core.lockRoutes('@axiomify/http');
+    this.core.lockRoutes(ADAPTER_LOCK_TOKEN, '@axiomify/http');
     this._trustProxy = options.trustProxy ?? false;
     // Default sanitize is now false — see option docs above.
     this._sanitize = options.sanitize ?? false;
@@ -368,7 +368,7 @@ export class HttpAdapter {
         const axiomifyReq = new HttpRequest(req, parsedBody, ip, this._sanitize);
         const axiomifyRes = new HttpResponse(res, axiomifyReq, this._serialize);
 
-        await this.core.handleMatchedRoute(axiomifyReq, axiomifyRes, match.route, match.params);
+        await this.core.handleMatchedRoute(ADAPTER_LOCK_TOKEN, axiomifyReq, axiomifyRes, match.route, match.params);
       } catch (err) {
         this._handleAdapterError(err);
         if (!res.headersSent) {
@@ -594,6 +594,7 @@ export class HttpAdapter {
     const liveWorkers = new Map<number, cluster.Worker>();
     let readyCount = 0;
     let allReadyFired = false;
+    const httpCrashTimes: number[] = [];
 
     const spawnWorker = (respawnDelayMs = 0): void => {
       setTimeout(() => {
@@ -621,9 +622,25 @@ export class HttpAdapter {
           opts.onWorkerExit?.(pid, code);
           // Intentional exits — do not restart.
           if (code === 0 || signal === 'SIGTERM') return;
-          // Crash — restart with exponential backoff.
-          // First restart: 100ms. Doubles each time, capped at 5s.
-          // This prevents a misconfigured worker from spinning the CPU.
+
+          // Crash circuit breaker — 5 crashes within 30 s → abort primary.
+          // Prevents a misconfigured worker (bad env, failed migration, port
+          // conflict) from spinning the CPU in a tight respawn loop.
+          const CRASH_THRESHOLD = 5;
+          const CRASH_WINDOW_MS = 30_000;
+          const now = Date.now();
+          httpCrashTimes.push(now);
+          while (httpCrashTimes.length && httpCrashTimes[0] < now - CRASH_WINDOW_MS) {
+            httpCrashTimes.shift();
+          }
+          if (httpCrashTimes.length >= CRASH_THRESHOLD) {
+            console.error(
+              `[Axiomify/http] ${httpCrashTimes.length} workers crashed within ` +
+              `${CRASH_WINDOW_MS}ms. Aborting primary to prevent runaway respawn loop.`,
+            );
+            process.exit(1);
+          }
+
           const nextDelay = Math.min((respawnDelayMs || 50) * 2, 5_000);
           spawnWorker(nextDelay);
         });

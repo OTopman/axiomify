@@ -7,7 +7,7 @@ import type {
   SerializerFn,
   SerializerInput,
 } from '@axiomify/core';
-import { makeSerialize } from '@axiomify/core';
+import { ADAPTER_LOCK_TOKEN, makeSerialize } from '@axiomify/core';
 import cluster from 'cluster';
 import { cpus } from 'node:os';
 import { availableParallelism } from 'os';
@@ -616,8 +616,7 @@ export class NativeAdapter {
 
   constructor(app: Axiomify, options: NativeAdapterOptions = {}) {
     this._app = app;
-    // Use the public lockRoutes — no more casting to any.
-    this._app.lockRoutes('@axiomify/native');
+    this._app.lockRoutes(ADAPTER_LOCK_TOKEN, '@axiomify/native');
     this._port = options.port ?? 3000;
     this._maxBodySize = options.maxBodySize ?? 1_048_576;
     this._trustProxy = options.trustProxy ?? false;
@@ -817,7 +816,7 @@ export class NativeAdapter {
         if (aborted) return;
         axiomifyRes.aborted = aborted;
 
-        await app.handleMatchedRoute(axiomifyReq, axiomifyRes, route, params);
+        await app.handleMatchedRoute(ADAPTER_LOCK_TOKEN, axiomifyReq, axiomifyRes, route, params);
       })().catch((err: unknown) => {
         // A .catch() is mandatory on all uWS async handlers. Without it, any
         // unhandled rejection (handler bug, DB drop, timeout) reaches Node's
@@ -1000,6 +999,7 @@ export class NativeAdapter {
     let isShuttingDown = false;
     let initialBootComplete = false;
     let l4Proxy: import('node:net').Server | null = null;
+    const nativeCrashTimes: number[] = [];
 
     // L4 TCP Proxy (macOS / Windows Only)
     // Pipes incoming connections to workers using round-robin.
@@ -1070,6 +1070,25 @@ export class NativeAdapter {
         opts.onWorkerExit?.(pid, code);
 
         if (isShuttingDown || wasDraining) return;
+
+        // Crash circuit breaker — abort if workers keep crashing on startup.
+        // This prevents a misconfigured worker (bad env, failed migration)
+        // from pinning a CPU in a tight respawn loop indefinitely.
+        const CRASH_THRESHOLD = 5;
+        const CRASH_WINDOW_MS = 30_000;
+        const now = Date.now();
+        nativeCrashTimes.push(now);
+        while (nativeCrashTimes.length && nativeCrashTimes[0] < now - CRASH_WINDOW_MS) {
+          nativeCrashTimes.shift();
+        }
+        if (nativeCrashTimes.length >= CRASH_THRESHOLD) {
+          console.error(
+            `[Axiomify/native] ${nativeCrashTimes.length} workers crashed within ` +
+            `${CRASH_WINDOW_MS}ms. Aborting primary to prevent runaway respawn loop.`,
+          );
+          process.exit(1);
+        }
+
         const nextDelay = Math.min((respawnDelayMs || 50) * 2, 5_000);
         setTimeout(() => spawnWorker(idx, nextDelay), nextDelay);
       });

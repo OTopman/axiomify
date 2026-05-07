@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Axiomify } from '../src/app';
+import { ADAPTER_LOCK_TOKEN } from '../src/internal';
 import { HookManager } from '../src/lifecycle';
 
 describe('Unified HookEngine Lifecycle', () => {
@@ -150,7 +151,9 @@ describe('Unified HookEngine Lifecycle', () => {
 
   it('rejects route registration after routes are locked', () => {
     const app = new Axiomify();
-    app.lockRoutes('test-adapter');
+    // Must pass the adapter token — protects against user code accidentally
+    // calling lockRoutes and creating route-drift bugs.
+    app.lockRoutes(ADAPTER_LOCK_TOKEN, 'test-adapter');
 
     expect(() =>
       app.route({
@@ -283,9 +286,11 @@ describe('HookManager', () => {
         {} as any,
       );
 
+      // The default logger wraps the error in a meta object:
+      // console.error(message, { error: err })
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining('onError'),
-        expect.any(Error),
+        expect.objectContaining({ error: expect.any(Error) }),
       );
 
       consoleSpy.mockRestore();
@@ -296,16 +301,15 @@ describe('HookManager', () => {
       manager.add('onClose', async () => {});
       manager.add('onClose', async () => {});
 
-      await expect(
-        manager.runSafe('onClose', {} as any, {} as any),
-      ).resolves.not.toThrow();
+      // runSafe returns Promise<void> | void — always safe to await
+      await manager.runSafe('onClose', {} as any, {} as any);
     });
 
     it('resolves without throwing when no hooks are registered', async () => {
       const manager = new HookManager();
-      await expect(
-        manager.runSafe('onError', new Error('x'), {} as any, {} as any),
-      ).resolves.not.toThrow();
+      // No hooks — runSafe returns undefined synchronously (no Promise allocated).
+      // await undefined is fine — microtask resolves immediately.
+      await manager.runSafe('onError', new Error('x'), {} as any, {} as any);
     });
   });
 });

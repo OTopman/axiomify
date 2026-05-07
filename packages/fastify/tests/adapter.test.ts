@@ -55,6 +55,8 @@ describe('FastifyAdapter: routing via Fastify router', () => {
 
   beforeAll(async () => {
     const app = new Axiomify();
+    // X-Request-Id is opt-in.
+    app.enableRequestId();
 
     app.route({
       method: 'GET',
@@ -80,7 +82,8 @@ describe('FastifyAdapter: routing via Fastify router', () => {
       handler: async (req, res) => res.send(req.body),
     });
 
-    adapter = new FastifyAdapter(app);
+    // sanitize: true strips __proto__ / constructor / prototype from bodies.
+    adapter = new FastifyAdapter(app, { sanitize: true });
     // Use the underlying Fastify instance to bind on an ephemeral port.
     const nativeApp = (adapter as any).app;
     const address = await nativeApp.listen({ port: 0 });

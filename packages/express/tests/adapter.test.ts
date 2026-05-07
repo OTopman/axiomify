@@ -74,7 +74,9 @@ describe('Express Adapter Translators', () => {
       socket: { remoteAddress: '127.0.0.1' },
     };
 
-    const req = translateRequest(mockExpressReq);
+    // sanitize=true is required — the flag is opt-in so production apps
+    // explicitly pay the cost only when they need it.
+    const req = translateRequest(mockExpressReq, true);
     expect((req.body as any).__proto__).toBeUndefined();
     expect((req.body as any).safe).toBe('yes');
     expect(({} as any).polluted).toBeUndefined();
@@ -193,6 +195,8 @@ describe('ExpressAdapter: routing via Express router', () => {
 
   beforeAll(async () => {
     const app = new Axiomify();
+    // X-Request-Id is opt-in — call enableRequestId() to activate it.
+    app.enableRequestId();
 
     app.route({
       method: 'GET',

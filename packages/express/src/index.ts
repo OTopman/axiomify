@@ -1,9 +1,10 @@
-import type { Axiomify } from '@axiomify/core';
+import { ADAPTER_LOCK_TOKEN, type Axiomify } from '@axiomify/core';
 import cluster from 'cluster';
 import type { NextFunction, Request, Response } from 'express';
 import express, { Express } from 'express';
 import { Server } from 'http';
-import { cpus } from 'os';
+import { availableParallelism } from 'os';
+import type { ListenOptions } from 'net';
 import { translateRequest, translateResponse } from './translator';
 
 export interface ExpressAdapterOptions {
@@ -48,9 +49,8 @@ export class ExpressAdapter {
     const { bodyLimit = '1mb', trustProxy = false } = options;
 
     this.core = coreApp;
-    // Use the public lockRoutes — no more any-cast.
-    this.core.lockRoutes('@axiomify/express');
-    this._workers = options.workers ?? cpus().length;
+    this.core.lockRoutes(ADAPTER_LOCK_TOKEN, '@axiomify/express');
+    this._workers = options.workers ?? availableParallelism();
     this.app = express();
 
     // Required for correct req.ip when deployed behind a proxy or load balancer.
@@ -72,6 +72,7 @@ export class ExpressAdapter {
             axiomifyReq,
           );
           await this.core.handleMatchedRoute(
+            ADAPTER_LOCK_TOKEN,
             axiomifyReq,
             axiomifyRes,
             route,
@@ -137,9 +138,43 @@ export class ExpressAdapter {
   }
 
   /**
-   * Fork `workers` child processes and start Express on each.
-   * SIGTERM is forwarded to workers. `onPrimary` fires only after all workers
-   * are ready — not immediately after forking.
+   * Fork `workers` child processes and balance connections across them.
+   *
+   * KEY BEHAVIOURS — fixed in this revision:
+   *
+   * 1. SO_REUSEPORT (Linux) / exclusive (other platforms):
+   *    Workers bind their OWN socket via `reusePort: true` (Node 16.9+) or
+   *    `exclusive: true` (older Node). The kernel load-balances connections
+   *    directly to workers — zero IPC overhead. Without these flags Node's
+   *    cluster module silently falls back to SCHED_RR mode, where the primary
+   *    accepts every connection and forwards file descriptors via IPC,
+   *    bottlenecking the primary's event loop.
+   *
+   * 2. SCHED_NONE in primary:
+   *    Set BEFORE the first cluster.fork() — frozen after the first fork.
+   *    Required for SO_REUSEPORT/exclusive to take effect; otherwise the
+   *    cluster module re-routes worker listen() calls back to the primary.
+   *
+   * 3. Crash circuit breaker:
+   *    If 5+ workers crash within 30s, the primary aborts. Prevents a
+   *    misconfigured worker (missing env var, bad migration) from pinning
+   *    a CPU in a tight respawn loop indefinitely.
+   *
+   * 4. Graceful SIGTERM drain:
+   *    Workers stop accepting, close idle keep-alives (Node 18.2+), then
+   *    close the server. A hard deadline force-exits after gracefulTimeoutMs.
+   *    The primary waits for ALL workers to exit before exiting itself.
+   *
+   * 5. SIGUSR2 rolling restart:
+   *    `kill -USR2 <primary-pid>` restarts workers one at a time, waiting
+   *    gracefulTimeoutMs between each so a replacement is up before the next
+   *    is killed. Enables zero-downtime reload.
+   *
+   * WHEN DOES CLUSTERING ACTUALLY HELP?
+   *   - Each worker on a separate physical CPU core adds genuine parallelism.
+   *   - Set workers to the number of PHYSICAL cores, not logical (hyperthreaded).
+   *   - On a 1-core machine, spawning 4+ workers HURTS — context switching exceeds
+   *     any parallelism gain. The primary will warn on oversubscription.
    */
   public listenClustered(
     port: number,
@@ -153,14 +188,35 @@ export class ExpressAdapter {
   ): void {
     const gracefulTimeoutMs = opts.gracefulTimeoutMs ?? 10_000;
 
+    // ── Worker ──────────────────────────────────────────────────────────────
     if (!cluster.isPrimary) {
-      this.listen(port, () => {
+      // Bind worker's own socket via SO_REUSEPORT or exclusive — bypasses
+      // the cluster module's primary-mediated IPC dispatch.
+      const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
+      const listenOpts: ListenOptions =
+        nodeMajor >= 16
+          ? { port, reusePort: true }
+          : { port, exclusive: true };
+
+      this.server = this.app.listen(listenOpts, () => {
         opts.onWorkerReady?.(port);
         process.send?.({ type: 'WORKER_READY', pid: process.pid });
       });
+
       process.once('SIGTERM', () => {
-        const deadline = setTimeout(() => process.exit(1), gracefulTimeoutMs);
+        // Stop accepting new connections; close idle keep-alives if available.
+        const srv = this.server as unknown as {
+          closeIdleConnections?: () => void;
+          closeAllConnections?: () => void;
+        };
+        srv.closeIdleConnections?.();
+
+        const deadline = setTimeout(() => {
+          srv.closeAllConnections?.();
+          process.exit(1);
+        }, gracefulTimeoutMs);
         deadline.unref();
+
         this.close().finally(() => {
           clearTimeout(deadline);
           process.exit(0);
@@ -169,10 +225,35 @@ export class ExpressAdapter {
       return;
     }
 
+    // ── Primary ─────────────────────────────────────────────────────────────
+
+    // SCHED_NONE must be set BEFORE the first cluster.fork() — it is frozen
+    // after the first fork. Without it, the worker's reusePort/exclusive
+    // listen call is silently overridden and cluster falls back to its
+    // default primary-IPC dispatch.
+    cluster.schedulingPolicy = cluster.SCHED_NONE;
+
     const numWorkers = this._workers;
+    const parallelism = availableParallelism();
+    if (numWorkers > parallelism) {
+      console.warn(
+        `[Axiomify/express] listenClustered: workers (${numWorkers}) > ` +
+        `availableParallelism (${parallelism}). ` +
+        `This causes oversubscription and DEGRADES throughput. ` +
+        `Set workers: ${parallelism} or omit the option to use the correct default.`,
+      );
+    }
+
     const liveWorkers = new Map<number, cluster.Worker>();
     let readyCount = 0;
     let allReadyFired = false;
+
+    // Crash circuit breaker — if 5+ workers crash within 30s the primary
+    // aborts so we never burn CPU spinning on a fundamentally broken config
+    // (missing DB URL, bad migration, port conflict, etc.).
+    const CRASH_THRESHOLD = 5;
+    const CRASH_WINDOW_MS = 30_000;
+    const crashTimes: number[] = [];
 
     const spawnWorker = (respawnDelayMs = 0): void => {
       setTimeout(() => {
@@ -192,7 +273,20 @@ export class ExpressAdapter {
           const pid = w.process.pid ?? 0;
           liveWorkers.delete(pid);
           opts.onWorkerExit?.(pid, code);
+          // Intentional exits — do not restart, do not count toward circuit breaker.
           if (code === 0 || signal === 'SIGTERM') return;
+
+          const now = Date.now();
+          crashTimes.push(now);
+          while (crashTimes.length && crashTimes[0] < now - CRASH_WINDOW_MS) crashTimes.shift();
+          if (crashTimes.length >= CRASH_THRESHOLD) {
+            console.error(
+              `[Axiomify/express] ${crashTimes.length} workers crashed within ` +
+              `${CRASH_WINDOW_MS}ms. Aborting primary to avoid a respawn loop.`,
+            );
+            process.exit(1);
+          }
+
           spawnWorker(Math.min((respawnDelayMs || 50) * 2, 5_000));
         });
       }, respawnDelayMs);
@@ -211,6 +305,22 @@ export class ExpressAdapter {
         w.process.kill('SIGTERM');
       }
       setTimeout(() => process.exit(1), gracefulTimeoutMs + 2_000).unref();
+    });
+
+    // SIGUSR2: rolling restart for zero-downtime reload.
+    process.on('SIGUSR2', () => {
+      const snapshot = [...liveWorkers.values()];
+      if (snapshot.length === 0) return;
+      let i = 0;
+      const killNext = () => {
+        if (i >= snapshot.length) return;
+        const w = snapshot[i++];
+        if (liveWorkers.has(w.process.pid ?? -1)) {
+          w.process.kill('SIGTERM');
+        }
+        setTimeout(killNext, gracefulTimeoutMs);
+      };
+      killNext();
     });
 
     for (let i = 0; i < numWorkers; i++) spawnWorker();

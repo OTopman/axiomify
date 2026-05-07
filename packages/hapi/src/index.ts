@@ -5,11 +5,12 @@ import type {
   ResponseCapabilities,
   SerializerFn,
 } from '@axiomify/core';
-import { makeSerialize } from '@axiomify/core';
+import { ADAPTER_LOCK_TOKEN, makeSerialize } from '@axiomify/core';
 import type { Request } from '@hapi/hapi';
 import Hapi from '@hapi/hapi';
 import cluster from 'cluster';
-import { cpus } from 'os';
+import * as net from 'net';
+import { availableParallelism } from 'os';
 import { PassThrough, Readable } from 'stream';
 import { sanitize } from './utils';
 
@@ -67,14 +68,14 @@ export class HapiAdapter {
         "Hapi — adding overhead without any benefit from Hapi's native performance. " +
         'Use @axiomify/http or @axiomify/native instead.',
     );
-    this.core.lockRoutes('@axiomify/hapi');
+    this.core.lockRoutes(ADAPTER_LOCK_TOKEN, '@axiomify/hapi');
     const { workers, sanitize: sanitizeOpt, ...hapiConfig } = config;
     const configuredPayload = hapiConfig.routes?.payload || {};
     this.bodyLimitBytes =
       typeof configuredPayload.maxBytes === 'number'
         ? configuredPayload.maxBytes
         : 1_048_576;
-    this._workers = workers ?? cpus().length;
+    this._workers = workers ?? availableParallelism();
     this._sanitize = sanitizeOpt ?? false;
 
     // Keep `parse: false, output: 'stream'` so @axiomify/upload can pipe the
@@ -158,6 +159,7 @@ export class HapiAdapter {
             // Hapi uses {param} syntax internally; .params returns plain keys.
             this.core
               .handleMatchedRoute(
+                ADAPTER_LOCK_TOKEN,
                 axiomifyReq,
                 axiomifyRes,
                 capturedRoute,
@@ -463,6 +465,9 @@ export class HapiAdapter {
     return self;
   }
 
+  /**
+   * Starts the Hapi server on the given port. In single-process mode.
+   */
   public async listen(port: number): Promise<void> {
     this.server.settings.port = port;
     await this.server.start();
@@ -470,8 +475,23 @@ export class HapiAdapter {
 
   /**
    * Fork `workers` child processes and start Hapi on each.
-   * SIGTERM is forwarded to workers. `onPrimary` fires only once all workers
-   * are ready — not immediately after forking.
+   *
+   * KEY BEHAVIOURS — fixed in this revision:
+   *
+   * 1. SO_REUSEPORT via pre-bound net.Server:
+   *    Hapi does not expose `reusePort` through its `server.start()` API.
+   *    We work around this by pre-creating a `net.Server` with `reusePort: true`
+   *    (Node ≥ 16.9) and injecting it as Hapi's `listener`. This achieves the
+   *    same zero-IPC kernel load-balancing as the native / http adapters.
+   *    On older Node we fall back to `exclusive: true` with SCHED_NONE.
+   *
+   * 2. SCHED_NONE before first fork — required for exclusive/reusePort to work.
+   *
+   * 3. Crash circuit breaker — 5 crashes in 30 s → primary aborts.
+   *
+   * 4. Graceful SIGTERM drain — Hapi.stop() drains in-flight requests.
+   *
+   * 5. SIGUSR2 rolling restart for zero-downtime reload.
    */
   public listenClustered(
     port: number,
@@ -485,11 +505,44 @@ export class HapiAdapter {
   ): void {
     const gracefulTimeoutMs = opts.gracefulTimeoutMs ?? 10_000;
 
+    // ── Worker ──────────────────────────────────────────────────────────────
     if (!cluster.isPrimary) {
-      this.listen(port).then(() => {
-        opts.onWorkerReady?.();
-        process.send?.({ type: 'WORKER_READY', pid: process.pid });
-      });
+      const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
+
+      if (nodeMajor >= 16) {
+        // Pre-bind with SO_REUSEPORT, inject the listener into Hapi.
+        // Hapi's autoListen must be false so it doesn't try to bind again.
+        const netServer = net.createServer();
+        netServer.listen({ port, reusePort: true }, () => {
+          (this.server.settings as Record<string, unknown>).listener = netServer;
+          (this.server.settings as Record<string, unknown>).autoListen = false;
+          this.server.start().then(
+            () => {
+              opts.onWorkerReady?.();
+              process.send?.({ type: 'WORKER_READY', pid: process.pid });
+            },
+            (err: Error) => {
+              console.error(`[Axiomify/hapi] Worker ${process.pid} failed to start:`, err);
+              process.exit(1);
+            },
+          );
+        });
+      } else {
+        // Older Node: exclusive listen, SCHED_NONE was set in primary.
+        this.server.settings.port = port;
+        (this.server.settings as Record<string, unknown>).exclusive = true;
+        this.server.start().then(
+          () => {
+            opts.onWorkerReady?.();
+            process.send?.({ type: 'WORKER_READY', pid: process.pid });
+          },
+          (err: Error) => {
+            console.error(`[Axiomify/hapi] Worker ${process.pid} failed to bind port ${port}:`, err);
+            process.exit(1);
+          },
+        );
+      }
+
       process.once('SIGTERM', () => {
         const deadline = setTimeout(() => process.exit(1), gracefulTimeoutMs);
         deadline.unref();
@@ -501,10 +554,29 @@ export class HapiAdapter {
       return;
     }
 
+    // ── Primary ─────────────────────────────────────────────────────────────
+
+    // Must be set BEFORE the first cluster.fork().
+    cluster.schedulingPolicy = cluster.SCHED_NONE;
+
     const numWorkers = this._workers;
+    const parallelism = availableParallelism();
+    if (numWorkers > parallelism) {
+      console.warn(
+        `[Axiomify/hapi] listenClustered: workers (${numWorkers}) > ` +
+        `availableParallelism (${parallelism}). ` +
+        `Oversubscription degrades throughput. ` +
+        `Set workers: ${parallelism} or omit for the correct default.`,
+      );
+    }
+
     const liveWorkers = new Map<number, cluster.Worker>();
     let readyCount = 0;
     let allReadyFired = false;
+
+    const CRASH_THRESHOLD = 5;
+    const CRASH_WINDOW_MS = 30_000;
+    const crashTimes: number[] = [];
 
     const spawnWorker = (respawnDelayMs = 0): void => {
       setTimeout(() => {
@@ -525,13 +597,23 @@ export class HapiAdapter {
           liveWorkers.delete(pid);
           opts.onWorkerExit?.(pid, code);
           if (code === 0 || signal === 'SIGTERM') return;
-          // Exponential backoff: 100 → 200 → 400 → ... capped at 5000ms.
+
+          const now = Date.now();
+          crashTimes.push(now);
+          while (crashTimes.length && crashTimes[0] < now - CRASH_WINDOW_MS) crashTimes.shift();
+          if (crashTimes.length >= CRASH_THRESHOLD) {
+            console.error(
+              `[Axiomify/hapi] ${crashTimes.length} workers crashed within ` +
+              `${CRASH_WINDOW_MS}ms. Aborting to prevent runaway respawn loop.`,
+            );
+            process.exit(1);
+          }
+
           spawnWorker(Math.min((respawnDelayMs || 50) * 2, 5_000));
         });
       }, respawnDelayMs);
     };
 
-    // Primary waits for all workers to drain before exiting.
     process.once('SIGTERM', () => {
       if (liveWorkers.size === 0) {
         process.exit(0);
@@ -545,6 +627,22 @@ export class HapiAdapter {
         w.process.kill('SIGTERM');
       }
       setTimeout(() => process.exit(1), gracefulTimeoutMs + 2_000).unref();
+    });
+
+    // Zero-downtime rolling restart.
+    process.on('SIGUSR2', () => {
+      const snapshot = [...liveWorkers.values()];
+      if (snapshot.length === 0) return;
+      let i = 0;
+      const killNext = () => {
+        if (i >= snapshot.length) return;
+        const w = snapshot[i++];
+        if (liveWorkers.has(w.process.pid ?? -1)) {
+          w.process.kill('SIGTERM');
+        }
+        setTimeout(killNext, gracefulTimeoutMs);
+      };
+      killNext();
     });
 
     for (let i = 0; i < numWorkers; i++) spawnWorker();

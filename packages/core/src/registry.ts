@@ -1,4 +1,5 @@
 import { compiledStates } from './compiled';
+import { defaultLogger, type AxiomifyLogger } from './internal';
 import type { HookManager } from './lifecycle';
 import { Router } from './router';
 import type {
@@ -14,6 +15,7 @@ interface RegistryOptions {
   telemetry?: {
     startSpan: (name: string, attributes: Record<string, string>) => { end(): void };
   };
+  logger?: AxiomifyLogger;
 }
 
 function createTimeoutError(): Error & { statusCode: number } {
@@ -29,13 +31,15 @@ function rejectOnAbort(signal: AbortSignal, error: Error & { statusCode: number 
 
 export class RouteRegistry {
   public readonly router = new Router();
-  public readonly validator = new ValidationCompiler();
+  public readonly validator: ValidationCompiler;
   private readonly routes: RouteDefinition[] = [];
 
   constructor(
     private readonly hooks: HookManager,
     private readonly options: RegistryOptions,
-  ) {}
+  ) {
+    this.validator = new ValidationCompiler(options.logger ?? defaultLogger);
+  }
 
   public get registeredRoutes(): readonly RouteDefinition[] {
     return this.routes;

@@ -1,4 +1,5 @@
 import { RequestDispatcher } from './dispatcher';
+import { ADAPTER_LOCK_TOKEN, AdapterLockToken, AxiomifyLogger, defaultLogger } from './internal';
 import { HookHandlerMap, HookManager } from './lifecycle';
 import { RouteRegistry } from './registry';
 import { makeSerialize } from './serialize';
@@ -26,6 +27,12 @@ export interface AxiomifyOptions {
   telemetry?: {
     startSpan: (name: string, attributes: Record<string, string>) => { end(): void };
   };
+  /**
+   * Structured logger for non-fatal warnings (hook errors, validation drift,
+   * cluster oversubscription). Defaults to `console`. Inject Pino or Winston
+   * here in production — the default does not produce indexable JSON.
+   */
+  logger?: AxiomifyLogger;
 }
 
 function joinRoutePath(prefix: string, path: string): string {
@@ -41,16 +48,30 @@ function mergePlugins(
   return [...inherited, ...local];
 }
 
+// True per-process state for enableRequestId(). Module-level so that two
+// Axiomify instances in the same process share one monotonic sequence
+// (avoids collisions across instances) and so that per-instance closure
+// allocation overhead disappears.
+const _REQUEST_ID_PID = process.pid.toString(36);
+let _REQUEST_ID_COUNTER = 0;
+
 export class Axiomify {
-  public readonly hooks = new HookManager();
+  public readonly hooks: HookManager;
   private readonly registry: RouteRegistry;
   private readonly dispatcher: RequestDispatcher;
   private readonly _timeout: number;
   private readonly _telemetry?: AxiomifyOptions['telemetry'];
+  private readonly _logger: AxiomifyLogger;
   private readonly _services = new Map<string, unknown>();
   private readonly _modules = new Set<string>();
   private _routesLocked = false;
   private _routesLockedReason?: string;
+  private _serializer: SerializerFn = ({ data, message, statusCode, isError }: SerializerInput) => ({
+    status: isError || (statusCode && statusCode >= 400) ? 'failed' : 'success',
+    message:
+      message || (isError || (statusCode && statusCode >= 400) ? 'Error' : 'Operation successful'),
+    data,
+  });
 
   public get registeredRoutes(): readonly RouteDefinition[] {
     return this.registry.registeredRoutes;
@@ -68,12 +89,29 @@ export class Axiomify {
     return this._timeout;
   }
 
+  /** Read-only access to the configured logger. */
+  public get logger(): AxiomifyLogger {
+    return this._logger;
+  }
+
+  /**
+   * Default response serializer. Replace via {@link setSerializer}.
+   * Read-only — direct assignment from outside the class would bypass
+   * arity normalisation; use the setter.
+   */
+  public get serializer(): SerializerFn {
+    return this._serializer;
+  }
+
   constructor(options: AxiomifyOptions = {}) {
     this._timeout = options.timeout ?? 0;
     this._telemetry = options.telemetry;
+    this._logger = options.logger ?? defaultLogger;
+    this.hooks = new HookManager(this._logger);
     this.registry = new RouteRegistry(this.hooks, {
       timeout: this._timeout,
       telemetry: this._telemetry,
+      logger: this._logger,
     });
     this.dispatcher = new RequestDispatcher(
       this.registry.router,
@@ -96,16 +134,17 @@ export class Axiomify {
    * meaning every application paid the cost regardless of need. It is now
    * explicitly opt-in.
    *
+   * The counter is module-level (truly per-process) so that two Axiomify
+   * instances in the same process do not produce colliding IDs.
+   *
    * @example
    * const app = new Axiomify();
    * app.enableRequestId();
    */
   public enableRequestId(): this {
-    let counter = 0;
-    const pid = process.pid.toString(36);
     this.addHook('onRequest', (req, res) => {
       const upstream = (req.headers as Record<string, string | undefined>)?.['x-request-id'];
-      res.header('X-Request-Id', upstream ?? `${pid}-${(++counter).toString(36)}`);
+      res.header('X-Request-Id', upstream ?? `${_REQUEST_ID_PID}-${(++_REQUEST_ID_COUNTER).toString(36)}`);
     });
     return this;
   }
@@ -246,28 +285,35 @@ export class Axiomify {
    * Prevents silent route drift where late-registered routes never get
    * mounted by adapters that snapshot routes at construction time.
    *
-   * @internal Called by adapters only. Not part of the public Axiomify API.
-   * Direct user calls will throw confusing errors at registration time.
+   * Authenticated by `ADAPTER_LOCK_TOKEN` from `@axiomify/core/internal`.
+   * User code calling this without the token will throw at runtime —
+   * the previous version was `@internal` by JSDoc only and provided no
+   * runtime guard.
+   *
+   * @internal Adapter-only API. Import the token from core and pass it
+   * as the first argument:
+   * ```ts
+   * import { ADAPTER_LOCK_TOKEN } from '@axiomify/core';
+   * app.lockRoutes(ADAPTER_LOCK_TOKEN, '@my/adapter');
+   * ```
    */
-  public lockRoutes(reason?: string): this {
+  public lockRoutes(token: AdapterLockToken, reason?: string): this {
+    if (token !== ADAPTER_LOCK_TOKEN) {
+      throw new Error(
+        '[Axiomify] lockRoutes() is reserved for adapter use. ' +
+          'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
+      );
+    }
     this._routesLocked = true;
     this._routesLockedReason = reason;
     return this;
   }
 
-  /** Default response serializer. Replace via app.setSerializer(). */
-  public serializer: SerializerFn = ({ data, message, statusCode, isError }: SerializerInput) => ({
-    status: isError || (statusCode && statusCode >= 400) ? 'failed' : 'success',
-    message:
-      message || (isError || (statusCode && statusCode >= 400) ? 'Error' : 'Operation successful'),
-    data,
-  });
-
   public setSerializer(fn: SerializerFn): this {
     // Normalise to the single-argument form once, so every subsequent call
     // to this.serializer goes through a direct (input) => fn(input) path
     // with no runtime arity check. makeSerialize is shared with adapters.
-    this.serializer = makeSerialize(fn) as SerializerFn;
+    this._serializer = makeSerialize(fn) as SerializerFn;
     return this;
   }
 
@@ -354,14 +400,23 @@ export class Axiomify {
   /**
    * Adapter entry point for pre-routed requests.
    *
-   * @internal Called by adapters only. Not part of the public Axiomify API.
+   * Authenticated by `ADAPTER_LOCK_TOKEN` from `@axiomify/core/internal`.
+   *
+   * @internal Adapter-only API.
    */
   public async handleMatchedRoute(
+    token: AdapterLockToken,
     req: AxiomifyRequest,
     res: AxiomifyResponse,
     route: RouteDefinition,
     params: Record<string, string>,
   ): Promise<void> {
+    if (token !== ADAPTER_LOCK_TOKEN) {
+      throw new Error(
+        '[Axiomify] handleMatchedRoute() is reserved for adapter use. ' +
+          'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
+      );
+    }
     return this.dispatcher.handleMatchedRoute(req, res, route, params);
   }
 }

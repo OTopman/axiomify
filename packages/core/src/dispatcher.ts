@@ -13,21 +13,30 @@ export class RequestDispatcher {
 
   public async handle(req: AxiomifyRequest, res: AxiomifyResponse): Promise<void> {
     try {
-      await this.hooks.run('onRequest', req, res);
+      // Sync fast-path: when no onRequest hooks are registered, .run() returns
+      // undefined and no microtask is queued. Eliminates a per-request Promise
+      // allocation in the common (no-hook) case.
+      const onRequestRet = this.hooks.run('onRequest', req, res);
+      if (onRequestRet) await onRequestRet;
       if (res.headersSent) return;
 
-      const match = this.router.lookup(req.method, req.path);
+      // Router writes params directly into req.params (caller-provided) — no
+      // intermediate object, no copy in the dispatcher. Saves one allocation
+      // and one for-in iteration per request on routes with params.
+      const reqParams = req.params as Record<string, string>;
+      const match = this.router.lookup(req.method, req.path, reqParams);
       if (!match) return res.status(404).send(null, 'Route not found');
       if ('error' in match) {
         res.header('Allow', match.allowed.join(', '));
         return res.status(405).send(null, 'Method Not Allowed');
       }
 
-      await this.executeMatchedRoute(req, res, match.route, match.params);
+      await this.executeMatchedRoute(req, res, match.route, reqParams);
     } catch (err) {
       await this.handleError(err, req, res);
     } finally {
-      await this.hooks.runSafe('onClose', req, res);
+      const onCloseRet = this.hooks.runSafe('onClose', req, res);
+      if (onCloseRet) await onCloseRet;
     }
   }
 
@@ -44,13 +53,15 @@ export class RequestDispatcher {
     params: Record<string, string>,
   ): Promise<void> {
     try {
-      await this.hooks.run('onRequest', req, res);
+      const onRequestRet = this.hooks.run('onRequest', req, res);
+      if (onRequestRet) await onRequestRet;
       if (res.headersSent) return;
       await this.executeMatchedRoute(req, res, route, params);
     } catch (err) {
       await this.handleError(err, req, res);
     } finally {
-      await this.hooks.runSafe('onClose', req, res);
+      const onCloseRet = this.hooks.runSafe('onClose', req, res);
+      if (onCloseRet) await onCloseRet;
     }
   }
 
@@ -60,17 +71,22 @@ export class RequestDispatcher {
     route: RouteDefinition,
     params: Record<string, string>,
   ): Promise<void> {
-    // Inline param assignment into the mutable params bag on the request.
-    // Object.assign performs a prototype-chain walk; direct property write is faster.
+    // Skip the params copy when params IS req.params (the router-routed path
+    // writes directly into req.params, so no copy is needed). For the adapter-
+    // routed path, copy via Object.assign — faster than for-in on plain objects
+    // because V8's Object.assign uses inline caches and skips prototype walk.
     const reqParams = req.params as Record<string, string>;
-    for (const k in params) reqParams[k] = params[k];
+    if (reqParams !== params) {
+      Object.assign(reqParams, params);
+    }
 
     // Run onPreHandler hooks at dispatch time (not baked into the compiled
     // pipeline) so late-registered hooks still execute and we pay zero cost
     // when no onPreHandler hooks are registered.
     const preHandlerList = this.hooks.hooks.onPreHandler;
     if (preHandlerList.length > 0) {
-      await this.hooks.run('onPreHandler', req, res, { route, params: reqParams });
+      const ret = this.hooks.run('onPreHandler', req, res, { route, params: reqParams });
+      if (ret) await ret;
       if (res.headersSent) return;
     }
 
@@ -97,11 +113,13 @@ export class RequestDispatcher {
       }
     }
 
-    await this.hooks.run('onPostHandler', req, dispatchRes, { route, params });
+    const postRet = this.hooks.run('onPostHandler', req, dispatchRes, { route, params });
+    if (postRet) await postRet;
   }
 
   private async handleError(err: unknown, req: AxiomifyRequest, res: AxiomifyResponse): Promise<void> {
-    await this.hooks.runSafe('onError', err, req, res);
+    const onErrorRet = this.hooks.runSafe('onError', err, req, res);
+    if (onErrorRet) await onErrorRet;
     if (res.headersSent) return;
     const anyErr = err as Record<string, unknown>;
     const statusCode =

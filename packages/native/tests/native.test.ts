@@ -22,6 +22,8 @@ describe.skipIf(!uwsSupported)('NativeAdapter (uWebSockets.js)', () => {
     const { NativeAdapter, adaptMiddleware } = await import('../src/index');
 
     app = new Axiomify();
+    // X-Request-Id is opt-in.
+    app.enableRequestId();
 
     // Basic GET
     app.route({
