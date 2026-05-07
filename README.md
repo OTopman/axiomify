@@ -7,16 +7,16 @@
 
 **Schema-first. Adapter-driven. Production-ready.**
 
-Axiomify is a high-performance Node.js framework that uses Zod schemas as a single source of truth for validation, TypeScript types, and OpenAPI documentation. Write your route once — run it on Express, Fastify, Hapi, native HTTP, or uWebSockets.js without changing a line of business logic.
+Axiomify is a high-performance Node.js framework that uses Zod schemas as a single source of truth for validation, TypeScript types, and OpenAPI documentation. Write your route once — run it on uWebSockets.js, native HTTP, Fastify, Hapi, or Express without changing a line of business logic.
 
 ---
 
 ## Architecture highlights
 
-- **No double routing** — Each adapter registers routes directly with its own router (Express's, Fastify's C++ trie, Hapi's, uWS's C++). Axiomify's router is consulted at most once, only in the 404/405 fallback.
-- **AJV-compiled validation** — Zod schemas are converted to JSON Schema 2020-12 via `z.toJSONSchema()` at startup, then compiled with AJV. Runtime cost: ~0.06µs valid / 0.12µs invalid — vs Zod's 0.30µs / 49.75µs.
-- **Async-minimal hooks** — `HookManager.run()` returns synchronously for empty hook lists. Single-handler cases call the handler directly with no Promise wrapper. `onPreHandler` is only added to the pipeline at compile-time when handlers exist.
-- **Multi-core clustering** — All adapters expose `listenClustered()`. Native uses SO_REUSEPORT (kernel-level distribution, zero IPC); others use Node.js cluster (round-robin).
+- **No double routing** — each adapter registers routes directly with its own router (uWS C++, Fastify's C++ trie, Hapi's, Express's). Axiomify's radix-trie router is consulted only in the 404/405 fallback.
+- **AJV-compiled validation** — Zod schemas converted to JSON Schema 2020-12 via `z.toJSONSchema()` at startup, compiled with AJV. Runtime cost: ~0.06 µs valid / 0.12 µs invalid — vs Zod's 0.30 µs / 49.75 µs. Transform-free schemas skip `schema.parse()` entirely (15–25% throughput gain on validated routes).
+- **Microtask-free hooks** — `HookManager.run()` returns `undefined` for empty hook lists. No Promise allocation, no microtask in the zero-hook fast path.
+- **True SO_REUSEPORT clustering** — all adapters set `cluster.SCHED_NONE` before the first fork and bind each worker via `reusePort: true`. Workers own their sockets — zero IPC in the request hot path. Measured 160–165% scaling at 2 workers on 8-core hardware.
 
 ---
 
@@ -24,31 +24,31 @@ Axiomify is a high-performance Node.js framework that uses Zod schemas as a sing
 
 ### Adapters
 
-| Package | Description | Req/s (single core) |
+| Package | Description | Req/s (single-core) |
 |---|---|---:|
-| [`@axiomify/native`](packages/native/) | uWebSockets.js — C++ routing, SO_REUSEPORT clustering | **50,000+** |
-| [`@axiomify/fastify`](packages/fastify/) | Fastify 5 — recommended default | 10,000+ |
-| [`@axiomify/http`](packages/http/) | Node.js `node:http` — zero dependencies | 10,000+ |
-| [`@axiomify/hapi`](packages/hapi/) | Hapi 21 — enterprise-grade | 4,000+ |
-| [`@axiomify/express`](packages/express/) | Express 4 — widest middleware ecosystem | 3,500+ |
+| [`@axiomify/native`](packages/native/) | uWebSockets.js — C++ routing, SO_REUSEPORT | **73,000–84,000** |
+| [`@axiomify/http`](packages/http/) | Node.js `node:http` — zero dependencies | 32,800 |
+| [`@axiomify/fastify`](packages/fastify/) | Fastify 5 | 31,300 |
+| [`@axiomify/hapi`](packages/hapi/) | Hapi 21 — enterprise-grade | 9,900 |
+| [`@axiomify/express`](packages/express/) | Express 4 — widest middleware ecosystem | 7,300 |
 
-Multi-core scaling (90% linear efficiency): 4 cores × 50k = **~180k req/s** (native), 4 cores × 10k = **~36k req/s** (fastify/http).
+*8-core machine, autocannon 100 conns, pipelining 10, 12 s, co-located loadgen.*
 
 ### Core
 
 | Package | Description |
 |---|---|
-| [`@axiomify/core`](packages/core/) | Router, AJV validation compiler, hook manager, dispatcher |
+| [`@axiomify/core`](packages/core/) | Router, AJV validation, hook manager, dispatcher, module system |
 | [`@axiomify/cli`](packages/cli/) | `axiomify init`, `dev`, `build`, `routes` visualisation |
 
 ### Security
 
 | Package | Description |
 |---|---|
-| [`@axiomify/auth`](packages/auth/) | JWT auth + refresh-token rotation + **access token revocation via TokenStore** |
-| [`@axiomify/cors`](packages/cors/) | CORS with strict preflight, Vary management, startup validation |
+| [`@axiomify/auth`](packages/auth/) | JWT + refresh rotation + access token revocation via `TokenStore` |
+| [`@axiomify/cors`](packages/cors/) | CORS with strict preflight, `Vary` management, startup validation |
 | [`@axiomify/helmet`](packages/helmet/) | 15 security headers (CSP, HSTS, COEP, COOP, CORP, …) |
-| [`@axiomify/rate-limit`](packages/rate-limit/) | Sliding-window rate limiting + **EVALSHA caching** + ioredis/redis@4 support |
+| [`@axiomify/rate-limit`](packages/rate-limit/) | Sliding-window rate limiting + EVALSHA caching + ioredis/redis@4 |
 | [`@axiomify/security`](packages/security/) | XSS, HPP, SQLi heuristics, prototype pollution, null bytes, bot detection |
 | [`@axiomify/fingerprint`](packages/fingerprint/) | Server-side request fingerprinting with confidence scoring |
 
@@ -57,15 +57,15 @@ Multi-core scaling (90% linear efficiency): 4 cores × 50k = **~180k req/s** (na
 | Package | Description |
 |---|---|
 | [`@axiomify/upload`](packages/upload/) | RAM-safe multipart streaming via Busboy + auto cleanup on error |
-| [`@axiomify/static`](packages/static/) | Static file serving — 36 MIME types, configurable cache control, SPA index fallback |
-| [`@axiomify/ws`](packages/ws/) | WebSocket management — rooms, broadcast, heartbeat, **all adapter compatible** |
-| [`@axiomify/graphql`](packages/graphql/) | GraphQL endpoint + GraphiQL playground + depth/alias limits |
+| [`@axiomify/static`](packages/static/) | Static file serving — 36 MIME types, ETag, SPA index fallback |
+| [`@axiomify/ws`](packages/ws/) | WebSocket rooms, broadcast, heartbeat — all adapters compatible |
+| [`@axiomify/graphql`](packages/graphql/) | GraphQL endpoint + GraphiQL 3 + depth/alias limits |
 
 ### Observability
 
 | Package | Description |
 |---|---|
-| [`@axiomify/openapi`](packages/openapi/) | Auto-generate OpenAPI 3.0 from Zod schemas — **Zod v4 native via `z.toJSONSchema()`** |
+| [`@axiomify/openapi`](packages/openapi/) | OpenAPI 3.0 from Zod schemas — Zod v4 native via `z.toJSONSchema()` |
 | [`@axiomify/logger`](packages/logger/) | Structured logging with recursive PII masking |
 | [`@axiomify/metrics`](packages/metrics/) | Prometheus metrics — bounded cardinality, WebSocket stats integration |
 
@@ -86,6 +86,7 @@ import { NativeAdapter } from '@axiomify/native';
 import { z } from 'zod';
 
 const app = new Axiomify();
+app.enableRequestId(); // opt-in X-Request-Id injection
 
 app.route({
   method: 'POST',
@@ -96,47 +97,53 @@ app.route({
   },
   handler: async (req, res) => {
     // req.body is typed and validated — { name: string, email: string }
-    res.status(201).send({ id: '1', name: req.body.name });
+    res.status(201).send({ id: 'usr_1', name: req.body.name });
   },
 });
 
-// Swap adapters without changing route definitions
+// Swap adapters without changing any route or handler
 new NativeAdapter(app, { port: 3000 }).listen(() => console.log('Ready on :3000'));
-// new FastifyAdapter(app).listen(3000);
-// new ExpressAdapter(app).listen(3000);
 // new HttpAdapter(app).listen(3000);
+// new FastifyAdapter(app).listen(3000);
 ```
 
 ---
 
 ## Multi-core clustering
 
-All adapters support `listenClustered()`. The native adapter uses SO_REUSEPORT — the kernel distributes connections with zero user-space coordination:
+All adapters support `listenClustered()`. Since v5, all adapters use SO_REUSEPORT — each worker owns its socket, with zero IPC in the request hot path.
 
 ```typescript
 import { NativeAdapter } from '@axiomify/native';
 
-const adapter = new NativeAdapter(app, { port: 3000, workers: 4 });
+const adapter = new NativeAdapter(app, { port: 3000 });
 
 adapter.listenClustered({
   onWorkerReady: () => console.log(`[${process.pid}] ready`),
   onPrimary:     (pids) => console.log('Workers:', pids),
-  onWorkerExit:  (pid, code) => console.error(`Worker ${pid} died — restarting`),
-  // crashed workers restart automatically
+  onWorkerExit:  (pid, code) => console.error(`Worker ${pid} exited (${code})`),
+  gracefulTimeoutMs: 10_000,
 });
 ```
 
 ```typescript
-// Fastify and HTTP adapters use Node.js cluster (round-robin)
-const fastifyAdapter = new FastifyAdapter(app, { workers: 4 });
-fastifyAdapter.listenClustered(3000, { onWorkerReady: (port) => console.log(`[:${port}]`) });
+// HTTP, Fastify, Express, Hapi — identical API
+const adapter = new HttpAdapter(app, { workers: 4 });
+adapter.listenClustered(3000, {
+  onPrimary:    (pids) => console.log('Workers:', pids),
+  onWorkerExit: (pid, code) => console.error(`Worker ${pid} died`, code),
+});
 ```
+
+Zero-downtime reload: `kill -USR2 <primary-pid>` — restarts workers one at a time.
+
+Workers default to `os.availableParallelism()` (respects Docker `--cpus` / Kubernetes `cpu:`). Never set `workers` above the physical core count available to your container.
 
 ---
 
 ## Validation
 
-Axiomify compiles Zod schemas to AJV at startup — the same strategy Fastify uses:
+Axiomify compiles Zod schemas to AJV at startup. `hasTransforms()` detects at compile time whether a schema needs the second Zod pass — schemas with no `.transform()`, `.default()`, `.coerce`, or `.refine()` return the AJV-validated data directly.
 
 ```typescript
 app.route({
@@ -154,14 +161,11 @@ app.route({
     },
   },
   handler: async (req, res) => {
-    // req.body, req.query fully typed and validated
-    // req.query.dryRun is boolean (coerced from string by Zod)
+    // req.body typed and validated. req.query.dryRun is boolean (coerced).
     res.status(201).send({ orderId: 'ord_1', total: 99.99 });
   },
 });
 ```
-
-Zod transforms (`.coerce`, `.default()`, `.transform()`) run after AJV validates structure. The compiled AJV function validates; `schema.parse()` applies transforms.
 
 ---
 
@@ -170,21 +174,18 @@ Zod transforms (`.coerce`, `.default()`, `.transform()`) run after AJV validates
 ```typescript
 import { createAuthPlugin, createRefreshHandler, MemoryTokenStore } from '@axiomify/auth';
 
-// Production: use Redis. MemoryTokenStore is per-process only.
-const tokenStore = new MemoryTokenStore();
+const tokenStore = new MemoryTokenStore(); // use RedisTokenStore in production
 
-// Access token revocation: store.exists(jti) checked on every request
 const requireAuth = createAuthPlugin({
   secret: process.env.JWT_SECRET!,
   store: tokenStore,
 });
 
-// Refresh token rotation with revocation
 const refresh = createRefreshHandler({
   secret: process.env.JWT_SECRET!,
   refreshSecret: process.env.JWT_REFRESH_SECRET!,
-  accessTokenTtl: 900,         // 15 min
-  refreshTokenTtl: 2_592_000,  // 30 days
+  accessTokenTtl: 900,
+  refreshTokenTtl: 2_592_000,
   store: tokenStore,
 });
 
@@ -201,10 +202,9 @@ app.route({
 ## Rate limiting with Redis EVALSHA
 
 ```typescript
-import { RedisStore } from '@axiomify/rate-limit';
+import { createRateLimitPlugin, RedisStore } from '@axiomify/rate-limit';
 import Redis from 'ioredis';
 
-// EVALSHA: script uploaded once, subsequent calls use 40-byte SHA hash
 const store = new RedisStore(new Redis(process.env.REDIS_URL));
 
 const loginLimit = createRateLimitPlugin({
@@ -217,7 +217,7 @@ const loginLimit = createRateLimitPlugin({
 
 ---
 
-## WebSockets — all adapters
+## WebSockets
 
 ```typescript
 import { useWebSockets, getServerFromAdapter } from '@axiomify/ws';
@@ -227,11 +227,11 @@ const server = new HttpAdapter(app).listen(3000);
 useWebSockets(app, { server, path: '/ws' });
 
 // @axiomify/express, fastify, hapi — use getServerFromAdapter()
-const expressAdapter = new ExpressAdapter(app);
-const server = expressAdapter.listen(3000);
-useWebSockets(app, { server: getServerFromAdapter(expressAdapter), path: '/ws' });
+const adapter = new ExpressAdapter(app);
+const server = adapter.listen(3000);
+useWebSockets(app, { server: getServerFromAdapter(adapter), path: '/ws' });
 
-// @axiomify/native — use built-in ws option instead
+// @axiomify/native — use built-in uWS WebSocket
 new NativeAdapter(app, {
   port: 3000,
   ws: { path: '/ws', open: (ws) => ws.send('hello') },
@@ -250,46 +250,19 @@ useSwagger(app, {
   components: {
     securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
   },
-  security: [{ bearerAuth: [] }],
 });
 // Swagger UI at /docs, spec at /docs/openapi.json
 ```
 
-Uses `z.toJSONSchema()` (built into Zod v4) — no third-party schema bridge. Works with all standard Zod types including `z.enum()`, `z.union()`, `z.optional()`, `z.array()`.
-
----
-
-## Static files
-
-```typescript
-import { serveStatic } from '@axiomify/static';
-
-// Content-hashed assets (immutable)
-serveStatic(app, {
-  prefix: '/assets',
-  root: './dist/assets',
-  cacheControl: 'public, max-age=31536000, immutable',
-});
-
-// SPA fallback — serve index.html for all unmatched paths
-serveStatic(app, {
-  prefix: '/',
-  root: './dist',
-  cacheControl: 'no-cache',
-  serveIndex: true,
-});
-```
-
-36 MIME types, ETag caching, path traversal protection, configurable `Cache-Control`.
+Uses `z.toJSONSchema()` (Zod v4 built-in, emits JSON Schema 2020-12). No third-party schema bridge needed.
 
 ---
 
 ## Hooks
 
 ```typescript
-// Global — runs on every request
 app.addHook('onRequest',    (req, res) => { /* before routing */ });
-app.addHook('onPreHandler', (req, res, match) => { /* after routing, before handler */ });
+app.addHook('onPreHandler', (req, res, match) => { /* after routing */ });
 app.addHook('onPostHandler',(req, res, match) => { /* after handler */ });
 app.addHook('onError',      (err, req, res) => { /* handler threw */ });
 app.addHook('onClose',      (req, res) => { /* always last */ });
@@ -305,52 +278,89 @@ app.group('/api/v1', { plugins: [requireAuth] }, (v1) => {
 
 ---
 
-## Benchmarks (autocannon · 100 connections · pipelining 10 · 12s · Node 22)
+## Module system
+
+```typescript
+// Modules with topological dependency resolution
+app.use({
+  name: 'auth',
+  dependencies: ['cors'],   // cors is registered before auth, regardless of call order
+  register: (app, ctx) => {
+    ctx.provide('tokenStore', new RedisTokenStore(redis));
+    app.addHook('onRequest', verifyToken);
+  },
+});
+```
+
+---
+
+## Benchmarks (autocannon · 100 conns · pipelining 10 · 12 s · Node 22 · 8-core)
 
 ### Single process
 
 | Server | Req/s | Avg lat | p99 |
 |---|---:|---:|---:|
-| Node.js http (bare) | 27,800 | 36ms | 54ms |
-| Fastify 5 (bare) | 27,065 | 36ms | 56ms |
-| **Axiomify Native (uWS)** | **50,493** | **20ms** | **41ms** |
-| Axiomify + Fastify | 10,487 | 95ms | 180ms |
-| Axiomify + HTTP | 9,965 | 100ms | 191ms |
-| Axiomify + Hapi | 4,955 | 200ms | 1,261ms |
-| Axiomify + Express | 3,787 | 225ms | 2,478ms |
+| Node.js http (bare) | 43,765 | 22 ms | 54 ms |
+| Fastify 5 (bare) | 41,779 | 23 ms | 53 ms |
+| **Axiomify Native — GET /users/:id/posts/:postId** | **83,947** | **11 ms** | **20 ms** |
+| **Axiomify Native — GET /ping** | **73,511** | **13 ms** | **26 ms** |
+| **Axiomify Native — POST /echo** | **54,720** | **18 ms** | **30 ms** |
+| Axiomify + `@axiomify/http` | 32,841 | 30 ms | 91 ms |
+| Axiomify + `@axiomify/fastify` | 31,334 | 31 ms | 58 ms |
 
-### Multi-core projections (90% linear scaling)
+The ~25% dispatcher overhead vs bare adapters is the fixed cost of hook iteration, compiled-state lookup, and async pipeline — identical across all adapters.
 
-| Adapter | 1 core | 4 cores | 8 cores |
+### Clustered (8-core, co-located loadgen)
+
+| Adapter | 1 worker | 2 workers | Scaling |
 |---|---:|---:|---:|
-| Native (uWS) | 50k | **~182k** | **~363k** |
-| Fastify | 10.5k | **~38k** | **~75k** |
-| HTTP | 10k | **~36k** | **~72k** |
+| `@axiomify/http` | 35,800 | 57,200 | **160%** |
+| `@axiomify/fastify` | 21,300 | 35,200 | **165%** |
+| Native (uWS) | 85,000 | 91,300 | 107%† |
+
+† Native is autocannon-limited at ~90k req/s co-located. Dedicated loadgen gives near-linear scaling.
+
+For authoritative clustered numbers: `SERVER_HOST=<server-ip> node benchmarks/run-clustered.mjs`
 
 ---
 
-## Security by default
+## Security defaults
 
-- **Prototype pollution** — all adapters sanitize `__proto__`, `constructor`, `prototype` from JSON bodies
-- **AJV strict validation** — `coerceTypes: false`, `removeAdditional: false` — no silent data mutation
+- **Prototype pollution** — adapters strip `__proto__`, `constructor`, `prototype` from JSON bodies (opt-in via `sanitize: true`)
+- **AJV strict mode** — `coerceTypes: false`, no `removeAdditional` — no silent data mutation
 - **JWT algorithm pinning** — `createAuthPlugin` rejects tokens signed with non-listed algorithms; weak secrets throw at startup
-- **CORS startup validation** — `credentials: true` + `origin: '*'` throws instead of silently misconfiguring
-- **Path traversal** — `@axiomify/static` uses `realpath()` + root containment check on every request
-- **Body stream limits** — all adapters enforce body size on the actual stream (not just Content-Length headers)
+- **CORS startup validation** — `credentials: true` + `origin: '*'` throws at startup
+- **Path traversal** — `@axiomify/static` uses `realpath()` + root containment check
+- **Body stream limits** — all adapters enforce size on the actual stream, not just `Content-Length`
 
 ---
 
 ## Testing
 
 ```bash
-npm test         # vitest — 306 tests, 34 test files
+npm test         # vitest — 321 tests, 37 test files
 npm run coverage # V8 coverage report
 ```
 
-Test suite includes:
-- **Cross-adapter parity tests** (`describe.each` across all 4 HTTP adapters) — same behaviour guaranteed
-- Unit tests for every package
-- Integration tests with real HTTP round-trips (no mocking the adapter layer)
+- Cross-adapter parity tests (`describe.each` across all adapters) — identical behaviour guaranteed
+- Unit + integration tests for every package
+- Real HTTP round-trips (no adapter-layer mocking)
+
+---
+
+## Migration from v4
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list of breaking changes.
+
+Quick reference:
+
+| v4 | v5 |
+|---|---|
+| `new Axiomify()` injects X-Request-Id | `app.enableRequestId()` to opt in |
+| `app.serializer = fn` | `app.setSerializer(fn)` |
+| `app.lockRoutes(reason)` | `app.lockRoutes(ADAPTER_LOCK_TOKEN, reason)` |
+| `RoutePlugin` / `PluginHandler` | `RouteMiddleware` |
+| Node.js cluster round-robin | SO_REUSEPORT (kernel load-balancing) |
 
 ---
 
@@ -360,24 +370,20 @@ Test suite includes:
 |---|---|
 | [Getting started](docs/getting-started.md) | Install, first route, first adapter |
 | [Core concepts](docs/core-concepts.md) | Routing, validation, hooks, serialiser |
-| [Adapters guide](docs/adapters.md) | Choosing and configuring adapters |
+| [Adapters guide](docs/adapters.md) | Choosing, configuring, clustering |
 | [Plugins & hooks](docs/plugins-and-hooks.md) | Writing plugins, hook execution order |
 | [Production checklist](docs/production-checklist.md) | Security, clustering, health checks |
 | [Examples](examples/) | Runnable servers for every adapter and plugin |
 
 ### Package docs
 
-[core](docs/packages/core.md) · [auth](docs/packages/auth.md) · [cors](docs/packages/cors.md) · [rate-limit](docs/packages/rate-limit.md) · [ws](docs/packages/ws.md) · [openapi](docs/packages/openapi.md) · [security](docs/packages/security.md) · [static](docs/packages/static.md) · [upload](docs/packages/upload.md) · [helmet](docs/packages/helmet.md) · [logger](docs/packages/logger.md) · [metrics](docs/packages/metrics.md) · [fingerprint](docs/packages/fingerprint.md) · [graphql](docs/packages/graphql.md)
+[core](docs/packages/core.md) · [native](docs/packages/native.md) · [auth](docs/packages/auth.md) · [cors](docs/packages/cors.md) · [rate-limit](docs/packages/rate-limit.md) · [ws](docs/packages/ws.md) · [openapi](docs/packages/openapi.md) · [security](docs/packages/security.md) · [static](docs/packages/static.md) · [upload](docs/packages/upload.md) · [helmet](docs/packages/helmet.md) · [logger](docs/packages/logger.md) · [metrics](docs/packages/metrics.md) · [fingerprint](docs/packages/fingerprint.md) · [graphql](docs/packages/graphql.md)
 
 ---
 
 ## Contributing
 
-PRs welcome. All code requires:
-- Strict TypeScript (`strict: true`, no `any` in production paths)
-- Tests with Vitest (unit + integration)
-- Conventional commit messages
-- Zero new `any` types in public API surface
+PRs welcome. All code requires strict TypeScript (`strict: true`, no `any` in production paths), Vitest tests (unit + integration), and conventional commit messages.
 
 ---
 

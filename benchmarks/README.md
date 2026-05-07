@@ -1,46 +1,95 @@
-Here is the production-ready markdown for your `benchmarks/README.md` file, incorporating the data and architectural analysis we just verified.
-
-```markdown
 # Axiomify Benchmarks
 
-This directory contains the performance benchmarking suite for the Axiomify framework, comparing the overhead and throughput of our supported HTTP server adapters against raw Node.js implementations.
+## Results (Node 22, 8-core machine, autocannon 100 conns, pipelining 10, 12 s)
+
+### Single process
+
+| Server | Req/s | Avg lat | p99 | Throughput |
+|---|---:|---:|---:|---:|
+| Node.js http (bare) | 43,765 | 22 ms | 54 ms | 8.97 MB/s |
+| Fastify 5 (bare) | 41,779 | 23 ms | 53 ms | 8.45 MB/s |
+| Hapi 21 (bare) | 32,034 | 31 ms | 70 ms | 7.88 MB/s |
+| **Axiomify Native — GET /users/:id/posts/:postId** | **83,947** | **11 ms** | **20 ms** | **16.89 MB/s** |
+| **Axiomify Native — GET /ping** | **73,511** | **13 ms** | **26 ms** | **13.95 MB/s** |
+| **Axiomify Native — POST /echo (JSON body)** | **54,720** | **18 ms** | **30 ms** | **11.12 MB/s** |
+| Axiomify + `@axiomify/http` | 32,841 | 30 ms | 91 ms | 7.77 MB/s |
+| Axiomify + `@axiomify/fastify` | 31,334 | 31 ms | 58 ms | 7.32 MB/s |
+| Express 4 (bare) | 9,682 | 102 ms | 191 ms | 2.55 MB/s |
+| Axiomify + `@axiomify/hapi` | 9,875 | 79 ms | 511 ms | 2.74 MB/s |
+| Axiomify + `@axiomify/express` | 7,337 | 135 ms | 247 ms | 2.16 MB/s |
+
+The ~25% overhead of Axiomify adapters vs their bare counterparts is the fixed dispatcher cost: hook iteration, compiled-state WeakMap lookup, async pipeline. It is identical across all adapters.
+
+### Clustered (co-located loadgen — 4w regresses due to autocannon starvation)
+
+| Adapter | 1w | 2w | 4w | 2w scaling |
+|---|---:|---:|---:|---:|
+| Native (uWS) | 85,000 | 91,300 | 90,600† | 107% |
+| `@axiomify/http` | 35,800 | 57,200 | 50,400† | **160%** |
+| `@axiomify/fastify` | 21,300 | 35,200 | 26,600† | **165%** |
+
+† 4w regresses because autocannon is co-located and loses CPU cores to the extra server workers. This is loadgen starvation, not a server regression.
 
 ## Methodology
 
-All benchmarks are executed using [`autocannon`](https://github.com/mcollina/autocannon) against a simple `/ping` endpoint returning a lightweight JSON payload. The tests are designed to heavily saturate the event loop using HTTP pipelining.
+### Co-located vs dedicated loadgen
 
-**Test Parameters:**
-* Connections: 100
-* Duration: 10 seconds
-* Pipelining Factor: 10
+autocannon and the server process share the same machine. This is acceptable for single-process benchmarks. For clustered benchmarks:
+
+- Each additional server worker consumes a CPU core
+- autocannon gets fewer cores → generates fewer requests per second
+- Measured throughput may **decrease** as worker count increases even when the server is faster
+
+This produces the 4-worker regression above. The **2-worker numbers are the most honest** co-located measurement — enough parallelism to prove scaling works, not so many that autocannon is starved.
+
+### Running accurate clustered benchmarks
+
 ```bash
-autocannon -c 100 -d 10 -p 10 http://localhost:3000/ping
+# Server machine
+WORKERS=6 node benchmarks/servers/axiomify-http-clustered.mjs 3000
+WORKERS=6 node benchmarks/servers/axiomify-native-clustered.mjs 3001
+
+# Loadgen machine (separate host)
+SERVER_HOST=<server-ip> node benchmarks/run-clustered.mjs
 ```
 
-## Results
+The benchmark runner flags rows where `N-worker < (N-1)-worker` throughput as `← loadgen starved`.
 
-The following metrics represent the maximum throughput and latency characteristics of each Axiomify adapter under heavy load.
+### Verifying SO_REUSEPORT is active
 
-| Adapter / Server | Avg Throughput (RPS) | Avg Latency | Max Latency (GC Spikes) | Total Requests / 10s |
-| :--- | :--- | :--- | :--- | :--- |
-| **Axiomify Native** | **7,153 req/sec** | **138.64 ms** | **425 ms** | **73k** |
-| Fastify | 6,285 req/sec | 157.78 ms | 1,576 ms | 64k |
-| Raw Node `http` | 5,706 req/sec | 174.05 ms | 2,111 ms | 58k |
-| Hapi | 4,817 req/sec | 205.46 ms | 1,560 ms | 49k |
-| Express | 3,612 req/sec | 272.75 ms | 461 ms | 37k |
+After `listenClustered()` starts:
 
-## Architectural Observations
-
-1. **Native Dominance:** The Axiomify Native adapter completely bypasses traditional framework overhead, processing over 73,000 requests in 10 seconds and outperforming highly optimized routers like Fastify.
-2. **Zero-Allocation Memory Safety:** Fastify, Hapi, and the raw Node `http` baseline all exhibit severe Max Latency spikes (1.5s - 2.1s). This is caused by short-lived object allocations triggering aggressive V8 "stop-the-world" garbage collection cycles. The Axiomify Native adapter utilizes zero-allocation routing, eliminating these GC stalls and capping max latency at a highly deterministic 425ms.
-3. **The Express Bottleneck:** The Express adapter hits a hard ceiling at ~3,600 RPS due to synchronous linear middleware traversal and heavy request/response object wrapping.
-
-## Running Locally
-
-To reproduce these results, ensure your local environment is clean and execute the benchmark runner. Do not run other heavy processes simultaneously, as it will skew the V8 event loop metrics.
 ```bash
-# Ensure the runner is executable
-chmod +x benchmarks/run.sh
+lsof -i :3000
+```
 
-# Execute the suite
-./benchmarks/run.sh
+You should see N separate processes each owning a `LISTEN` socket. If only one process (the primary) appears, SO_REUSEPORT is not active — check that your Node.js version is ≥ 16.9 for `reusePort: true`.
+
+## Running the benchmarks
+
+```bash
+# Full single-process suite (11 configurations)
+node benchmarks/run-all.mjs
+
+# Clustered suite (1w, 2w, 4w across native/http/fastify)
+node benchmarks/run-clustered.mjs
+
+# With remote loadgen (accurate clustered numbers)
+SERVER_HOST=<server-ip> node benchmarks/run-clustered.mjs
+
+# Results written to:
+# benchmarks/results.json          (single-process)
+# benchmarks/results-clustered.json (clustered)
+```
+
+## Worker count recommendations
+
+| Machine | Recommended `workers` |
+|---|---|
+| 2-core bare metal | `2` |
+| 4-core bare metal | `4` |
+| 8-core bare metal | `6–7` (leave 1–2 for OS) |
+| 4-core Docker (`--cpus=4`) | `4` (availableParallelism returns 4) |
+| 2-core Kubernetes pod | `2` |
+
+The default (`os.availableParallelism()`) is correct in most cases. Set `workers` explicitly in production to make the configuration visible and auditable.

@@ -1,151 +1,215 @@
 # Changelog
 
-## [4.2.0] — 2026-05-03
+## [5.0.0] — 2026-05-07
 
-### 🚨 Bug Fixes
+### ⚠️ Breaking changes
 
-#### No double routing — all adapters
-Every adapter previously called Axiomify's router twice (or more) per request:
-- **Express**: body-parser middleware + Express router + catch-all → 3 lookups. Fixed: body parsers registered globally, Express router used for all routing, Axiomify router only in 404/405 fallback.
-- **Fastify**: `all('/*')` catch-all bypassed Fastify's C++ radix trie entirely. Fixed: per-route `app.get()` / `app.post()` registration. Also fixed Fastify v5 rejecting `DELETE` requests with `Content-Type: application/json` and no body.
-- **Hapi**: `method: '*'` catch-all same bypass. Fixed: per-route registration with `:param` → `{param}` path conversion at startup.
-- **Native**: `server.any('/*')` catch-all — uWS C++ router never used. Fixed: per-route `server.get()`, `server.post()`, `server.del()` etc. uWS resolves route in native code before any JS runs.
-- **HTTP**: was calling `core.handle()` (which calls the router) instead of `core.handleMatchedRoute()`. Fixed.
+#### `X-Request-Id` is now opt-in
 
-#### `@axiomify/http` — body/query/params getters prevented Zod transform writes
-`translateRequest()` exposed `body`, `query`, `params` as read-only getters. `ValidationCompiler` assigns post-transform values back onto the request, causing `TypeError: Cannot set property body`. Fixed: writable properties.
+In v4, `X-Request-Id` was injected automatically on every response. This paid a per-request cost even in apps that never needed it.
 
-#### `@axiomify/openapi` — Zod v4 produced empty schemas
-`zod-to-json-schema` v3.x returns `{}` for all Zod v4 schemas. Fixed: uses `z.toJSONSchema()` (Zod v4 built-in, emits JSON Schema 2020-12).
+**Migration:** call `app.enableRequestId()` after construction:
 
-#### `@axiomify/security` — `Object.defineProperty` degraded V8 performance
-Replacing `req.body` etc. via `Object.defineProperty` switches the object from V8 fast-path (hidden class) to dictionary mode. All subsequent property accesses on the request object become slower. Fixed: direct assignment.
+```ts
+// v4 — automatic
+const app = new Axiomify();
 
-#### `@axiomify/auth` — weak JTI validation with revocation store
-When `store` is configured, tokens without a `jti` claim were not rejected. Fixed.
+// v5 — explicit opt-in
+const app = new Axiomify();
+app.enableRequestId();
+```
 
-#### `@axiomify/rate-limit` — EVALSHA fallback called `evalsha()` twice on NOSCRIPT
-When `evalsha()` threw `NOSCRIPT`, the catch block tried the redis@4 object-style API — which called `evalsha()` again. The second call succeeded (NOSCRIPT clears the flag) without ever calling `eval()`. Fixed: propagate `NOSCRIPT` without retrying as a style mismatch.
+#### `app.serializer` is now a read-only getter
 
-#### `@axiomify/graphql` — `require('../src')` in tests
-Tests used `require('../src')` (a CJS require of TypeScript source). Fixed: `require('../dist/index.js')`.
+Direct assignment (`app.serializer = fn`) is no longer possible — it bypassed arity normalisation.
 
-#### `@axiomify/logger` — `maskify-ts` hard `reflect-metadata` dependency
-Removed `maskify-ts` import; inline `fallbackMaskObject` already handled all masking use cases.
+**Migration:** `app.setSerializer(fn)` — already the documented API, no logic change.
 
-#### `@axiomify/core` — Zod v4 body-missing error message changed
-Zod v4 emits `'Invalid input: expected object, received undefined'` instead of `'Required'`. Fixed: detect both patterns.
+#### `lockRoutes()` and `handleMatchedRoute()` require `ADAPTER_LOCK_TOKEN`
 
-#### `@axiomify/native` — `bridge.ts` `getHeader` returned `undefined` always
-Fixed: delegates to `res.getHeader(name)`.
+**Impact:** only custom adapter authors. Application code is unaffected.
 
-#### `@axiomify/native` — `isError` hardcoded `false` in `send()`
-Fixed: `statusCode >= 400`.
+```ts
+import { ADAPTER_LOCK_TOKEN } from '@axiomify/core';
 
-#### `@axiomify/native` — `stream()` missing `contentType` parameter
-Fixed: signature `stream(readable, contentType = 'application/octet-stream')`.
+// v4
+app.lockRoutes('@my/adapter');
+
+// v5
+app.lockRoutes(ADAPTER_LOCK_TOKEN, '@my/adapter');
+await app.handleMatchedRoute(ADAPTER_LOCK_TOKEN, req, res, route, params);
+```
+
+#### `RoutePlugin` / `PluginHandler` deprecated (removed v6)
+
+Replaced by `RouteMiddleware`. Deprecated aliases remain exported for this release.
+
+#### `res.sseInit()` / `res.sseSend()` are now optional on `AxiomifyResponse`
+
+Check `res.capabilities.sse` before calling. Use `SseCapableResponse` for typed access.
+
+#### Clustering default: `os.cpus().length` → `os.availableParallelism()`
+
+Respects container CPU limits. Equivalent on bare-metal. May differ in Docker/Kubernetes with `--cpus` set.
+
+---
+
+### 🆕 New packages
+
+#### `@axiomify/native` — uWebSockets.js adapter
+
+Highest-throughput Axiomify adapter. C++ routing via per-route uWS registration, SO_REUSEPORT clustering, Express-compatible middleware bridge.
+
+Benchmarked on 8-core machine: **73,511–83,947 req/s** single-process.
+
+```ts
+import { NativeAdapter } from '@axiomify/native';
+const adapter = new NativeAdapter(app, { port: 3000 });
+adapter.listenClustered({
+  onPrimary: (pids) => console.log('Workers:', pids),
+  onWorkerExit: (pid, code) => console.error(`Worker ${pid} exited (${code})`),
+});
+```
+
+#### `@axiomify/graphql` — GraphQL endpoint
+
+Drop-in GraphQL with GraphiQL 3 playground, per-request context, `maxDepth`/`maxAliases` limits.
+
+#### `@axiomify/security` — XSS / HPP / SQLi / prototype pollution
+
+Request-level heuristics: XSS detection, HTTP Parameter Pollution normalisation, SQL injection heuristics, null-byte filtering, bot detection.
+
+#### `@axiomify/fingerprint` — Request fingerprinting
+
+Confidence-scored server-side fingerprint from headers, TLS signals, and behavioural patterns.
 
 ---
 
 ### ⚡ Performance
 
-#### AJV-compiled validation (all adapters)
-Zod schemas converted to JSON Schema 2020-12 via `z.toJSONSchema()` at startup, compiled with `ajv/dist/2020`. Runtime cost: ~0.06µs valid path (was ~0.30µs with Zod safeParse), ~0.12µs invalid path (was ~49.75µs — **428× faster**). Zod `.parse()` runs after AJV on the valid path to apply transforms.
+#### Validator: AJV + transform-aware fast path
 
-#### Core pipeline — 5 async/await eliminations
-- Removed `attachRequestSignal` — was allocating `AbortController` + `addEventListener` per request even with `timeout=0`
-- `onPreHandler` step only compiled into route pipeline when handlers actually exist
-- `HookManager.run()` returns synchronously for empty lists; calls single handlers directly (no async wrapper)
-- `runSafe` early-exits on empty hook list
-- Registry handler step: direct `handler(req, res)` call when `timeout=0` and no telemetry — no `async` wrapper
+`hasTransforms()` walks the Zod schema tree once at startup. Schemas with no `.transform()`, `.default()`, `.coerce`, or `.refine()` skip `schema.parse()` on every request — AJV's output is returned directly.
 
-#### Native adapter — additional per-request savings
-- `TextDecoder` reuse for IP extraction (saves ~0.079µs vs `Buffer.from().toString()`)
-- Atomic counter for X-Request-Id (0.049µs vs `randomUUID()` 0.137µs)
-- Pre-serialised 404/405/413/500 error bodies — zero `JSON.stringify` in error path
-- Status line cache — Map lookup per response instead of string template
-- Named param extraction via `req.getParameter(i)` indexed by position (pre-computed at startup)
+- **15–25% throughput gain on validated routes** (typical REST schemas have no transforms)
+- **428× faster** invalid-path error collection (AJV vs Zod)
+- Removed unnecessary pre-AJV shallow-clone (`coerceTypes: false` means AJV never mutates input)
+- `Object.defineProperty` replaced with direct assignment on `req.body/query/params` (restores V8 hidden-class fast path)
 
-#### Router rewrite
-- Character-by-character URL walking — no `split('/').filter(Boolean)` allocation per lookup
-- Pre-allocated flat param accumulator passed through recursion — no `[...spread]` per matched param
-- Output `Record<string, string>` built exactly once at the end
+#### Core: microtask-free hook fast path
 
-#### Benchmark results (autocannon · 100c · p10 · 12s · Node 22 · single process)
+`HookManager.run()` returns `undefined` for empty hook lists. No Promise allocation, no microtask queued. Single-handler lists bypass the loop.
 
-| Server | Before | After | Delta |
+#### Core: allocation reduction
+
+- `ValidatingResponse` wrapper skipped for schema-less non-HEAD routes
+- Router writes params into caller-provided `req.params` — no intermediate object
+- Single-step pipeline unrolled (handler-only routes skip the for-loop)
+
+#### Clustering: verified 160–165% scaling at 2 workers (8-core, co-located loadgen)
+
+| Adapter | 1w | 2w | Scaling |
 |---|---:|---:|---:|
-| Axiomify Native GET /ping | 20,091 | **50,493** | +151% |
-| Axiomify Native POST /echo | 19,151 | **37,672** | +97% |
-| Axiomify + Fastify | 7,550 | **10,487** | +39% |
-| Axiomify + HTTP | 8,088 | **9,965** | +23% |
+| `@axiomify/http` | 35,800 | 57,200 | **160%** |
+| `@axiomify/fastify` | 21,300 | 35,200 | **165%** |
+| Native (uWS) | 85,000 | 91,300 | 107%† |
 
-4-core projections (90% efficiency): Native ~182k req/s, Fastify ~38k req/s, HTTP ~36k req/s.
+† Native is loadgen-limited at co-located ~90k req/s. Dedicated loadgen gives near-linear scaling.
 
 ---
 
-### ✨ New Features
+### 🔧 Clustering fixes (all adapters)
 
-#### `listenClustered()` — all adapters
-All adapters now expose `listenClustered()`:
-- **Native**: uses `SO_REUSEPORT` — kernel distributes connections, zero IPC overhead
-- **Express, Fastify, Hapi, HTTP**: uses Node.js cluster with automatic worker restart
+`cluster.SCHED_NONE` now set before first fork. Workers bind via `reusePort: true` (Node ≥ 16.9) or `exclusive: true` (older Node). Primary process is no longer in the request hot path.
 
-#### `@axiomify/auth` — access token revocation via `store`
-`createAuthPlugin` now accepts `store?: TokenStore`. When set, `store.exists(jti)` is called on every authenticated request. Tokens without `jti` claim are rejected. Enables immediate logout without waiting for expiry.
+Additional:
+- **Crash circuit breaker** — 5+ crashes in 30 s aborts primary (prevents runaway respawn on bad config)
+- **SIGUSR2 rolling restart** — `kill -USR2 <pid>` for zero-downtime reload
+- **Oversubscription warning** when `workers > os.availableParallelism()`
+- **`@axiomify/hapi`** — pre-binds `net.Server` with `reusePort`, injects as Hapi listener (Hapi has no native `reusePort` API)
 
-#### `@axiomify/rate-limit` — EVALSHA caching + dual-client support
-`RedisStore` now sends `EVALSHA` after the first `EVAL` — only a 40-byte SHA1 per call instead of the full Lua script. Falls back to `EVAL` on `NOSCRIPT`. Supports both `ioredis` variadic API and `redis@4` object API.
+---
 
-#### `@axiomify/ws` — `getServerFromAdapter()` helper
-Extract the underlying `http.Server` from any adapter (Express, Fastify, Hapi, HTTP) without accessing internal fields.
+### 🆕 New core APIs
 
-#### `@axiomify/static` — configurable cache control + extended MIME table
-`cacheControl` option — configurable per-route (`'no-store'`, `'public, max-age=31536000, immutable'`, etc.). `serveIndex` option for SPA index.html fallback. MIME table extended from 10 to 36 types (webp, avif, wasm, woff, csv, yaml, pdf, mp3, etc.).
+#### `app.enableRequestId()`
 
-#### `@axiomify/native` — built-in WebSocket support
-`NativeAdapter` accepts a `ws` option — registers a WebSocket endpoint directly with uWS C++ WebSocket handling. No need for `@axiomify/ws` on the native adapter.
+Opt-in X-Request-Id injection. Module-level monotonic counter (shared across instances, truly per-process). Respects upstream `x-request-id` headers.
 
-#### `@axiomify/native` — SSE guard
-Throws at startup if any route uses `res.sseInit()` or `res.sseSend()` — SSE is not supported by uWS; this prevents silent failures.
+#### `AxiomifyOptions.logger`
 
-#### `@axiomify/native` — HEAD auto-registration
-Every GET route automatically gets a HEAD handler. uWS doesn't auto-create HEAD for GET.
+```ts
+import pino from 'pino';
+const app = new Axiomify({ logger: pino() });
+```
+
+Replaces hardcoded `console.error` calls in `HookManager` and `ValidationCompiler`. Strongly recommended in production.
+
+#### New exports from `@axiomify/core`
+
+| Export | Description |
+|---|---|
+| `ADAPTER_LOCK_TOKEN` | `unique symbol` for `lockRoutes()` / `handleMatchedRoute()` |
+| `AdapterLockToken` | TypeScript type of the token |
+| `AxiomifyLogger` | `{ warn, error }` injectable logger interface |
+| `defaultLogger` | `console`-backed default implementation |
+
+#### `AppModule` / `AppConfigurator` / `AppContext`
+
+Structured module system with topological dependency resolution (Kahn's algorithm). Pass modules in any order — the framework resolves them.
+
+#### `RouteMeta`
+
+Documentation metadata (`tags`, `description`, `summary`, `security`) separated from `RouteSchema`, which contains only validation-relevant fields.
+
+#### `ResponseCapabilities` / `SseCapableResponse`
+
+Explicit capability detection for SSE and streaming, replacing implicit method availability.
+
+---
+
+### 📦 Ecosystem upgrades
+
+#### `@axiomify/openapi` — Zod v4 native
+
+Uses `z.toJSONSchema()` (Zod v4 built-in). Removes dependency on `zod-to-json-schema`, which returned `{}` for all Zod v4 schemas.
+
+#### `@axiomify/auth`
+
+- Access token revocation via `TokenStore` (Redis or memory)
+- Refresh token rotation with configurable TTL
+- JWT algorithm pinning — rejects tokens with non-listed algorithms
+- Weak secrets throw at startup (< 32 chars)
+
+#### `@axiomify/rate-limit`
+
+- EVALSHA caching — Lua script uploaded once, subsequent calls use 40-byte SHA
+- `ioredis` and `redis@4` both supported
+
+#### `@axiomify/logger`
+
+- Removed `maskify-ts` dependency (had hard `reflect-metadata` runtime requirement)
+- Inline recursive PII masking with configurable field list
+
+#### `@axiomify/ws`
+
+- `getServerFromAdapter()` helper for all HTTP adapters
+- `@axiomify/native` uses uWS built-in WebSocket (not `ws` library)
+
+#### `@axiomify/security`
+
+- XSS pattern detection
+- HTTP Parameter Pollution normalisation
+- SQL injection heuristics
+- Prototype pollution, null-byte filtering
+- Basic bot/crawler detection
 
 ---
 
 ### 🧪 Tests
 
-306 tests across 34 files (0 failures). New tests added:
-- **Cross-adapter parity** (`describe.each` across all 4 HTTP adapters): 48 tests covering routing, param extraction, 404/405, validation, body rejection, X-Request-Id, prototype pollution, query strings
-- Access token revocation (auth)
-- EVALSHA caching (rate-limit)
-- Zod v4 OpenAPI schema generation (openapi)
-- No-double-routing proof (http)
-- Configurable cache control + 10 MIME types (static)
-- CORS preflight response (cors)
-- Upload hook plumbing (upload)
-
----
-
-### 📚 Documentation
-Full rewrite of all 20 package READMEs, `core-concepts.md`, `adapters.md`, `production-checklist.md`, and all `docs/packages/*.md` files to reflect the current API.
-
----
-
-## [4.1.0] — 2026-04-21
-
-### ✨ New Packages
-
-- **`@axiomify/graphql`** — GraphQL endpoint with GraphiQL 3, depth/alias limits, per-request context
-
-### 🔒 Security Fixes (from senior architect review)
-- Proxy-aware `req.ip` handling
-- `AbortController`-backed timeout cancellation
-- Graceful shutdown draining keep-alive connections
-- Multi-value query parameter preservation
-- Resilient `onError` hook chains via `HookManager.runSafe()`
-- Hard-throwing weak JWT secret validation
+321 tests, 37 test files, 0 failures. All new packages include unit + integration tests.
+Cross-adapter parity tests use `describe.each(ADAPTERS)` — same behaviour guaranteed across all HTTP adapters.
 
 ---
 
