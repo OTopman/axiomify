@@ -1,136 +1,99 @@
 /**
  * Axiomify Clustered Benchmark Suite
  * ────────────────────────────────────
- * Tests single-process and multi-worker configurations side by side.
- * Because this machine has 1 CPU core, multi-worker on 1 core shows
- * context-switching overhead — the projection column shows what
- * the same code achieves on an N-core production server.
+ * Tests single-process and multi-worker configurations for Native (uWS),
+ * @axiomify/http, and @axiomify/fastify under identical autocannon load.
  *
- * Usage:  node benchmarks/run-clustered.mjs
+ * CRITICAL: Run autocannon on a SEPARATE machine for accurate multi-worker
+ * numbers. When loadgen and server share a machine:
+ *
+ *   - Each server worker claims a CPU core that autocannon could use.
+ *   - As worker count increases, autocannon gets fewer cores → measured
+ *     throughput DROPS even though the server is faster.
+ *   - This makes clustering LOOK harmful when it is actually beneficial.
+ *
+ * The table prints measured scaling efficiency (N-worker req/s ÷ 1-worker
+ * req/s). Efficiency > 100% = real gain. Saturation warnings flag cases
+ * where autocannon is likely the bottleneck.
+ *
+ * Usage (co-located, informational):
+ *   node benchmarks/run-clustered.mjs
+ *
+ * Usage (remote loadgen — accurate):
+ *   SERVER_HOST=192.168.1.10 node benchmarks/run-clustered.mjs
+ *   # Run the server separately on the target host first, then point here.
  */
 
 import autocannon from 'autocannon';
-import { spawn } from 'child_process';
+import { spawn }  from 'child_process';
 import { writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { availableParallelism } from 'os';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const __dirname  = dirname(fileURLToPath(import.meta.url));
 const SERVERS_DIR = join(__dirname, 'servers');
 
-const BENCH_DURATION  = 12; // seconds
-const WARMUP_DURATION = 3;
-const CONNECTIONS     = 100;
-const PIPELINING      = 10;
+const BENCH_DURATION  = 15;   // seconds — longer window for stable p99
+const WARMUP_DURATION = 5;    // seconds — let JIT and SO_REUSEPORT settle
+const CONNECTIONS     = 100;  // concurrent connections
+const PIPELINING      = 10;   // HTTP/1.1 pipelining depth
 
-// CPU count on this machine
-const { cpus } = await import('os');
-const CPU_COUNT = cpus().length;
+const CPU_COUNT   = availableParallelism();
+const SERVER_HOST = process.env.SERVER_HOST || 'localhost';
+const IS_REMOTE   = SERVER_HOST !== 'localhost';
 
-// ─── Server definitions ───────────────────────────────────────────────────────
+// ─── Worker counts to test ────────────────────────────────────────────────────
+// We test 1w, 2w, and up to CPU_COUNT/2 workers.
+// Leaving half the cores for autocannon gives the most honest co-located numbers.
+// On a separate loadgen host, all cores can be dedicated to the server.
+const MAX_SERVER_WORKERS = IS_REMOTE ? CPU_COUNT : Math.max(2, Math.floor(CPU_COUNT / 2));
+const WORKER_TIERS = [1, 2, 4, 6, 8].filter(n => n <= MAX_SERVER_WORKERS);
+if (!WORKER_TIERS.includes(MAX_SERVER_WORKERS)) WORKER_TIERS.push(MAX_SERVER_WORKERS);
 
-const SERVERS = [
-  // Single-worker baselines (established)
-  {
-    id: 'native-1w',
-    label: 'Native (uWS)    — 1 worker',
-    file: 'axiomify-native.mjs',
-    port: 3200,
-    workers: 1,
-    url: 'http://localhost:3200/ping',
-  },
-  // Multi-worker: 2 workers
-  {
-    id: 'native-2w',
-    label: 'Native (uWS)    — 2 workers',
-    file: 'axiomify-native-clustered.mjs',
-    port: 3201,
-    workers: 2,
-    url: 'http://localhost:3201/ping',
-  },
-  // Multi-worker: 4 workers (demonstrates projection for 4-core machines)
-  {
-    id: 'native-4w',
-    label: 'Native (uWS)    — 4 workers',
-    file: 'axiomify-native-clustered.mjs',
-    port: 3202,
-    workers: 4,
-    url: 'http://localhost:3202/ping',
-  },
-  // Fastify adapter — single vs multi
-  {
-    id: 'fastify-1w',
-    label: 'Fastify adapter — 1 worker',
-    file: 'axiomify-fastify.mjs',
-    port: 3210,
-    workers: 1,
-    url: 'http://localhost:3210/ping',
-  },
-  {
-    id: 'fastify-2w',
-    label: 'Fastify adapter — 2 workers',
-    file: 'axiomify-fastify-clustered.mjs',
-    port: 3211,
-    workers: 2,
-    url: 'http://localhost:3211/ping',
-  },
-  {
-    id: 'fastify-4w',
-    label: 'Fastify adapter — 4 workers',
-    file: 'axiomify-fastify-clustered.mjs',
-    port: 3212,
-    workers: 4,
-    url: 'http://localhost:3212/ping',
-  },
-  // HTTP adapter — single vs multi
-  {
-    id: 'http-1w',
-    label: 'HTTP adapter    — 1 worker',
-    file: 'axiomify-http.mjs',
-    port: 3220,
-    workers: 1,
-    url: 'http://localhost:3220/ping',
-  },
-  {
-    id: 'http-2w',
-    label: 'HTTP adapter    — 2 workers',
-    file: 'axiomify-http-clustered.mjs',
-    port: 3221,
-    workers: 2,
-    url: 'http://localhost:3221/ping',
-  },
-  {
-    id: 'http-4w',
-    label: 'HTTP adapter    — 4 workers',
-    file: 'axiomify-http-clustered.mjs',
-    port: 3222,
-    workers: 4,
-    url: 'http://localhost:3222/ping',
-  },
+// ─── Adapter definitions ──────────────────────────────────────────────────────
+const ADAPTERS = [
+  { key: 'native',   label: 'Native (uWS)',     file: 'axiomify-native-clustered.mjs',  basePort: 3200 },
+  { key: 'http',     label: 'HTTP adapter',     file: 'axiomify-http-clustered.mjs',    basePort: 3210 },
+  { key: 'fastify',  label: 'Fastify adapter',  file: 'axiomify-fastify-clustered.mjs', basePort: 3220 },
 ];
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
+// Build the full server matrix: every adapter × every worker tier
+const SERVERS = [];
+for (const adapter of ADAPTERS) {
+  for (let i = 0; i < WORKER_TIERS.length; i++) {
+    const w = WORKER_TIERS[i];
+    SERVERS.push({
+      id:       `${adapter.key}-${w}w`,
+      label:    `${adapter.label.padEnd(16)} — ${w}w`,
+      file:     adapter.file,
+      port:     adapter.basePort + i,
+      workers:  w,
+      url:      `http://${SERVER_HOST}:${adapter.basePort + i}/ping`,
+      adapterKey: adapter.key,
+    });
+  }
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function startServer(def) {
   return new Promise((resolve, reject) => {
-    const env = {
-      ...process.env,
-      NODE_ENV: 'production',
-      WORKERS: String(def.workers),
-    };
-    const child = spawn(process.execPath, [join(SERVERS_DIR, def.file), String(def.port)], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env,
-    });
+    const child = spawn(
+      process.execPath,
+      [join(SERVERS_DIR, def.file), String(def.port)],
+      {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, NODE_ENV: 'production', WORKERS: String(def.workers) },
+      },
+    );
 
     let ready = false;
     const timeout = setTimeout(() => {
-      if (!ready) { child.kill('SIGKILL'); reject(new Error(`${def.id} timeout`)); }
-    }, 15_000);
+      if (!ready) { child.kill('SIGKILL'); reject(new Error(`${def.id} timed out (10s)`)); }
+    }, 10_000);
 
     child.stdout.on('data', buf => {
       if (buf.toString().includes('READY') && !ready) {
@@ -139,17 +102,16 @@ function startServer(def) {
         resolve(child);
       }
     });
-
     child.stderr.on('data', buf => {
       const msg = buf.toString().trim();
-      if (msg && !msg.includes('ExperimentalWarning')) {
+      // Suppress deprecation warnings from deprecated adapters — they're intentional
+      if (msg && !msg.includes('deprecated') && !msg.includes('[axiomify]')) {
         process.stderr.write(`  [${def.id}] ${msg}\n`);
       }
     });
-
     child.on('error', err => { clearTimeout(timeout); reject(err); });
-    child.on('exit', (code, signal) => {
-      if (!ready) { clearTimeout(timeout); reject(new Error(`${def.id} exited early code=${code} signal=${signal}`)); }
+    child.on('exit', (code, sig) => {
+      if (!ready) { clearTimeout(timeout); reject(new Error(`${def.id} exited early (code=${code} sig=${sig})`)); }
     });
   });
 }
@@ -158,19 +120,21 @@ function killServer(child) {
   return new Promise(resolve => {
     child.once('exit', resolve);
     child.kill('SIGTERM');
-    setTimeout(() => child.kill('SIGKILL'), 2000);
+    setTimeout(() => child.kill('SIGKILL'), 2_000);
   });
 }
 
-async function warmup(url) {
-  await autocannon({ url, method: 'GET', duration: WARMUP_DURATION, connections: 20, pipelining: 5, silent: true });
-}
+async function runBench(def) {
+  // Warmup
+  await autocannon({ url: def.url, duration: WARMUP_DURATION,
+    connections: 20, pipelining: 5, silent: true });
 
-async function bench(def) {
+  // Measurement
   return new Promise((resolve, reject) => {
     const inst = autocannon(
-      { url: def.url, method: 'GET', duration: BENCH_DURATION, connections: CONNECTIONS, pipelining: PIPELINING, silent: true },
-      (err, result) => { if (err) reject(err); else resolve(result); }
+      { url: def.url, duration: BENCH_DURATION,
+        connections: CONNECTIONS, pipelining: PIPELINING, silent: true },
+      (err, result) => err ? reject(err) : resolve(result),
     );
     process.stdout.write('  ');
     inst.on('tick', () => process.stdout.write('.'));
@@ -178,67 +142,43 @@ async function bench(def) {
   });
 }
 
-// ─── Projection math ─────────────────────────────────────────────────────────
-
-/**
- * Projects multi-core throughput from a measured single-core baseline.
- * Accounts for ~90% linear scaling efficiency (kernel scheduling + IPC overhead).
- *
- * @param {number} singleCoreReqPerSec  Measured 1-worker req/s
- * @param {number} targetCores          e.g. 4 for a production server
- * @param {number} efficiency           Scaling efficiency 0–1 (default 0.90)
- */
-function project(singleCoreReqPerSec, targetCores, efficiency = 0.90) {
-  return Math.round(singleCoreReqPerSec * targetCores * efficiency);
-}
-
-function formatReqs(n) {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
-  if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'k';
-  return String(n);
-}
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-console.log(`\nAxiomify Clustered Benchmark — ${CPU_COUNT} CPU core(s) available`);
-console.log(`Connections: ${CONNECTIONS}  Pipelining: ${PIPELINING}  Duration: ${BENCH_DURATION}s  Warmup: ${WARMUP_DURATION}s\n`);
+console.log('\n═══ Axiomify Clustered Benchmark ═══════════════════════════════════');
+console.log(`Machine:     ${CPU_COUNT} logical cores`);
+console.log(`Server host: ${SERVER_HOST}${IS_REMOTE ? ' (remote — accurate mode)' : ' (co-located — loadgen competes for CPU)'}`);
+console.log(`Connections: ${CONNECTIONS}  Pipelining: ${PIPELINING}  Duration: ${BENCH_DURATION}s  Warmup: ${WARMUP_DURATION}s`);
+console.log(`Worker tiers: ${WORKER_TIERS.join(', ')}`);
 
-if (CPU_COUNT === 1) {
-  console.log('  ⚠  Single-core machine: multi-worker numbers will show context-switching');
-  console.log('     overhead. Projection columns show expected throughput on 4-core / 8-core');
-  console.log('     production servers based on the measured single-worker baseline.\n');
+if (!IS_REMOTE) {
+  console.log('\n  ⚠  CO-LOCATED WARNING: autocannon shares CPUs with server workers.');
+  console.log('     Multi-worker numbers may DECREASE at high worker counts — this is');
+  console.log('     autocannon starvation, NOT a server regression. For accurate results:');
+  console.log('     set SERVER_HOST=<server-ip> and run server files manually on that host.\n');
 }
 
 const results = [];
 
 for (const def of SERVERS) {
-  process.stdout.write(`Starting  ${def.label.padEnd(38)} port ${def.port}...`);
+  process.stdout.write(`\nStarting  ${def.label} on :${def.port}... `);
   let child;
   try {
     child = await startServer(def);
-    process.stdout.write(' OK\n');
-    await sleep(400);
+    process.stdout.write('OK\n');
+    await sleep(500);
   } catch (err) {
-    process.stdout.write(` FAILED: ${err.message}\n`);
+    process.stdout.write(`FAILED: ${err.message}\n`);
     results.push({ ...def, error: err.message });
     continue;
   }
 
-  process.stdout.write(`Warmup    ${def.label.padEnd(38)}`);
-  await warmup(def.url);
-  process.stdout.write(' done\n');
-
-  process.stdout.write(`Benchmark ${def.label.padEnd(38)}`);
-  let result;
+  process.stdout.write(`Benchmarking `);
   try {
-    result = await bench(def);
-    // Preserve our `workers` count — autocannon also has a `workers` field (its own
-    // worker threads, usually undefined) which would overwrite ours if spread blindly.
-    results.push({ ...def, ...result, workers: def.workers });
+    const r = await runBench(def);
+    results.push({ ...def, ...r, workers: def.workers });
     process.stdout.write(
-      `  Req/s: ${result.requests.average.toFixed(0).padStart(7)}  ` +
-      `Lat avg: ${result.latency.average.toFixed(1)}ms  ` +
-      `p99: ${result.latency.p99.toFixed(0)}ms\n`
+      `  → ${r.requests.average.toFixed(0).padStart(7)} req/s  ` +
+      `avg ${r.latency.average.toFixed(1)}ms  p99 ${r.latency.p99.toFixed(0)}ms\n`
     );
   } catch (err) {
     process.stdout.write(`  ERROR: ${err.message}\n`);
@@ -246,86 +186,102 @@ for (const def of SERVERS) {
   }
 
   await killServer(child);
-  await sleep(500);
+  await sleep(600);
 }
 
-// ─── Table ────────────────────────────────────────────────────────────────────
+// ─── Results table ────────────────────────────────────────────────────────────
 
-// Find the single-worker baseline for each adapter to compute projections
-const singleWorkerResults = {};
+// Per-adapter 1w baseline for efficiency calculation
+const baselines = {};
 for (const r of results) {
-  if (r.workers === 1 && !r.error) {
-    const adapter = r.id.replace('-1w', '');
-    singleWorkerResults[adapter] = r.requests?.average ?? 0;
-  }
+  if (r.workers === 1 && !r.error) baselines[r.adapterKey] = r.requests?.average ?? 0;
 }
 
-console.log('\n' + '═'.repeat(110));
-console.log(`  CLUSTERED BENCHMARK RESULTS  (Machine: ${CPU_COUNT} CPU core)`);
-console.log('═'.repeat(110));
+const W  = [40, 9, 10, 9, 9, 10, 10];
+const hr = W.map(w => '─'.repeat(w)).join('─┼─');
+
+console.log('\n' + '═'.repeat(hr.length));
+console.log(`  CLUSTERED BENCHMARK RESULTS  — ${CPU_COUNT} cores${IS_REMOTE ? ', remote loadgen' : ', co-located loadgen ⚠'}`);
+console.log('═'.repeat(hr.length));
 console.log(
-  'Server'.padEnd(40) +
-  '  Workers' +
-  '    Req/s' +
-  '   Avg lat' +
-  '    p99  ' +
-  '  Projected 4c' +
-  '  Projected 8c'
+  'Server'.padEnd(W[0]) + ' │ ' +
+  'Workers'.padStart(W[1]) + ' │ ' +
+  'Req/s'.padStart(W[2]) + ' │ ' +
+  'Avg lat'.padStart(W[3]) + ' │ ' +
+  'p99'.padStart(W[4]) + ' │ ' +
+  'Scaling'.padStart(W[5]) + ' │ ' +
+  'Note'.padStart(W[6])
 );
-console.log('─'.repeat(110));
+console.log(hr);
 
-let lastAdapter = '';
-for (const r of results) {
-  const adapterKey = r.id.replace(/-\d+w$/, '');
-  if (adapterKey !== lastAdapter) {
-    if (lastAdapter) console.log('─'.repeat(110));
-    lastAdapter = adapterKey;
+let lastAdapter = null;
+for (let i = 0; i < results.length; i++) {
+  const r = results[i];
+  if (r.adapterKey !== lastAdapter) {
+    if (lastAdapter !== null) console.log(hr);
+    lastAdapter = r.adapterKey;
   }
 
   if (r.error) {
-    console.log(`  ${r.label.padEnd(38)}  ${String(r.workers).padStart(7)}  ERROR: ${r.error.slice(0, 40)}`);
+    console.log(r.label.padEnd(W[0]) + ' │ ' + String(r.workers).padStart(W[1]) + ' │  ERROR: ' + r.error.slice(0, 50));
     continue;
   }
 
-  const reqSec   = r.requests?.average ?? 0;
-  const avgLat   = r.latency?.average?.toFixed(1) ?? '?';
-  const p99      = r.latency?.p99?.toFixed(0) ?? '?';
+  const rps     = r.requests?.average ?? 0;
+  const avgLat  = (r.latency?.average?.toFixed(1) ?? '?') + 'ms';
+  const p99     = (r.latency?.p99?.toFixed(0) ?? '?') + 'ms';
+  const base    = baselines[r.adapterKey] ?? rps;
+  const eff     = rps / base;
+  const effStr  = r.workers === 1 ? 'baseline' : (eff * 100).toFixed(0) + '%';
 
-  // Projections always based on the 1-worker baseline (not the multi-worker
-  // measured on this 1-core machine, which may be slower due to thrashing)
-  const adapterBase = singleWorkerResults[adapterKey] ?? reqSec;
-  const proj4c = r.workers === 1 ? project(adapterBase, 4) : null;
-  const proj8c = r.workers === 1 ? project(adapterBase, 8) : null;
+  // Saturation detection: is this run slower than the previous tier?
+  let note = '';
+  if (!IS_REMOTE && r.workers > 1) {
+    const prev = results[i - 1];
+    if (prev && !prev.error && (prev.requests?.average ?? 0) > rps) {
+      note = '← loadgen starved';
+    }
+  }
+  if (!IS_REMOTE && r.workers > CPU_COUNT / 2) note = 'over-subscribed';
+
+  const fmtRps = rps >= 1000 ? (rps / 1000).toFixed(1) + 'k' : rps.toFixed(0);
 
   console.log(
-    `  ${r.label.padEnd(38)}` +
-    `  ${String(r.workers).padStart(7)}` +
-    `  ${formatReqs(reqSec).padStart(8)}` +
-    `  ${(avgLat + 'ms').padStart(9)}` +
-    `  ${(p99 + 'ms').padStart(7)}` +
-    (proj4c !== null ? `  ${formatReqs(proj4c).padStart(13)}` : '               ') +
-    (proj8c !== null ? `  ${formatReqs(proj8c).padStart(13)}` : '')
+    r.label.padEnd(W[0]) + ' │ ' +
+    String(r.workers).padStart(W[1]) + ' │ ' +
+    fmtRps.padStart(W[2]) + ' │ ' +
+    avgLat.padStart(W[3]) + ' │ ' +
+    p99.padStart(W[4]) + ' │ ' +
+    effStr.padStart(W[5]) + ' │ ' +
+    note.padStart(W[6])
   );
 }
 
-console.log('═'.repeat(110));
-console.log('\nProjection formula: singleCore × targetCores × 0.90 (90% linear scaling efficiency)\n');
+console.log('═'.repeat(hr.length));
+console.log('\nScaling = N-worker req/s ÷ 1-worker req/s. 200% on 2 workers = linear scaling.');
+if (!IS_REMOTE) {
+  console.log('Entries marked "loadgen starved" mean autocannon had too few CPU cores to sustain load.');
+  console.log('Rerun with SERVER_HOST=<ip> and a dedicated loadgen machine for authoritative numbers.\n');
+} else {
+  console.log('Remote loadgen: numbers are accurate.\n');
+}
 
-// ─── Write JSON ───────────────────────────────────────────────────────────────
-
-const slim = results.map(r => ({
-  id: r.id,
-  label: r.label,
-  workers: r.workers,
-  error: r.error,
-  reqPerSec:   r.requests?.average,
-  latAvg:      r.latency?.average,
-  latP99:      r.latency?.p99,
-  errors:      r.errors,
-  proj4cReqPerSec: r.workers === 1 && !r.error ? project(r.requests?.average ?? 0, 4) : null,
-  proj8cReqPerSec: r.workers === 1 && !r.error ? project(r.requests?.average ?? 0, 8) : null,
-}));
+// ─── JSON output ──────────────────────────────────────────────────────────────
 
 const outPath = join(__dirname, 'results-clustered.json');
-writeFileSync(outPath, JSON.stringify(slim, null, 2));
-console.log(`Results written to: ${outPath}\n`);
+writeFileSync(outPath, JSON.stringify(results.map(r => ({
+  id: r.id, label: r.label, workers: r.workers, adapterKey: r.adapterKey,
+  error: r.error,
+  reqPerSec:    r.requests?.average,
+  latAvg:       r.latency?.average,
+  latP50:       r.latency?.p50,
+  latP99:       r.latency?.p99,
+  latP999:      r.latency?.p999,
+  errors:       r.errors,
+  throughputBps: r.throughput?.average,
+  scalingEfficiency: baselines[r.adapterKey]
+    ? (r.requests?.average ?? 0) / baselines[r.adapterKey]
+    : null,
+})), null, 2));
+
+console.log(`Results written → ${outPath}`);
