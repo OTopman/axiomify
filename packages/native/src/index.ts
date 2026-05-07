@@ -9,7 +9,8 @@ import type {
 } from '@axiomify/core';
 import { makeSerialize } from '@axiomify/core';
 import cluster from 'cluster';
-import { availableParallelism, cpus } from 'os';
+import { cpus } from 'node:os';
+import { availableParallelism } from 'os';
 import { Readable } from 'stream';
 import type {
   TemplatedApp,
@@ -234,6 +235,12 @@ const _nativePidHex = process.pid.toString(36);
 // Buffer.from() → toString() allocation chain (saves ~0.079µs per request).
 const _ipDecoder = new TextDecoder('utf-8');
 
+type WorkerState = 'STARTING' | 'READY' | 'DRAINING';
+interface WorkerRecord {
+  process: cluster.Worker;
+  state: WorkerState;
+}
+
 // ---------------------------------------------------------------------------
 // NativeRequest — allocation-minimal AxiomifyRequest implementation
 // ---------------------------------------------------------------------------
@@ -358,7 +365,13 @@ class NativeResponse implements AxiomifyResponse {
     this._req = req;
     this._method = method;
     this._serialize = serialize;
-    this._serializeInput = { data: undefined, message: undefined, statusCode: 200, isError: false, req };
+    this._serializeInput = {
+      data: undefined,
+      message: undefined,
+      statusCode: 200,
+      isError: false,
+      req,
+    };
   }
 
   status(code: number): this {
@@ -819,11 +832,15 @@ export class NativeAdapter {
             // codes thrown by handlers are preserved.
             const anyErr = err as Record<string, unknown>;
             const errStatus =
-              typeof anyErr.statusCode === 'number' ? anyErr.statusCode
-              : typeof anyErr.status === 'number' ? anyErr.status
-              : 500;
+              typeof anyErr.statusCode === 'number'
+                ? anyErr.statusCode
+                : typeof anyErr.status === 'number'
+                ? anyErr.status
+                : 500;
             const errMsg =
-              typeof anyErr.message === 'string' ? anyErr.message : 'Internal Server Error';
+              typeof anyErr.message === 'string'
+                ? anyErr.message
+                : 'Internal Server Error';
             axiomifyRes.status(errStatus).send(null, errMsg);
           } catch {
             // axiomifyRes.send() itself threw (e.g. already aborted between the
@@ -888,8 +905,13 @@ export class NativeAdapter {
    * Start the server on a single Node.js event loop.
    * Use `listenClustered()` to saturate multiple CPU cores.
    */
-  public listen(callback?: () => void, onError?: (err: Error) => void): void {
-    this._server.listen(this._port, (token: unknown) => {
+  public listen(
+    callback?: () => void,
+    onError?: (err: Error) => void,
+    portOverride?: number,
+  ): void {
+    const port = portOverride ?? this._port;
+    this._server.listen(port, (token: unknown) => {
       if (token) {
         this._listenSocket = token;
         callback?.();
@@ -929,156 +951,174 @@ export class NativeAdapter {
       onWorkerReady?: () => void;
       onPrimary?: (pids: number[]) => void;
       onWorkerExit?: (pid: number, code: number | null) => void;
-      /**
-       * Maximum milliseconds to wait for a worker to drain in-flight
-       * requests after receiving SIGTERM before force-exiting.
-       *
-       * NOTE FOR uWS USERS: clustering only improves throughput when you
-       * have more physical CPU cores than the number of workers you are
-       * running. uWS is extremely efficient on a single thread — on a 2-core
-       * machine, spawning 4 workers will REDUCE throughput due to context
-       * switching overhead. Set workers = physical core count, not logical.
-       *
-       * @default 10000
-       */
       gracefulTimeoutMs?: number;
     } = {},
   ): void {
     const gracefulTimeoutMs = opts.gracefulTimeoutMs ?? 10_000;
+    const isLinux = process.platform === 'linux';
 
+    // ── Worker Process ───────────────────────────────────────────────────
     if (!cluster.isPrimary) {
-      // Worker: bind port directly via uWS SO_REUSEPORT, then notify primary.
-      this.listen(() => {
-        opts.onWorkerReady?.();
-        process.send?.({ type: 'WORKER_READY', pid: process.pid });
-      });
+      // Linux uses SO_REUSEPORT (same port). Others use distinct sequential ports.
+      const assignedPort = isLinux
+        ? this._port
+        : this._port + 1 + parseInt(process.env.AXIOMIFY_WORKER_IDX || '0', 10);
+
+      this.listen(
+        () => {
+          opts.onWorkerReady?.();
+          process.send?.({
+            type: 'WORKER_READY',
+            pid: process.pid,
+            port: assignedPort,
+          });
+        },
+        undefined,
+        assignedPort,
+      );
 
       process.once('SIGTERM', () => {
-        // Close the uWS listen socket — stops accepting new connections.
         this.close();
-
-        // DO NOT call process.exit() here. After closing the listen socket:
-        //
-        //   - If there are no in-flight async handlers, the event loop goes
-        //     idle and Node exits naturally with code 0.
-        //
-        //   - If there ARE in-flight handlers, their pending Promises keep the
-        //     event loop alive. They run to completion, then the loop goes idle
-        //     and Node exits naturally with code 0.
-        //
-        // The deadline below is the only timer that MUST NOT be unref()'d —
-        // it serves two roles:
-        //   (a) Forces exit if a handler is stuck (hangs indefinitely).
-        //   (b) Keeps the process alive long enough for handlers that finish
-        //       quickly to do so before the OS kills the process.
-        //
-        // The previous code set this deadline then immediately called
-        // process.exit(0), making the deadline completely unreachable.
-        //
-        setTimeout(() => process.exit(1), gracefulTimeoutMs);
+        setTimeout(() => {
+          console.error(`[Worker ${process.pid}] Drain timeout. Forcing exit.`);
+          process.exit(1);
+        }, gracefulTimeoutMs).unref();
       });
       return;
     }
 
-    // ── Primary ──────────────────────────────────────────────────────────
+    // ── Primary Process ──────────────────────────────────────────────────
+    const targetWorkers = Math.min(
+      this._workers,
+      availableParallelism?.() ?? cpus().length,
+    );
+    const liveWorkers = new Map<
+      number,
+      { process: cluster.Worker; state: string; port: number }
+    >();
 
-    const numWorkers = this._workers;
-    const parallelism = availableParallelism();
+    let isShuttingDown = false;
+    let initialBootComplete = false;
+    let l4Proxy: import('node:net').Server | null = null;
 
-    // uWS already binds independently per-worker using SO_REUSEPORT at the
-    // C++ level — it does not go through Node.js cluster's socket sharing at
-    // all. The performance benefit of multiple workers therefore depends
-    // entirely on having multiple physical CPU cores available.
-    //
-    // If workers > parallelism, each "extra" worker shares a physical core
-    // with another worker. uWS is fast enough that even a tiny amount of
-    // context switching overhead destroys the benefit. This is why the
-    // benchmarks show 2 workers SLOWER than 1 worker on a single-core
-    // machine — process overhead, not IPC, is the bottleneck.
-    if (numWorkers > parallelism) {
-      console.warn(
-        `[Axiomify/native] listenClustered: workers (${numWorkers}) > ` +
-        `availableParallelism (${parallelism}). ` +
-        `uWS is CPU-bound; oversubscription causes context-switch thrashing ` +
-        `and DEGRADES throughput below single-worker performance. ` +
-        `Set workers: ${parallelism} or omit the option to use the correct default.`,
-      );
+    // L4 TCP Proxy (macOS / Windows Only)
+    // Pipes incoming connections to workers using round-robin.
+    if (!isLinux) {
+      let rrIndex = 0;
+      const net = require('node:net');
+      l4Proxy = net.createServer((client: import('node:net').Socket) => {
+        const readyWorkers = Array.from(liveWorkers.values()).filter(
+          (w) => w.state === 'READY',
+        );
+        if (readyWorkers.length === 0) return client.destroy();
+
+        const target = readyWorkers[rrIndex++ % readyWorkers.length];
+
+        const backend = net.connect(target.port, '127.0.0.1', () => {
+          client.pipe(backend);
+          backend.pipe(client);
+        });
+
+        client.on('error', () => backend.destroy());
+        backend.on('error', () => client.destroy());
+      });
+
+      l4Proxy?.listen(this._port, () => {
+        console.log(
+          `[Axiomify] Development L4 Proxy listening on ${this._port} (macOS/Win)`,
+        );
+      });
     }
-    const liveWorkers = new Map<number, cluster.Worker>();
-    let readyCount = 0;
-    let allReadyFired = false;
 
-    const spawnWorker = (respawnDelayMs = 0): void => {
-      setTimeout(() => {
-        const w = cluster.fork();
+    const spawnWorker = (idx: number, respawnDelayMs = 0) => {
+      const w = cluster.fork({ AXIOMIFY_WORKER_IDX: idx.toString() });
+      const pid = w.process.pid!;
 
-        w.once('online', () => {
-          if (w.process.pid) liveWorkers.set(w.process.pid, w);
-        });
+      liveWorkers.set(pid, { process: w, state: 'STARTING', port: 0 });
 
-        w.on('message', (msg: { type?: string }) => {
-          if (msg?.type !== 'WORKER_READY') return;
-          readyCount++;
-          // Guard: onPrimary fires exactly once for the initial cohort.
-          // Restarted workers send WORKER_READY again — allReadyFired prevents
-          // duplicate invocations and stale PID lists.
-          if (!allReadyFired && readyCount >= numWorkers) {
-            allReadyFired = true;
-            opts.onPrimary?.([...liveWorkers.keys()]);
-          }
-        });
-
-        w.on('exit', (code, signal) => {
-          const pid = w.process.pid ?? 0;
-          liveWorkers.delete(pid);
-          opts.onWorkerExit?.(pid, code);
-          if (code === 0 || signal === 'SIGTERM') return; // intentional
-          // Crash: restart with exponential backoff to avoid thrashing.
-          // 100ms → 200ms → 400ms → ... → 5000ms cap.
-          const nextDelay = Math.min((respawnDelayMs || 50) * 2, 5_000);
-          spawnWorker(nextDelay);
-        });
-      }, respawnDelayMs);
-    };
-
-    // SIGTERM: primary waits for all workers to exit before it exits.
-    // The old implementation called process.exit(0) immediately after
-    // forwarding SIGTERM, orphaning workers mid-drain.
-    process.once('SIGTERM', () => {
-      if (liveWorkers.size === 0) { process.exit(0); return; }
-
-      let pending = liveWorkers.size;
-      for (const w of liveWorkers.values()) {
-        w.once('exit', () => { if (--pending === 0) process.exit(0); });
-        w.process.kill('SIGTERM');
+      // Linux Production Optimization: CPU Pinning
+      if (isLinux) {
+        try {
+          const { execSync } = require('node:child_process');
+          execSync(`taskset -cp ${idx % targetWorkers} ${pid}`, {
+            stdio: 'ignore',
+          });
+        } catch (e) {
+          /* Fallback */
+        }
       }
 
-      // Primary hard deadline: give workers their full budget + 2s buffer.
-      setTimeout(() => process.exit(1), gracefulTimeoutMs + 2_000).unref();
+      w.on('message', (msg: { type?: string; port?: number }) => {
+        if (msg?.type !== 'WORKER_READY') return;
+
+        const record = liveWorkers.get(pid);
+        if (record) {
+          record.state = 'READY';
+          record.port = msg.port!;
+        }
+
+        if (!initialBootComplete && liveWorkers.size === targetWorkers) {
+          initialBootComplete = true;
+          opts.onPrimary?.(Array.from(liveWorkers.keys()));
+        }
+      });
+
+      w.on('exit', (code) => {
+        const record = liveWorkers.get(pid);
+        const wasDraining = record?.state === 'DRAINING';
+        liveWorkers.delete(pid);
+        opts.onWorkerExit?.(pid, code);
+
+        if (isShuttingDown || wasDraining) return;
+        const nextDelay = Math.min((respawnDelayMs || 50) * 2, 5_000);
+        setTimeout(() => spawnWorker(idx, nextDelay), nextDelay);
+      });
+      return w;
+    };
+
+    // SYSTEM SHUTDOWN
+    process.once('SIGTERM', () => {
+      isShuttingDown = true;
+      l4Proxy?.close();
+      if (liveWorkers.size === 0) process.exit(0);
+
+      for (const [pid, record] of liveWorkers.entries()) {
+        record.state = 'DRAINING';
+        record.process.kill('SIGTERM');
+      }
+      setTimeout(() => process.exit(1), gracefulTimeoutMs + 2000).unref();
     });
 
-    // SIGUSR2: zero-downtime rolling restart.
-    //
-    // Kills workers one at a time. The existing spawnWorker() exit handler
-    // automatically spawns a replacement for each killed worker. We wait
-    // gracefulTimeoutMs between kills so each worker can drain and its
-    // replacement can come up before we kill the next.
-    //
-    // Usage:  kill -USR2 <primary-pid>
+    // ROLLING RESTART
     process.on('SIGUSR2', () => {
-      const snapshot = [...liveWorkers.values()];
-      if (snapshot.length === 0) return;
+      if (isShuttingDown) return;
+      const pids = Array.from(liveWorkers.keys());
       let i = 0;
-      const killNext = () => {
-        if (i >= snapshot.length) return;
-        const w = snapshot[i++];
-        if (liveWorkers.has(w.process.pid ?? -1)) w.process.kill('SIGTERM');
-        setTimeout(killNext, gracefulTimeoutMs);
+
+      const replaceNext = () => {
+        if (i >= pids.length) return;
+        const oldRecord = liveWorkers.get(pids[i]);
+
+        // Spawn replacement using the same logical index
+        const newWorker = spawnWorker(i, 0);
+
+        const readyListener = (msg: any) => {
+          if (msg?.type === 'WORKER_READY') {
+            newWorker.removeListener('message', readyListener);
+            if (oldRecord) {
+              oldRecord.state = 'DRAINING';
+              oldRecord.process.kill('SIGTERM');
+            }
+            i++;
+            replaceNext();
+          }
+        };
+        newWorker.on('message', readyListener);
       };
-      killNext();
+      replaceNext();
     });
 
-    for (let i = 0; i < numWorkers; i++) spawnWorker();
+    for (let i = 0; i < targetWorkers; i++) spawnWorker(i);
   }
 
   public close(): void {

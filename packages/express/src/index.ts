@@ -1,5 +1,4 @@
 import type { Axiomify } from '@axiomify/core';
-import { makeSerialize } from '@axiomify/core';
 import cluster from 'cluster';
 import type { NextFunction, Request, Response } from 'express';
 import express, { Express } from 'express';
@@ -41,10 +40,10 @@ export class ExpressAdapter {
 
   constructor(coreApp: Axiomify, options: ExpressAdapterOptions = {}) {
     console.warn(
-      '[axiomify] The @axiomify/express adapter is deprecated and will be removed in v5. ' +
-      'It routes all requests through Axiomify\'s own dispatcher, then re-wraps them for ' +
-      'express — adding overhead without any benefit from express\'s native performance. ' +
-      'Use @axiomify/http or @axiomify/native instead.',
+      '[axiomify] The @axiomify/express adapter is deprecated and will be removed in v6. ' +
+        "It routes all requests through Axiomify's own dispatcher, then re-wraps them for " +
+        "express — adding overhead without any benefit from express's native performance. " +
+        'Use @axiomify/http or @axiomify/native instead.',
     );
     const { bodyLimit = '1mb', trustProxy = false } = options;
 
@@ -142,6 +141,7 @@ export class ExpressAdapter {
    * SIGTERM is forwarded to workers. `onPrimary` fires only after all workers
    * are ready — not immediately after forking.
    */
+  public listenClustered(
     port: number,
     opts: {
       onWorkerReady?: (port: number) => void;
@@ -161,7 +161,10 @@ export class ExpressAdapter {
       process.once('SIGTERM', () => {
         const deadline = setTimeout(() => process.exit(1), gracefulTimeoutMs);
         deadline.unref();
-        this.close().finally(() => { clearTimeout(deadline); process.exit(0); });
+        this.close().finally(() => {
+          clearTimeout(deadline);
+          process.exit(0);
+        });
       });
       return;
     }
@@ -174,7 +177,9 @@ export class ExpressAdapter {
     const spawnWorker = (respawnDelayMs = 0): void => {
       setTimeout(() => {
         const w = cluster.fork();
-        w.once('online', () => { if (w.process.pid) liveWorkers.set(w.process.pid, w); });
+        w.once('online', () => {
+          if (w.process.pid) liveWorkers.set(w.process.pid, w);
+        });
         w.on('message', (msg: { type?: string }) => {
           if (msg?.type !== 'WORKER_READY') return;
           readyCount++;
@@ -194,10 +199,15 @@ export class ExpressAdapter {
     };
 
     process.once('SIGTERM', () => {
-      if (liveWorkers.size === 0) { process.exit(0); return; }
+      if (liveWorkers.size === 0) {
+        process.exit(0);
+        return;
+      }
       let pending = liveWorkers.size;
       for (const w of liveWorkers.values()) {
-        w.once('exit', () => { if (--pending === 0) process.exit(0); });
+        w.once('exit', () => {
+          if (--pending === 0) process.exit(0);
+        });
         w.process.kill('SIGTERM');
       }
       setTimeout(() => process.exit(1), gracefulTimeoutMs + 2_000).unref();

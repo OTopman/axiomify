@@ -7,6 +7,6 @@
  * Import from compiled.ts instead.
  *
  * This file is kept temporarily to avoid breaking any external code that
- * imports from it. It will be removed in v5.
+ * imports from it. It will be removed in v6.
  */
 export type { CompiledState as CompiledRouteDefinition } from './compiled';

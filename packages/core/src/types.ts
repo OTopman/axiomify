@@ -41,7 +41,7 @@ export interface SerializerInput {
  * Prefer the single-argument (object) form — it is forward-compatible
  * and avoids runtime fn.length introspection required by the 5-arg form.
  *
- * @deprecated The 5-arg positional form will be removed in v5.
+ * @deprecated The 5-arg positional form will be removed in v6.
  * Migrate: (data, msg, code, err, req) => ...
  *      to: ({ data, message, statusCode, isError, req }) => ...
  */
@@ -84,7 +84,7 @@ export interface AxiomifyResponse {
   sendRaw(payload: any, contentType?: string): void;
   /**
    * @deprecated Use res.status(statusCode).send(null, message) instead.
-   * Will be removed in v5.
+   * Will be removed in v6.
    */
   error(err: unknown): void;
   stream(readable: Readable, contentType?: string): void;
@@ -160,9 +160,9 @@ export type RouteHandler<
 
 export type RouteMiddleware = (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void>;
 
-/** @deprecated Use RouteMiddleware instead. Will be removed in v5. */
+/** @deprecated Use RouteMiddleware instead. Will be removed in v6. */
 export type PluginHandler = RouteMiddleware;
-/** @deprecated Use RouteMiddleware instead. Will be removed in v5. */
+/** @deprecated Use RouteMiddleware instead. Will be removed in v6. */
 export type RoutePlugin = RouteMiddleware;
 
 export interface RouteGroupOptions {
@@ -204,7 +204,7 @@ export interface AppContext {
   resolve<T>(key: string): T;
 }
 
-/** @deprecated Use AppConfigurator instead. Will be removed in v5. */
+/** @deprecated Use AppConfigurator instead. Will be removed in v6. */
 export type AppPlugin = (app: import('./app').Axiomify) => void;
 
 export type AppConfigurator = (

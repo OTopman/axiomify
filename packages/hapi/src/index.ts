@@ -4,7 +4,6 @@ import type {
   AxiomifyResponse,
   ResponseCapabilities,
   SerializerFn,
-  SerializerInput,
 } from '@axiomify/core';
 import { makeSerialize } from '@axiomify/core';
 import type { Request } from '@hapi/hapi';
@@ -63,10 +62,10 @@ export class HapiAdapter {
     } = {},
   ) {
     console.warn(
-      '[axiomify] The @axiomify/hapi adapter is deprecated and will be removed in v5. ' +
-      'It routes all requests through Axiomify\'s own dispatcher, then re-wraps them for ' +
-      'Hapi — adding overhead without any benefit from Hapi\'s native performance. ' +
-      'Use @axiomify/http or @axiomify/native instead.',
+      '[axiomify] The @axiomify/hapi adapter is deprecated and will be removed in v6. ' +
+        "It routes all requests through Axiomify's own dispatcher, then re-wraps them for " +
+        "Hapi — adding overhead without any benefit from Hapi's native performance. " +
+        'Use @axiomify/http or @axiomify/native instead.',
     );
     this.core.lockRoutes('@axiomify/hapi');
     const { workers, sanitize: sanitizeOpt, ...hapiConfig } = config;
@@ -303,7 +302,9 @@ export class HapiAdapter {
       _controller?.abort(new Error('Client aborted request'));
     };
     rawReq.once('aborted', onAbort);
-    rawReq.once('close', () => { if (rawReq.destroyed) onAbort(); });
+    rawReq.once('close', () => {
+      if (rawReq.destroyed) onAbort();
+    });
 
     // Lazy id — counter-based, avoids crypto.randomUUID() on every request.
     let _id: string | undefined;
@@ -311,9 +312,10 @@ export class HapiAdapter {
     return {
       get id(): string {
         if (!_id) {
-          _id = (req.headers['x-request-id'] as string | undefined)
-            ?? req.info.id
-            ?? `${_hapiPid}-${(++_hapiCounter).toString(36)}`;
+          _id =
+            (req.headers['x-request-id'] as string | undefined) ??
+            req.info.id ??
+            `${_hapiPid}-${(++_hapiCounter).toString(36)}`;
         }
         return _id;
       },
@@ -322,7 +324,10 @@ export class HapiAdapter {
       path: req.path,
       ip: req.info.remoteAddress,
       headers: req.headers as Record<string, string | string[] | undefined>,
-      body: doSanitize && parsedBody !== undefined ? sanitize(parsedBody) : parsedBody,
+      body:
+        doSanitize && parsedBody !== undefined
+          ? sanitize(parsedBody)
+          : parsedBody,
       query: req.query as Record<string, string | string[]>,
       params: {} as Record<string, string>,
       state: {} as Record<string, unknown>,
@@ -468,6 +473,7 @@ export class HapiAdapter {
    * SIGTERM is forwarded to workers. `onPrimary` fires only once all workers
    * are ready — not immediately after forking.
    */
+  public listenClustered(
     port: number,
     opts: {
       onWorkerReady?: () => void;
@@ -487,7 +493,10 @@ export class HapiAdapter {
       process.once('SIGTERM', () => {
         const deadline = setTimeout(() => process.exit(1), gracefulTimeoutMs);
         deadline.unref();
-        this.close().finally(() => { clearTimeout(deadline); process.exit(0); });
+        this.close().finally(() => {
+          clearTimeout(deadline);
+          process.exit(0);
+        });
       });
       return;
     }
@@ -500,7 +509,9 @@ export class HapiAdapter {
     const spawnWorker = (respawnDelayMs = 0): void => {
       setTimeout(() => {
         const w = cluster.fork();
-        w.once('online', () => { if (w.process.pid) liveWorkers.set(w.process.pid, w); });
+        w.once('online', () => {
+          if (w.process.pid) liveWorkers.set(w.process.pid, w);
+        });
         w.on('message', (msg: { type?: string }) => {
           if (msg?.type !== 'WORKER_READY') return;
           readyCount++;
@@ -522,10 +533,15 @@ export class HapiAdapter {
 
     // Primary waits for all workers to drain before exiting.
     process.once('SIGTERM', () => {
-      if (liveWorkers.size === 0) { process.exit(0); return; }
+      if (liveWorkers.size === 0) {
+        process.exit(0);
+        return;
+      }
       let pending = liveWorkers.size;
       for (const w of liveWorkers.values()) {
-        w.once('exit', () => { if (--pending === 0) process.exit(0); });
+        w.once('exit', () => {
+          if (--pending === 0) process.exit(0);
+        });
         w.process.kill('SIGTERM');
       }
       setTimeout(() => process.exit(1), gracefulTimeoutMs + 2_000).unref();
@@ -533,7 +549,6 @@ export class HapiAdapter {
 
     for (let i = 0; i < numWorkers; i++) spawnWorker();
   }
-
 
   public async close(): Promise<void> {
     await this.server.stop({ timeout: 10_000 });

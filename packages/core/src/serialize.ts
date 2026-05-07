@@ -26,7 +26,7 @@ export function makeSerialize(
     console.warn(
       '[Axiomify] SerializerFn: the 5-argument positional form ' +
       '(data, message, statusCode, isError, req) is deprecated and will be ' +
-      'removed in v5. Migrate to the single-argument object form: ' +
+      'removed in v6. Migrate to the single-argument object form: ' +
       '({ data, message, statusCode, isError, req }) => ...',
     );
   }

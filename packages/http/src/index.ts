@@ -217,7 +217,7 @@ class HttpResponse implements AxiomifyResponse {
 
   /**
    * @deprecated Use res.status(code).send(null, message) instead.
-   * Will be removed in v5.
+   * Will be removed in v6.
    */
   error(err: unknown): void {
     if (this._sent) return;

@@ -5,10 +5,8 @@ import type {
   HttpMethod,
   ResponseCapabilities,
   SerializerFn,
-  SerializerInput,
 } from '@axiomify/core';
-import { makeSerialize } from '@axiomify/core';
-import { sanitizeInput } from '@axiomify/core';
+import { makeSerialize, sanitizeInput } from '@axiomify/core';
 import cluster from 'cluster';
 import fastify, {
   FastifyInstance,
@@ -72,10 +70,10 @@ export class FastifyAdapter {
 
   constructor(private core: Axiomify, options: FastifyAdapterOptions = {}) {
     console.warn(
-      '[axiomify] The @axiomify/fastify adapter is deprecated and will be removed in v5. ' +
-      'It routes all requests through Axiomify\'s own dispatcher, then re-wraps them for ' +
-      'fastify — adding overhead without any benefit from fastify\'s native performance. ' +
-      'Use @axiomify/http or @axiomify/native instead.',
+      '[axiomify] The @axiomify/fastify adapter is deprecated and will be removed in v6. ' +
+        "It routes all requests through Axiomify's own dispatcher, then re-wraps them for " +
+        "fastify — adding overhead without any benefit from fastify's native performance. " +
+        'Use @axiomify/http or @axiomify/native instead.',
     );
     this.core.lockRoutes('@axiomify/fastify');
     this._workers = options.workers ?? cpus().length;
@@ -225,7 +223,9 @@ export class FastifyAdapter {
       _controller?.abort(new Error('Client aborted request'));
     };
     req.raw.once('aborted', onAbort);
-    req.raw.once('close', () => { if (req.raw.destroyed) onAbort(); });
+    req.raw.once('close', () => {
+      if (req.raw.destroyed) onAbort();
+    });
 
     // Lazy id — avoids randomUUID() for handlers that never read req.id.
     let _id: string | undefined;
@@ -233,9 +233,10 @@ export class FastifyAdapter {
     return {
       get id(): string {
         if (!_id) {
-          _id = (req.headers['x-request-id'] as string | undefined)
-            ?? req.id
-            ?? `${_fastifyPid}-${(++_fastifyCounter).toString(36)}`;
+          _id =
+            (req.headers['x-request-id'] as string | undefined) ??
+            req.id ??
+            `${_fastifyPid}-${(++_fastifyCounter).toString(36)}`;
         }
         return _id;
       },
@@ -244,7 +245,8 @@ export class FastifyAdapter {
       path,
       ip: req.ip,
       headers: req.headers as Record<string, string | string[] | undefined>,
-      body: sanitize && req.body !== undefined ? sanitizeInput(req.body) : req.body,
+      body:
+        sanitize && req.body !== undefined ? sanitizeInput(req.body) : req.body,
       query: req.query as Record<string, string | string[]>,
       params: {} as Record<string, string>,
       state: {} as Record<string, unknown>,
@@ -396,7 +398,10 @@ export class FastifyAdapter {
         // Hard deadline prevents a hung handler from blocking forever.
         const deadline = setTimeout(() => process.exit(1), gracefulTimeoutMs);
         deadline.unref();
-        this.close().finally(() => { clearTimeout(deadline); process.exit(0); });
+        this.close().finally(() => {
+          clearTimeout(deadline);
+          process.exit(0);
+        });
       });
       return;
     }
@@ -409,7 +414,9 @@ export class FastifyAdapter {
     const spawnWorker = (respawnDelayMs = 0): void => {
       setTimeout(() => {
         const w = cluster.fork();
-        w.once('online', () => { if (w.process.pid) liveWorkers.set(w.process.pid, w); });
+        w.once('online', () => {
+          if (w.process.pid) liveWorkers.set(w.process.pid, w);
+        });
         w.on('message', (msg: { type?: string }) => {
           if (msg?.type !== 'WORKER_READY') return;
           readyCount++;
@@ -433,10 +440,15 @@ export class FastifyAdapter {
     // Old code called process.exit(0) immediately after kill(), dropping
     // workers that were still draining in-flight requests.
     process.once('SIGTERM', () => {
-      if (liveWorkers.size === 0) { process.exit(0); return; }
+      if (liveWorkers.size === 0) {
+        process.exit(0);
+        return;
+      }
       let pending = liveWorkers.size;
       for (const w of liveWorkers.values()) {
-        w.once('exit', () => { if (--pending === 0) process.exit(0); });
+        w.once('exit', () => {
+          if (--pending === 0) process.exit(0);
+        });
         w.process.kill('SIGTERM');
       }
       setTimeout(() => process.exit(1), gracefulTimeoutMs + 2_000).unref();
