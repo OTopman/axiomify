@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      production-deps:
+        dependency-type: production
+      dev-deps:
+        dependency-type: development
+    ignore:
+      # Major version bumps need manual review
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
