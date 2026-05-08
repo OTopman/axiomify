@@ -2,12 +2,21 @@ name: Axiomify CI
 
 on: [push, pull_request]
 
+# Lock the default GITHUB_TOKEN to read-only at the top level.
+# Any job that needs write access must declare it explicitly at the job level.
+# This prevents a compromised action from using the token to push code,
+# create releases, or modify repository settings.
+permissions: read-all
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    # This job only reads source and uploads coverage — no write permissions needed.
+    permissions:
+      contents: read   # checkout
     strategy:
       matrix:
-        node-version: [18, 20] # [18, 20, 22]
+        node-version: [18, 20]
     steps:
       - name: Checkout Code
         # Pin to SHA instead of floating tag to prevent supply-chain attacks.
@@ -24,8 +33,6 @@ jobs:
       - name: Install Dependencies
         # `npm ci` is deterministic — it installs exactly what is in
         # package-lock.json and fails if the lock file is out of sync.
-        # `npm install` silently updates the lock file and can introduce
-        # different dependency versions across CI runs.
         run: npm ci
 
       - name: Security Audit
@@ -35,15 +42,13 @@ jobs:
         run: npm run build
 
       - name: Run Tests & Coverage
-      # @axiomify/native uses uWS.js which only ships binaries for Node 16/18/20.
-      # native.test.ts detects the Node major version and skips itself on Node 22+
-      # via describe.skipIf, so the suite still passes on all matrix targets.
-      # Upgrade uWebSockets.js in packages/native/package.json once a Node 22
-      # compatible release is available.
+        # @axiomify/native uses uWS.js which only ships binaries for Node 16/18/20.
+        # native.test.ts detects the Node major version and skips itself on Node 22+
+        # via describe.skipIf, so the suite still passes on all matrix targets.
         run: npm run coverage
 
       - name: Upload Coverage to Codecov
-        # Pin to SHA for supply-chain safety, same as the other actions above.
+        # Pin to SHA for supply-chain safety.
         # SHA corresponds to codecov/codecov-action@v4.5.0 — verify and update
         # when intentionally upgrading.
         uses: codecov/codecov-action@e28ff129e5465c2c0dcc6f003fc735cb6ae0c673
@@ -51,8 +56,6 @@ jobs:
           files: ./coverage/coverage-final.json
           flags: unittests
           name: codecov-umbrella
-          # Set to true so a broken Codecov token doesn't silently drop
-          # coverage tracking without any signal in CI.
           fail_ci_if_error: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}

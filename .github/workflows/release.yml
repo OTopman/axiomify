@@ -3,25 +3,34 @@ name: Axiomify Release
 on:
   push:
     branches:
-      - main 
+      - main
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+# Lock the default GITHUB_TOKEN to read-only at the top level.
+# The release job explicitly requests the two write permissions it needs:
+#   contents: write       — to create GitHub Releases and push version tags
+#   pull-requests: write  — to open and update the "Version Packages" PR
+# No other job in this workflow needs write access.
+permissions: read-all
 
 jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
+      contents: write       # create GitHub Releases, push version bump commits
+      pull-requests: write  # open/update the changesets "Version Packages" PR
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        # Pin to SHA — equivalent to actions/checkout@v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        # Pin to SHA — equivalent to actions/setup-node@v4.1.0
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
         with:
           node-version: 22
           cache: 'npm'
@@ -35,9 +44,9 @@ jobs:
 
       - name: Create Release PR or Publish
         id: changesets
-        uses: changesets/action@v1
+        # Pin to SHA — equivalent to changesets/action@v1.4.7
+        uses: changesets/action@e9cc3462960e7d9e21a1e8b65a309caf34d94b2b
         with:
-          # This command creates the PR. When the PR is merged, it triggers the publish command.
           publish: npx changeset publish
           version: npx changeset version
           commit: "chore(release): version packages"
