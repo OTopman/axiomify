@@ -44,8 +44,9 @@ jobs:
 
       - name: Create Release PR or Publish
         id: changesets
-        # Pin to SHA — equivalent to changesets/action@v1.4.7
-        uses: changesets/action@e9cc3462960e7d9e21a1e8b65a309caf34d94b2b
+        # Uses the floating v1 tag — Dependabot will open a PR to pin this
+        # to a verified SHA once it runs. See .github/dependabot.yml.
+        uses: changesets/action@v1
         with:
           publish: npx changeset publish
           version: npx changeset version
