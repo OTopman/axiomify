@@ -2,10 +2,13 @@ import { Readable } from 'stream';
 import { z, ZodTypeAny } from 'zod';
 
 export interface FileConfig {
-  maxSize: number; // in bytes
-  accept: string[]; // e.g., ['image/jpeg', 'image/png']
-  autoSaveTo: string; // The directory to pipe the stream to
+  maxSize: number;
+  accept: string[];
+  autoSaveTo: string;
   rename?: (originalName: string, mimetype: string) => string | Promise<string>;
+  maxFiles?: number;
+  preserveOriginalName?: boolean;
+  validateContent?: boolean;
 }
 
 export type HttpMethod =
@@ -24,73 +27,86 @@ export type HookType =
   | 'onError'
   | 'onClose';
 
-export type SerializerFn = (
-  data: any,
-  message?: string,
-  statusCode?: number,
-  isError?: boolean,
-  req?: AxiomifyRequest,
-) => any;
-
-/**
- * RequestState is intentionally empty.
- * Packages can extend it without coupling via module augmentation.
- */
-export interface RequestState {
-  startTime?: bigint;
-  [key: string]: any; // Allows users to append custom state safely
+export interface SerializerInput {
+  data: any;
+  message?: string;
+  statusCode?: number;
+  isError?: boolean;
+  req?: AxiomifyRequest;
 }
 
-export interface AxiomifyRequest<
-  Body = unknown,
-  Query = unknown,
-  Params = unknown,
-> {
+/**
+ * Response serializer signature.
+ *
+ * Prefer the single-argument (object) form — it is forward-compatible
+ * and avoids runtime fn.length introspection required by the 5-arg form.
+ *
+ * @deprecated The 5-arg positional form will be removed in v6.
+ * Migrate: (data, msg, code, err, req) => ...
+ *      to: ({ data, message, statusCode, isError, req }) => ...
+ */
+export type SerializerFn =
+  | ((input: SerializerInput) => any)
+  | ((data: any, message?: string, statusCode?: number, isError?: boolean, req?: AxiomifyRequest) => any);
+
+export interface RequestState {
+  startTime?: bigint;
+  [key: string]: any;
+}
+
+export interface AxiomifyRequest<Body = unknown, Query = unknown, Params = unknown> {
   readonly id: string;
   readonly method: HttpMethod;
   readonly url: string;
   readonly path: string;
   readonly ip: string;
   readonly headers: Record<string, string | string[] | undefined>;
-
-  readonly body: Body;
-  readonly query: Query;
-  readonly params: Params;
-
+  body: Body;
+  query: Query;
+  params: Params;
   readonly state: RequestState;
   readonly raw: unknown;
-  readonly stream: import('stream').Readable;
+  readonly stream: Readable;
+  signal?: AbortSignal;
+}
+
+export interface ResponseCapabilities {
+  readonly sse: boolean;
+  readonly streaming: boolean;
 }
 
 export interface AxiomifyResponse {
   status(code: number): this;
   header(key: string, value: string): this;
+  getHeader(key: string): string | undefined;
   removeHeader(key: string): this;
   send<T>(data: T, message?: string): void;
   sendRaw(payload: any, contentType?: string): void;
+  /**
+   * @deprecated Use res.status(statusCode).send(null, message) instead.
+   * Will be removed in v6.
+   */
   error(err: unknown): void;
-
   stream(readable: Readable, contentType?: string): void;
-  sseInit(sseHeartbeatMs?: number): void;
-  sseSend(data: any, event?: string): void;
-
+  readonly capabilities: ResponseCapabilities;
+  sseInit?(sseHeartbeatMs?: number): void;
+  sseSend?(data: any, event?: string): void;
   readonly statusCode: number;
   readonly raw: unknown;
   readonly headersSent: boolean;
 }
 
-export interface RouteGroup {
-  route<S extends RouteSchema>(definition: RouteDefinition<S>): this;
-  group(
-    prefix: string,
-    options: RouteGroupOptions,
-    callback: (group: RouteGroup) => void,
-  ): this;
-  group(prefix: string, callback: (group: RouteGroup) => void): this;
+export interface SseCapableResponse extends AxiomifyResponse {
+  sseInit(sseHeartbeatMs?: number): void;
+  sseSend(data: any, event?: string): void;
 }
 
 /**
- * Native Zod Schema definition for routes
+ * Validation schemas for a route's request and response shapes.
+ * Only validation-relevant fields belong here.
+ *
+ * Documentation metadata (tags, description, security) belongs in
+ * RouteMeta on the parent RouteDefinition.
  */
 export interface RouteSchema {
   body?: ZodTypeAny;
@@ -98,6 +114,28 @@ export interface RouteSchema {
   params?: ZodTypeAny;
   response?: ZodTypeAny | Record<number, ZodTypeAny>;
   files?: Record<string, FileConfig>;
+}
+
+/**
+ * OpenAPI / documentation metadata for a route.
+ * Kept separate from RouteSchema so the validation layer has no knowledge
+ * of documentation concerns, and the OpenAPI plugin does not need to reach
+ * into RouteSchema to find non-validation fields.
+ *
+ * @example
+ * app.route({
+ *   method: 'POST',
+ *   path: '/users',
+ *   schema: { body: CreateUserSchema },
+ *   meta: { tags: ['Users'], description: 'Create a new user' },
+ *   handler: createUser,
+ * });
+ */
+export interface RouteMeta {
+  tags?: string[];
+  description?: string;
+  security?: Array<Record<string, string[]>>;
+  summary?: string;
 }
 
 export interface UploadedFile {
@@ -120,20 +158,23 @@ export type RouteHandler<
   res: AxiomifyResponse,
 ) => Promise<void> | void;
 
-export type PluginHandler = (
-  req: AxiomifyRequest,
-  res: AxiomifyResponse,
-) => void | Promise<void>;
+export type RouteMiddleware = (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void>;
 
-export type RoutePlugin = PluginHandler;
+/** @deprecated Use RouteMiddleware instead. Will be removed in v6. */
+export type PluginHandler = RouteMiddleware;
+/** @deprecated Use RouteMiddleware instead. Will be removed in v6. */
+export type RoutePlugin = RouteMiddleware;
 
 export interface RouteGroupOptions {
-  plugins?: RoutePlugin[];
+  plugins?: RouteMiddleware[];
 }
 
-/**
- * RouteDefinition now automatically infers the generic types directly from the Zod schema.
- */
+export interface RouteGroup {
+  route<S extends RouteSchema>(definition: RouteDefinition<S>): this;
+  group(prefix: string, options: RouteGroupOptions, callback: (group: RouteGroup) => void): this;
+  group(prefix: string, callback: (group: RouteGroup) => void): this;
+}
+
 export interface RouteDefinition<
   S extends RouteSchema = RouteSchema,
   B = S['body'] extends ZodTypeAny ? z.infer<S['body']> : unknown,
@@ -143,7 +184,36 @@ export interface RouteDefinition<
   method: HttpMethod;
   path: string;
   schema?: S;
-  plugins?: RoutePlugin[];
-  timeout?: number; // milliseconds; overrides the global default when set
+  /**
+   * OpenAPI / documentation metadata.
+   * Replaces the previous pattern of embedding tags/description/security
+   * inside schema (a validation type) where they did not belong.
+   */
+  meta?: RouteMeta;
+  plugins?: RouteMiddleware[];
+  timeout?: number;
   handler: RouteHandler<B, Q, P, S['files']>;
+}
+
+// ---------------------------------------------------------------------------
+// App plugin / module types
+// ---------------------------------------------------------------------------
+
+export interface AppContext {
+  provide<T>(key: string, value: T): void;
+  resolve<T>(key: string): T;
+}
+
+/** @deprecated Use AppConfigurator instead. Will be removed in v6. */
+export type AppPlugin = (app: import('./app').Axiomify) => void;
+
+export type AppConfigurator = (
+  app: import('./app').Axiomify,
+  context: AppContext,
+) => void | Promise<void>;
+
+export interface AppModule {
+  name: string;
+  dependencies?: string[];
+  register: AppConfigurator;
 }

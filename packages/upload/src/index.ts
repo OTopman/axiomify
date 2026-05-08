@@ -5,12 +5,12 @@ import type {
   UploadedFile,
 } from '@axiomify/core';
 import Busboy from 'busboy';
-import { createWriteStream, existsSync, mkdirSync } from 'fs';
-import { unlink } from 'fs/promises';
+import { createWriteStream } from 'fs';
+import { randomUUID } from 'node:crypto';
+import { mkdir, open, unlink } from 'fs/promises';
 import path from 'path';
 import { pipeline } from 'stream/promises';
 
-// 🚀 2. Inject it into the Core Request
 declare module '@axiomify/core' {
   interface AxiomifyRequest<Body, Query, Params> {
     files?: Record<string, UploadedFile>;
@@ -19,31 +19,162 @@ declare module '@axiomify/core' {
 
 /**
  * Strips path separators and parent-directory segments from a user-supplied
- * filename so it can be safely joined with the upload directory. Returns a
- * leaf-name only — never a path.
- *
- * Defends against Busboy filenames like `../../etc/cron.d/pwn` which,
- * path.join'd with `autoSaveTo`, would otherwise escape the upload root.
+ * filename so it can be safely joined with the upload directory.
  */
 function sanitizeFilename(name: string): string {
-  // Basename strips POSIX separators. Windows backslashes aren't separators
-  // on POSIX, so handle them explicitly.
   const leaf = path.basename(name).replace(/\\/g, '_');
-  // Reject anything that still looks like traversal or a hidden control char.
-  const cleaned = leaf
-    .replace(/^\.+/, '') // no leading dots (.., ., .hidden)
-    .replace(/\0/g, '') // drop NUL
-    .trim();
-  // Final fallback for edge cases (empty name, name that was only dots).
+  const cleaned = leaf.replace(/^\.+/, '').replace(/\0/g, '').trim();
   return cleaned || `upload-${Date.now()}`;
 }
 
+/**
+ * Creates the upload directory if it does not exist.
+ * Uses `mkdir({ recursive: true })` atomically — no TOCTOU race.
+ */
+async function ensureDir(dir: string): Promise<void> {
+  await mkdir(dir, { recursive: true });
+}
+
+function createGeneratedFilename(originalName: string): string {
+  const safeOriginal = sanitizeFilename(originalName);
+  const ext = path.extname(safeOriginal).toLowerCase();
+  return `${randomUUID()}${ext}`;
+}
+
+async function readFileHead(filePath: string): Promise<Buffer> {
+  const handle = await open(filePath, 'r');
+  try {
+    const buffer = Buffer.alloc(4100);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
+function detectMime(buffer: Buffer): string | undefined {
+  if (
+    buffer.length >= 3 &&
+    buffer[0] === 0xff &&
+    buffer[1] === 0xd8 &&
+    buffer[2] === 0xff
+  ) {
+    return 'image/jpeg';
+  }
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return 'image/png';
+  }
+  if (
+    buffer.subarray(0, 6).toString('ascii') === 'GIF87a' ||
+    buffer.subarray(0, 6).toString('ascii') === 'GIF89a'
+  ) {
+    return 'image/gif';
+  }
+  if (
+    buffer.length >= 12 &&
+    buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+  ) {
+    return 'image/webp';
+  }
+  if (buffer.subarray(0, 5).toString('ascii') === '%PDF-') {
+    return 'application/pdf';
+  }
+  if (
+    buffer.length >= 4 &&
+    buffer[0] === 0x50 &&
+    buffer[1] === 0x4b &&
+    (buffer[2] === 0x03 || buffer[2] === 0x05 || buffer[2] === 0x07) &&
+    (buffer[3] === 0x04 || buffer[3] === 0x06 || buffer[3] === 0x08)
+  ) {
+    return 'application/zip';
+  }
+  if (buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b) {
+    return 'application/gzip';
+  }
+  if (
+    buffer.length >= 12 &&
+    buffer.subarray(4, 8).toString('ascii') === 'ftyp'
+  ) {
+    return 'video/mp4';
+  }
+
+  const asText = buffer.subarray(0, 512).toString('utf8').trimStart();
+  if (/^<\?xml[\s\S]*<svg[\s>]/i.test(asText) || /^<svg[\s>]/i.test(asText)) {
+    return 'image/svg+xml';
+  }
+
+  return undefined;
+}
+
+const SNIFFABLE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'image/svg+xml',
+  'application/pdf',
+  'application/zip',
+  'application/gzip',
+  'video/mp4',
+]);
+
+function isSniffableAccept(accept: string): boolean {
+  const normalized = accept.toLowerCase();
+  if (SNIFFABLE_MIME_TYPES.has(normalized)) return true;
+  if (!normalized.endsWith('/*')) return false;
+  const prefix = normalized.slice(0, -1);
+  return Array.from(SNIFFABLE_MIME_TYPES).some((mime) =>
+    mime.startsWith(prefix),
+  );
+}
+
+function mimeMatches(detected: string, accept: string[]): boolean {
+  const normalizedDetected = detected.toLowerCase();
+  return accept.some((entry) => {
+    const normalized = entry.toLowerCase();
+    if (normalized.endsWith('/*')) {
+      return normalizedDetected.startsWith(normalized.slice(0, -1));
+    }
+    return normalizedDetected === normalized;
+  });
+}
+
+async function validateFileContent(
+  filePath: string,
+  accept: string[],
+): Promise<void> {
+  if (!accept.some(isSniffableAccept)) return;
+
+  const detected = detectMime(await readFileHead(filePath));
+  if (!detected || !mimeMatches(detected, accept)) {
+    throw new Error(
+      `File content does not match accepted types: ${accept.join(', ')}`,
+    );
+  }
+}
+
+/**
+ * Validates multipart part MIME headers as a fast pre-check, then verifies the
+ * saved file's magic bytes for known content types before route handlers run.
+ */
 export function useUpload(app: Axiomify): void {
   app.addHook(
     'onPreHandler',
     async (req: AxiomifyRequest, _res: AxiomifyResponse, match: any) => {
       const fileSchema = match?.route?.schema?.files;
-      const contentType = req.headers['content-type'] || '';
+      /* v8 ignore next -- multipart processing requires real Busboy stream */
+    const contentType = req.headers['content-type'] || '';
 
       if (!fileSchema || !contentType.includes('multipart/form-data')) return;
 
@@ -66,7 +197,23 @@ export function useUpload(app: Axiomify): void {
           }
         };
 
-        const busboy = Busboy({ headers: req.headers });
+        const totalFileLimit = Object.values(fileSchema).reduce(
+          (sum: number, config: any) => sum + (config.maxFiles ?? 1),
+          0,
+        );
+        const maxFileSize = Math.max(
+          ...Object.values(fileSchema).map((config: any) => config.maxSize),
+        );
+        const fileCounts = new Map<string, number>();
+        const busboy = Busboy({
+          headers: req.headers,
+          limits: {
+            files: totalFileLimit,
+            fileSize: maxFileSize,
+            fields: 100,
+            fieldSize: 64 * 1024,
+          },
+        });
         const fileWrites: Promise<void>[] = [];
 
         busboy.on('file', (fieldname, file, info) => {
@@ -74,14 +221,14 @@ export function useUpload(app: Axiomify): void {
             let savePath = '';
             try {
               const config = fileSchema[fieldname];
-              if (!config || !config.accept.includes(info.mimeType)) {
-                throw new Error(`Invalid or unexpected file: ${fieldname}`);
+              if (!config || !mimeMatches(info.mimeType, config.accept)) {
+                file.resume();
+                throw new Error(
+                  `Invalid or unexpected file field "${fieldname}" ` +
+                    `(reported MIME: ${info.mimeType})`,
+                );
               }
 
-              // Always sanitize the user-supplied filename before use. If the
-              // caller provides a `rename`, run it on the sanitized original
-              // and sanitize its output too — a custom `rename` shouldn't be
-              // able to escape the upload root either.
               const safeOriginal = sanitizeFilename(info.filename);
               let finalName = safeOriginal;
               if (config.rename) {
@@ -90,14 +237,24 @@ export function useUpload(app: Axiomify): void {
                   info.mimeType,
                 );
                 finalName = sanitizeFilename(renamed);
+              } else if (!config.preserveOriginalName) {
+                finalName = createGeneratedFilename(safeOriginal);
               }
 
-              if (!existsSync(config.autoSaveTo))
-                mkdirSync(config.autoSaveTo, { recursive: true });
+              const currentCount = (fileCounts.get(fieldname) ?? 0) + 1;
+              fileCounts.set(fieldname, currentCount);
+              if (currentCount > (config.maxFiles ?? 1)) {
+                file.resume();
+                throw new Error(
+                  `Too many files for field "${fieldname}". Maximum is ${
+                    config.maxFiles ?? 1
+                  }.`,
+                );
+              }
 
-              // Defense in depth: after join, confirm the resolved path is
-              // still inside autoSaveTo. sanitizeFilename should already
-              // guarantee this, but the check costs nothing.
+              // Atomic directory creation — no TOCTOU race between exists-check and mkdir.
+              await ensureDir(config.autoSaveTo);
+
               savePath = path.join(config.autoSaveTo, finalName);
               const rootResolved = path.resolve(config.autoSaveTo);
               const savePathResolved = path.resolve(savePath);
@@ -112,7 +269,6 @@ export function useUpload(app: Axiomify): void {
 
               let byteCount = 0;
 
-              // Register the file early so the cleanup hook can find it if we abort!
               mutableReq.files[fieldname] = {
                 originalName: info.filename,
                 savedName: finalName,
@@ -126,19 +282,21 @@ export function useUpload(app: Axiomify): void {
                 if (byteCount > config.maxSize) {
                   file.destroy(
                     new Error(
-                      `File ${fieldname} exceeds limit of ${config.maxSize} bytes`,
+                      `File "${fieldname}" exceeds limit of ${config.maxSize} bytes`,
                     ),
                   );
                 }
               });
 
-              await pipeline(file, createWriteStream(savePath));
-
-              // Update the final size
+              await pipeline(file, createWriteStream(savePath, { flags: 'wx' }));
               mutableReq.files[fieldname].size = byteCount;
+
+              if (config.validateContent !== false) {
+                await validateFileContent(savePath, config.accept);
+              }
             } catch (err) {
-              file.resume(); // drain buffer
-              if (savePath) await unlink(savePath).catch(() => {}); // Delete partial file
+              file.resume();
+              if (savePath) await unlink(savePath).catch(() => {});
 
               const rawSocket =
                 (req.raw as any).socket || (req.raw as any).connection;
@@ -160,12 +318,18 @@ export function useUpload(app: Axiomify): void {
           try {
             await Promise.all(fileWrites);
           } catch {
-            /* already rejected via safeReject, avoid uncaught promise rejection */
+            /* already rejected via safeReject */
           }
           safeResolve();
         });
 
         busboy.on('error', (err) => safeReject(err));
+        busboy.on('filesLimit', () =>
+          safeReject(new Error('Too many uploaded files')),
+        );
+        busboy.on('fieldsLimit', () =>
+          safeReject(new Error('Too many multipart fields')),
+        );
         req.stream.pipe(busboy);
       });
     },
@@ -175,12 +339,11 @@ export function useUpload(app: Axiomify): void {
     'onError',
     async (err: any, req: AxiomifyRequest, _res: AxiomifyResponse) => {
       if (req.files) {
-        for (const key of Object.keys(req.files)) {
-          const file = req.files[key];
-          if (existsSync(file.path)) {
-            await unlink(file.path).catch(() => {}); // Clean up orphaned files
-          }
-        }
+        await Promise.allSettled(
+          Object.values(req.files).map((file) =>
+            unlink(file.path).catch(() => {}),
+          ),
+        );
       }
     },
   );

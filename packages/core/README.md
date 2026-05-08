@@ -1,78 +1,57 @@
 # @axiomify/core
 
-The high-performance, zero-dependency routing engine, lifecycle hook manager, and validation compiler at the heart of the Axiomify framework. 
+[![npm version](https://img.shields.io/npm/v/@axiomify/core.svg)](https://npmjs.com/package/@axiomify/core)
 
-`@axiomify/core` is completely framework-agnostic. It processes HTTP abstractions and can be attached to any Node.js server environment (Express, Fastify, Hapi, or native HTTP) via its adapter ecosystem.
+The framework-agnostic engine behind Axiomify. Router, AJV validator, hook manager, dispatcher, module system.
 
-## ✨ Features
-
-- **Blazing Fast Routing:** Custom `O(k), where k = path depth` Radix Trie implementation for deterministic, hyper-fast static and dynamic route matching (`/users/:id`).
-- **Robust Lifecycle Engine:** Full asynchronous hook support (`onRequest`, `preHandler`, `onPostHandler`, `onError`) for building powerful plugins.
-- **Native Zod Validation:** Built-in schema validation with safe, getter-bypassing request mutation.
-- **Centralized Error Dispatcher:** Guaranteed execution of `onError` hooks (like file cleanup) before standardizing the HTTP error response.
-- **Memory Safe:** Strict object reference persistence to prevent memory leaks and drop-outs during complex asynchronous request lifecycles.
-
-## 📦 Installation
-
-You typically install the core alongside your preferred validation library (like Zod):
+## Install
 
 ```bash
 npm install @axiomify/core zod
-````
+```
 
-## 🚀 Quick Start (Internal API)
-
-While developers usually interact with Axiomify through an adapter (e.g., `@axiomify/fastify`), the core engine can be utilized programmatically:
+## Quick example
 
 ```typescript
 import { Axiomify } from '@axiomify/core';
+import { HttpAdapter } from '@axiomify/http';
 import { z } from 'zod';
 
-const app = new Axiomify();
+const app = new Axiomify({ logger: console });
+app.enableRequestId();  // opt-in X-Request-Id (off by default)
 
-// 1. Register Global Hooks
-app.addHook('onRequest', async (req, res) => {
-  console.log(`[${req.id}] Incoming ${req.method} ${req.path}`);
-});
-
-// 2. Register Routes with Validation
 app.route({
   method: 'POST',
   path: '/users',
   schema: {
-    body: z.object({
-      email: z.string().email(),
-      name: z.string().min(2)
-    })
+    body: z.object({ name: z.string(), email: z.string().email() }),
+    response: z.object({ id: z.string(), name: z.string() }),
   },
   handler: async (req, res) => {
-    // req.body is safely typed and validated by Zod
-    const { email, name } = req.body;
-    
-    return res.status(201).send({ 
-      success: true, 
-      user: { email, name } 
-    });
-  }
+    res.status(201).send({ id: 'usr_1', name: req.body.name });
+  },
 });
 
-// 3. Process Requests (Usually handled by your Adapter)
-// await app.handle(mockReq, mockRes);
+new HttpAdapter(app).listen(3000);
 ```
 
-## 🧩 The Adapter Ecosystem
+## What's in this package
 
-`@axiomify/core` is designed to be the underlying engine. To use it in a real server, pair it with one of our official adapters:
+- `Axiomify` class — app construction, route/hook/group/plugin registration
+- `Router` — radix-trie router with named params, wildcards, HEAD auto-handling
+- `ValidationCompiler` — AJV + transform-aware Zod integration
+- `HookManager` — microtask-free hook execution with fast paths
+- `RequestDispatcher` — per-request orchestration
+- `ADAPTER_LOCK_TOKEN` — adapter authentication symbol
+- `AxiomifyLogger` — injectable structured logger interface
 
-  - [`@axiomify/fastify`](https://www.npmjs.com/package/@axiomify/fastify) - For maximum throughput.
-  - [`@axiomify/express`](https://www.npmjs.com/package/@axiomify/express) - For maximum compatibility.
-  - [`@axiomify/hapi`](https://www.npmjs.com/package/@axiomify/hapi) - For enterprise environments.
-  - [`@axiomify/http`](https://www.npmjs.com/package/@axiomify/http) - For zero-dependency edge deployments.
+## Documentation
 
-## 📚 Documentation
+See [docs/packages/core.md](../../docs/packages/core.md) for the full API reference.
 
-For complete documentation, guides, and advanced plugin authoring, please visit the [Axiomify Master Repository](https://github.com/OTopman/axiomify).
+## v5 migration notes
 
-## 📄 License
-
-MIT
+- `X-Request-Id` is now opt-in: call `app.enableRequestId()` explicitly
+- `app.serializer = fn` → `app.setSerializer(fn)` (field is now a read-only getter)
+- `app.lockRoutes(reason)` → `app.lockRoutes(ADAPTER_LOCK_TOKEN, reason)`
+- `RoutePlugin` / `PluginHandler` → `RouteMiddleware` (old names deprecated, removed v6)

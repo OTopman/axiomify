@@ -1,48 +1,68 @@
-import { Axiomify } from '@axiomify/core';
-import crypto from 'crypto';
+import type { Axiomify } from '@axiomify/core';
 import type { IncomingMessage, Server } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { ZodTypeAny } from 'zod';
 
-export interface WsClient extends WebSocket {
+// Counter-based client IDs. Avoids crypto.randomUUID() (~0.137µs) on every
+// WebSocket upgrade. Monotonically increasing within a process; prefixed with
+// PID so IDs from different workers or restart cycles don't collide in shared
+// state (Redis presence sets, broadcast maps, etc.).
+let _wsCounter = 0;
+const _wsPid = process.pid.toString(36);
+const nextWsId = () => `ws-${_wsPid}-${(++_wsCounter).toString(36)}`;
+
+export interface WsClient<TUser = unknown> extends WebSocket {
   id: string;
   rooms: Set<string>;
-  user?: any;
+  user?: TUser;
+  _lastPong: number;
 }
 
-export interface WsOptions {
+export interface WsOptions<TUser = unknown> {
   server: Server;
   path?: string;
-  heartbeatIntervalMs?: number; // default 30_000
-  maxMessageBytes?: number; // default 65_536
-  authenticate?: (req: IncomingMessage) => Promise<any | null>;
+  heartbeatIntervalMs?: number;
+  maxMessageBytes?: number;
   /**
-   * Optional handler for binary frames. If omitted, binary frames are
-   * silently ignored instead of being run through JSON.parse (which
-   * incorrectly produced a "Malformed payload" error for perfectly valid
-   * binary data).
+   * Maximum number of simultaneous WebSocket connections.
+   * Upgrade requests beyond this limit are rejected with 503.
+   * Default: 10_000. Set higher for large deployments, or Infinity explicitly to disable.
    */
-  onBinary?: (client: WsClient, data: Buffer) => void;
+  maxConnections?: number;
+  /**
+   * Maximum queued outbound bytes before broadcasts to a client are skipped.
+   * Prevents slow consumers from growing memory without bound.
+   */
+  maxBufferedBytes?: number;
+  authenticate?: (req: IncomingMessage) => Promise<TUser | null>;
+  onBinary?: (client: WsClient<TUser>, data: Buffer) => void;
 }
 
 export interface WsEventSchema {
   [event: string]: ZodTypeAny;
 }
 
-export class WsManager {
+const MAX_CONNECTIONS_DEFAULT = 10_000;
+
+export class WsManager<TUser = unknown> {
   public wss: WebSocketServer;
-  private clients = new Map<string, WsClient>();
-  private rooms = new Map<string, Set<WsClient>>();
+  private clients = new Map<string, WsClient<TUser>>();
+  private rooms = new Map<string, Set<WsClient<TUser>>>();
   private eventHandlers = new Map<
     string,
-    (client: WsClient, data: any) => void
+    (client: WsClient<TUser>, data: any) => void
   >();
   private schemas: WsEventSchema = {};
+  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private readonly maxBufferedBytes: number;
 
-  constructor(options: WsOptions) {
+  constructor(options: WsOptions<TUser>) {
     this.wss = new WebSocketServer({ noServer: true });
 
-    // WS Upgrade Callback
+    const heartbeatMs = options.heartbeatIntervalMs ?? 30_000;
+    
+    this.maxBufferedBytes = options.maxBufferedBytes ?? 1_048_576;
+
     if (options.server) {
       options.server.on(
         'upgrade',
@@ -50,6 +70,14 @@ export class WsManager {
           const pathname = new URL(request.url ?? '/', 'http://localhost')
             .pathname;
           if (options.path && pathname !== options.path) return;
+
+          // Enforce connection cap before paying upgrade cost.
+          const limit = options.maxConnections ?? MAX_CONNECTIONS_DEFAULT;
+          if (this.wss.clients.size >= limit) {
+            socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n');
+            socket.destroy();
+            return;
+          }
 
           try {
             let user = undefined;
@@ -62,54 +90,68 @@ export class WsManager {
               }
             }
 
-            // WS Upgrade Callback
             this.wss.handleUpgrade(request, socket, head, (ws: any) => {
-              const client = ws as WsClient;
-              client.id = crypto.randomUUID();
+              const client = ws as WsClient<TUser>;
+              client.id = nextWsId();
               client.rooms = new Set();
               client.user = user;
+              client._lastPong = Date.now();
 
               this.clients.set(client.id, client);
               this.wss.emit('connection', client, request);
             });
           } catch (err) {
-            console.error('[axiomify/ws] Upgrade error:', err);
+            // Avoid leaking internals — log at debug level only.
+            if (process.env.NODE_ENV !== 'production') {
+              console.error('[axiomify/ws] Upgrade error:', err);
+            }
             socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
             socket.destroy();
-            return;
           }
         },
       );
     }
 
-    // WS Connection Event
-    this.wss.on('connection', (ws: any) => {
-      const client = ws as WsClient;
+    // One shared heartbeat timer that iterates all clients — O(n) per interval
+    // instead of one setInterval per client which puts O(n) timers in the heap.
+    if (heartbeatMs > 0) {
+      this.heartbeatTimer = setInterval(() => {
+        const staleThreshold = Date.now() - heartbeatMs * 2;
+        for (const client of this.clients.values()) {
+          if (client._lastPong < staleThreshold) {
+            client.terminate();
+            continue;
+          }
+          if (client.readyState === WebSocket.OPEN) {
+            client.ping();
+          }
+        }
+      }, heartbeatMs);
+      this.heartbeatTimer.unref();
+    }
 
-      let lastPong = Date.now();
+    // Clear the heartbeat timer if the WebSocket server itself encounters a
+    // fatal error (e.g. port bind failure during startup, unexpected close).
+    // Without this, the setInterval holds a reference and the process cannot exit.
+    this.wss.on('error', () => this._stopHeartbeat());
+    this.wss.on('close', () => this._stopHeartbeat());
+
+    this.wss.on('connection', (ws: any) => {
+      const client = ws as WsClient<TUser>;
+      if (!client.id) client.id = nextWsId();
+      if (!client.rooms) client.rooms = new Set();
+      if (!this.clients.has(client.id)) this.clients.set(client.id, client);
+      if (!client._lastPong) client._lastPong = Date.now();
+
       client.on('pong', () => {
-        lastPong = Date.now();
+        client._lastPong = Date.now();
       });
 
-      const heartbeat =
-        options.heartbeatIntervalMs !== 0
-          ? setInterval(() => {
-              if (
-                Date.now() - lastPong >
-                (options.heartbeatIntervalMs ?? 30_000) * 2
-              )
-                return client.terminate();
-              client.ping();
-            }, options.heartbeatIntervalMs ?? 30_000)
-          : null;
-
-      // `ws` emits `message(data, isBinary)` in v8+. We branch on `isBinary`
-      // so binary frames are routed to `onBinary` (or ignored) rather than
-      // being fed through JSON.parse and rejected as "Malformed payload".
       client.on('message', (rawData: Buffer, isBinary: boolean) => {
         if (Buffer.byteLength(rawData) > (options.maxMessageBytes ?? 65_536)) {
           client.send(JSON.stringify({ error: 'Message too large' }));
-          return client.close(1009); // RFC 6455
+          client.close(1009);
+          return;
         }
 
         if (isBinary) {
@@ -118,8 +160,7 @@ export class WsManager {
         }
 
         try {
-          const message = rawData.toString('utf8');
-          const parsed = JSON.parse(message);
+          const parsed = JSON.parse(rawData.toString('utf8'));
           const { event, data } = parsed;
 
           if (!event || !this.eventHandlers.has(event)) return;
@@ -139,13 +180,12 @@ export class WsManager {
           } else {
             this.eventHandlers.get(event)!(client, data);
           }
-        } catch (e) {
+        } catch {
           client.send(JSON.stringify({ error: 'Malformed payload' }));
         }
       });
 
       client.on('close', () => {
-        heartbeat && clearInterval(heartbeat);
         this.clients.delete(client.id);
         client.rooms.forEach((room) => this.leaveRoom(client, room));
       });
@@ -155,19 +195,19 @@ export class WsManager {
   public on<T = any>(
     event: string,
     schema: ZodTypeAny | null,
-    handler: (client: WsClient, data: T) => void,
+    handler: (client: WsClient<TUser>, data: T) => void,
   ) {
     if (schema) this.schemas[event] = schema;
     this.eventHandlers.set(event, handler as any);
   }
 
-  public joinRoom(client: WsClient, room: string) {
+  public joinRoom(client: WsClient<TUser>, room: string) {
     client.rooms.add(room);
     if (!this.rooms.has(room)) this.rooms.set(room, new Set());
     this.rooms.get(room)!.add(client);
   }
 
-  public leaveRoom(client: WsClient, room: string) {
+  public leaveRoom(client: WsClient<TUser>, room: string) {
     client.rooms.delete(room);
     this.rooms.get(room)?.delete(client);
     if (this.rooms.get(room)?.size === 0) this.rooms.delete(room);
@@ -178,7 +218,12 @@ export class WsManager {
     if (!clients) return;
     const payload = JSON.stringify({ event, data });
     clients.forEach((c) => {
-      if (c.readyState === WebSocket.OPEN) c.send(payload);
+      if (
+        c.readyState === WebSocket.OPEN &&
+        (c.bufferedAmount ?? 0) <= this.maxBufferedBytes
+      ) {
+        c.send(payload);
+      }
     });
   }
 
@@ -191,25 +236,111 @@ export class WsManager {
       rooms[name] = members.size;
     return { connectedClients: this.clients.size, rooms };
   }
+
+  /** Call this during graceful shutdown to close all connections cleanly. */
+  public close(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+    this.wss.close();
+  }
+
+  /** @internal — stops the heartbeat timer and clears state without closing wss */
+  private _stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
 }
 
-/**
- * Registers the WebSocket plugin.
- * Now explicitly returns void to satisfy the Axiomify plugin signature.
- */
-export function useWebSockets(app: Axiomify, options: WsOptions): void {
-  // Ensure the server is provided
+export function useWebSockets<TUser = unknown>(app: Axiomify, options: WsOptions<TUser>): void {
   if (!options.server) {
     console.warn(
-      '[axiomify/ws] No server provided in options. ' +
-        'WebSocket upgrade listeners will not be attached.',
+      '[axiomify/ws] No server provided. WebSocket upgrade listeners will not be attached.',
     );
   }
 
-  // Initialize the manager (this attaches the 'upgrade' listener to options.server)
-  const manager = new WsManager(options);
+  if (
+    options.maxConnections === undefined &&
+    process.env.NODE_ENV === 'production'
+  ) {
+    console.warn(
+      '[axiomify/ws] No `maxConnections` limit set. ' +
+        'Defaulting to 10000 in production. Set an explicit value appropriate ' +
+        'for your available memory.',
+    );
+  }
 
-  // Expose the manager to the app context if needed for route handlers,
-  // but do NOT return it from this function.
-  (app as any).ws = manager;
+  const manager = new WsManager<TUser>(options);
+  setWsManager(app, manager);
+}
+
+// ─── Adapter extraction helpers ───────────────────────────────────────────────
+// @axiomify/ws requires a raw `http.Server` to attach WebSocket upgrade
+// listeners. Each adapter wraps a different underlying server type. These
+// helpers extract the underlying server so `WsManager` works with any adapter.
+
+/**
+ * Extract the underlying `http.Server` from any Axiomify adapter, then pass
+ * it to `WsManager` or `useWebSockets`.
+ *
+ * @example
+ * // Express
+ * const server = adapter.listen(3000);
+ * useWebSockets(app, { server, path: '/ws' });
+ *
+ * // Fastify
+ * await adapter.listen(3000);
+ * const server = getServerFromAdapter(adapter);
+ * useWebSockets(app, { server, path: '/ws' });
+ */
+export function getServerFromAdapter(adapter: unknown): Server {
+  const a = adapter as Record<string, unknown>;
+
+  // @axiomify/http — HttpAdapter.listen() returns the server
+  if (a['server'] && typeof (a['server'] as { on?: unknown }).on === 'function') {
+    return a['server'] as Server;
+  }
+
+  // @axiomify/express — ExpressAdapter.native is the Express app;
+  // the server is available after listen() is called
+  if (a['server'] && (a['server'] as { listening?: boolean }).listening !== undefined) {
+    return a['server'] as Server;
+  }
+
+  // @axiomify/fastify — underlying server is at app.server (Fastify instance)
+  const fastifyApp = a['app'] as Record<string, unknown> | undefined;
+  if (fastifyApp?.['server']) {
+    return fastifyApp['server'] as Server;
+  }
+
+  // @axiomify/hapi — Hapi exposes .server.listener
+  const hapiServer = a['server'] as Record<string, unknown> | undefined;
+  if (hapiServer?.['listener']) {
+    return hapiServer['listener'] as Server;
+  }
+
+  throw new Error(
+    '[axiomify/ws] Could not extract http.Server from adapter. ' +
+      'Pass the server manually: `useWebSockets(app, { server: yourHttpServer })`.',
+  );
+}
+
+const WS_MANAGER_KEY = Symbol.for('axiomify.ws.manager');
+
+export function setWsManager<TUser = unknown>(
+  app: Axiomify,
+  manager: WsManager<TUser>,
+): void {
+  (app as unknown as Record<symbol, unknown>)[WS_MANAGER_KEY] = manager;
+}
+
+export function getWsManager<TUser = unknown>(
+  app: Axiomify,
+): WsManager<TUser> | undefined {
+  return (app as unknown as Record<symbol, unknown>)[
+    WS_MANAGER_KEY
+  ] as WsManager<TUser> | undefined;
 }

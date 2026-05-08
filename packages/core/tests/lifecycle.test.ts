@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Axiomify } from '../src/app';
+import { ADAPTER_LOCK_TOKEN } from '../src/internal';
+import { HookManager } from '../src/lifecycle';
 
 describe('Unified HookEngine Lifecycle', () => {
-  it('should execute hooks in the correct order: Request -> PreHandler -> Handler -> PostHandler', async () => {
+  it('executes hooks in the correct order: Request → PreHandler → Handler → PostHandler', async () => {
     const app = new Axiomify();
     const executionOrder: string[] = [];
 
@@ -19,14 +21,19 @@ describe('Unified HookEngine Lifecycle', () => {
     app.route({
       method: 'GET',
       path: '/lifecycle',
-      handler: async (req, res) => {
+      handler: async (_req, res) => {
         executionOrder.push('handler');
         res.status(200).send('ok');
       },
     });
 
-    // Mock Request and Response for the test
-    const mockReq = { method: 'GET', path: '/lifecycle', params: {}, id: 'test-req' } as any;
+    const mockReq = {
+      method: 'GET',
+      path: '/lifecycle',
+      params: {},
+      id: 'test-req',
+      state: {},
+    } as any;
     const mockRes = {
       status: () => mockRes,
       send: () => {},
@@ -34,7 +41,6 @@ describe('Unified HookEngine Lifecycle', () => {
       headersSent: false,
     } as any;
 
-    // Trigger the framework lifecycle
     await app.handle(mockReq, mockRes);
 
     expect(executionOrder).toEqual([
@@ -45,13 +51,128 @@ describe('Unified HookEngine Lifecycle', () => {
     ]);
   });
 
-  it('should catch handler errors and dispatch to onError', async () => {
+  it('runs onPostHandler even when handler sends the response', async () => {
+    const app = new Axiomify();
+    const executionOrder: string[] = [];
+
+    app.addHook('onPostHandler', async () => {
+      executionOrder.push('onPostHandler');
+    });
+
+    app.route({
+      method: 'GET',
+      path: '/post-after-send',
+      handler: async (_req, res) => {
+        executionOrder.push('handler');
+        res.status(200).send('ok');
+      },
+    });
+
+    const mockReq = {
+      method: 'GET',
+      path: '/post-after-send',
+      params: {},
+      id: 'test-req',
+      state: {},
+    } as any;
+    const mockRes = {
+      headersSent: false,
+      status: () => mockRes,
+      send: () => {
+        mockRes.headersSent = true;
+      },
+      header: () => mockRes,
+      getHeader: () => undefined,
+      removeHeader: () => mockRes,
+      sendRaw: () => {
+        mockRes.headersSent = true;
+      },
+      error: () => {
+        mockRes.headersSent = true;
+      },
+      stream: () => {
+        mockRes.headersSent = true;
+      },
+      sseInit: () => {
+        mockRes.headersSent = true;
+      },
+      sseSend: () => {},
+      statusCode: 200,
+      raw: {},
+    } as any;
+
+    await app.handle(mockReq, mockRes);
+    expect(executionOrder).toEqual(['handler', 'onPostHandler']);
+  });
+
+  it('executes onPreHandler hooks added after route registration', async () => {
+    const app = new Axiomify();
+    const executionOrder: string[] = [];
+
+    app.route({
+      method: 'GET',
+      path: '/late-pre-hook',
+      handler: async (_req, res) => {
+        executionOrder.push('handler');
+        res.status(200).send('ok');
+      },
+    });
+
+    app.addHook('onPreHandler', async () => {
+      executionOrder.push('onPreHandler');
+    });
+
+    const mockReq = {
+      method: 'GET',
+      path: '/late-pre-hook',
+      params: {},
+      id: 'test-req',
+      state: {},
+    } as any;
+    const mockRes = {
+      status: () => mockRes,
+      send: () => {},
+      header: () => mockRes,
+      getHeader: () => undefined,
+      removeHeader: () => mockRes,
+      sendRaw: () => {},
+      error: () => {},
+      stream: () => {},
+      sseInit: () => {},
+      sseSend: () => {},
+      headersSent: false,
+      statusCode: 200,
+      raw: {},
+    } as any;
+
+    await app.handle(mockReq, mockRes);
+    expect(executionOrder).toEqual(['onPreHandler', 'handler']);
+  });
+
+  it('rejects route registration after routes are locked', () => {
+    const app = new Axiomify();
+    // Must pass the adapter token — protects against user code accidentally
+    // calling lockRoutes and creating route-drift bugs.
+    app.lockRoutes(ADAPTER_LOCK_TOKEN, 'test-adapter');
+
+    expect(() =>
+      app.route({
+        method: 'GET',
+        path: '/locked',
+        handler: async (_req, res) => {
+          res.send({ ok: true });
+        },
+      }),
+    ).toThrow('after adapter binding');
+  });
+
+  it('catches handler errors and dispatches to onError', async () => {
     const app = new Axiomify();
     let errorCaught = false;
 
-    app.addHook('onError', async (err: any) => {
+    app.addHook('onError', async (err: unknown) => {
       errorCaught = true;
-      expect(err.message).toBe('Business Logic Failed');
+      expect((err as Error).message).toBe('Business Logic Failed');
     });
 
     app.route({
@@ -62,7 +183,13 @@ describe('Unified HookEngine Lifecycle', () => {
       },
     });
 
-    const mockReq = { method: 'GET', path: '/error', params: {}, id: 'test-req' } as any;
+    const mockReq = {
+      method: 'GET',
+      path: '/error',
+      params: {},
+      id: 'test-req',
+      state: {},
+    } as any;
     const mockRes = {
       status: () => mockRes,
       send: () => {},
@@ -72,5 +199,117 @@ describe('Unified HookEngine Lifecycle', () => {
 
     await app.handle(mockReq, mockRes);
     expect(errorCaught).toBe(true);
+  });
+});
+
+// ─── HookManager unit tests ───────────────────────────────────────────────────
+
+describe('HookManager', () => {
+  describe('run()', () => {
+    it('executes all hooks of the given type in registration order', async () => {
+      const manager = new HookManager();
+      const order: number[] = [];
+
+      manager.add('onRequest', async () => {
+        order.push(1);
+      });
+      manager.add('onRequest', async () => {
+        order.push(2);
+      });
+      manager.add('onRequest', async () => {
+        order.push(3);
+      });
+
+      await manager.run('onRequest', {} as any, {} as any);
+      expect(order).toEqual([1, 2, 3]);
+    });
+
+    it('returns undefined (synchronously) when no hooks are registered', () => {
+      const manager = new HookManager();
+      const result = manager.run('onRequest', {} as any, {} as any);
+      expect(result).toBeUndefined();
+    });
+
+    it('propagates errors thrown by hooks', async () => {
+      const manager = new HookManager();
+      manager.add('onRequest', async () => {
+        throw new Error('hook error');
+      });
+
+      await expect(
+        manager.run('onRequest', {} as any, {} as any),
+      ).rejects.toThrow('hook error');
+    });
+  });
+
+  describe('runSafe()', () => {
+    it('runs all hooks even when one throws', async () => {
+      const manager = new HookManager();
+      const order: number[] = [];
+      const consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
+      manager.add('onError', async () => {
+        order.push(1);
+        throw new Error('boom');
+      });
+      manager.add('onError', async () => {
+        order.push(2);
+      });
+
+      await manager.runSafe(
+        'onError',
+        new Error('original'),
+        {} as any,
+        {} as any,
+      );
+
+      expect(order).toEqual([1, 2]);
+      consoleSpy.mockRestore();
+    });
+
+    it('logs the caught error to console.error', async () => {
+      const manager = new HookManager();
+      const consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
+
+      manager.add('onError', async () => {
+        throw new Error('logged error');
+      });
+
+      await manager.runSafe(
+        'onError',
+        new Error('trigger'),
+        {} as any,
+        {} as any,
+      );
+
+      // The default logger wraps the error in a meta object:
+      // console.error(message, { error: err })
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('onError'),
+        expect.objectContaining({ error: expect.any(Error) }),
+      );
+
+      consoleSpy.mockRestore();
+    });
+
+    it('resolves without throwing when all hooks succeed', async () => {
+      const manager = new HookManager();
+      manager.add('onClose', async () => {});
+      manager.add('onClose', async () => {});
+
+      // runSafe returns Promise<void> | void — always safe to await
+      await manager.runSafe('onClose', {} as any, {} as any);
+    });
+
+    it('resolves without throwing when no hooks are registered', async () => {
+      const manager = new HookManager();
+      // No hooks — runSafe returns undefined synchronously (no Promise allocated).
+      // await undefined is fine — microtask resolves immediately.
+      await manager.runSafe('onError', new Error('x'), {} as any, {} as any);
+    });
   });
 });

@@ -1,90 +1,76 @@
 # @axiomify/hapi
 
-The official Hapi adapter for the Axiomify framework. 
+Hapi.js adapter for Axiomify. Uses Hapi's router with `{param}` path syntax — no double routing.
 
-`@axiomify/hapi` brings Axiomify's ultra-fast Radix routing, Zod validation engine, and memory-safe plugin ecosystem to Hapi's battle-tested, enterprise-grade server environment. It allows you to build robust, highly configurable applications while maintaining maximum type safety.
-
-## ✨ Features
-
-- **Enterprise Ready:** Seamlessly integrates with Hapi's strict lifecycle and configuration-driven architecture.
-- **Stable Object References:** Implements memory-safe proxying for `req.params` and `req.state` to ensure data persists perfectly across complex, multi-stage request lifecycles.
-- **Native Zod Integration:** Fully supports Axiomify's core validation compilation and request mutations without triggering getter-lock exceptions.
-- **Unified Ecosystem:** Share Axiomify plugins (like `@axiomify/upload`) across environments without writing Hapi-specific boilerplate.
-
-## 📦 Installation
-
-Ensure you install the adapter alongside the Axiomify core, Hapi, and your validation library of choice (like Zod):
+## Install
 
 ```bash
 npm install @axiomify/hapi @axiomify/core @hapi/hapi zod
-````
+npm install --save-dev @types/hapi__hapi
+```
 
-## 🚀 Quick Start
-
-Integrating Axiomify into a Hapi application is handled cleanly through Hapi's standard plugin registration system.
+## Quick start
 
 ```typescript
-import Hapi from '@hapi/hapi';
 import { Axiomify } from '@axiomify/core';
 import { HapiAdapter } from '@axiomify/hapi';
 import { z } from 'zod';
 
-const init = async () => {
-  // 1. Initialize your standard Hapi server
-  const server = Hapi.server({
-    port: 3000,
-    host: 'localhost'
-  });
+const app = new Axiomify();
 
-  // 2. Initialize the Axiomify Core Engine
-  const app = new Axiomify();
-
-  // 3. Register your Axiomify Routes
-  app.route({
-    method: 'POST',
-    path: '/users',
-    schema: {
-      body: z.object({
-        email: z.string().email(),
-        name: z.string().min(2)
-      })
-    },
-    handler: async (req, res) => {
-      // req.body is safely typed and validated by Zod
-      const { email, name } = req.body;
-      return res.status(201).send({ success: true, user: { email, name } });
-    }
-  });
-
-  // 4. Mount Axiomify onto Hapi
-  // The adapter registers as a Hapi plugin and intercepts traffic safely
-  await server.register(HapiAdapter(app));
-
-  // 5. Start the Server
-  await server.start();
-  console.log(`🚀 Server listening on ${server.info.uri}`);
-};
-
-process.on('unhandledRejection', (err) => {
-  console.log(err);
-  process.exit(1);
+app.route({
+  method: 'POST',
+  path: '/users',
+  schema: {
+    body: z.object({ name: z.string().min(1), email: z.string().email() }),
+  },
+  handler: async (req, res) => {
+    res.status(201).send({ id: '1', ...req.body });
+  },
 });
 
-init();
+const adapter = new HapiAdapter(app);
+await adapter.listen(3000);
+console.log('Hapi on :3000');
 ```
 
-## 🧩 The Adapter Ecosystem
+## Options
 
-If you need to migrate to a different deployment architecture, Axiomify allows you to swap adapters with zero changes to your core routing or business logic:
+Pass any `Hapi.ServerOptions` directly:
 
-  - [`@axiomify/fastify`](https://www.npmjs.com/package/@axiomify/fastify) - For maximum throughput.
-  - [`@axiomify/express`](https://www.npmjs.com/package/@axiomify/express) - For maximum middleware compatibility.
-  - [`@axiomify/http`](https://www.npmjs.com/package/@axiomify/http) - For zero-dependency edge deployments.
+```typescript
+new HapiAdapter(app, {
+  routes: {
+    payload: {
+      maxBytes: 1_048_576,  // 1 MB body limit
+    },
+  },
+  host: '0.0.0.0',
+});
+```
 
-## 📚 Documentation
+## Path conversion
 
-For complete documentation, guides, and advanced plugin authoring, please visit the [Axiomify Master Repository](https://github.com/OTopman/axiomify).
+Axiomify uses `:param` syntax. The adapter converts to Hapi's `{param}` syntax at startup — zero overhead per request:
 
-## 📄 License
+| Axiomify | Hapi |
+|---|---|
+| `/users/:id` | `/users/{id}` |
+| `/users/:userId/posts/:postId` | `/users/{userId}/posts/{postId}` |
+| `/files/*` | `/files/{wild*}` |
 
-MIT
+## Body parsing
+
+Hapi receives bodies as raw streams (`parse: false, output: 'stream'`). The adapter stream-parses `application/json` and `application/x-www-form-urlencoded` bodies internally. `multipart/form-data` is left as a raw stream for `@axiomify/upload` to process via Busboy.
+
+## Routing
+
+Each Axiomify route is registered with Hapi's router using the converted path syntax. Hapi resolves the route and populates `req.params` before the handler runs. Axiomify's router is consulted **only** in the `method: '*'` catch-all to distinguish 404 from 405.
+
+## When to use @axiomify/hapi
+
+- Existing Hapi plugin ecosystem (`@hapi/jwt`, `@hapi/vision`, etc.)
+- Configuration-driven architecture requirements
+- Enterprise teams already standardised on Hapi
+
+For new projects, prefer `@axiomify/fastify` or `@axiomify/native` for higher throughput.

@@ -55,6 +55,14 @@ describe('HTTP Adapter — extended integration', () => {
       },
     });
 
+    app.route({
+      method: 'POST',
+      path: '/data',
+      handler: async (_req, res) => {
+        res.status(200).send({ ok: true });
+      },
+    });
+
     const adapter = new HttpAdapter(app, { bodyLimitBytes: 32 });
     server = adapter.listen(0);
     port = (server.address() as any).port;
@@ -119,7 +127,7 @@ describe('HTTP Adapter — extended integration', () => {
       const req = http.request(
         {
           port,
-          path: '/json',
+          path: '/data',
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         },

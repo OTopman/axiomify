@@ -1,83 +1,161 @@
-import type {
-  Axiomify,
-  AxiomifyRequest,
-  AxiomifyResponse,
-} from '@axiomify/core';
+import type { Axiomify } from '@axiomify/core';
 
 export interface CorsOptions {
-  /** Allowed origins. Use '*' to allow all. Default: '*' */
-  origin?: string | string[];
-  /** Allowed HTTP methods. Default: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'] */
+  origin?:
+    | boolean
+    | string
+    | RegExp
+    | Array<string | RegExp>
+    | ((origin: string | undefined) => boolean | Promise<boolean>);
   methods?: string[];
-  /** Allowed headers. Default: ['Content-Type','Authorization'] */
   allowedHeaders?: string[];
-  /** Headers exposed to the browser JS via Access-Control-Expose-Headers. */
   exposedHeaders?: string[];
-  /** Whether to allow credentials. Default: false */
   credentials?: boolean;
-  /** Max age in seconds for preflight cache. Default: 86400 (24h) */
   maxAge?: number;
+  preflightContinue?: boolean;
+  optionsSuccessStatus?: number;
+  allowPrivateNetwork?: boolean;
+  varyOnRequestHeaders?: boolean;
+  strictPreflight?: boolean;
+}
+
+/** Append a value to the Vary header without duplicating existing entries. */
+function setVary(res: any, value: string): void {
+  if (typeof res.header !== 'function') return;
+  if (typeof res.getHeader !== 'function') {
+    res.header('Vary', value);
+    return;
+  }
+
+  const existing = res.getHeader('Vary');
+
+  if (!existing) {
+    res.header('Vary', value);
+    return;
+  }
+
+  const current = String(existing)
+    .split(',')
+    .map((item: string) => item.trim())
+    .filter(Boolean);
+
+  if (!current.includes(value)) {
+    current.push(value);
+  }
+
+  const next = current.join(', ');
+  res.header('Vary', next);
+}
+
+function setVaryValues(res: any, values: string[]): void {
+  if (!values.length) return;
+  setVary(res, [...new Set(values)].join(', '));
 }
 
 export function useCors(app: Axiomify, options: CorsOptions = {}): void {
-  const origin = options.origin ?? '*';
-  const methods = options.methods ?? [
-    'GET',
-    'POST',
-    'PUT',
-    'PATCH',
-    'DELETE',
-    'OPTIONS',
-  ];
-  const allowedHeaders = options.allowedHeaders ?? [
-    'Content-Type',
-    'Authorization',
-  ];
-  const exposedHeaders = options.exposedHeaders;
-  const credentials = options.credentials ?? false;
-  const maxAge = options.maxAge ?? 86400;
+  const {
+    origin = '*',
+    methods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
+    allowedHeaders,
+    exposedHeaders,
+    credentials = false,
+    maxAge = 86400,
+    preflightContinue = false,
+    optionsSuccessStatus = 204,
+    allowPrivateNetwork = false,
+    varyOnRequestHeaders = true,
+    strictPreflight = false,
+  } = options;
 
-  // CORS spec: `Access-Control-Allow-Credentials: true` is incompatible with
-  // `Access-Control-Allow-Origin: *`. Every browser rejects the response.
-  // Fail fast at startup rather than letting requests silently break.
   if (credentials && origin === '*') {
     throw new Error(
-      '[axiomify/cors] `credentials: true` cannot be combined with `origin: "*"`. ' +
-        'Provide an explicit origin (string) or an allow-list (string[]).',
+      '[axiomify/cors] `credentials: true` cannot be combined with `origin: "*"`.',
     );
   }
 
-  app.addHook('onRequest', (req, res) => {
+  app.addHook('onRequest', async (req, res) => {
     const requestOrigin = req.headers['origin'] as string | undefined;
+    const varyValues: string[] = [];
 
-    let resolvedOrigin = '';
-    if (Array.isArray(origin)) {
-      if (requestOrigin && origin.includes(requestOrigin)) {
+    let resolvedOrigin: string | undefined;
+
+    if (origin === true || origin === '*') {
+      resolvedOrigin = '*';
+    } else if (origin === false) {
+      resolvedOrigin = undefined;
+    } else if (typeof origin === 'string') {
+      if (requestOrigin === origin) resolvedOrigin = origin;
+    } else if (origin instanceof RegExp) {
+      if (requestOrigin && origin.test(requestOrigin))
         resolvedOrigin = requestOrigin;
+    } else if (Array.isArray(origin)) {
+      if (requestOrigin) {
+        const match = origin.some((entry) =>
+          typeof entry === 'string'
+            ? entry === requestOrigin
+            : entry.test(requestOrigin),
+        );
+        if (match) resolvedOrigin = requestOrigin;
       }
-    } else {
-      resolvedOrigin = origin; // '*' or a single string
+    } else if (typeof origin === 'function') {
+      const allowed = await origin(requestOrigin);
+      if (allowed) resolvedOrigin = requestOrigin ?? '*';
     }
 
     if (resolvedOrigin) {
       res.header('Access-Control-Allow-Origin', resolvedOrigin);
-    }
-    // The response varies by Origin whenever we pick from an allow-list or
-    // echo a single non-wildcard origin — caches need Vary to not mix them.
-    if (resolvedOrigin && resolvedOrigin !== '*') {
-      res.header('Vary', 'Origin');
+      if (resolvedOrigin !== '*') varyValues.push('Origin');
     }
 
-    res.header('Access-Control-Allow-Methods', methods.join(', '));
-    res.header('Access-Control-Allow-Headers', allowedHeaders.join(', '));
-    if (exposedHeaders && exposedHeaders.length > 0) {
+    if (credentials) {
+      res.header('Access-Control-Allow-Credentials', 'true');
+    }
+
+    if (exposedHeaders?.length) {
       res.header('Access-Control-Expose-Headers', exposedHeaders.join(', '));
     }
-    if (credentials) res.header('Access-Control-Allow-Credentials', 'true');
 
     if (req.method === 'OPTIONS') {
+      if (strictPreflight && !requestOrigin) {
+        res.status(400).send({ error: 'Invalid preflight request' });
+        return;
+      }
+
+      const reqAccessControlHeaders =
+        req.headers['access-control-request-headers'];
+      const resolvedAllowedHeaders = allowedHeaders?.length
+        ? allowedHeaders.join(', ')
+        : typeof reqAccessControlHeaders === 'string'
+          ? reqAccessControlHeaders
+          : 'Content-Type, Authorization';
+
+      res.header('Access-Control-Allow-Methods', methods.join(', '));
+      res.header('Access-Control-Allow-Headers', resolvedAllowedHeaders);
       res.header('Access-Control-Max-Age', String(maxAge));
-      res.status(204).send(null);
+
+      if (
+        allowPrivateNetwork &&
+        req.headers['access-control-request-private-network'] === 'true'
+      ) {
+        res.header('Access-Control-Allow-Private-Network', 'true');
+      }
+
+      if (varyOnRequestHeaders && !allowedHeaders?.length) {
+        varyValues.push('Access-Control-Request-Headers');
+      }
+
+      setVaryValues(res, varyValues);
+
+      if (!preflightContinue) {
+        res.status(optionsSuccessStatus).send(null);
+      }
+      return;
     }
+
+    setVaryValues(res, varyValues);
+
+    // Access-Control-Allow-Methods is a preflight-only header.
+    // Do NOT send it on every non-OPTIONS response — it is meaningless
+    // outside a preflight context and adds unnecessary response bloat.
   });
 }

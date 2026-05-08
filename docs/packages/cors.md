@@ -1,6 +1,6 @@
 # @axiomify/cors
 
-CORS handling for browser-facing apps.
+CORS handling for browser-facing Axiomify apps.
 
 ## Install
 
@@ -12,14 +12,17 @@ npm install @axiomify/cors
 
 - `useCors(app, options?)`
 
-## Options
+## Key options
 
-- `origin`
-- `methods`
-- `allowedHeaders`
-- `exposedHeaders`
+- `origin`: `boolean | string | RegExp | Array<string | RegExp> | ((origin) => boolean | Promise<boolean>)`
+- `methods`: allowed HTTP methods (default includes `HEAD`)
+- `allowedHeaders`, `exposedHeaders`
 - `credentials`
 - `maxAge`
+- `preflightContinue`, `optionsSuccessStatus`
+- `allowPrivateNetwork`
+- `varyOnRequestHeaders`
+- `strictPreflight`
 
 ## Example
 
@@ -29,12 +32,15 @@ import { useCors } from '@axiomify/cors';
 useCors(app, {
   origin: ['https://app.example.com'],
   credentials: true,
+  strictPreflight: true,
+  allowPrivateNetwork: true,
   exposedHeaders: ['X-Request-Id'],
 });
 ```
 
-## Important Behavior
+## Behavior
 
 - handles `OPTIONS` preflight automatically
-- sends `Vary: Origin` for non-wildcard origins
+- merges `Vary` headers safely
+- reflects request `access-control-request-headers` when `allowedHeaders` is omitted
 - throws at startup if `credentials: true` is combined with `origin: "*"`

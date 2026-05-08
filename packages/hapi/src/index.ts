@@ -1,73 +1,241 @@
-import type { Axiomify, AxiomifyRequest, SerializerFn } from '@axiomify/core';
+import type {
+  Axiomify,
+  AxiomifyRequest,
+  AxiomifyResponse,
+  ResponseCapabilities,
+  SerializerFn,
+} from '@axiomify/core';
+import { ADAPTER_LOCK_TOKEN, makeSerialize } from '@axiomify/core';
 import type { Request } from '@hapi/hapi';
 import Hapi from '@hapi/hapi';
-import crypto from 'crypto';
+import cluster from 'cluster';
+import * as net from 'net';
+import { availableParallelism } from 'os';
 import { PassThrough, Readable } from 'stream';
 import { sanitize } from './utils';
 
+// Per-process counter — avoids crypto.randomUUID() (~0.137µs) on every request.
+let _hapiCounter = 0;
+const _hapiPid = process.pid.toString(36);
+
+// ---------------------------------------------------------------------------
+// Capabilities — Hapi adapter supports SSE and streaming
+// ---------------------------------------------------------------------------
+
+const HAPI_CAPABILITIES: ResponseCapabilities = { sse: true, streaming: true };
+
+// ---------------------------------------------------------------------------
+// Serializer arity: normalised once per adapter, not per request
+// ---------------------------------------------------------------------------
+
+/**
+ * Converts an Axiomify route path to Hapi's path syntax.
+ *
+ * Axiomify: /users/:id/posts/:postId
+ * Hapi:     /users/{id}/posts/{postId}
+ *
+ * Axiomify wildcard: /static/*
+ * Hapi wildcard:     /static/{wild*}
+ */
+function toHapiPath(path: string): string {
+  return path
+    .replace(/:([^/]+)/g, '{$1}') // :param  → {param}
+    .replace(/\/\*$/, '/{wild*}'); // trailing /* → /{wild*}
+}
+
 export class HapiAdapter {
   private server: Hapi.Server;
+  private readonly bodyLimitBytes: number;
+  private readonly _workers: number;
+  private readonly _sanitize: boolean;
 
-  constructor(private core: Axiomify, config: Hapi.ServerOptions = {}) {
-    // We keep `parse: false, output: 'stream'` so that @axiomify/upload can
-    // pipe the raw request into Busboy. That means JSON / urlencoded bodies
-    // arrive here as an unread stream — we parse them ourselves per-request
-    // below so route handlers see a plain object like they do on every other
-    // adapter.
+  constructor(
+    private core: Axiomify,
+    config: Hapi.ServerOptions & {
+      /** Number of worker processes for `listenClustered()`. Defaults to the number of logical CPU cores. */
+      workers?: number;
+      /**
+       * When true (default), request bodies are recursively sanitized to strip
+       * prototype-pollution keys. Set to false for fully trusted body sources.
+       * @default true
+       */
+      sanitize?: boolean;
+    } = {},
+  ) {
+    console.warn(
+      '[axiomify] The @axiomify/hapi adapter is deprecated and will be removed in v6. ' +
+        "It routes all requests through Axiomify's own dispatcher, then re-wraps them for " +
+        "Hapi — adding overhead without any benefit from Hapi's native performance. " +
+        'Use @axiomify/http or @axiomify/native instead.',
+    );
+    this.core.lockRoutes(ADAPTER_LOCK_TOKEN, '@axiomify/hapi');
+    const { workers, sanitize: sanitizeOpt, ...hapiConfig } = config;
+    const configuredPayload = hapiConfig.routes?.payload || {};
+    this.bodyLimitBytes =
+      typeof configuredPayload.maxBytes === 'number'
+        ? configuredPayload.maxBytes
+        : 1_048_576;
+    this._workers = workers ?? availableParallelism();
+    this._sanitize = sanitizeOpt ?? false;
+
+    // Keep `parse: false, output: 'stream'` so @axiomify/upload can pipe the
+    // raw request into Busboy. JSON / urlencoded bodies are parsed per-request
+    // below so handlers see a plain object on every adapter.
     this.server = Hapi.server({
-      ...config,
+      ...hapiConfig,
       routes: {
-        ...(config.routes || {}),
+        ...(hapiConfig.routes || {}),
         payload: {
-          ...(config.routes?.payload || {}),
+          ...configuredPayload,
+          maxBytes: this.bodyLimitBytes,
           output: 'stream',
           parse: false,
         },
       },
     });
 
+    // --- HAPI'S OWN ROUTER HANDLES ALL ROUTING ---
+    // Each Axiomify route is registered with Hapi using the exact HTTP method
+    // and a Hapi-format path. Hapi resolves the route, populates req.params,
+    // and invokes the handler. Axiomify's internal router is NOT consulted in
+    // the dispatch path — there is no double routing.
+    for (const route of this.core.registeredRoutes) {
+      const capturedRoute = route;
+      const hapiPath = toHapiPath(route.path);
+
+      this.server.route({
+        method: route.method as Hapi.HTTP_METHODS_PARTIAL,
+        path: hapiPath,
+        handler: async (req: Hapi.Request, h: Hapi.ResponseToolkit) => {
+          let parsedBody: unknown;
+          try {
+            parsedBody = await this.parseBody(req);
+          } catch (err: unknown) {
+            const anyErr = err as Record<string, unknown>;
+            const statusCode =
+              typeof anyErr.statusCode === 'number'
+                ? anyErr.statusCode
+                : typeof anyErr.status === 'number'
+                ? anyErr.status
+                : 500;
+            const message =
+              statusCode === 413
+                ? 'Payload Too Large'
+                : statusCode === 400
+                ? 'Bad Request'
+                : 'Internal Server Error';
+            const axiomifyReq = this.translateRequest(
+              req,
+              undefined,
+              this._sanitize,
+            );
+            return h
+              .response(
+                this.core.serializer({
+                  data: null,
+                  message,
+                  statusCode,
+                  isError: true,
+                  req: axiomifyReq,
+                }),
+              )
+              .code(statusCode);
+          }
+
+          return new Promise((resolve, reject) => {
+            const axiomifyReq = this.translateRequest(
+              req,
+              parsedBody,
+              this._sanitize,
+            );
+            const axiomifyRes = this.translateResponse(
+              h,
+              resolve,
+              this.core.serializer,
+              axiomifyReq,
+            );
+
+            // req.params is populated by Hapi's router — no re-routing.
+            // Hapi uses {param} syntax internally; .params returns plain keys.
+            this.core
+              .handleMatchedRoute(
+                ADAPTER_LOCK_TOKEN,
+                axiomifyReq,
+                axiomifyRes,
+                capturedRoute,
+                req.params as Record<string, string>,
+              )
+              .catch((err) => axiomifyRes.error(err));
+
+            // Safety net when the core timeout is disabled (timeout=0).
+            const coreTimeout = this.core.timeout;
+            if (coreTimeout === 0) {
+              const backstopMs = 30_000;
+              setTimeout(() => {
+                if (!axiomifyRes.headersSent) {
+                  reject(
+                    new Error(
+                      `Handler did not respond within the ${backstopMs}ms backstop timeout.`,
+                    ),
+                  );
+                }
+              }, backstopMs).unref();
+            }
+          });
+        },
+      });
+    }
+
+    // 404 / 405 catch-all — Hapi exhausted its specific route table before
+    // reaching this handler. Axiomify's router is consulted ONLY to distinguish
+    // 405 from 404, never as a primary dispatch path.
     this.server.route({
       method: '*',
       path: '/{any*}',
-      handler: async (req: any, h: any) => {
-        const parsedBody = await this.parseBody(req);
-        return new Promise((resolve, reject) => {
-          const axiomifyReq = this.translateRequest(req, parsedBody);
-          // Inject the serializer here
-          const axiomifyRes = this.translateResponse(
-            h,
-            resolve,
-            this.core.serializer,
-            axiomifyReq,
-          );
+      handler: async (req: Hapi.Request, h: Hapi.ResponseToolkit) => {
+        const axiomifyReq = this.translateRequest(
+          req,
+          undefined,
+          this._sanitize,
+        );
+        const headers: Record<string, string> = {};
 
-          this.core.handle(axiomifyReq, axiomifyRes).catch((err) => {
-            axiomifyRes.error(err);
+        const match = this.core.router.lookup(
+          req.method.toUpperCase() as never,
+          req.path,
+        );
+        if (match && 'error' in match) {
+          headers['Allow'] = match.allowed.join(', ');
+          const payload = this.core.serializer({
+            data: null,
+            message: 'Method Not Allowed',
+            statusCode: 405,
+            isError: true,
+            req: axiomifyReq,
           });
+          const response = h.response(payload).code(405);
+          response.header('Allow', match.allowed.join(', '));
+          return response;
+        }
 
-          const effectiveTimeout = this.core.timeout || 30_000;
-          if (effectiveTimeout > 0) {
-            setTimeout(() => {
-              if (!axiomifyRes.headersSent) {
-                reject(
-                  new Error(
-                    `Axiomify handler did not send a response within the ${effectiveTimeout}ms timeout`,
-                  ),
-                );
-              }
-            }, effectiveTimeout).unref();
-          }
+        const payload = this.core.serializer({
+          data: null,
+          message: 'Route not found',
+          statusCode: 404,
+          isError: true,
+          req: axiomifyReq,
         });
+        return h.response(payload).code(404);
       },
     });
   }
 
   /**
    * Parses the request payload stream for non-multipart content types.
-   * Multipart is left untouched so @axiomify/upload can drive it; GET/HEAD/
-   * OPTIONS never have a body to parse.
+   * Multipart is left untouched so @axiomify/upload can drive it.
+   * GET / HEAD / OPTIONS never have a body to parse.
    */
-  private async parseBody(req: any): Promise<unknown> {
+  private async parseBody(req: Hapi.Request): Promise<unknown> {
     const method = (req.method || '').toUpperCase();
     if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
       return undefined;
@@ -76,20 +244,39 @@ export class HapiAdapter {
     const contentType = (req.headers['content-type'] || '').toLowerCase();
     if (contentType.includes('multipart/form-data')) return undefined;
 
-    const stream = req.payload;
-    if (!stream || typeof stream.on !== 'function') return undefined;
+    const stream = req.payload as NodeJS.ReadableStream | undefined;
+    if (!stream || typeof (stream as any).on !== 'function') return undefined;
 
     return new Promise<unknown>((resolve, reject) => {
       const chunks: Buffer[] = [];
-      stream.on('data', (chunk: Buffer) => chunks.push(chunk));
-      stream.on('end', () => {
+      let receivedBytes = 0;
+
+      (stream as NodeJS.ReadableStream).on('data', (chunk: Buffer) => {
+        receivedBytes += chunk.length;
+        if (receivedBytes > this.bodyLimitBytes) {
+          (stream as any).destroy(
+            Object.assign(new Error('Payload Too Large'), {
+              statusCode: 413,
+            }),
+          );
+          return;
+        }
+        chunks.push(chunk);
+      });
+
+      (stream as NodeJS.ReadableStream).on('end', () => {
         if (chunks.length === 0) return resolve(undefined);
         const body = Buffer.concat(chunks).toString('utf8');
         if (contentType.includes('application/json')) {
           try {
-            resolve(sanitize(JSON.parse(body)));
+            const parsed = JSON.parse(body);
+            resolve(this._sanitize ? sanitize(parsed) : parsed);
           } catch {
-            resolve(body);
+            reject(
+              Object.assign(new Error('Invalid JSON body'), {
+                statusCode: 400,
+              }),
+            );
           }
         } else if (contentType.includes('application/x-www-form-urlencoded')) {
           resolve(Object.fromEntries(new URLSearchParams(body)));
@@ -97,76 +284,90 @@ export class HapiAdapter {
           resolve(body);
         }
       });
-      stream.on('error', reject);
+
+      (stream as NodeJS.ReadableStream).on('error', reject);
     });
   }
 
-  private translateRequest(req: Request, parsedBody: unknown): AxiomifyRequest {
-    const _params = {};
-    const _state = {};
+  private translateRequest(
+    req: Request,
+    parsedBody: unknown,
+    doSanitize = false,
+  ): AxiomifyRequest {
+    const rawReq = req.raw.req;
+
+    // Lazy AbortController — only materialised when handler accesses .signal.
+    let _controller: AbortController | undefined;
+    let _aborted = false;
+    const onAbort = () => {
+      _aborted = true;
+      _controller?.abort(new Error('Client aborted request'));
+    };
+    rawReq.once('aborted', onAbort);
+    rawReq.once('close', () => {
+      if (rawReq.destroyed) onAbort();
+    });
+
+    // Lazy id — counter-based, avoids crypto.randomUUID() on every request.
+    let _id: string | undefined;
+
     return {
-      get id() {
-        return (
-          (req.headers['x-request-id'] as string) ||
-          req.info.id ||
-          crypto.randomUUID()
-        );
+      get id(): string {
+        if (!_id) {
+          _id =
+            (req.headers['x-request-id'] as string | undefined) ??
+            req.info.id ??
+            `${_hapiPid}-${(++_hapiCounter).toString(36)}`;
+        }
+        return _id;
       },
-      get method() {
-        return req.method.toUpperCase() as AxiomifyRequest['method'];
-      },
-      get url() {
-        return req.url.href;
-      },
-      get path() {
-        return req.path;
-      },
-      get ip() {
-        return req.info.remoteAddress;
-      },
-      get headers() {
-        return req.headers;
-      },
-      get body() {
-        return parsedBody;
-      },
-      get query() {
-        return req.query;
-      },
-      get params() {
-        return _params;
-      },
-      get state() {
-        return _state;
-      },
-      get raw() {
-        return req;
-      },
-      get stream() {
-        return req.raw.req;
+      method: req.method.toUpperCase() as AxiomifyRequest['method'],
+      url: req.url.href,
+      path: req.path,
+      ip: req.info.remoteAddress,
+      headers: req.headers as Record<string, string | string[] | undefined>,
+      body:
+        doSanitize && parsedBody !== undefined
+          ? sanitize(parsedBody)
+          : parsedBody,
+      query: req.query as Record<string, string | string[]>,
+      params: {} as Record<string, string>,
+      state: {} as Record<string, unknown>,
+      raw: req,
+      stream: rawReq,
+      get signal(): AbortSignal {
+        if (!_controller) {
+          _controller = new AbortController();
+          if (_aborted) _controller.abort(new Error('Client aborted request'));
+        }
+        return _controller.signal;
       },
     };
   }
 
   private translateResponse(
-    h: any,
-    resolve: (val: any) => void,
+    h: Hapi.ResponseToolkit,
+    resolve: (val: Hapi.ResponseObject) => void,
     serializer: SerializerFn,
     req: AxiomifyRequest,
-  ): any {
+  ): AxiomifyResponse {
     let statusCode = 200;
     let isSent = false;
     let sseStream: PassThrough | null = null;
     const headers: Record<string, string> = {};
 
-    const applyHeaders = (response: any) => {
+    const applyHeaders = (response: Hapi.ResponseObject) => {
       for (const [key, value] of Object.entries(headers)) {
         response.header(key, value);
       }
       return response;
     };
 
-    return {
+    const invoke = makeSerialize(serializer);
+
+    const self: AxiomifyResponse = {
+      capabilities: HAPI_CAPABILITIES,
+
       status(code: number) {
         statusCode = code;
         return this;
@@ -175,41 +376,57 @@ export class HapiAdapter {
         headers[key] = value;
         return this;
       },
+      getHeader(key: string) {
+        return headers[key];
+      },
       removeHeader(key: string) {
         delete headers[key];
         return this;
       },
-      send(data: any, message?: string) {
+      send(data: unknown, message?: string) {
+        if (isSent) return;
         isSent = true;
         const isError = statusCode >= 400;
-        const payload = serializer(data, message, statusCode, isError, req);
-        const response = h.response(payload).code(statusCode);
-        resolve(applyHeaders(response));
+        const payload = invoke({
+          data,
+          message,
+          statusCode,
+          isError,
+          req,
+        }) as Hapi.ResponseValue;
+        resolve(applyHeaders(h.response(payload).code(statusCode)));
       },
-      sendRaw(payload: any, contentType = 'text/plain') {
+      sendRaw(payload: unknown, contentType = 'text/plain') {
+        if (isSent) return;
         isSent = true;
         headers['Content-Type'] = contentType;
-        const response = h.response(payload).code(statusCode);
-        resolve(applyHeaders(response));
+        resolve(
+          applyHeaders(
+            h.response(payload as Hapi.ResponseValue).code(statusCode),
+          ),
+        );
       },
       error(err: unknown) {
+        if (isSent) return;
         isSent = true;
         const message = err instanceof Error ? err.message : 'Unknown Error';
-        const payload = serializer(null, message, 500, true, req);
-        const response = h.response(payload).code(500);
-        resolve(applyHeaders(response));
+        const payload = invoke({
+          data: null,
+          message,
+          statusCode: 500,
+          isError: true,
+          req,
+        }) as Hapi.ResponseValue;
+        resolve(applyHeaders(h.response(payload).code(500)));
       },
-
-      // Hapi Stream implementation
       stream(readable: Readable, contentType = 'application/octet-stream') {
+        if (isSent) return;
         isSent = true;
         headers['Content-Type'] = contentType;
-        const response = h.response(readable).code(statusCode);
-        resolve(applyHeaders(response));
+        resolve(applyHeaders(h.response(readable).code(statusCode)));
       },
-
-      // Hapi SSE Init (Creates and returns a PassThrough stream)
-      sseInit(sseHeartbeatMs: number = 15_000) {
+      sseInit(sseHeartbeatMs = 15_000) {
+        if (isSent) return;
         isSent = true;
         sseStream = new PassThrough();
 
@@ -220,38 +437,218 @@ export class HapiAdapter {
         const heartbeat = setInterval(() => {
           sseStream!.write(': keepalive\n\n');
         }, sseHeartbeatMs);
+        // .unref() ensures this interval does not prevent the process from
+        // exiting during graceful shutdown. clearInterval fires on stream close
+        // (normal disconnect) and on the 'error' event (abnormal disconnect).
+        heartbeat.unref();
         sseStream.on('close', () => clearInterval(heartbeat));
+        sseStream.on('error', () => clearInterval(heartbeat));
 
-        const response = h.response(sseStream).code(200);
-        resolve(applyHeaders(response));
+        resolve(applyHeaders(h.response(sseStream).code(200)));
       },
-
-      // Hapi SSE Send (Writes to the PassThrough stream)
-      sseSend(data: any, event?: string) {
+      sseSend(data: unknown, event?: string) {
         if (!sseStream) return;
         if (event) sseStream.write(`event: ${event}\n`);
         sseStream.write(`data: ${JSON.stringify(data)}\n\n`);
       },
-
       get statusCode() {
         return statusCode;
       },
-
       get raw() {
-        return h;
+        return h as unknown;
       },
       get headersSent() {
         return isSent;
       },
     };
+
+    return self;
   }
 
+  /**
+   * Starts the Hapi server on the given port. In single-process mode.
+   */
   public async listen(port: number): Promise<void> {
     this.server.settings.port = port;
     await this.server.start();
   }
 
+  /**
+   * Fork `workers` child processes and start Hapi on each.
+   *
+   * KEY BEHAVIOURS — fixed in this revision:
+   *
+   * 1. SO_REUSEPORT via pre-bound net.Server:
+   *    Hapi does not expose `reusePort` through its `server.start()` API.
+   *    We work around this by pre-creating a `net.Server` with `reusePort: true`
+   *    (Node ≥ 16.9) and injecting it as Hapi's `listener`. This achieves the
+   *    same zero-IPC kernel load-balancing as the native / http adapters.
+   *    On older Node we fall back to `exclusive: true` with SCHED_NONE.
+   *
+   * 2. SCHED_NONE before first fork — required for exclusive/reusePort to work.
+   *
+   * 3. Crash circuit breaker — 5 crashes in 30 s → primary aborts.
+   *
+   * 4. Graceful SIGTERM drain — Hapi.stop() drains in-flight requests.
+   *
+   * 5. SIGUSR2 rolling restart for zero-downtime reload.
+   */
+  public listenClustered(
+    port: number,
+    opts: {
+      onWorkerReady?: () => void;
+      onPrimary?: (pids: number[]) => void;
+      onWorkerExit?: (pid: number, code: number | null) => void;
+      /** Max ms to wait for in-flight requests before force-exit. @default 10000 */
+      gracefulTimeoutMs?: number;
+    } = {},
+  ): void {
+    const gracefulTimeoutMs = opts.gracefulTimeoutMs ?? 10_000;
+
+    // ── Worker ──────────────────────────────────────────────────────────────
+    if (!cluster.isPrimary) {
+      const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
+
+      if (nodeMajor >= 16) {
+        // Pre-bind with SO_REUSEPORT, inject the listener into Hapi.
+        // Hapi's autoListen must be false so it doesn't try to bind again.
+        const netServer = net.createServer();
+        netServer.listen({ port, reusePort: true }, () => {
+          (this.server.settings as Record<string, unknown>).listener = netServer;
+          (this.server.settings as Record<string, unknown>).autoListen = false;
+          this.server.start().then(
+            () => {
+              opts.onWorkerReady?.();
+              process.send?.({ type: 'WORKER_READY', pid: process.pid });
+            },
+            (err: Error) => {
+              console.error(`[Axiomify/hapi] Worker ${process.pid} failed to start:`, err);
+              process.exit(1);
+            },
+          );
+        });
+      } else {
+        // Older Node: exclusive listen, SCHED_NONE was set in primary.
+        this.server.settings.port = port;
+        (this.server.settings as Record<string, unknown>).exclusive = true;
+        this.server.start().then(
+          () => {
+            opts.onWorkerReady?.();
+            process.send?.({ type: 'WORKER_READY', pid: process.pid });
+          },
+          (err: Error) => {
+            console.error(`[Axiomify/hapi] Worker ${process.pid} failed to bind port ${port}:`, err);
+            process.exit(1);
+          },
+        );
+      }
+
+      process.once('SIGTERM', () => {
+        const deadline = setTimeout(() => process.exit(1), gracefulTimeoutMs);
+        deadline.unref();
+        this.close().finally(() => {
+          clearTimeout(deadline);
+          process.exit(0);
+        });
+      });
+      return;
+    }
+
+    // ── Primary ─────────────────────────────────────────────────────────────
+
+    // Must be set BEFORE the first cluster.fork().
+    cluster.schedulingPolicy = cluster.SCHED_NONE;
+
+    const numWorkers = this._workers;
+    const parallelism = availableParallelism();
+    if (numWorkers > parallelism) {
+      console.warn(
+        `[Axiomify/hapi] listenClustered: workers (${numWorkers}) > ` +
+        `availableParallelism (${parallelism}). ` +
+        `Oversubscription degrades throughput. ` +
+        `Set workers: ${parallelism} or omit for the correct default.`,
+      );
+    }
+
+    const liveWorkers = new Map<number, cluster.Worker>();
+    let readyCount = 0;
+    let allReadyFired = false;
+
+    const CRASH_THRESHOLD = 5;
+    const CRASH_WINDOW_MS = 30_000;
+    const crashTimes: number[] = [];
+
+    const spawnWorker = (respawnDelayMs = 0): void => {
+      setTimeout(() => {
+        const w = cluster.fork();
+        w.once('online', () => {
+          if (w.process.pid) liveWorkers.set(w.process.pid, w);
+        });
+        w.on('message', (msg: { type?: string }) => {
+          if (msg?.type !== 'WORKER_READY') return;
+          readyCount++;
+          if (!allReadyFired && readyCount >= numWorkers) {
+            allReadyFired = true;
+            opts.onPrimary?.([...liveWorkers.keys()]);
+          }
+        });
+        w.on('exit', (code, signal) => {
+          const pid = w.process.pid ?? 0;
+          liveWorkers.delete(pid);
+          opts.onWorkerExit?.(pid, code);
+          if (code === 0 || signal === 'SIGTERM') return;
+
+          const now = Date.now();
+          crashTimes.push(now);
+          while (crashTimes.length && crashTimes[0] < now - CRASH_WINDOW_MS) crashTimes.shift();
+          if (crashTimes.length >= CRASH_THRESHOLD) {
+            console.error(
+              `[Axiomify/hapi] ${crashTimes.length} workers crashed within ` +
+              `${CRASH_WINDOW_MS}ms. Aborting to prevent runaway respawn loop.`,
+            );
+            process.exit(1);
+          }
+
+          spawnWorker(Math.min((respawnDelayMs || 50) * 2, 5_000));
+        });
+      }, respawnDelayMs);
+    };
+
+    process.once('SIGTERM', () => {
+      if (liveWorkers.size === 0) {
+        process.exit(0);
+        return;
+      }
+      let pending = liveWorkers.size;
+      for (const w of liveWorkers.values()) {
+        w.once('exit', () => {
+          if (--pending === 0) process.exit(0);
+        });
+        w.process.kill('SIGTERM');
+      }
+      setTimeout(() => process.exit(1), gracefulTimeoutMs + 2_000).unref();
+    });
+
+    // Zero-downtime rolling restart.
+    process.on('SIGUSR2', () => {
+      const snapshot = [...liveWorkers.values()];
+      if (snapshot.length === 0) return;
+      let i = 0;
+      const killNext = () => {
+        if (i >= snapshot.length) return;
+        const w = snapshot[i++];
+        if (liveWorkers.has(w.process.pid ?? -1)) {
+          w.process.kill('SIGTERM');
+        }
+        setTimeout(killNext, gracefulTimeoutMs);
+      };
+      killNext();
+    });
+
+    for (let i = 0; i < numWorkers; i++) spawnWorker();
+  }
+
   public async close(): Promise<void> {
-    await this.server.stop({ timeout: 10000 }); // Graceful drain
+    await this.server.stop({ timeout: 10_000 });
   }
 }

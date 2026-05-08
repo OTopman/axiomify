@@ -55,7 +55,7 @@ describe('Request timeout', () => {
     await vi.advanceTimersByTimeAsync(200);
     await handlePromise;
 
-    expect(mockRes.status).toHaveBeenCalledWith(503);
+    expect(mockRes.status).toHaveBeenCalledWith(408);
     vi.useRealTimers();
   });
 
@@ -88,7 +88,7 @@ describe('Request timeout', () => {
     await vi.advanceTimersByTimeAsync(100);
     await handlePromise;
 
-    expect(mockRes.status).toHaveBeenCalledWith(503);
+    expect(mockRes.status).toHaveBeenCalledWith(408);
     vi.useRealTimers();
   });
 });

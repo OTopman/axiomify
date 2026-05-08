@@ -1,0 +1,34 @@
+{
+  "name": "@axiomify/graphql",
+  "version": "5.0.0",
+  "description": "GraphQL plugin for Axiomify — schema-first, zero-boilerplate GraphQL endpoint with built-in GraphiQL playground.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@axiomify/core": "*",
+    "graphql": "^16.8.1"
+  },
+  "peerDependencies": {
+    "graphql": "^16.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "module": "./dist/index.mjs",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

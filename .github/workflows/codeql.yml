@@ -1,4 +1,4 @@
-name: "CodeQL"
+name: CodeQL
 
 on:
   push:
@@ -8,22 +8,35 @@ on:
   schedule:
     - cron: '0 6 * * 1'
 
+# Lock the default GITHUB_TOKEN to read-only at the top level.
+permissions: read-all
+
 jobs:
   analyze:
     name: Analyze
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       security-events: write
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v3
-      with:
-        languages: javascript-typescript
-    
-    - name: Autobuild
-      uses: github/codeql-action/autobuild@v3
-    
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v3
+      - name: Checkout
+        # actions/checkout@v4.2.2 — SHA: 11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Initialize CodeQL
+        # github/codeql-action/init@v4.35.1 — SHA: c10b8064de6f491fea524254123dbe5e09572f13
+        # Upgraded from v3 → v4 (v4 released Oct 2025, runs on Node 24,
+        # v3 scheduled for deprecation Dec 2026).
+        uses: github/codeql-action/init@c10b8064de6f491fea524254123dbe5e09572f13
+        with:
+          languages: javascript-typescript
+
+      - name: Autobuild
+        # github/codeql-action/autobuild@v4.35.1 — SHA: c10b8064de6f491fea524254123dbe5e09572f13
+        uses: github/codeql-action/autobuild@c10b8064de6f491fea524254123dbe5e09572f13
+
+      - name: Perform CodeQL Analysis
+        # github/codeql-action/analyze@v4.35.1 — SHA: c10b8064de6f491fea524254123dbe5e09572f13
+        # security-events: write declared above allows this step to upload
+        # SARIF results to GitHub Advanced Security.
+        uses: github/codeql-action/analyze@c10b8064de6f491fea524254123dbe5e09572f13
