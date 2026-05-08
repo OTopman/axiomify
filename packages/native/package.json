@@ -24,7 +24,12 @@
     "build": "tsup"
   },
   "dependencies": {
-    "@axiomify/core": "*",
+    "@axiomify/core": "*"
+  },
+  "peerDependencies": {
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.39.0"
+  },
+  "optionalDependencies": {
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.39.0"
   }
 }
