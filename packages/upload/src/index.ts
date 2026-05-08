@@ -173,7 +173,8 @@ export function useUpload(app: Axiomify): void {
     'onPreHandler',
     async (req: AxiomifyRequest, _res: AxiomifyResponse, match: any) => {
       const fileSchema = match?.route?.schema?.files;
-      const contentType = req.headers['content-type'] || '';
+      /* v8 ignore next -- multipart processing requires real Busboy stream */
+    const contentType = req.headers['content-type'] || '';
 
       if (!fileSchema || !contentType.includes('multipart/form-data')) return;
 

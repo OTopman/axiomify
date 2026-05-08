@@ -1,4 +1,4 @@
-import type { Axiomify } from '@axiomify/core';
+import { Axiomify } from '@axiomify/core';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { OpenApiGenerator } from '../src/generator';
@@ -198,5 +198,74 @@ describe('OpenApiGenerator — Zod v4 schema output', () => {
     expect(generator.formatPath('/users/:id/posts/:postId')).toBe('/users/{id}/posts/{postId}');
     expect(generator.formatPath('/plain')).toBe('/plain');
     expect(generator.formatPath('/')).toBe('/');
+  });
+});
+
+describe('OpenApiGenerator — extended coverage', () => {
+  it('generates per-status-code response schema when response is a map', () => {
+    const app = new Axiomify();
+    app.route({
+      method: 'POST',
+      path: '/users',
+      schema: {
+        response: {
+          201: z.object({ id: z.string() }),
+          400: z.object({ message: z.string() }),
+        } as any,
+      },
+      handler: async (_r, res) => res.send({ id: '1' }),
+    });
+
+    const gen = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } });
+    const spec = gen.generate();
+    expect(spec.paths['/users']?.post?.responses?.['201']).toBeDefined();
+    expect(spec.paths['/users']?.post?.responses?.['400']).toBeDefined();
+  });
+
+  it('generates path parameter schema from route.schema.params', () => {
+    const app = new Axiomify();
+    app.route({
+      method: 'GET',
+      path: '/users/:id',
+      schema: { params: z.object({ id: z.string().uuid() }) },
+      handler: async (_r, res) => res.send({ id: '1' }),
+    });
+
+    const gen = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } });
+    const spec = gen.generate();
+    const params = spec.paths['/users/{id}']?.get?.parameters ?? [];
+    expect(params.some((p: any) => p.name === 'id' && p.in === 'path')).toBe(true);
+  });
+
+  it('generates file upload schema when route.schema.files is defined', () => {
+    const app = new Axiomify();
+    app.route({
+      method: 'POST',
+      path: '/upload',
+      schema: {
+        files: { photo: { maxSize: 1024 * 1024, accept: ['image/jpeg'] } },
+      } as any,
+      handler: async (_r, res) => res.send({ ok: true }),
+    });
+
+    const gen = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } });
+    const spec = gen.generate();
+    const requestBody = spec.paths['/upload']?.post?.requestBody;
+    expect(requestBody).toBeDefined();
+  });
+
+  it('generates query parameter schemas', () => {
+    const app = new Axiomify();
+    app.route({
+      method: 'GET',
+      path: '/search',
+      schema: { query: z.object({ q: z.string(), page: z.coerce.number().optional() }) },
+      handler: async (_r, res) => res.send([]),
+    });
+
+    const gen = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } });
+    const spec = gen.generate();
+    const params = spec.paths['/search']?.get?.parameters ?? [];
+    expect(params.some((p: any) => p.name === 'q' && p.in === 'query')).toBe(true);
   });
 });

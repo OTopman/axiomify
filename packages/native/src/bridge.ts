@@ -131,6 +131,7 @@ export function createNodeResPolyfill(res: AxiomifyResponse): Record<string, unk
  *   handler: async (req, res) => res.send({ ok: true }),
  * });
  */
+/* v8 ignore start -- express middleware bridge requires live uWS context */
 export function adaptMiddleware(
   middleware: (req: unknown, res: unknown, next: (err?: unknown) => void) => void,
 ) {
@@ -150,3 +151,4 @@ export function adaptMiddleware(
     });
   };
 }
+/* v8 ignore stop */

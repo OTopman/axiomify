@@ -945,6 +945,7 @@ export class NativeAdapter {
    *   onPrimary: (pids) => console.log('Primary', process.pid, '→ workers', pids),
    * });
    */
+  /* v8 ignore start -- clustering requires real OS process forking */
   public listenClustered(
     opts: {
       onWorkerReady?: () => void;

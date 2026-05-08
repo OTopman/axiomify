@@ -489,6 +489,7 @@ export class HttpAdapter {
    *   - On a 1 or 2 core machine, spawning 4+ workers HURTS — OS context
    *     switching overhead exceeds any parallelism gain.
    */
+  /* v8 ignore start -- clustering requires real OS process forking, cannot unit-test process forking */
   public listenClustered(
     port: number,
     opts: {
@@ -699,6 +700,7 @@ export class HttpAdapter {
 
     for (let i = 0; i < numWorkers; i++) spawnWorker();
   }
+  /* v8 ignore stop */
 
   public async close(): Promise<void> {
     return new Promise((resolve, reject) => {

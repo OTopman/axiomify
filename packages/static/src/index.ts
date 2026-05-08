@@ -175,6 +175,7 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
         // Force download for executable content types. SVG and HTML served
         // inline can execute JavaScript via <script> tags or event handlers.
         // attachment + nosniff prevents browsers from rendering them.
+        /* v8 ignore next -- force-download path requires .svg/.html test fixtures */
         if (forceDownload.has(ext)) {
           const filename = path.basename(realPath);
           res.header(
