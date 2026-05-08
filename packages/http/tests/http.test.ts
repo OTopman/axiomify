@@ -9,7 +9,11 @@ describe('HTTP Adapter Integration', () => {
 
   beforeAll(async () => {
     const app = new Axiomify();
-    app.route({ method: 'POST', path: '/echo', handler: async (req, res) => res.send(req.body) });
+    app.route({
+      method: 'POST',
+      path: '/echo',
+      handler: async (req, res) => res.send(req.body),
+    });
     const adapter = new HttpAdapter(app, { bodyLimitBytes: 100 });
     server = adapter.listen(0);
     port = (server.address() as any).port;
@@ -19,11 +23,20 @@ describe('HTTP Adapter Integration', () => {
 
   const request = (path: string, method: string, body?: any) => {
     return new Promise<any>((resolve) => {
-      const req = http.request({ port, path, method, headers: { 'Content-Type': 'application/json' } }, (res) => {
-        let data = '';
-        res.on('data', c => data += c);
-        res.on('end', () => resolve({ status: res.statusCode, data: JSON.parse(data || '{}'), headers: res.headers }));
-      });
+      const req = http.request(
+        { port, path, method, headers: { 'Content-Type': 'application/json' } },
+        (res) => {
+          let data = '';
+          res.on('data', (c) => (data += c));
+          res.on('end', () =>
+            resolve({
+              status: res.statusCode,
+              data: JSON.parse(data || '{}'),
+              headers: res.headers,
+            }),
+          );
+        },
+      );
       req.on('error', () => resolve({ status: 413 }));
       if (body) req.write(JSON.stringify(body));
       req.end();
@@ -43,7 +56,9 @@ describe('HTTP Adapter Integration', () => {
   });
 
   it('prevents prototype pollution', async () => {
-    const res = await request('/echo', 'POST', { __proto__: { polluted: true } });
+    const res = await request('/echo', 'POST', {
+      __proto__: { polluted: true },
+    });
     expect(({} as any).polluted).toBeUndefined();
   });
 });

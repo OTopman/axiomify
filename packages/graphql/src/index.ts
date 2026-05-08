@@ -8,111 +8,90 @@ import {
   execute,
   GraphQLError,
   GraphQLSchema,
+  NoSchemaIntrospectionCustomRule,
+  OperationDefinitionNode,
   parse,
   specifiedRules,
   validate,
 } from 'graphql';
 
-// ─── Public types ────────────────────────────────────────────────────────────
-
-/**
- * A factory that receives the raw Axiomify request and returns whatever
- * value you want available as `context` inside every resolver.
- */
 export type GraphQLContextFactory<TContext = Record<string, unknown>> = (
   req: AxiomifyRequest,
   res: AxiomifyResponse,
 ) => TContext | Promise<TContext>;
 
 export interface GraphQLPluginOptions<TContext = Record<string, unknown>> {
-  /** The compiled GraphQL schema to execute against. */
   schema: GraphQLSchema;
-
-  /**
-   * Optional factory for building per-request context.
-   * Defaults to an empty object `{}`.
-   */
   context?: GraphQLContextFactory<TContext>;
-
-  /**
-   * The HTTP path at which the GraphQL endpoint is mounted.
-   * @default '/graphql'
-   */
   path?: string;
-
   /**
-   * Set to `false` to disable the GraphiQL playground entirely.
-   * @default true
+   * Serve the GraphiQL playground. Disable in production.
+   * @default true outside production, false in production
    */
   playground?: boolean;
-
-  /**
-   * Path for the GraphiQL playground page.
-   * @default '/graphql/playground'
-   */
   playgroundPath?: string;
-
-  /**
-   * Maximum depth allowed for incoming GraphQL queries.
-   * Helps prevent deeply nested query abuse.
-   * @default undefined (no depth limit)
-   */
   maxDepth?: number;
-
-  /**
-   * Maximum number of aliases allowed per query.
-   * @default undefined (no alias limit)
-   */
   maxAliases?: number;
-
+  validationRules?: ReadonlyArray<never>;
   /**
-   * Optional array of additional validation rules beyond the
-   * GraphQL spec defaults.
+   * Disables GraphQL introspection queries (__schema, __type).
+   *
+   * Defaults to `true` in production (NODE_ENV === 'production') and `false`
+   * otherwise. Introspection exposes your full schema to any client and is the
+   * first reconnaissance step in targeted GraphQL attacks. Explicitly set this
+   * option to override the environment-based default.
    */
-  validationRules?: ReadonlyArray<any>;
+  disableIntrospection?: boolean;
 }
 
 export interface GraphQLResult {
   data?: Record<string, unknown> | null;
   errors?: ReadonlyArray<{
     message: string;
-    locations?: any;
-    path?: any;
-    extensions?: any;
+    locations?: unknown;
+    path?: unknown;
+    extensions?: unknown;
   }>;
   extensions?: Record<string, unknown>;
 }
 
-// ─── Internal helpers ─────────────────────────────────────────────────────────
-
-/**
- * Recursively walks a parsed query to measure its depth.
- * Returns the maximum depth found.
- */
-function measureDepth(node: any, current = 0): number {
+function measureDepth(node: Record<string, unknown>, current = 0): number {
   if (node.selectionSet) {
-    const children = node.selectionSet.selections as any[];
-    return Math.max(...children.map((s) => measureDepth(s, current + 1)));
+    const children = (
+      node.selectionSet as { selections: Record<string, unknown>[] }
+    ).selections;
+    return children.reduce(
+      (max: number, s) => Math.max(max, measureDepth(s, current + 1)),
+      current,
+    );
   }
   return current;
 }
 
-function countAliases(node: any): number {
-  let count = 0;
-  if (node.alias) count += 1;
+function countAliases(node: Record<string, unknown>): number {
+  let count = node.alias ? 1 : 0;
   if (node.selectionSet) {
-    const children = node.selectionSet.selections as any[];
-    count += children.reduce((sum, s) => sum + countAliases(s), 0);
+    const children = (
+      node.selectionSet as { selections: Record<string, unknown>[] }
+    ).selections;
+    count += children.reduce((sum: number, s) => sum + countAliases(s), 0);
   }
   return count;
 }
 
 function getQueryDepth(doc: DocumentNode): number {
-  return Math.max(0, ...doc.definitions.map((def) => measureDepth(def)));
+  return doc.definitions.reduce(
+    (max, def) =>
+      Math.max(max, measureDepth(def as unknown as Record<string, unknown>)),
+    0,
+  );
 }
 
 function getQueryAliases(doc: DocumentNode): number {
-  return doc.definitions.reduce((sum, def) => sum + countAliases(def), 0);
+  return doc.definitions.reduce(
+    (sum, def) => sum + countAliases(def as unknown as Record<string, unknown>),
+    0,
+  );
 }
 
 function formatGraphQLErrors(errors: ReadonlyArray<GraphQLError>) {
@@ -124,13 +103,21 @@ function formatGraphQLErrors(errors: ReadonlyArray<GraphQLError>) {
   }));
 }
 
-function buildPlaygroundHtml(graphqlPath: string): string {
-  // Minimal self-contained GraphiQL playground (CDN-backed)
-  const escapedPath = graphqlPath
+function escapeHtml(s: string): string {
+  return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function escapeJsString(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function buildPlaygroundHtml(graphqlPath: string): string {
+  const htmlPath = escapeHtml(graphqlPath);
+  const jsPath = escapeJsString(graphqlPath);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -142,26 +129,12 @@ function buildPlaygroundHtml(graphqlPath: string): string {
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body { height: 100vh; display: flex; flex-direction: column; font-family: system-ui, sans-serif; background: #0f0f0f; }
       header {
-        background: #1a1a2e;
-        color: #e0e0ff;
-        padding: 10px 18px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-size: 15px;
-        font-weight: 600;
-        letter-spacing: .02em;
+        background: #1a1a2e; color: #e0e0ff; padding: 10px 18px;
+        display: flex; align-items: center; gap: 10px;
+        font-size: 15px; font-weight: 600; letter-spacing: .02em;
         border-bottom: 1px solid #2e2e5e;
       }
-      header span.badge {
-        background: #6c63ff;
-        color: #fff;
-        border-radius: 4px;
-        padding: 2px 7px;
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: .05em;
-      }
+      header span.badge { background: #6c63ff; color: #fff; border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 700; }
       #graphiql { flex: 1; }
     </style>
     <link rel="stylesheet" href="https://unpkg.com/graphiql@3/graphiql.min.css" />
@@ -170,14 +143,14 @@ function buildPlaygroundHtml(graphqlPath: string): string {
     <header>
       ⚡ Axiomify
       <span class="badge">GraphQL</span>
-      <span style="opacity:.5;font-weight:400;font-size:13px">${escapedPath}</span>
+      <span style="opacity:.5;font-weight:400;font-size:13px">${htmlPath}</span>
     </header>
     <div id="graphiql"></div>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/graphiql@3/graphiql.min.js"></script>
     <script>
-      const fetcher = GraphiQL.createFetcher({ url: '${escapedPath}' });
+      const fetcher = GraphiQL.createFetcher({ url: '${jsPath}' });
       ReactDOM.createRoot(document.getElementById('graphiql')).render(
         React.createElement(GraphiQL, { fetcher })
       );
@@ -186,49 +159,38 @@ function buildPlaygroundHtml(graphqlPath: string): string {
 </html>`;
 }
 
-// ─── Plugin entry point ───────────────────────────────────────────────────────
-
-/**
- * Mounts a fully-featured GraphQL endpoint onto an Axiomify application.
- *
- * @example
- * ```ts
- * import { Axiomify } from '@axiomify/core';
- * import { useGraphQL } from '@axiomify/graphql';
- * import { schema } from './schema';
- *
- * const app = new Axiomify();
- *
- * useGraphQL(app, {
- *   schema,
- *   context: (req) => ({ userId: req.headers['x-user-id'] }),
- * });
- * ```
- */
 export function useGraphQL<TContext = Record<string, unknown>>(
   app: Axiomify,
   options: GraphQLPluginOptions<TContext>,
 ): void {
+  const isProduction = process.env.NODE_ENV === 'production';
   const {
     schema,
     context: contextFactory,
     path: rawPath = '/graphql',
-    playground = true,
+    playground = !isProduction,
     playgroundPath: rawPlaygroundPath,
-    maxDepth,
-    maxAliases,
+    maxDepth = isProduction ? 12 : undefined,
+    maxAliases = isProduction ? 15 : undefined,
     validationRules = [],
   } = options;
 
-  // Normalise the endpoint path
+  // Default: disable introspection in production, enable in dev/test.
+  // Explicit option always wins so callers can override in either direction.
+  const disableIntrospection =
+    options.disableIntrospection ?? isProduction;
+
   const gqlPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
   const pgPath =
     rawPlaygroundPath ??
     (gqlPath.endsWith('/') ? `${gqlPath}playground` : `${gqlPath}/playground`);
 
-  const allRules = [...specifiedRules, ...validationRules];
+  const allRules = [
+    ...specifiedRules,
+    ...(disableIntrospection ? [NoSchemaIntrospectionCustomRule] : []),
+    ...validationRules,
+  ];
 
-  // ── Shared execution logic ─────────────────────────────────────────────────
   async function executeGraphQL(
     req: AxiomifyRequest,
     res: AxiomifyResponse,
@@ -237,97 +199,113 @@ export function useGraphQL<TContext = Record<string, unknown>>(
       operationName?: string;
       variables?: Record<string, unknown>;
     },
+    allowedOperations: ('query' | 'mutation' | 'subscription')[] = [
+      'query',
+      'mutation',
+      'subscription',
+    ],
   ): Promise<void> {
     const { query, operationName, variables } = body;
 
-    // 1. Require a query string
     if (!query || typeof query !== 'string') {
-      const result: GraphQLResult = {
-        errors: [{ message: 'Missing "query" field in request body.' }],
-      };
       return res
         .status(400)
-        .sendRaw(JSON.stringify(result), 'application/json');
+        .sendRaw(
+          JSON.stringify({ errors: [{ message: 'Missing "query" field.' }] }),
+          'application/json',
+        );
     }
 
-    // 2. Parse
     let document: DocumentNode;
     try {
       document = parse(query);
-    } catch (parseErr: any) {
-      const result: GraphQLResult = {
-        errors: [{ message: parseErr.message }],
-      };
-      return res
-        .status(400)
-        .sendRaw(JSON.stringify(result), 'application/json');
+    } catch (parseErr: unknown) {
+      return res.status(400).sendRaw(
+        JSON.stringify({
+          errors: [{ message: (parseErr as Error).message }],
+        }),
+        'application/json',
+      );
     }
 
-    // 3. Custom limits (depth / alias) — run BEFORE schema validation so
-    //    abusive queries are rejected cheaply without touching the schema.
+    // Reject disallowed operation types (e.g. mutations over GET).
+    if (allowedOperations.length < 3) {
+      for (const def of document.definitions) {
+        const op = def as OperationDefinitionNode;
+        if (op.operation && !allowedOperations.includes(op.operation)) {
+          res.header('Allow', 'POST');
+          return res.status(405).sendRaw(
+            JSON.stringify({
+              errors: [
+                {
+                  message: `Operation type "${op.operation}" is not allowed on this endpoint.`,
+                },
+              ],
+            }),
+            'application/json',
+          );
+        }
+      }
+    }
+
     if (maxDepth !== undefined) {
       const depth = getQueryDepth(document);
       if (depth > maxDepth) {
-        const result: GraphQLResult = {
-          errors: [
-            {
-              message: `Query depth ${depth} exceeds the maximum allowed depth of ${maxDepth}.`,
-            },
-          ],
-        };
-        return res
-          .status(400)
-          .sendRaw(JSON.stringify(result), 'application/json');
+        return res.status(400).sendRaw(
+          JSON.stringify({
+            errors: [
+              {
+                message: `Query depth ${depth} exceeds maximum of ${maxDepth}.`,
+              },
+            ],
+          }),
+          'application/json',
+        );
       }
     }
 
     if (maxAliases !== undefined) {
       const aliases = getQueryAliases(document);
       if (aliases > maxAliases) {
-        const result: GraphQLResult = {
-          errors: [
-            {
-              message: `Query contains ${aliases} aliases which exceeds the maximum of ${maxAliases}.`,
-            },
-          ],
-        };
-        return res
-          .status(400)
-          .sendRaw(JSON.stringify(result), 'application/json');
+        return res.status(400).sendRaw(
+          JSON.stringify({
+            errors: [
+              {
+                message: `Query has ${aliases} aliases, exceeding maximum of ${maxAliases}.`,
+              },
+            ],
+          }),
+          'application/json',
+        );
       }
     }
 
-    // 4. Validate against schema
     const validationErrors = validate(schema, document, allRules);
     if (validationErrors.length > 0) {
-      const result: GraphQLResult = {
-        errors: formatGraphQLErrors(validationErrors),
-      };
       return res
         .status(400)
-        .sendRaw(JSON.stringify(result), 'application/json');
+        .sendRaw(
+          JSON.stringify({ errors: formatGraphQLErrors(validationErrors) }),
+          'application/json',
+        );
     }
 
-    // 5. Build context
     let ctx: TContext = {} as TContext;
     if (contextFactory) {
       try {
         ctx = await contextFactory(req, res);
-      } catch (ctxErr: any) {
-        const result: GraphQLResult = {
-          errors: [
-            {
-              message: ctxErr?.message ?? 'Context factory threw an error.',
-            },
-          ],
-        };
-        return res
-          .status(500)
-          .sendRaw(JSON.stringify(result), 'application/json');
+      } catch (ctxErr: unknown) {
+        return res.status(500).sendRaw(
+          JSON.stringify({
+            errors: [
+              { message: (ctxErr as Error)?.message ?? 'Context error.' },
+            ],
+          }),
+          'application/json',
+        );
       }
     }
 
-    // 6. Execute
     try {
       const execResult = await execute({
         schema,
@@ -347,21 +325,21 @@ export function useGraphQL<TContext = Record<string, unknown>>(
           : {}),
       };
 
-      // GraphQL spec: always 200, even for partial errors
       return res
         .status(200)
         .sendRaw(JSON.stringify(result), 'application/json');
-    } catch (execErr: any) {
-      const result: GraphQLResult = {
-        errors: [{ message: execErr?.message ?? 'Execution error.' }],
-      };
-      return res
-        .status(500)
-        .sendRaw(JSON.stringify(result), 'application/json');
+    } catch (execErr: unknown) {
+      return res.status(500).sendRaw(
+        JSON.stringify({
+          errors: [
+            { message: (execErr as Error)?.message ?? 'Execution error.' },
+          ],
+        }),
+        'application/json',
+      );
     }
   }
 
-  // ── POST /graphql — primary endpoint ──────────────────────────────────────
   app.route({
     method: 'POST',
     path: gqlPath,
@@ -375,8 +353,6 @@ export function useGraphQL<TContext = Record<string, unknown>>(
     },
   });
 
-  // ── GET /graphql — introspection / simple queries via query string ─────────
-  //    e.g. GET /graphql?query={__typename}
   app.route({
     method: 'GET',
     path: gqlPath,
@@ -388,29 +364,33 @@ export function useGraphQL<TContext = Record<string, unknown>>(
         try {
           variables = JSON.parse(q.variables);
         } catch {
-          const result: GraphQLResult = {
-            errors: [{ message: 'Could not parse "variables" as JSON.' }],
-          };
-          return res
-            .status(400)
-            .sendRaw(JSON.stringify(result), 'application/json');
+          return res.status(400).sendRaw(
+            JSON.stringify({
+              errors: [{ message: 'Could not parse "variables" as JSON.' }],
+            }),
+            'application/json',
+          );
         }
       }
 
-      await executeGraphQL(req, res, {
-        query: q.query,
-        operationName: q.operationName,
-        variables,
-      });
+      await executeGraphQL(
+        req,
+        res,
+        { query: q.query, operationName: q.operationName, variables },
+        ['query'],
+      );
     },
   });
 
-  // ── GET /graphql/playground — GraphiQL UI ─────────────────────────────────
   if (playground) {
     app.route({
       method: 'GET',
       path: pgPath,
       handler: async (_req, res) => {
+        res.header(
+          'Content-Security-Policy',
+          "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data:; fetch-src 'self';",
+        );
         res.status(200).sendRaw(buildPlaygroundHtml(gqlPath), 'text/html');
       },
     });

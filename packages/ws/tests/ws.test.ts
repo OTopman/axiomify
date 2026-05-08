@@ -39,3 +39,21 @@ describe('WebSocket Plugin', () => {
     expect(stats).toHaveProperty('connectedClients');
   });
 });
+
+it('rejects upgrades beyond limit and accepts again after one drops', async () => {
+  let upgradeHandler: any;
+  const server = { on: vi.fn((event, fn) => { if (event === 'upgrade') upgradeHandler = fn; }) } as any;
+  const manager = new WsManager({ server, maxConnections: 1, heartbeatIntervalMs: 0 } as any);
+
+  (manager as any).wss.clients.add({});
+  const socket1 = { write: vi.fn(), destroy: vi.fn() } as any;
+  await upgradeHandler({ url: '/ws' }, socket1, Buffer.alloc(0));
+  expect(socket1.write).toHaveBeenCalledWith('HTTP/1.1 503 Service Unavailable\r\n\r\n');
+
+  (manager as any).wss.clients.clear();
+  const socket2 = { write: vi.fn(), destroy: vi.fn() } as any;
+  const spy = vi.spyOn((manager as any).wss, 'handleUpgrade').mockImplementation((_r: any, _s: any, _h: any, cb: any) => cb({ on: vi.fn() }));
+  await upgradeHandler({ url: '/ws' }, socket2, Buffer.alloc(0));
+  expect(spy).toHaveBeenCalled();
+  spy.mockRestore();
+});

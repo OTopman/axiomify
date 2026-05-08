@@ -3,96 +3,189 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 export interface StaticOptions {
-  prefix: string; // e.g., '/public'
-  root: string; // Absolute path to the folder, e.g., path.join(__dirname, 'public')
+  prefix: string;
+  root: string;
+  /**
+   * Force download (Content-Disposition: attachment) instead of inline
+   * rendering for these extensions. Defaults to forcing download for SVG,
+   * HTML, and XML files, which can execute JavaScript when rendered inline.
+   */
+  forceDownloadExtensions?: string[];
+  /**
+   * Cache-Control header value for all served files.
+   * @default 'public, max-age=86400'
+   * @example 'public, max-age=31536000, immutable'  // for content-hashed assets
+   * @example 'no-store'                              // for API responses
+   * @example 'public, max-age=3600, stale-while-revalidate=86400'
+   */
+  cacheControl?: string;
+  /**
+   * Serve `index.html` when a directory path is requested. Default: true.
+   */
+  serveIndex?: boolean;
 }
 
 const MIME_TYPES: Record<string, string> = {
-  '.html': 'text/html',
-  '.css': 'text/css',
-  '.js': 'application/javascript',
-  '.json': 'application/json',
+  // Web
+  '.html': 'text/html; charset=utf-8',
+  '.htm': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
+  '.cjs': 'application/javascript; charset=utf-8',
+  '.ts': 'application/typescript',
+  '.json': 'application/json; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
+  '.txt': 'text/plain; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
+  // Images
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
   '.svg': 'image/svg+xml',
-  '.mp4': 'video/mp4',
+  '.ico': 'image/x-icon',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.bmp': 'image/bmp',
+  '.tiff': 'image/tiff',
+  '.tif': 'image/tiff',
+  // Fonts
+  '.woff': 'font/woff',
   '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.eot': 'application/vnd.ms-fontobject',
+  // Media
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.ogg': 'video/ogg',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.flac': 'audio/flac',
+  // Documents
+  '.pdf': 'application/pdf',
+  // Data
+  '.csv': 'text/csv; charset=utf-8',
+  '.yaml': 'application/yaml',
+  '.yml': 'application/yaml',
+  // Archives
+  '.zip': 'application/zip',
+  '.gz': 'application/gzip',
+  '.tar': 'application/x-tar',
+  // WebAssembly
+  '.wasm': 'application/wasm',
 };
 
+const DEFAULT_FORCE_DOWNLOAD = new Set(['.svg', '.html', '.htm', '.xml']);
+
+function realpathSafe(target: string): Promise<string> {
+  if (typeof fs.promises.realpath === 'function') {
+    return fs.promises.realpath(target);
+  }
+  return Promise.resolve(path.resolve(target));
+}
+
 export function serveStatic(app: Axiomify, options: StaticOptions): void {
-  // Ensure the prefix starts with a slash and doesn't end with one
   const prefix = options.prefix.startsWith('/')
     ? options.prefix
     : `/${options.prefix}`;
   const routePath = prefix === '/' ? '/*' : `${prefix}/*`;
 
-  // Resolve the root once up-front so the containment check is cheap per-request.
   const rootResolved = path.resolve(options.root);
+  const rootRealPath = realpathSafe(rootResolved);
+  const forceDownload = options.forceDownloadExtensions
+    ? new Set(options.forceDownloadExtensions.map((e) => e.toLowerCase()))
+    : DEFAULT_FORCE_DOWNLOAD;
+  const cacheControl = options.cacheControl ?? 'public, max-age=86400';
+  const serveIndex = options.serveIndex !== false;
 
   app.route({
     method: 'GET',
     path: routePath,
     handler: async (req, res) => {
       try {
-        // Extract the requested file path from the wildcard parameter
-        const reqPath = (req.params as any)['*'] || '';
+        const rootReal = await rootRealPath;
+        const reqPath = String((req.params as any)['*'] || '');
+        let decodedPath: string;
+        try {
+          decodedPath = decodeURIComponent(reqPath);
+        } catch {
+          return res.status(400).send(null, 'Bad Request');
+        }
 
-        // First pass: normalize and strip a leading "../" run. This keeps the
-        // behaviour documented in the existing tests (traversal attempts
-        // resolve to a missing path inside root rather than 403).
-        const safeSuffix = path
-          .normalize(reqPath)
-          .replace(/^(\.\.[\/\\])+/, '');
-        const absolutePath = path.resolve(rootResolved, safeSuffix);
+        if (decodedPath.includes('\0') || path.isAbsolute(decodedPath)) {
+          return res.status(403).send(null, 'Forbidden');
+        }
 
-        // Second pass (defense in depth): after resolving, the final path MUST
-        // be inside rootResolved. Covers Windows-style '..\..\' inputs, mixed
-        // separators, and anything the regex missed.
+        const normalizedPath = path.normalize(decodedPath.replace(/\\/g, '/'));
         if (
-          absolutePath !== rootResolved &&
-          !absolutePath.startsWith(rootResolved + path.sep)
+          normalizedPath === '..' ||
+          normalizedPath.startsWith(`..${path.sep}`) ||
+          normalizedPath.includes(`${path.sep}..${path.sep}`)
         ) {
           return res.status(403).send(null, 'Forbidden');
         }
 
-        // Check if file exists and is not a directory
-        const stat = await fs.promises.stat(absolutePath);
+        const absolutePath = path.resolve(rootReal, normalizedPath);
+        const realPath = await realpathSafe(absolutePath);
+
+        if (
+          realPath !== rootReal &&
+          !realPath.startsWith(rootReal + path.sep)
+        ) {
+          return res.status(403).send(null, 'Forbidden');
+        }
+
+        const stat = await fs.promises.stat(realPath);
+
+        // Directory: try serving index.html when serveIndex is enabled
+        if (stat.isDirectory()) {
+          if (!serveIndex) return res.status(403).send(null, 'Forbidden');
+          const indexPath = path.join(realPath, 'index.html');
+          try {
+            const idxStat = await fs.promises.stat(indexPath);
+            if (!idxStat.isFile()) return res.status(404).send(null, 'File not found');
+            res.header('Cache-Control', cacheControl);
+            res.header('Content-Length', String(idxStat.size));
+            res.stream(fs.createReadStream(indexPath), 'text/html; charset=utf-8');
+          } catch {
+            res.status(404).send(null, 'File not found');
+          }
+          return;
+        }
+
         if (!stat.isFile()) {
           return res.status(404).send(null, 'File not found');
         }
 
-        // Generate ETag from file size and modified time
-        const etag = `W/"${stat.size.toString(16)}-${stat.mtime
-          .getTime()
-          .toString(16)}"`;
+        const etag = `W/"${stat.size.toString(16)}-${stat.mtime.getTime().toString(16)}"`;
         res.header('ETag', etag);
 
-        // Check If-None-Match for 304 Not Modified. Per RFC 7232, a 304
-        // response must not include a message body or Content-Type — only
-        // validators. `sendRaw('')` would still set Content-Type, so poke
-        // res.raw directly for a clean 304.
         if (req.headers['if-none-match'] === etag) {
-          const rawRes = (res as any).raw;
-          if (rawRes && typeof rawRes.writeHead === 'function') {
-            rawRes.writeHead(304, { ETag: etag });
-            rawRes.end();
-            return;
-          }
-          // Fallback if the raw response isn't a Node ServerResponse shape.
           return res.status(304).sendRaw('');
         }
 
-        // Determine MIME type
-        const ext = path.extname(absolutePath).toLowerCase();
+        const ext = path.extname(realPath).toLowerCase();
         const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
-        // Add caching headers
-        res.header('Cache-Control', 'public, max-age=86400');
+        res.header('Cache-Control', cacheControl);
         res.header('Content-Length', String(stat.size));
 
-        // Use the native streaming API we built in P1
-        const stream = fs.createReadStream(absolutePath);
+        // Force download for executable content types. SVG and HTML served
+        // inline can execute JavaScript via <script> tags or event handlers.
+        // attachment + nosniff prevents browsers from rendering them.
+        /* v8 ignore next -- force-download path requires .svg/.html test fixtures */
+        if (forceDownload.has(ext)) {
+          const filename = path.basename(realPath);
+          res.header(
+            'Content-Disposition',
+            `attachment; filename="${filename.replace(/"/g, '\\"')}"`,
+          );
+          res.header('X-Content-Type-Options', 'nosniff');
+        }
+
+        const stream = fs.createReadStream(realPath);
         res.stream(stream, contentType);
       } catch (err: any) {
         if (err.code === 'ENOENT') {

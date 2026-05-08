@@ -1,204 +1,147 @@
 # @axiomify/auth
 
-JWT-based authentication plugin for Axiomify with automatic `req.user` population and secure token refresh.
+JWT authentication and refresh-token rotation for Axiomify.
 
-## Installation
+## Install
 
 ```bash
-npm install @axiomify/auth
+npm install @axiomify/auth jsonwebtoken
+npm install --save-dev @types/jsonwebtoken
 ```
 
-## Quick Start
+## Quick start
 
 ```typescript
-import { Axiomify } from '@axiomify/core';
-import { createAuthPlugin, createRefreshHandler } from '@axiomify/auth';
-import { z } from 'zod';
+import { createAuthPlugin, createRefreshHandler, MemoryTokenStore } from '@axiomify/auth';
 
-const app = new Axiomify();
-const secret = 'your-secret-key-at-least-32-chars-long!';
+// Use Redis in production — MemoryTokenStore is per-process and breaks across workers.
+const tokenStore = new MemoryTokenStore();
 
+// Auth plugin — attach to any route that requires a valid JWT
 const requireAuth = createAuthPlugin({
-  secret,
-  // Optional: custom header extractor (defaults to Authorization: Bearer <token>)
-  getToken: (req) => (req.headers.authorization as string)?.replace('Bearer ', ''),
+  secret: process.env.JWT_SECRET!,   // minimum 32 characters
+  algorithms: ['HS256'],
+  store: tokenStore,  // optional: enables access token revocation
 });
 
-// Create a protected route
+// Refresh handler — issues a new access token from a valid refresh token
+const refreshTokens = createRefreshHandler({
+  secret: process.env.JWT_SECRET!,
+  refreshSecret: process.env.JWT_REFRESH_SECRET!,
+  accessTokenTtl: 900,        // 15 minutes
+  refreshTokenTtl: 2_592_000, // 30 days
+  store: tokenStore,
+});
+
+// Routes
+app.route({ method: 'POST', path: '/auth/refresh', handler: refreshTokens });
+
 app.route({
   method: 'GET',
-  path: '/profile',
-  plugins: [requireAuth], // Enforces JWT validation
-  schema: {
-    response: z.object({ id: z.string(), email: z.string() }),
-  },
+  path: '/me',
+  plugins: [requireAuth],
   handler: async (req, res) => {
-    // req.user is automatically populated with the decoded JWT payload
-    return res.send({
-      id: req.user.id,
-      email: req.user.email,
-    });
+    const user = getAuthUser(req); // typed: AuthUser | undefined
+    res.send(user);
   },
 });
 ```
 
-## Features
-
-- **RFC 6750 Compliant**: Extracts Bearer tokens from the `Authorization` header (case-insensitive)
-- **Type-Safe**: Automatic `req.user` augmentation with TypeScript inference
-- **Flexible**: Custom token extractor, custom payload transformation
-- **Secure**: Enforces minimum secret entropy (32 characters recommended), warns on weak secrets
-- **JWT Refresh**: Built-in `createRefreshHandler` for secure token rotation
-
-## API Reference
+## Options
 
 ### `createAuthPlugin(options)`
 
-Creates an authentication plugin handler for `route.plugins`.
+| Option | Type | Description |
+|---|---|---|
+| `secret` | `string` | JWT signing secret. Minimum 32 characters. |
+| `algorithms` | `Algorithm[]` | Accepted algorithms. Default: `['HS256']`. Never include `'none'`. |
+| `getToken` | `(req) => string \| null` | Custom token extractor. Default: `Authorization: Bearer <token>`. |
+| `issuer` | `string` | Validates the `iss` claim. |
+| `audience` | `string \| string[]` | Validates the `aud` claim. |
+| `store` | `TokenStore` | **Access token revocation store.** When set, every request checks `store.exists(jti)`. Rejected if false. |
 
-**Options:**
+### Access token revocation with `store`
+
+When you provide a `store`, the plugin checks `store.exists(jti)` on every authenticated
+request. To revoke a token (e.g., on logout):
 
 ```typescript
-interface AuthOptions {
-  secret: string;                              // HS256 signing secret
-  algorithm?: 'HS256' | 'HS384' | 'HS512';    // Default: HS256
-  getToken?: (req: AxiomifyRequest) => string | undefined;
-  onError?: (err: Error) => void;              // Custom error handler
-}
+// On login — save the token's jti so exists() returns true
+const jti = randomUUID();
+const accessToken = jwt.sign({ id: user.id, jti }, secret, { expiresIn: 900 });
+await tokenStore.save(jti, 900);
+
+// On logout — revoke immediately, before the token expires
+await tokenStore.revoke(jti);
+// All subsequent requests with that token return 401
 ```
+
+**Without a store**, access tokens are valid until they expire regardless of logout.
 
 ### `createRefreshHandler(options)`
 
-Creates a route handler for secure token refresh.
+| Option | Type | Description |
+|---|---|---|
+| `secret` | `string` | Access token secret. |
+| `refreshSecret` | `string` | Separate secret for refresh tokens. |
+| `accessTokenTtl` | `number` | Access token TTL in seconds. Default: `900` (15 min). |
+| `refreshTokenTtl` | `number` | Refresh token TTL in seconds. Default: `604800` (7 days). |
+| `store` | `TokenStore` | Refresh token revocation store. Strongly recommended. Without it, stolen refresh tokens cannot be revoked. |
+| `algorithms` | `Algorithm[]` | Algorithms. Default: `['HS256']`. |
 
-**Options:**
+## TokenStore interface
 
 ```typescript
-interface RefreshHandlerOptions {
-  secret: string;           // Access token signing secret
-  refreshSecret: string;    // Refresh token signing secret (different from access secret)
-  accessTokenTtl?: number;  // Access token lifetime in seconds (default: 3600)
-  refreshTokenTtl?: number; // Refresh token lifetime in seconds (default: 604800)
+interface TokenStore {
+  save(jti: string, ttlSeconds: number): Promise<void>;
+  exists(jti: string): Promise<boolean>;
+  revoke(jti: string): Promise<void>;
 }
 ```
 
-**Usage:**
+**`MemoryTokenStore`** — in-process store. Only suitable for single-process development.
+
+**Production:** Implement `TokenStore` against Redis:
 
 ```typescript
-import { createRefreshHandler } from '@axiomify/auth';
+import { createClient } from 'redis';
+import type { TokenStore } from '@axiomify/auth';
 
-const refreshHandler = createRefreshHandler({
-  secret: 'access-secret-at-least-32-chars',
-  refreshSecret: 'refresh-secret-at-least-32-chars',
-  accessTokenTtl: 900, // 15 minutes
+const redis = createClient();
+await redis.connect();
+
+const redisStore: TokenStore = {
+  save:   (jti, ttl) => redis.set(`jwt:${jti}`, '1', { EX: ttl }).then(() => undefined),
+  exists: (jti)      => redis.get(`jwt:${jti}`).then(v => v === '1'),
+  revoke: (jti)      => redis.del(`jwt:${jti}`).then(() => undefined),
+};
+```
+
+## Rate limiting refresh endpoints
+
+Always rate-limit `/auth/refresh` — brute-forcing refresh tokens is a common attack:
+
+```typescript
+import { createRateLimitPlugin } from '@axiomify/rate-limit';
+
+const refreshRateLimit = createRateLimitPlugin({
+  windowMs: 60_000,
+  max: 10,
+  store: redisRateLimitStore,
 });
 
 app.route({
   method: 'POST',
   path: '/auth/refresh',
-  handler: refreshHandler,
+  plugins: [refreshRateLimit],
+  handler: refreshTokens,
 });
 ```
 
-## Token Payload
-
-The decoded JWT payload is stored in `req.user`. Standard JWT claims are supported:
+## Helper
 
 ```typescript
-// When you create a token, include:
-const token = jwt.sign({
-  id: 'user-123',        // Your user ID (required for refresh)
-  email: 'user@example.com',
-  sub: 'alternative-id', // Subject claim (alternative to id)
-  iat: Math.floor(Date.now() / 1000),
-  exp: Math.floor(Date.now() / 1000) + 3600,
-}, secret);
+import { getAuthUser } from '@axiomify/auth';
 
-// In your route handler:
-app.route({
-  method: 'GET',
-  path: '/profile',
-  plugins: [requireAuth],
-  handler: async (req, res) => {
-    console.log(req.user.id);    // 'user-123'
-    console.log(req.user.email); // 'user@example.com'
-  },
-});
+const user = getAuthUser(req); // AuthUser | undefined
 ```
-
-## Custom Token Extraction
-
-```typescript
-const customHeaderAuth = createAuthPlugin({
-  secret: 'your-secret',
-  // Extract from a custom header instead of Authorization
-  getToken: (req) => req.headers['x-api-token'] as string,
-});
-
-// Or from query parameters (not recommended for production):
-const queryAuth = createAuthPlugin({
-  secret: 'your-secret',
-  getToken: (req) => req.query.token as string,
-});
-```
-
-## Security Considerations
-
-1. **Secret Management**: Always use environment variables for secrets. Minimum 32 characters recommended.
-   ```typescript
-   const secret = process.env.JWT_SECRET!;
-   if (secret.length < 32) {
-     console.warn('JWT secret is shorter than 32 characters. Consider using a stronger secret.');
-   }
-   ```
-
-2. **Token Expiry**: Always set `exp` in your token payload.
-   ```typescript
-   const token = jwt.sign({
-     id: user.id,
-     exp: Math.floor(Date.now() / 1000) + 3600, // Expires in 1 hour
-   }, secret);
-   ```
-
-3. **Refresh Token Rotation**: Use separate signing secrets for access and refresh tokens.
-   ```typescript
-   const refreshHandler = createRefreshHandler({
-     secret: process.env.JWT_ACCESS_SECRET!,
-     refreshSecret: process.env.JWT_REFRESH_SECRET!, // Different!
-   });
-   ```
-
-4. **HTTPS Only**: Always transmit tokens over HTTPS. Set secure cookies if using them:
-   ```typescript
-   res.header('Set-Cookie', `token=${accessToken}; Secure; HttpOnly; SameSite=Strict`);
-   ```
-
-## Errors
-
-The auth plugin returns `401 Unauthorized` for:
-- Missing Authorization header
-- Malformed Bearer token
-- Invalid or expired JWT signature
-- Missing required `id` or `sub` claim in refresh tokens
-
-## Testing
-
-```typescript
-import jwt from 'jsonwebtoken';
-
-it('populates req.user with decoded JWT', async () => {
-  const secret = 'test-secret-that-is-at-least-32-chars-long';
-  const token = jwt.sign({ id: 'user-1' }, secret);
-  
-  const res = await fetch('http://localhost:3000/profile', {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  
-  const data = await res.json();
-  expect(data.id).toBe('user-1');
-});
-```
-
-## License
-
-MIT

@@ -3,30 +3,110 @@ import type {
   AxiomifyRequest,
   AxiomifyResponse,
 } from '@axiomify/core';
+import { timingSafeEqual } from 'crypto';
 
 export interface MetricsOptions {
   path?: string;
   protect?: (req: AxiomifyRequest) => boolean | Promise<boolean>;
-  wsManager?: any;
+  /**
+   * Optional WebSocket manager integration. When provided, the metrics endpoint
+   * includes `wsConnections` and `wsRooms` from `WsManager.getStats()`.
+   *
+   * Pass the result of `getWsManager(app)` from `@axiomify/ws`.
+   */
+  wsManager?: {
+    getStats(): { connectedClients: number; rooms: Record<string, number> };
+  };
+  allowlist?: string[];
+  requireToken?: string;
+  /**
+   * Explicitly allow public metrics in production. Defaults to false.
+   */
+  allowPublicInProduction?: boolean;
 }
 
-/**
- * Prometheus requires label values to have low, bounded cardinality. Using
- * the concrete request path (`/users/123`, `/users/124`, …) as a label would
- * create a distinct time-series per URL, leading to OOM under traffic. The
- * matched route's *pattern* (`/users/:id`) is the correct, bounded value.
- */
+function ipv4ToInt(ip: string): number | null {
+  const parts = ip.split('.');
+  if (parts.length !== 4) return null;
+  const nums = parts.map((p) => Number(p));
+  if (nums.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+  return ((nums[0] << 24) >>> 0) + (nums[1] << 16) + (nums[2] << 8) + nums[3];
+}
+
+type IpMatcher = (ip: string) => boolean;
+
+function buildAllowlistMatchers(allowlist: string[]): IpMatcher[] {
+  return allowlist.flatMap((entry) => {
+    if (!entry.includes('/')) {
+      return [(ip: string) => ip === entry];
+    }
+
+    const [cidrIp, bitsRaw] = entry.split('/');
+    const bits = Number(bitsRaw);
+    const cidrInt = ipv4ToInt(cidrIp);
+    if (cidrInt === null || !Number.isInteger(bits) || bits < 0 || bits > 32) {
+      return [];
+    }
+
+    const mask = bits === 0 ? 0 : ~((1 << (32 - bits)) - 1) >>> 0;
+    return [
+      (ip: string) => {
+        const ipInt = ipv4ToInt(ip);
+        return ipInt !== null && (ipInt & mask) === (cidrInt & mask);
+      },
+    ];
+  });
+}
+
+function escapeLabelValue(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n');
+}
+
 export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
   const metricsPath = options.path ?? '/metrics';
+  let emittedPublicMetricsWarning = false;
+
+  if (!options.protect && !options.allowlist && !options.requireToken) {
+    console.warn(
+      '[axiomify/metrics] Warning: /metrics is publicly accessible. Set protect, allowlist, or requireToken in production.',
+    );
+  }
+
+  const allowlistMatchers = options.allowlist
+    ? buildAllowlistMatchers(options.allowlist)
+    : null;
 
   const stats = {
     requestsTotal: new Map<string, number>(),
     durationTotal: new Map<string, number>(),
   };
 
-  // Start our own timer. Previously metrics depended on @axiomify/logger
-  // setting `req.state.startTime`; loaded alone, metrics silently reported
-  // `durationMs = 0` on every request.
+  const record = (
+    req: AxiomifyRequest,
+    status: number | string,
+    routeLabel: string,
+  ) => {
+    if (req.path === metricsPath) return;
+
+    const label =
+      `method="${escapeLabelValue(req.method)}",` +
+      `route="${escapeLabelValue(routeLabel)}",` +
+      `status="${escapeLabelValue(String(status))}"`;
+
+    const durationMs = req.state.startTime
+      ? Number(process.hrtime.bigint() - req.state.startTime) / 1_000_000
+      : 0;
+
+    stats.requestsTotal.set(label, (stats.requestsTotal.get(label) ?? 0) + 1);
+    stats.durationTotal.set(
+      label,
+      (stats.durationTotal.get(label) ?? 0) + durationMs,
+    );
+  };
+
   app.addHook('onRequest', (req: AxiomifyRequest) => {
     if (req.state.startTime === undefined) {
       req.state.startTime = process.hrtime.bigint();
@@ -34,41 +114,73 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
   });
 
   app.addHook(
-    'onPostHandler',
-    (req: AxiomifyRequest, res: AxiomifyResponse, match: any) => {
-      if (req.path === metricsPath) return;
-
-      // Prefer the matched route pattern for cardinality control; fall back
-      // to the concrete path only if no match is available (edge cases:
-      // hooks that fire with `match == null`).
-      const routeLabel: string = match?.route?.path ?? req.path;
-
-      const status = res.headersSent ? (res as any).statusCode || 200 : 500;
-      const label = `method="${req.method}",route="${routeLabel}",status="${
-        status === 0 ? 'unknown' : status
-      }"`;
-
-      const durationMs = req.state.startTime
-        ? Number(process.hrtime.bigint() - req.state.startTime) / 1_000_000
-        : 0;
-
-      stats.requestsTotal.set(label, (stats.requestsTotal.get(label) || 0) + 1);
-      stats.durationTotal.set(
-        label,
-        (stats.durationTotal.get(label) || 0) + durationMs,
-      );
+    'onPreHandler',
+    (req: AxiomifyRequest, _res: AxiomifyResponse, match: any) => {
+      if (match?.route?.path) {
+        req.state.metricsRouteLabel = String(match.route.path);
+      }
     },
   );
+
+  app.addHook(
+    'onPostHandler',
+    (req: AxiomifyRequest, res: AxiomifyResponse, match: any) => {
+      const routeLabel: string =
+        match?.route?.path ??
+        (req.state.metricsRouteLabel as string | undefined) ??
+        UNMATCHED_ROUTE_LABEL;
+      const status = res.statusCode || 200;
+      record(req, status, routeLabel);
+    },
+  );
+
+  app.addHook('onError', (err: any, req: AxiomifyRequest) => {
+    const status =
+      typeof err?.statusCode === 'number'
+        ? err.statusCode
+        : typeof err?.status === 'number'
+          ? err.status
+          : 500;
+    const routeLabel =
+      (req.state.metricsRouteLabel as string | undefined) ??
+      UNMATCHED_ROUTE_LABEL;
+    record(req, status, routeLabel);
+  });
 
   app.route({
     method: 'GET',
     path: metricsPath,
     handler: async (req, res) => {
+      if (options.requireToken) {
+        const token = req.headers['x-metrics-token'];
+        const supplied = Array.isArray(token) ? token[0] : token;
+        if (!tokenMatches(supplied, options.requireToken)) {
+          return res.status(403).send(null, 'Forbidden');
+        }
+      }
+
+      if (allowlistMatchers) {
+        const ip = req.ip ?? '';
+        if (!allowlistMatchers.some((match) => match(ip)))
+          return res.status(403).send(null, 'Forbidden');
+      }
+
       if (options.protect) {
         const isAllowed = await options.protect(req);
         if (!isAllowed) {
           return res.status(403).send(null, 'Forbidden');
         }
+      } else if (
+        process.env.NODE_ENV === 'production' &&
+        !options.allowPublicInProduction
+      ) {
+        if (!emittedPublicMetricsWarning) {
+          emittedPublicMetricsWarning = true;
+          console.warn(
+            '[axiomify/metrics] Denied public metrics request in production.',
+          );
+        }
+        return res.status(403).send(null, 'Forbidden');
       }
 
       let output =
@@ -79,7 +191,7 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
       }
 
       output +=
-        '\n# HELP http_request_duration_ms Total duration of HTTP requests in milliseconds.\n';
+        '\n# HELP http_request_duration_ms Total duration of HTTP requests in ms.\n';
       output += '# TYPE http_request_duration_ms counter\n';
       for (const [label, duration] of stats.durationTotal.entries()) {
         output += `http_request_duration_ms{${label}} ${duration.toFixed(3)}\n`;
@@ -92,10 +204,16 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
         output += `ws_connected_clients ${wsStats.connectedClients}\n`;
       }
 
-      // Explicitly flag headersSent for the mock-based test suite. The
-      // adapter-backed res.sendRaw sets it for real.
-      (res as any).headersSent = true;
+      // Do NOT mutate res.headersSent — sendRaw handles response state.
       res.sendRaw(output, 'text/plain; version=0.0.4');
     },
   });
 }
+  const UNMATCHED_ROUTE_LABEL = '__unmatched__';
+  const tokenMatches = (supplied: string | undefined, expected: string) => {
+    if (typeof supplied !== 'string') return false;
+    const a = Buffer.from(supplied);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  };

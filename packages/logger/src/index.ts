@@ -1,86 +1,133 @@
 import { Axiomify } from '@axiomify/core';
-import { Maskify } from 'maskify-ts';
 import pc from 'picocolors';
 
-declare module '@axiomify/core' {
-  interface RequestState {
-    startTime?: bigint;
-  }
-}
-
 export interface LoggerOptions {
-  /** Fields to mask in logs. Default: common sensitive fields */
   sensitiveFields?: string[];
-  /** Log level. Default: 'info' */
   level?: 'debug' | 'info' | 'warn' | 'error';
-  /** Whether to beautify console output. Default: true (if TTY) */
   beautify?: boolean;
+  /**
+   * Include request headers in the log entry.
+   * Defaults to `false` — headers often contain auth tokens and cookies.
+   * Enable only when you are confident your log pipeline is secure and
+   * sensitive headers are masked via `sensitiveFields`.
+   */
+  includeHeaders?: boolean;
+  /**
+   * Include the response payload in the log entry.
+   * Defaults to `false` — payloads can contain PII.
+   */
+  includePayload?: boolean;
 }
 
-export function useLogger(app: Axiomify, options: LoggerOptions = {}) {
-  const sensitiveFields = options.sensitiveFields || [
+type LogLevel = NonNullable<LoggerOptions['level']>;
+
+const LEVEL_RANK: Record<LogLevel, number> = {
+  debug: 0,
+  info: 1,
+  warn: 2,
+  error: 3,
+};
+
+function fallbackMaskObject(
+  input: unknown,
+  sensitiveFields: Set<string>,
+): unknown {
+  if (Array.isArray(input)) {
+    return input.map((item) => fallbackMaskObject(item, sensitiveFields));
+  }
+
+  if (!input || typeof input !== 'object') return input;
+
+  return Object.entries(input).reduce<Record<string, any>>(
+    (acc, [key, value]) => {
+      const isSensitive = sensitiveFields.has(key.toLowerCase());
+      if (isSensitive && typeof value === 'string') {
+        const visibleEnd = value.slice(-2);
+        acc[key] = `${'*'.repeat(Math.max(3, value.length - 2))}${visibleEnd}`;
+        return acc;
+      }
+      acc[key] = fallbackMaskObject(value, sensitiveFields);
+      return acc;
+    },
+    {},
+  );
+}
+
+export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
+  const sensitiveFields = options.sensitiveFields ?? [
     'password',
     'token',
     'authorization',
     'credit_card',
     'ssn',
     'cookie',
-    'set-cookie'
+    'set-cookie',
+    'x-api-key',
+    'x-auth-token',
   ];
-  const logLevel = options.level || 'info';
+  const logLevel = options.level ?? 'info';
   const beautify = options.beautify ?? process.stdout.isTTY ?? true;
-  
-  const levels = { debug: 0, info: 1, warn: 2, error: 3 };
-  const currentLevelInt = levels[logLevel];
 
-  const maskify = new Maskify({
-    sensitiveKeys: sensitiveFields,
-    maskChar: '*',
-    visibleStart: 0,
-    visibleEnd: 2,
-  });
+  // Safe defaults: opt-in to verbose logging, not opt-out.
+  const includeHeaders = options.includeHeaders ?? false;
+  const includePayload = options.includePayload ?? false;
 
-  const log = (
-    level: keyof typeof levels,
+  const isProd = process.env.NODE_ENV === 'production';
+
+  const sensitiveFieldSet = new Set(
+    sensitiveFields.map((field) => field.toLowerCase()),
+  );
+
+  const emit = (
+    level: LogLevel,
     message: string,
-    meta: Record<string, any>,
+    meta: Record<string, unknown> = {},
   ) => {
-    if (levels[level] < currentLevelInt) return;
+    if (LEVEL_RANK[level] < LEVEL_RANK[logLevel]) return;
 
     const timestamp = new Date().toISOString();
-    const maskedMeta = maskify.mask(meta);
+    const maskedMeta = fallbackMaskObject(
+      meta,
+      sensitiveFieldSet,
+    ) as Record<string, unknown>;
 
     if (beautify) {
-      const levelColors = {
+      const colorMap = {
         debug: pc.gray,
-        info: pc.blue,
+        info: pc.cyan,
         warn: pc.yellow,
         error: pc.red,
-      };
-      const color = levelColors[level];
-      
-      console.log(
-        `${pc.gray(`[${timestamp}]`)} ${color(level.toUpperCase().padEnd(5))} ${pc.bold(message)}`,
-        Object.keys(maskedMeta).length > 0 ? pc.cyan(JSON.stringify(maskedMeta, null, 2)) : ''
-      );
-    } else {
-      process.stdout.write(
-        JSON.stringify({
-          timestamp,
-          level: level.toUpperCase(),
-          message,
-          ...maskedMeta,
-        }) + '\n',
-      );
+      } as const;
+      const color = colorMap[level];
+      const summary = `${pc.gray(timestamp)} ${color(
+        level.toUpperCase(),
+      )} ${pc.bold(message)}`;
+      const details = Object.keys(maskedMeta).length
+        ? `\n${pc.dim(JSON.stringify(maskedMeta, null, 2))}`
+        : '';
+      console.log(`${summary}${details}`);
+      return;
     }
+
+    process.stdout.write(
+      `${JSON.stringify({
+        timestamp,
+        level: level.toUpperCase(),
+        message,
+        ...maskedMeta,
+      })}\n`,
+    );
   };
 
-  app.addHook('onRequest', (req, res) => {
+  app.addHook('onRequest', (req) => {
     req.state.startTime = process.hrtime.bigint();
-    log('info', `Incoming ${req.method} ${req.path}`, {
+
+    emit('info', 'Incoming Request', {
       requestId: req.id,
+      method: req.method,
+      path: req.path,
       ip: req.ip,
-      headers: req.headers,
+      ...(includeHeaders ? { headers: req.headers } : {}),
     });
   });
 
@@ -90,15 +137,13 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}) {
       ? Number(endTime - req.state.startTime) / 1_000_000
       : 0;
 
-    const status = res.status();
-    const statusColor = status >= 500 ? pc.red : status >= 400 ? pc.yellow : pc.green;
-
-    log('info', `Outgoing Response ${statusColor(status)}`, {
+    emit('info', 'Outgoing Response', {
       requestId: req.id,
       method: req.method,
       path: req.path,
       durationMs: durationMs.toFixed(3),
-      payload: (res as any).payload,
+      statusCode: res.statusCode,
+      ...(includePayload ? { payload: (res as any).payload } : {}),
     });
   });
 
@@ -107,13 +152,17 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}) {
     const durationMs = req.state.startTime
       ? Number(endTime - req.state.startTime) / 1_000_000
       : 0;
-      
+
     const errorObj =
       err instanceof Error
-        ? { name: err.name, message: err.message, stack: err.stack }
-        : { err };
+        ? {
+            name: err.name,
+            message: err.message,
+            ...(!isProd && { stack: err.stack }),
+          }
+        : { message: String(err) };
 
-    log('error', `Request Failed: ${errorObj.message}`, {
+    emit('error', 'Request Failed', {
       requestId: req.id,
       method: req.method,
       path: req.path,

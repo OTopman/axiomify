@@ -1,81 +1,85 @@
 # @axiomify/logger
 
-The official, security-first logging plugin for the Axiomify framework. 
+Structured request/response logging for Axiomify with PII field masking and configurable log levels.
 
-`@axiomify/logger` provides high-performance, asynchronous request and response logging. Built with DevSecOps in mind, it automatically intercepts outgoing payloads and sanitizes Personally Identifiable Information (PII) before it ever reaches your stdout.
-
-## ✨ Features
-
-- **Secure by Default:** Integrates seamlessly with `maskify-ts` to automatically redact sensitive fields (like passwords, API keys, and credit cards) from your logs.
-- **Guaranteed Capture:** Injects deeply into Axiomify's `onRequest` lifecycle phase to safely wrap `res.send`, guaranteeing that all outgoing responses are logged, even if the developer's handler terminates early.
-- **Stable Tracing:** Utilizes Axiomify's stable request IDs to perfectly correlate incoming requests with their corresponding outgoing responses.
-- **Low Overhead:** Designed for production environments where synchronous logging could otherwise bottleneck throughput.
-
-## 📦 Installation
-
-Ensure you install the logger alongside the Axiomify core and the masking utility:
+## Install
 
 ```bash
-npm install @axiomify/logger @axiomify/core maskify-ts
-````
+npm install @axiomify/logger
+```
 
-## 🚀 Quick Start
+> `maskify-ts` is no longer required as a peer dependency — masking is handled inline.
 
-The logger is designed as a drop-in plugin for your Axiomify core engine. You only need to register it once, and it will automatically handle request tracing across all your routes.
+## Quick start
 
 ```typescript
-import { Axiomify } from '@axiomify/core';
 import { useLogger } from '@axiomify/logger';
-import { z } from 'zod';
 
-// 1. Initialize the Axiomify Core Engine
-const app = new Axiomify();
-
-// 2. Attach the Logger Plugin
-// This will automatically hook into 'onRequest' to trace incoming traffic
-// and wrap response methods to safely log outgoing payloads.
 useLogger(app, {
   level: 'info',
-  // Configure maskify-ts to redact specific sensitive keys
-  maskKeys: ['password', 'token', 'creditCard', 'authorization'] 
+  sensitiveFields: ['password', 'authorization', 'x-api-key', 'token', 'cardNumber', 'cvv'],
 });
-
-// 3. Register your routes normally
-app.route({
-  method: 'POST',
-  path: '/login',
-  schema: {
-    body: z.object({
-      email: z.string().email(),
-      password: z.string() // <-- The logger will automatically redact this!
-    })
-  },
-  handler: async (req, res) => {
-    // The logger captures this outgoing payload but redacts the token
-    return res.status(200).send({ 
-      success: true, 
-      token: 'super-secret-jwt' 
-    });
-  }
-});
-
-// 4. Mount to your preferred adapter (Express, Fastify, HTTP, etc.)
-// await app.handle(req, res);
 ```
 
-## 🔍 Log Output Example
+## Options
 
-Because the logger intercepts the response payload and passes it through the auto-masker, your production console remains clean and compliant:
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `level` | `'debug' \| 'info' \| 'warn' \| 'error'` | `'info'` | Minimum log level. Messages below this level are suppressed. |
+| `sensitiveFields` | `string[]` | `[]` | Field names (case-insensitive) to mask in headers and body. Masked as `'****'`. |
+| `beautify` | `boolean` | `false` | Colorised, human-readable output for local development. JSON in production. |
+| `includeHeaders` | `boolean` | `false` | Include request headers in the log entry. Enable only when the log pipeline is secure — headers often contain auth tokens. |
+| `includePayload` | `boolean` | `false` | Include the response payload. Enable only when PII content is acceptable in logs. |
 
-```text
-[INFO] [req-uuid-1234] Incoming POST /login
-[INFO] [req-uuid-1234] Outgoing response: { "success": true, "token": "[REDACTED]" }
+## Log output
+
+Each request produces two log entries:
+
+**On `onRequest`** — incoming request:
+```json
+{ "level": "info", "requestId": "abc-123", "method": "POST", "path": "/users", "ip": "10.0.0.1", "ts": "2024-01-01T00:00:00.000Z" }
 ```
 
-## 📚 Documentation
+**On `onPostHandler`** — response sent:
+```json
+{ "level": "info", "requestId": "abc-123", "status": 201, "latencyMs": 12, "ts": "2024-01-01T00:00:00.001Z" }
+```
 
-For complete documentation, guides, and advanced plugin authoring, please visit the [Axiomify Master Repository](https://github.com/OTopman/axiomify).
+**On `onError`** — handler threw:
+```json
+{ "level": "error", "requestId": "abc-123", "error": "Validation failed", "status": 400, "latencyMs": 3 }
+```
 
-## 📄 License
+## Masking
 
-MIT
+Masking is recursive — it traverses nested objects and arrays:
+
+```typescript
+useLogger(app, { sensitiveFields: ['password', 'token'] });
+
+// Request body { email: 'ada@example.com', password: 'secret123', nested: { token: 'xyz' } }
+// Logged as:   { email: 'ada@example.com', password: '****', nested: { token: '****' } }
+```
+
+Field names are matched case-insensitively. Masking depth is bounded to prevent stack overflow on adversarially deep objects.
+
+## Development mode
+
+```typescript
+useLogger(app, {
+  level: 'debug',
+  beautify: true,      // coloured output with readable timestamps
+  includeHeaders: true,
+  includePayload: true,
+});
+```
+
+## Custom log destination
+
+The logger writes to `process.stdout`. To redirect to a log aggregator (Datadog, Loki, etc.), pipe `stdout` at the process level:
+
+```bash
+node server.js | my-log-shipper
+```
+
+Or replace `process.stdout.write` before calling `useLogger` for programmatic control.

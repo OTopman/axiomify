@@ -1,30 +1,37 @@
 import { createAuthPlugin } from '@axiomify/auth';
-import { Axiomify, UnauthorizedError, z } from '@axiomify/core';
-import { ExpressAdapter } from '@axiomify/express';
-import { useHelmet } from '@axiomify/helmet';
-import { useOpenAPI } from '@axiomify/openapi';
-import { useUpload } from '@axiomify/upload';
-import { useWebSockets, WsManager } from '@axiomify/ws';
-import { randomUUID } from 'crypto';
-import { createReadStream } from 'fs';
-import { GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
+import { Axiomify, z } from '@axiomify/core';
+import { FastifyAdapter } from '@axiomify/fastify';
 import { useGraphQL } from '@axiomify/graphql';
+import { useHelmet } from '@axiomify/helmet';
+import { useLogger } from '@axiomify/logger';
+import { useOpenAPI } from '@axiomify/openapi';
+import { serveStatic } from '@axiomify/static';
+import { useUpload } from '@axiomify/upload';
+import { randomUUID } from 'crypto';
+import { createReadStream, existsSync } from 'fs';
+import { GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
 import path from 'path';
 
 export const app = new Axiomify();
+
+function getRequiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} env var is required`);
+  return value;
+}
+
 const requireAuth = createAuthPlugin({
-  secret:
-    process.env.JWT_SECRET ??
-    (() => {
-      throw new Error('JWT_SECRET env var is required');
-    })(),
+  secret: getRequiredEnv('JWT_SECRET'),
 });
 
-useHelmet(app, {
-  contentSecurityPolicy: '',
+useHelmet(app);
+
+useLogger(app);
+serveStatic(app, {
+  prefix: '/assets',
+  root: path.join(process.cwd(), 'public'),
+  serveIndex: true,
 });
-
-
 
 const schema = new GraphQLSchema({
   query: new GraphQLObjectType({
@@ -39,7 +46,6 @@ const schema = new GraphQLSchema({
   }),
 });
 useGraphQL(app, { schema });
-
 
 // useLogger(app);
 // useMetrics(app);
@@ -71,7 +77,7 @@ app.route({
   path: '/api/users/avatar',
   schema: {
     body: z.object({
-      userId: z.string().uuid(),
+      userId: z.string(),
     }),
     files: {
       avatar: {
@@ -86,26 +92,23 @@ app.route({
     },
   },
   handler: async (req, res) => {
-    const avatarData = req.files!['avatar'];
+    const avatarData = req.files?.avatar;
+    if (!avatarData) {
+      res.status(400).send(null, 'avatar file is required');
+      return;
+    }
     res
       .status(201)
       .send({ fileDetails: avatarData }, 'Avatar updated successfully');
   },
 });
 
-useOpenAPI(app, {
-  routePrefix: '/docs',
-  info: { title: 'Axiomify Test API', version: '1.0.0' },
-});
-
 app.route({
   method: 'GET',
   path: '/api/secure-data',
-  handler: async (_req, _res) => {
-    const isAuthed = false;
-    if (!isAuthed) {
-      throw new UnauthorizedError('You do not have access to this.');
-    }
+  plugins: [requireAuth],
+  handler: async (req, res) => {
+    res.send({ accessedBy: req.state.user?.id });
   },
 });
 
@@ -114,7 +117,7 @@ app.route({
   path: '/protected/data',
   plugins: [requireAuth],
   handler: async (req, res) => {
-    res.send({ accessedBy: req.user?.id });
+    res.send({ accessedBy: req.state.user?.id });
   },
 });
 
@@ -143,14 +146,23 @@ app.route({
   method: 'GET',
   path: '/download',
   handler: async (_req, res) => {
-    const fileStream = createReadStream('./large-video.mp4');
+    const filePath = path.join(process.cwd(), 'large-video.mp4');
+    if (!existsSync(filePath)) {
+      res.status(404).send(null, 'File not found');
+      return;
+    }
+    const fileStream = createReadStream(filePath);
+    fileStream.on('error', () =>
+      res.status(500).send(null, 'Failed to read file'),
+    );
     res.stream(fileStream, 'video/mp4');
   },
 });
-
+/* 
 app.route({
   method: 'GET',
   path: '/live-feed',
+  // sse: true,
   handler: async (req, res) => {
     res.sseInit();
     const interval = setInterval(() => {
@@ -158,19 +170,36 @@ app.route({
     }, 1000);
     (req.raw as any).on('close', () => clearInterval(interval));
   },
+}); */
+
+useOpenAPI(app, {
+  routePrefix: '/docs',
+  info: { title: 'Axiomify Test API', version: '1.0.0' },
 });
 
 if (require.main === module) {
-  const adapter = new ExpressAdapter(app);
-  const server = adapter.listen(3000, () => {
+  const adapter = new FastifyAdapter(app /* { port: 3000 } */);
+  adapter.listen(3000, () => {
     console.log('🚀 Axiomify engine online on port 3000');
     console.log('GraphQL ready at http://localhost:3000/graphql');
     console.log('Playground at   http://localhost:3000/graphql/playground');
   });
+  /* const server = adapter.listenClustered({
+    onPrimary: (pids) => {
+      console.log(pids);
+      console.log('🚀 Axiomify engine online on port 3000');
+      console.log('GraphQL ready at http://localhost:3000/graphql');
+      console.log('Playground at   http://localhost:3000/graphql/playground');
+    },
+    onWorkerReady() {
+      console.log('Worker ready');
+    },
+    onWorkerExit: (pid) => console.log(`${pid} exit`),
+  }); */
 
   // Note: two arguments. `useWebSockets` returns void; the manager is
   // attached to the app as `(app as any).ws`.
-  useWebSockets(app, {
+  /* useWebSockets(app, {
     server,
     path: '/ws',
     authenticate: async (_req) => ({ id: 'user-123' }),
@@ -183,7 +212,7 @@ if (require.main === module) {
     (client, data) => {
       wsManager.joinRoom(client, data.room);
       wsManager.broadcastToRoom(data.room, 'chat:received', {
-        sender: client.user.id,
+        sender: (client.user as any).id,
         text: data.text,
       });
     },
@@ -204,5 +233,5 @@ if (require.main === module) {
   };
 
   process.once('SIGTERM', () => shutdown('SIGTERM'));
-  process.once('SIGINT', () => shutdown('SIGINT'));
+  process.once('SIGINT', () => shutdown('SIGINT')); */
 }

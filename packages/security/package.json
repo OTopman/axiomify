@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/security",
-  "version": "1.0.0",
+  "version": "5.0.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -13,8 +13,7 @@
     "build": "tsup"
   },
   "dependencies": {
-    "@axiomify/core": "*",
-    "xss": "^1.0.15"
+    "@axiomify/core": "*"
   },
   "exports": {
     ".": {

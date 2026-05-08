@@ -1,96 +1,156 @@
-import type { Axiomify, AxiomifyRequest, AxiomifyResponse } from '@axiomify/core';
-import filterXSS from 'xss';
+import type { Axiomify, AxiomifyRequest } from '@axiomify/core';
+import {
+  DEFAULT_BLOCKED_UA_PATTERNS,
+  DEFAULT_NOSQL_PATTERNS,
+  DEFAULT_SQL_PATTERNS,
+  detectNoSqlInjection,
+  detectSqlInjection,
+  isSuspiciousUserAgent,
+} from './utils/detector';
+import { normalizeHpp, sanitizeInput } from './utils/sanitizer';
 
 export interface SecurityOptions {
-  /** Enable XSS protection for body, query, and params. Default: true */
   xssProtection?: boolean;
-  /** Enable Parameter Pollution protection. Default: true */
   hppProtection?: boolean;
-  /** Max request body size in bytes. Default: 1mb */
+  /**
+   * Rejects requests whose Content-Length header exceeds this value.
+   * ⚠️  This check trusts the Content-Length header, which a client controls.
+   * A client using chunked transfer encoding can omit Content-Length entirely
+   * and stream an arbitrarily large body past this check.
+   * Enforce actual body size limits at the HTTP server or adapter layer
+   * (e.g. Express `express.json({ limit })`, Fastify `bodyLimit`).
+   */
   maxBodySize?: number;
-  /** SQL Injection detection (Basic pattern matching). Default: true */
+  /**
+   * Enables heuristic SQL injection pattern matching.
+   * ⚠️  This is NOT a reliable security control — see detector.ts.
+   * Parameterized queries are the only real defense.
+   */
   sqlInjectionProtection?: boolean;
-  /** Content-Encoding support (compression). Default: true */
-  compression?: boolean;
+  /**
+   * Enables heuristic NoSQL injection pattern matching.
+   * ⚠️  This is NOT a reliable security control — see detector.ts.
+   * Schema validation (Zod) stripping unexpected keys is the real defense.
+   */
+  noSqlInjectionProtection?: boolean;
+  prototypePollutionProtection?: boolean;
+  nullByteProtection?: boolean;
+  botProtection?: boolean;
+  blockedUserAgentPatterns?: RegExp[];
+  sqlPatterns?: RegExp[];
+  noSqlPatterns?: RegExp[];
+  sanitizerMaxDepth?: number;
 }
 
-/**
- * Advanced security hardening for Axiomify applications.
- */
-export function useSecurity(app: Axiomify, options: SecurityOptions = {}): void {
+function patchRequestProperty(req: AxiomifyRequest, key: keyof AxiomifyRequest, newValue: unknown) {
+  // Direct assignment is faster than Object.defineProperty — defineProperty
+  // switches V8's hidden-class optimization off for the object, degrading all
+  // subsequent property accesses. req.body / req.query / req.params are
+  // already writable on every adapter's AxiomifyRequest implementation.
+  Object.defineProperty(req, key, {
+    value: newValue,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
+}
+
+export function useSecurity(
+  app: Axiomify,
+  options: SecurityOptions = {},
+): void {
   const {
     xssProtection = true,
     hppProtection = true,
-    maxBodySize = 1024 * 1024, // 1MB
+    maxBodySize = 1024 * 1024,
     sqlInjectionProtection = true,
+    noSqlInjectionProtection = true,
+    prototypePollutionProtection = true,
+    nullByteProtection = true,
+    botProtection = true,
+    blockedUserAgentPatterns = DEFAULT_BLOCKED_UA_PATTERNS,
+    sqlPatterns = DEFAULT_SQL_PATTERNS,
+    noSqlPatterns = DEFAULT_NOSQL_PATTERNS,
+    sanitizerMaxDepth = 64,
   } = options;
 
-  app.addHook('onRequest', async (req, res) => {
-    // 1. Request Size Guard
+  app.addHook('onRequest', async (req: AxiomifyRequest, res) => {
+    // Content-Length guard — fast rejection for well-behaved clients.
+    // This does NOT protect against chunked transfer encoding; enforce
+    // body size limits at the server/adapter layer as well.
     const contentLength = req.headers['content-length'];
-    if (contentLength && parseInt(contentLength as string, 10) > maxBodySize) {
-      res.status(413).send({ error: 'Payload Too Large' });
+    const parsedContentLength =
+      typeof contentLength === 'string'
+        ? Number.parseInt(contentLength, 10)
+        : NaN;
+
+    if (
+      Number.isFinite(parsedContentLength) &&
+      parsedContentLength > maxBodySize
+    ) {
+      res.status(413).send(null, 'Payload Too Large');
       return;
     }
 
-    // 2. Parameter Pollution Protection (HPP)
-    if (hppProtection && req.query) {
-      for (const key in req.query) {
-        if (Array.isArray(req.query[key])) {
-          // Keep only the last value to prevent pollution
-          req.query[key] = (req.query[key] as any[]).pop();
-        }
-      }
-    }
-
-    // 3. SQL Injection Detection (Basic Heuristics)
-    if (sqlInjectionProtection) {
-      const sqlPatterns = [
-        /(\%27)|(\')|(\-\-)|(\%23)|(#)/i,
-        /((\%3D)|(=))[^\n]*((\%27)|(\')|(\-\-)|(\%3B)|(;))/i,
-        /\w*((\%27)|(\'))((\%6F)|o|(\%4F))((\%72)|r|(\%52))/i,
-        /((\%27)|(\'))union/i,
-        /exec(\s|\+)+(s|x)p\w+/i,
-      ];
-
-      const checkSqlInjection = (data: any): boolean => {
-        if (typeof data === 'string') {
-          return sqlPatterns.some((pattern) => pattern.test(data));
-        }
-        if (typeof data === 'object' && data !== null) {
-          return Object.values(data).some((val) => checkSqlInjection(val));
-        }
-        return false;
-      };
-
-      if (checkSqlInjection(req.query) || checkSqlInjection(req.params) || checkSqlInjection(req.body)) {
-        res.status(403).send({ error: 'Potential SQL Injection Detected' });
+    if (botProtection) {
+      const userAgent = String(req.headers['user-agent'] ?? '');
+      if (isSuspiciousUserAgent(userAgent, blockedUserAgentPatterns)) {
+        res.status(403).send(null, 'Forbidden');
         return;
       }
     }
 
-    // 4. XSS Protection
-    if (xssProtection) {
-      const sanitize = (data: any): any => {
-        if (typeof data === 'string') {
-          return filterXSS(data);
-        }
-        if (Array.isArray(data)) {
-          return data.map(sanitize);
-        }
-        if (typeof data === 'object' && data !== null) {
-          const sanitized: any = {};
-          for (const key in data) {
-            sanitized[key] = sanitize(data[key]);
-          }
-          return sanitized;
-        }
-        return data;
+    // Heuristic injection detection — see detector.ts for bypass surface.
+    if (
+      sqlInjectionProtection &&
+      (detectSqlInjection(req.query, sqlPatterns) ||
+        detectSqlInjection(req.params, sqlPatterns) ||
+        detectSqlInjection(req.body, sqlPatterns))
+    ) {
+      res.status(403).send(null, 'Forbidden');
+      return;
+    }
+
+    if (
+      noSqlInjectionProtection &&
+      (detectNoSqlInjection(req.query, noSqlPatterns) ||
+        detectNoSqlInjection(req.params, noSqlPatterns) ||
+        detectNoSqlInjection(req.body, noSqlPatterns))
+    ) {
+      res.status(403).send(null, 'Forbidden');
+      return;
+    }
+
+    if (hppProtection && req.query && typeof req.query === 'object') {
+      patchRequestProperty(req, 'query', normalizeHpp(req.query));
+    }
+
+    if (xssProtection || prototypePollutionProtection || nullByteProtection) {
+      const sanitizeOptions = {
+        xssProtection,
+        prototypePollutionProtection,
+        nullByteProtection,
+        maxDepth: sanitizerMaxDepth,
       };
 
-      if (req.body) req.body = sanitize(req.body);
-      if (req.query) req.query = sanitize(req.query);
-      if (req.params) req.params = sanitize(req.params);
+      if (req.body)
+        patchRequestProperty(
+          req,
+          'body',
+          sanitizeInput(req.body, sanitizeOptions),
+        );
+      if (req.query)
+        patchRequestProperty(
+          req,
+          'query',
+          sanitizeInput(req.query, sanitizeOptions),
+        );
+      if (req.params)
+        patchRequestProperty(
+          req,
+          'params',
+          sanitizeInput(req.params, sanitizeOptions),
+        );
     }
   });
 }

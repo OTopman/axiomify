@@ -6,34 +6,73 @@ import { getUserExternals } from '../utils/externals';
 export async function devServer(entry: string): Promise<void> {
   const entryPath = path.resolve(process.cwd(), entry);
   const outPath = path.resolve(process.cwd(), '.axiomify/dev.js');
+
   let child: ChildProcess | null = null;
+  let firstBuild = true;
+
+  const startChild = () => {
+    child = spawn('node', [outPath], { stdio: 'inherit' });
+
+    child.on('error', (err) => {
+      console.error('❌ Failed to start process:', err);
+    });
+  };
+
+  const GRACEFUL_KILL_MS = 3000;
 
   const restartServer = () => {
-    if (child) {
-      // 1. Stop listening to old exit events so we don't accidentally spawn twice
+    if (child && child.exitCode === null && child.signalCode === null) {
       child.removeAllListeners('exit');
+      const oldChild = child;
 
-      // 2. ONLY spawn the new server after the old one has completely exited
-      child.once('exit', () => {
-        child = spawn('node', [outPath], { stdio: 'inherit' });
+      // Try graceful shutdown first so in-flight requests can drain and
+      // SIGTERM handlers in the user's app can run cleanly.
+      oldChild.once('exit', () => {
+        startChild();
       });
 
-      // 3. Ruthlessly kill the old server (bypasses graceful shutdown)
-      child.kill('SIGKILL');
+      oldChild.kill('SIGTERM');
+
+      // Hard kill only if the child doesn't exit within the grace window.
+      const forceKill = setTimeout(() => {
+        if (oldChild.exitCode === null && oldChild.signalCode === null) {
+          oldChild.kill('SIGKILL');
+        }
+      }, GRACEFUL_KILL_MS);
+      forceKill.unref();
     } else {
-      // First time booting up
-      child = spawn('node', [outPath], { stdio: 'inherit' });
+      startChild();
     }
   };
+
+  /*   const restartServer = () => {
+    // Check if the process is actually still running at the OS level
+    if (child && child.exitCode === null && child.signalCode === null) {
+      child.removeAllListeners('exit');
+      child.once('exit', () => {
+        startChild();
+      });
+
+      child.kill('SIGKILL');
+    } else {
+      startChild();
+    }
+  }; */
 
   const watchPlugin: esbuild.Plugin = {
     name: 'watch-plugin',
     setup(build) {
       build.onEnd((result) => {
-        if (result.errors.length > 0) {
-          console.error('❌ Build failed. Waiting for changes...');
+        if (result.errors.length === 0) {
+          if (firstBuild) {
+            firstBuild = false;
+            restartServer();
+          } else {
+            console.log('🔄 Changes detected, restarting...');
+            restartServer();
+          }
         } else {
-          restartServer();
+          console.error('❌ Build failed. Fix errors to trigger a restart.');
         }
       });
     },
@@ -45,14 +84,12 @@ export async function devServer(entry: string): Promise<void> {
     entryPoints: [entryPath],
     bundle: true,
     platform: 'node',
+    format: 'cjs',
     outfile: outPath,
     external: [...new Set([...userExternals, 'node:*'])],
     plugins: [watchPlugin],
   });
 
-  // On Ctrl-C / SIGTERM, tear everything down. Without this the spawned
-  // server child survives after the CLI exits — a classic "why is port
-  // 3000 still in use?" leak.
   let shuttingDown = false;
   const shutdown = async (signal: NodeJS.Signals) => {
     if (shuttingDown) return;
@@ -62,9 +99,8 @@ export async function devServer(entry: string): Promise<void> {
     if (child) {
       child.removeAllListeners('exit');
       child.kill('SIGTERM');
-      // Give it 2s to exit gracefully, then SIGKILL.
       setTimeout(() => {
-        if (child && !child.killed) child.kill('SIGKILL');
+        if (child && child.exitCode === null) child.kill('SIGKILL');
       }, 2000).unref();
     }
 

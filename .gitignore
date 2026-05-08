@@ -25,7 +25,7 @@ Desktop.ini
 # =========================
 node_modules/
 .npm/
-package-lock.json
+# package-lock.json
 
 # =========================
 # Build & Compilation
@@ -75,3 +75,7 @@ coverage/
 codecov
 codecov.SHA256SUM
 codecov.SHA256SUM.sig
+
+
+review.md
+update.sh
