@@ -30,10 +30,14 @@ jobs:
 
       - name: Setup Node.js
         # Pin to SHA — equivalent to actions/setup-node@v4.1.0
+        # Node 20: highest version supported by uWebSockets.js (16/18/20 only).
+        # Node 22 prevents @axiomify/native from building correctly.
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
         with:
-          node-version: 22
+          node-version: 20
           cache: 'npm'
+          # registry-url writes an .npmrc that authenticates npm publish via
+          # NODE_AUTH_TOKEN. Without this, npm publish is unauthenticated.
           registry-url: 'https://registry.npmjs.org/'
 
       - name: Install Dependencies
@@ -54,4 +58,9 @@ jobs:
           title: "chore(release): version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # NPM_TOKEN: used by changesets/action for its own registry checks.
+          # NODE_AUTH_TOKEN: used by npm publish via the .npmrc written by
+          # actions/setup-node above. Both must be set or publish will fail
+          # with a 401/404 authentication error.
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
