@@ -97,7 +97,7 @@ export class Axiomify {
   /**
    * Default response serializer. Replace via {@link setSerializer}.
    * Read-only — direct assignment from outside the class would bypass
-   * arity normalisation; use the setter.
+   * arity normalization; use the setter.
    */
   public get serializer(): SerializerFn {
     return this._serializer;
@@ -310,7 +310,7 @@ export class Axiomify {
   }
 
   public setSerializer(fn: SerializerFn): this {
-    // Normalise to the single-argument form once, so every subsequent call
+    // Normalize to the single-argument form once, so every subsequent call
     // to this.serializer goes through a direct (input) => fn(input) path
     // with no runtime arity check. makeSerialize is shared with adapters.
     this._serializer = makeSerialize(fn) as SerializerFn;
