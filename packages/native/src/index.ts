@@ -87,7 +87,7 @@ let CACHED_413: CachedError;
 let CACHED_500: CachedError;
 
 function buildErrorCache(serializer: SerializerFn): void {
-  // Use the same arity-normalising helper so the ternary isn't repeated here.
+  // Use the same arity-normalizing helper so the ternary isn't repeated here.
   const serialize = makeSerialize(serializer);
   const make = (statusCode: number, message: string): CachedError => ({
     statusLine: statusLine(statusCode),
