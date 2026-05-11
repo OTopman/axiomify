@@ -14,10 +14,10 @@
   },
   "dependencies": {
     "@axiomify/core": "*",
-    "@hapi/hapi": "21.3.3"
+    "@hapi/hapi": "21.4.9"
   },
   "devDependencies": {
-    "@types/hapi__hapi": "20.0.13"
+    "@types/hapi__hapi": "21.0.0"
   },
   "exports": {
     ".": {
