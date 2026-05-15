@@ -8,7 +8,7 @@
  * - z.coerce.boolean()     → has coerce transform → AJV + Zod.parse()
  */
 import { Axiomify, z } from '@axiomify/core';
-import { HttpAdapter } from '@axiomify/http';
+import { NativeAdapter } from '@axiomify/native';
 
 const app = new Axiomify();
 
@@ -37,5 +37,5 @@ app.route({
   },
 });
 
-const adapter = new HttpAdapter(app);
-adapter.listen(3000, () => console.log('Ready on :3000'));
+const adapter = new NativeAdapter(app, { port: 3000 });
+adapter.listen((port) => console.log('Ready on :' + port));

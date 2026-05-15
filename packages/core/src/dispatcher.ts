@@ -13,16 +13,10 @@ export class RequestDispatcher {
 
   public async handle(req: AxiomifyRequest, res: AxiomifyResponse): Promise<void> {
     try {
-      // Sync fast-path: when no onRequest hooks are registered, .run() returns
-      // undefined and no microtask is queued. Eliminates a per-request Promise
-      // allocation in the common (no-hook) case.
       const onRequestRet = this.hooks.run('onRequest', req, res);
       if (onRequestRet) await onRequestRet;
       if (res.headersSent) return;
 
-      // Router writes params directly into req.params (caller-provided) — no
-      // intermediate object, no copy in the dispatcher. Saves one allocation
-      // and one for-in iteration per request on routes with params.
       const reqParams = req.params as Record<string, string>;
       const match = this.router.lookup(req.method, req.path, reqParams);
       if (!match) return res.status(404).send(null, 'Route not found');
@@ -35,13 +29,20 @@ export class RequestDispatcher {
     } catch (err) {
       await this.handleError(err, req, res);
     } finally {
-      const onCloseRet = this.hooks.runSafe('onClose', req, res);
-      if (onCloseRet) await onCloseRet;
+      if ((res as any).isStreaming) {
+        (res as any).onStreamClose = () => {
+          const onCloseRet = this.hooks.runSafe('onClose', req, res);
+          if (onCloseRet) onCloseRet.catch(() => {});
+        };
+      } else {
+        const onCloseRet = this.hooks.runSafe('onClose', req, res);
+        if (onCloseRet) await onCloseRet;
+      }
     }
   }
 
   /**
-   * Entry point for adapters that perform their own routing (uWS, Fastify, etc.)
+   * Entry point for adapters that perform their own routing (uWS)
    * and hand off a pre-resolved route + params to the dispatcher.
    *
    * @internal — adapter use only. Not part of the public Axiomify API.
@@ -60,8 +61,15 @@ export class RequestDispatcher {
     } catch (err) {
       await this.handleError(err, req, res);
     } finally {
-      const onCloseRet = this.hooks.runSafe('onClose', req, res);
-      if (onCloseRet) await onCloseRet;
+      if ((res as any).isStreaming) {
+        (res as any).onStreamClose = () => {
+          const onCloseRet = this.hooks.runSafe('onClose', req, res);
+          if (onCloseRet) onCloseRet.catch(() => {});
+        };
+      } else {
+        const onCloseRet = this.hooks.runSafe('onClose', req, res);
+        if (onCloseRet) await onCloseRet;
+      }
     }
   }
 
@@ -105,10 +113,10 @@ export class RequestDispatcher {
     // Unroll single-step pipeline: avoid loop + conditional overhead for the
     // common case of no plugins + no schema (just the handler).
     if (pipeline.length === 1) {
-      await pipeline[0](req, dispatchRes);
+      if (!req.signal?.aborted) await pipeline[0](req, dispatchRes);
     } else {
       for (let i = 0; i < pipeline.length; i++) {
-        if (dispatchRes.headersSent) break;
+        if (dispatchRes.headersSent || req.signal?.aborted) break;
         await pipeline[i](req, dispatchRes);
       }
     }
@@ -173,6 +181,12 @@ class ValidatingResponse implements AxiomifyResponse {
   error(err: unknown): void { this.inner.error(err); }
 
   stream(readable: import('stream').Readable, contentType?: string): void {
+    (this.inner as any).isStreaming = true;
+    (this as any).isStreaming = true;
+    Object.defineProperty(this, 'onStreamClose', {
+      set: (cb) => { (this.inner as any).onStreamClose = cb; },
+      get: () => (this.inner as any).onStreamClose
+    });
     this.inner.stream(readable, contentType);
   }
 

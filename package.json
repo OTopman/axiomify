@@ -4,7 +4,7 @@
   "private": true,
   "version": "5.0.0",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.0.0 <23.0.0"
   },
   "workspaces": [
     "packages/*",
@@ -13,8 +13,8 @@
   "scripts": {
     "build": "npm run build:core && npm run build:adapters && npm run build:plugins && npm run build:cli",
     "build:core": "npm run build -w @axiomify/core",
-    "build:adapters": "npm run build -w @axiomify/native -w @axiomify/express -w @axiomify/http -w @axiomify/fastify -w @axiomify/hapi",
-    "build:plugins": "npm run build -w @axiomify/auth -w @axiomify/cors -w @axiomify/fingerprint -w @axiomify/graphql -w @axiomify/helmet -w @axiomify/logger -w @axiomify/metrics -w @axiomify/openapi -w @axiomify/rate-limit -w @axiomify/security -w @axiomify/static -w @axiomify/upload -w @axiomify/ws",
+    "build:adapters": "npm run build -w @axiomify/native",
+    "build:plugins": "npm run build -w @axiomify/auth -w @axiomify/cors -w @axiomify/fingerprint -w @axiomify/graphql -w @axiomify/helmet -w @axiomify/logger -w @axiomify/metrics -w @axiomify/openapi -w @axiomify/rate-limit -w @axiomify/security -w @axiomify/static -w @axiomify/upload",
     "build:cli": "npm run build -w @axiomify/cli",
     "build:all": "npm run build --workspaces --if-present",
     "clean": "rm -rf packages/*/dist && rm -rf packages/*/.tsconfig.tsbuildinfo",

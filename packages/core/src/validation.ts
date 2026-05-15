@@ -64,76 +64,7 @@ function isZodSchema(value: unknown): value is ZodTypeAny {
   );
 }
 
-/**
- * Walks a Zod schema tree to detect whether any node will MUTATE its input
- * during `.parse()`. If none do, the AJV-validated input can be returned
- * directly without a second Zod pass — eliminating ~5–15µs per validated
- * request on schemas with many fields.
- *
- * Returns true for any of:
- *   - `.transform(...)`         → ZodEffects
- *   - `.refine(...)` / .superRefine(...) → ZodEffects (still need .parse to run refinements)
- *   - `.preprocess(...)`        → ZodEffects
- *   - `.default(...)`           → ZodDefault (fills missing fields)
- *   - `.catch(...)`             → ZodCatch (substitutes on error)
- *   - `.brand<T>()`             → ZodBranded (no runtime effect, but kept for safety)
- *   - `.readonly()`             → ZodReadonly (Object.freeze on output)
- *   - `.pipe(...)`              → ZodPipeline
- *   - `z.coerce.*`              → coercion sets a transform
- *
- * False positives are safe (they trigger a redundant but correct Zod pass).
- * False negatives would silently drop transforms — never let that happen.
- */
-function hasTransforms(schema: ZodTypeAny): boolean {
-  // Some Zod internals are not part of the public API; access via narrow casts.
-  type ZodInternals = {
-    typeName?: string;
-    shape?: (() => Record<string, ZodTypeAny>) | Record<string, ZodTypeAny>;
-    type?: ZodTypeAny;
-    innerType?: ZodTypeAny;
-    schema?: ZodTypeAny;
-    in?: ZodTypeAny;
-    out?: ZodTypeAny;
-    options?: ZodTypeAny[];
-    valueType?: ZodTypeAny;
-    keyType?: ZodTypeAny;
-    items?: ZodTypeAny[];
-  };
-  const def = (schema as unknown as { _def?: ZodInternals })._def;
-  if (!def) return false;
 
-  switch (def.typeName) {
-    case 'ZodEffects':       // transform / refine / preprocess
-    case 'ZodDefault':       // .default
-    case 'ZodCatch':         // .catch
-    case 'ZodPipeline':      // .pipe
-    case 'ZodReadonly':      // .readonly
-      return true;
-  }
-
-  // Recurse into children.
-  if (def.shape) {
-    // Zod v3: def.shape is a getter function returning the shape object.
-    // Zod v4: def.shape may be the shape object directly.
-    const shape = typeof def.shape === 'function' ? def.shape() : def.shape;
-    for (const k in shape) if (hasTransforms((shape as Record<string, ZodTypeAny>)[k])) return true;
-  }
-  if (def.type) return hasTransforms(def.type);                        // ZodArray.element, ZodSet.value
-  if (def.innerType) return hasTransforms(def.innerType);              // ZodOptional / ZodNullable / ZodBranded
-  if (def.schema) return hasTransforms(def.schema);                    // some wrappers
-  if (def.in && hasTransforms(def.in)) return true;                    // ZodPipeline.in
-  if (def.out && hasTransforms(def.out)) return true;                  // ZodPipeline.out
-  if (def.valueType && hasTransforms(def.valueType)) return true;      // ZodRecord / ZodMap value
-  if (def.keyType && hasTransforms(def.keyType)) return true;          // ZodRecord / ZodMap key
-  if (def.options) {
-    for (const opt of def.options) if (hasTransforms(opt)) return true; // ZodUnion / ZodDiscriminatedUnion
-  }
-  if (def.items) {
-    for (const it of def.items) if (hasTransforms(it)) return true;     // ZodTuple
-  }
-
-  return false;
-}
 
 // ─── Compiled validator type ──────────────────────────────────────────────────
 
@@ -165,7 +96,6 @@ type ValidateFunction = (data: unknown) => {
  */
 function buildValidator(schema: ZodTypeAny): ValidateFunction {
   const ajv = getAjv();
-  const requiresZodPostProcess = hasTransforms(schema);
 
   if (ajv) {
     try {
@@ -212,20 +142,14 @@ function buildValidator(schema: ZodTypeAny): ValidateFunction {
           return { valid: false, errors };
         }
 
-        // Skip Zod re-parse when the schema declares no transforms — pure AJV
-        // is correct, and avoiding the second tree walk is the single largest
-        // hot-path optimization in the validator.
-        if (!requiresZodPostProcess) return { valid: true, data };
-
-        // Valid path with transforms: run Zod's parse() to apply .default(),
-        // .transform(), .coerce.*. schema.parse() on already-structurally-valid
-        // data is cheap — Zod's error generation code path is never reached.
+        // Always run Zod's parse() to apply .default(), .transform(), .coerce.*,
+        // and crucially, to safely strip unknown properties. AJV is only used
+        // as a fast-rejection filter.
         try {
           const parsed = schema.parse(data);
           return { valid: true, data: parsed };
         } catch {
-          // AJV said valid but Zod disagrees (schema uses .refine() that AJV can't
-          // express). Fall through to the full Zod validator.
+          // AJV said valid but Zod disagrees. Fall through to full Zod validator.
           return createZodValidator(schema)(data);
         }
       };

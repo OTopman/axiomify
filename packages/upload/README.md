@@ -107,16 +107,6 @@ handler: async (req, res) => {
   res.send({ count: files.length, paths: files.map(f => f.path) });
 },
 ```
-
-## Adapter compatibility
-
-Works with all Axiomify adapters:
-- **`@axiomify/http`** — raw stream passed through directly
-- **`@axiomify/express`** — adapter passes the raw Node.js `IncomingMessage` stream
-- **`@axiomify/fastify`** — the Fastify adapter registers a `multipart/form-data` content-type parser that passes the raw stream through; upload handles it normally
-- **`@axiomify/hapi`** — Hapi adapter configures `parse: false, output: 'stream'` for all routes
-- **`@axiomify/native`** — the uWS stream is passed to Busboy as a Node.js `Readable`
-
 ## Graceful shutdown
 
 Files in progress when the server shuts down may be partially written. Call `adapter.close()` with a timeout to drain in-flight requests before exit:

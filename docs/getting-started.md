@@ -13,19 +13,19 @@ cd my-api
 npm run dev
 ```
 
-The CLI prompts for adapter, package manager, ESLint, and git — Fastify is the recommended default.
+The CLI prompts for your preferred package manager and handles the native setup automatically.
 
 ## Manual setup
 
 ```bash
-npm install @axiomify/core @axiomify/fastify zod
+npm install @axiomify/core @axiomify/native zod
 ```
 
 **`src/index.ts`:**
 
 ```typescript
 import { Axiomify } from '@axiomify/core';
-import { FastifyAdapter } from '@axiomify/fastify';
+import { NativeAdapter } from '@axiomify/native';
 import { z } from 'zod';
 
 const app = new Axiomify();
@@ -51,9 +51,10 @@ app.route({
   },
 });
 
-const adapter = new FastifyAdapter(app);
-await adapter.listen(3000);
-console.log('Listening on :3000');
+const adapter = new NativeAdapter(app, { port: 3000 });
+adapter.listen(() => {
+  console.log('Listening on :3000');
+});
 ```
 
 ## Response envelope
@@ -69,20 +70,5 @@ Every response is wrapped:
 
 Zod schemas in `schema.body`, `schema.params`, and `schema.query` are compiled to AJV validators at startup. Invalid requests receive 400 with field-level errors before the handler runs.
 
-## Choosing an adapter
-
-| Need | Adapter |
-|---|---|
-| Maximum throughput, new project | `@axiomify/native` |
-| High throughput + Fastify plugins | `@axiomify/fastify` |
-| Express middleware ecosystem | `@axiomify/express` |
-| Hapi plugin ecosystem | `@axiomify/hapi` |
-| Edge / serverless / minimal | `@axiomify/http` |
-
-All adapters are interchangeable — swap without changing any handler.
-
-## Next steps
-
 - [Plugins and Hooks](./plugins-and-hooks.md)
-- [Adapters](./adapters.md)
 - [Production Checklist](./production-checklist.md)

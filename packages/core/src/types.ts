@@ -114,6 +114,7 @@ export interface RouteSchema {
   params?: ZodTypeAny;
   response?: ZodTypeAny | Record<number, ZodTypeAny>;
   files?: Record<string, FileConfig>;
+  message?: ZodTypeAny;
 }
 
 /**
@@ -171,6 +172,7 @@ export interface RouteGroupOptions {
 
 export interface RouteGroup {
   route<S extends RouteSchema>(definition: RouteDefinition<S>): this;
+  ws<S extends RouteSchema, M = any>(definition: WsRouteDefinition<S, M>): this;
   group(prefix: string, options: RouteGroupOptions, callback: (group: RouteGroup) => void): this;
   group(prefix: string, callback: (group: RouteGroup) => void): this;
 }
@@ -193,6 +195,28 @@ export interface RouteDefinition<
   plugins?: RouteMiddleware[];
   timeout?: number;
   handler: RouteHandler<B, Q, P, S['files']>;
+}
+
+export interface WsClient<State = Record<string, any>> {
+  readonly state: State;
+  send(message: string | Buffer | object, isBinary?: boolean): void;
+  close(): void;
+  subscribe(topic: string): void;
+  unsubscribe(topic: string): void;
+  publish(topic: string, message: string | Buffer | object, isBinary?: boolean): void;
+}
+
+export interface WsRouteDefinition<
+  S extends RouteSchema = RouteSchema,
+  M = S['message'] extends ZodTypeAny ? z.infer<S['message']> : unknown,
+> {
+  path: string;
+  schema?: S;
+  plugins?: RouteMiddleware[];
+  open?: (client: WsClient<RequestState>, req: AxiomifyRequest) => void;
+  message?: (client: WsClient<RequestState>, data: M) => void;
+  close?: (client: WsClient<RequestState>, code: number, reason: string) => void;
+  drain?: (client: WsClient<RequestState>) => void;
 }
 
 // ---------------------------------------------------------------------------

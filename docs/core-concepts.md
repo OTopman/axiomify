@@ -6,9 +6,9 @@ Axiomify separates three concerns that most frameworks conflate:
 
 1. **Schema** — Zod, the single source of truth for runtime validation, TypeScript types, and OpenAPI specs
 2. **Pipeline** — hooks + plugins + handler, composed at route registration time
-3. **Transport** — the adapter (Express, Fastify, Hapi, uWS, Node HTTP) handles TCP and protocol details
+3. **Transport** — the NativeAdapter (uWebSockets.js) handles TCP and protocol details natively
 
-You write routes once. The adapter is swappable with zero route changes.
+You write routes once and the framework executes them at lightning speed.
 
 ---
 
@@ -27,7 +27,7 @@ app.route({
 });
 ```
 
-**No double routing.** Every adapter (Express, Fastify, Hapi, uWS, Node HTTP) registers routes with its own framework's router and calls `handleMatchedRoute()` directly. Axiomify's internal router is consulted at most once per request — only in the 404/405 fallback to distinguish the two cases.
+**No double routing.** The NativeAdapter resolves routes directly through the internal trie.
 
 The radix trie uses **character-by-character path walking** with a pre-allocated flat param accumulator — no `split('/')` allocation per lookup, no spread per matched segment. Lookup is O(k) where k = path depth.
 
@@ -148,7 +148,7 @@ res.header('X-Custom', 'value')         // set response header
 res.send(data, message?)                // serialised envelope → { status, message, data }
 res.sendRaw(payload, contentType?)      // bypass the serialiser
 res.stream(readable, contentType?)      // stream a Readable to the client
-res.sseInit(heartbeatMs?)               // start Server-Sent Events (not on @axiomify/native)
+res.sseInit(heartbeatMs?)               // start Server-Sent Events
 res.sseSend(data, event?)               // send an SSE event
 res.error(err)                          // send 500 with err.message
 res.getHeader(key)                      // read a previously set header
@@ -213,10 +213,6 @@ All adapters expose `listenClustered()` for multi-core deployments. Workers bind
 // Native — SO_REUSEPORT (kernel load-balancing, zero IPC)
 const adapter = new NativeAdapter(app, { port: 3000, workers: 4 });
 adapter.listenClustered({ onWorkerReady: () => console.log(`[${process.pid}] ready`) });
-
-// Express / Fastify / Hapi / HTTP — Node.js cluster (round-robin)
-const adapter = new FastifyAdapter(app, { workers: 4 });
-adapter.listenClustered(3000, { onWorkerReady: (port) => console.log(`[:${port}] ready`) });
 ```
 
 Crashed workers are automatically restarted in all cases.

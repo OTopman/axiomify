@@ -2,11 +2,13 @@ import { compiledStates } from './compiled';
 import { defaultLogger, type AxiomifyLogger } from './internal';
 import type { HookManager } from './lifecycle';
 import { Router } from './router';
+
 import type {
   AxiomifyRequest,
   AxiomifyResponse,
   RouteDefinition,
   RouteSchema,
+  WsRouteDefinition,
 } from './types';
 import { ValidationCompiler } from './validation';
 
@@ -33,6 +35,7 @@ export class RouteRegistry {
   public readonly router = new Router();
   public readonly validator: ValidationCompiler;
   private readonly routes: RouteDefinition[] = [];
+  private readonly wsRoutes: WsRouteDefinition<any, any>[] = [];
 
   constructor(
     private readonly hooks: HookManager,
@@ -43,6 +46,10 @@ export class RouteRegistry {
 
   public get registeredRoutes(): readonly RouteDefinition[] {
     return this.routes;
+  }
+
+  public get registeredWsRoutes(): readonly WsRouteDefinition<any, any>[] {
+    return this.wsRoutes;
   }
 
   public register<S extends RouteSchema>(definition: RouteDefinition<S>): void {
@@ -103,5 +110,13 @@ export class RouteRegistry {
 
     this.router.register(definition as RouteDefinition);
     this.routes.push(definition as RouteDefinition);
+  }
+
+  public registerWs<S extends RouteSchema, M = any>(definition: WsRouteDefinition<S, M>): void {
+    const routeId = `WS:${definition.path}`;
+    if (definition.schema?.message) {
+      this.validator.compile(routeId + ':message', { ...definition.schema, body: definition.schema.message } as any);
+    }
+    this.wsRoutes.push(definition);
   }
 }

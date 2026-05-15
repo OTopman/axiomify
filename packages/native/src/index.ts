@@ -19,7 +19,7 @@ import type {
   WebSocketBehavior,
 } from 'uWebSockets.js';
 import uWS from 'uWebSockets.js';
-import { assertNoNativeSseRoutes } from './sse-guard';
+
 
 // ---------------------------------------------------------------------------
 // Capabilities — native uWS adapter supports streaming but NOT SSE
@@ -252,7 +252,7 @@ class NativeRequest implements AxiomifyRequest {
   public ip: string;
   public headers: Record<string, string>;
   public body: unknown;
-  public params: Record<string, string> = {};
+  public params: Record<string, string> = Object.create(null);
   public state: Record<string, unknown> = {};
   public raw: { req: UWSRequest | null; res: UWSResponse | null } = {
     req: null,
@@ -298,7 +298,7 @@ class NativeRequest implements AxiomifyRequest {
    */
   get query(): Record<string, string | string[]> {
     if (!this._parsedQuery) {
-      this._parsedQuery = {};
+      this._parsedQuery = Object.create(null) as Record<string, string | string[]>;
       if (this._queryStr) {
         const sp = new URLSearchParams(this._queryStr);
         for (const key of new Set(sp.keys())) {
@@ -339,7 +339,9 @@ class NativeResponse implements AxiomifyResponse {
   public headersSent = false;
   public aborted = false;
   public raw: UWSResponse;
-  public readonly capabilities: ResponseCapabilities = NATIVE_CAPABILITIES;
+  public readonly capabilities: ResponseCapabilities = { ...NATIVE_CAPABILITIES, sse: true };
+  public payload?: unknown;
+  public responseMessage?: string;
 
   private readonly _app: Axiomify;
   private readonly _req: NativeRequest;
@@ -407,8 +409,8 @@ class NativeResponse implements AxiomifyResponse {
     const payload = this._serialize(inp);
 
     // Store payload for ValidatingResponse introspection.
-    (this as unknown as Record<string, unknown>).payload = payload;
-    (this as unknown as Record<string, unknown>).responseMessage = message;
+    this.payload = payload;
+    this.responseMessage = message;
 
     const body = JSON.stringify(payload);
     const sl = statusLine(this.statusCode);
@@ -488,7 +490,10 @@ class NativeResponse implements AxiomifyResponse {
     const self = this;
 
     const flush = (): boolean => {
-      if (self.aborted) return true;
+      if (self.aborted) {
+        readable.destroy();
+        return true;
+      }
       while (pending.length > 0) {
         const chunk = pending[0];
         const ok = res.write(
@@ -538,12 +543,95 @@ class NativeResponse implements AxiomifyResponse {
     readable.on('error', () => {
       if (!self.aborted) res.end();
     });
+
+    if (this._req.signal.aborted) {
+      readable.destroy();
+    } else {
+      const abortListener = () => { readable.destroy(); };
+      this._req.signal.addEventListener('abort', abortListener);
+      readable.on('close', () => {
+        this._req.signal.removeEventListener('abort', abortListener);
+        (self as any).onStreamClose?.();
+      });
+    }
   }
 
-  // sseInit / sseSend are intentionally absent — NativeResponse.capabilities.sse
-  // is false, so callers that check before casting will never reach these.
-  // The assertNoNativeSseRoutes() guard at adapter construction provides an
-  // early, readable error for handlers that reference SSE methods.
+  private _pendingSse: string[] = [];
+  private _flushingSse = false;
+
+  sseInit(sseHeartbeatMs?: number): void {
+    if (this.headersSent || this.aborted) return;
+    this.headersSent = true;
+
+    const sl = statusLine(this.statusCode);
+    const headers = this._headers;
+
+    this.raw.cork(() => {
+      this.raw.writeStatus(sl);
+      this.raw.writeHeader('Content-Type', 'text/event-stream');
+      this.raw.writeHeader('Cache-Control', 'no-cache');
+      this.raw.writeHeader('Connection', 'keep-alive');
+      for (const k in headers) {
+        this.raw.writeHeader(k, headers[k]);
+      }
+    });
+
+    if (sseHeartbeatMs) {
+      const interval = setInterval(() => {
+        this.sseSend(null, 'ping');
+      }, sseHeartbeatMs);
+      this._req.signal.addEventListener('abort', () => clearInterval(interval));
+    }
+    
+    // Support onClose hooks similar to streams
+    (this as any).isStreaming = true;
+    const abortListener = () => { (this as any).onStreamClose?.(); };
+    this._req.signal.addEventListener('abort', abortListener);
+  }
+
+  private _flushSse(): boolean {
+    if (this.aborted) return true;
+    const res = this.raw;
+    while (this._pendingSse.length > 0) {
+      const chunk = this._pendingSse[0];
+      const ok = res.write(chunk);
+      if (!ok) {
+        if (!this._flushingSse) {
+          this._flushingSse = true;
+          res.onWritable(() => {
+            this._flushingSse = false;
+            return this._flushSse();
+          });
+        }
+        return false;
+      }
+      this._pendingSse.shift();
+    }
+    return true;
+  }
+
+  sseSend(data: any, event?: string): void {
+    if (this.aborted) return;
+    if (!this.headersSent) {
+      this.sseInit();
+    }
+
+    let payload = '';
+    if (event) {
+      payload += `event: ${event}\n`;
+    }
+    if (data !== undefined && data !== null) {
+      const serialized = typeof data === 'string' ? data : JSON.stringify(data);
+      const lines = serialized.split('\n');
+      for (const line of lines) {
+        payload += `data: ${line}\n`;
+      }
+    }
+    payload += '\n';
+
+    this._pendingSse.push(payload);
+    this._flushSse();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -623,7 +711,6 @@ export class NativeAdapter {
     this._workers = options.workers ?? availableParallelism();
     this._serialize = makeSerialize(this._app.serializer);
 
-    assertNoNativeSseRoutes(this._app.registeredRoutes);
     buildErrorCache(this._app.serializer);
 
     this._server = uWS.App();
@@ -635,6 +722,7 @@ export class NativeAdapter {
 
     // Register all Axiomify routes directly with uWS's C++ router.
     // uWS resolves method+path in native code — no JavaScript routing overhead.
+    this._registerWsRoutes();
     this._registerRoutes();
 
     // 404 / 405 catch-all. Must be registered LAST — uWS matches routes in
@@ -685,24 +773,11 @@ export class NativeAdapter {
 
   private _registerFallback(): void {
     this._server.any('/*', (res: UWSResponse, req: UWSRequest) => {
-      // Register onAborted immediately before any async work.
       res.onAborted(() => {});
-
-      const path = req.getUrl();
-      const method = req.getMethod().toUpperCase() as HttpMethod;
-      const match = this._app.router.lookup(method, path);
-
       res.cork(() => {
-        if (match && 'error' in match) {
-          res.writeStatus(statusLine(405));
-          res.writeHeader('Content-Type', 'application/json');
-          res.writeHeader('Allow', match.allowed.join(', '));
-          res.end(CACHED_405_BODY);
-        } else {
-          res.writeStatus(CACHED_404.statusLine);
-          res.writeHeader('Content-Type', 'application/json');
-          res.end(CACHED_404.body);
-        }
+        res.writeStatus(CACHED_404.statusLine);
+        res.writeHeader('Content-Type', 'application/json');
+        res.end(CACHED_404.body);
       });
     });
   }
@@ -735,7 +810,7 @@ export class NativeAdapter {
       let aborted = false;
 
       // Extract path params by index — O(k) where k = number of params.
-      const params: Record<string, string> = {};
+      const params: Record<string, string> = Object.create(null);
       for (let i = 0; i < paramKeys.length; i++) {
         const val = req.getParameter(i);
         if (val !== '') params[paramKeys[i]] = val;
@@ -896,6 +971,141 @@ export class NativeAdapter {
     this._server.ws<WsUserData>(wsPath, behavior);
   }
 
+  private _registerWsRoutes(): void {
+    const validator = this._app.validator;
+    const trustProxy = this._trustProxy;
+    
+    for (const route of this._app.registeredWsRoutes) {
+      const paramKeys = extractParamKeys(route.path);
+      const routeId = `WS:${route.path}`;
+
+      const behavior: WebSocketBehavior<any> = {
+        compression: uWS.SHARED_COMPRESSOR,
+        maxPayloadLength: 16 * 1024 * 1024,
+        idleTimeout: 120,
+
+        upgrade: (res: UWSResponse, req: UWSRequest, context: unknown) => {
+          let aborted = false;
+          res.onAborted(() => { aborted = true; });
+
+          const params: Record<string, string> = Object.create(null);
+          for (let i = 0; i < paramKeys.length; i++) {
+            const val = req.getParameter(i);
+            if (val !== '') params[paramKeys[i]] = val;
+          }
+
+          const headers: Record<string, string> = {};
+          req.forEach((k: string, v: string) => {
+            headers[k] = v;
+          });
+
+          const url = req.getUrl();
+          const queryStr = req.getQuery();
+          const ip = trustProxy
+            ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
+              _ipDecoder.decode(res.getRemoteAddressAsText())
+            : _ipDecoder.decode(res.getRemoteAddressAsText());
+            
+          const secWebSocketKey = headers['sec-websocket-key'];
+          const secWebSocketProtocol = headers['sec-websocket-protocol'];
+          const secWebSocketExtensions = headers['sec-websocket-extensions'];
+
+          const axiomifyReq = new NativeRequest(
+            'GET',
+            url,
+            ip,
+            headers,
+            queryStr,
+            undefined,
+          );
+          axiomifyReq.params = params;
+          const axiomifyRes = new NativeResponse(res, this._app, axiomifyReq, 'GET', this._serialize);
+
+          (async () => {
+            // Run global pre-handlers and plugins manually
+            for (const hook of this._app.hooks.hooks.onPreHandler) {
+               await hook(axiomifyReq, axiomifyRes, { route: route as any, params });
+            }
+            if (route.plugins) {
+              for (const plugin of route.plugins) {
+                if (axiomifyRes.headersSent || aborted) return;
+                await plugin(axiomifyReq, axiomifyRes);
+              }
+            }
+            if (axiomifyRes.headersSent || aborted) return;
+
+            // Do NOT use res.cork inside async upgrade callback, uWS throws error!
+            // According to uWS docs, async upgrade must NOT be wrapped in res.cork.
+            res.upgrade(
+              { state: axiomifyReq.state, req: axiomifyReq },
+              secWebSocketKey,
+              secWebSocketProtocol,
+              secWebSocketExtensions,
+              context,
+            );
+          })();
+        },
+
+        open: (ws: any) => {
+          const client = {
+            state: ws.state,
+            send: (message: any, isBinary?: boolean) => {
+               const data = typeof message === 'string' || Buffer.isBuffer(message) ? message : JSON.stringify(message);
+               ws.send(data, isBinary);
+            },
+            close: () => ws.close(),
+            subscribe: (topic: string) => ws.subscribe(topic),
+            unsubscribe: (topic: string) => ws.unsubscribe(topic),
+            publish: (topic: string, message: any, isBinary?: boolean) => {
+               const data = typeof message === 'string' || Buffer.isBuffer(message) ? message : JSON.stringify(message);
+               ws.publish(topic, data, isBinary);
+            }
+          };
+          ws.client = client;
+          if (route.open) {
+            route.open(client, ws.req);
+          }
+        },
+
+        message: (ws: any, message: ArrayBuffer, isBinary: boolean) => {
+           if (route.message) {
+             const data = Buffer.from(message);
+             let parsedData: any = data;
+             
+             if (route.schema?.message) {
+                const asStr = data.toString('utf8');
+                try {
+                  parsedData = JSON.parse(asStr);
+                } catch {
+                  parsedData = asStr;
+                }
+                try {
+                  validator.execute(routeId + ':message', { body: parsedData } as any);
+                } catch (err: any) {
+                  ws.client.send({ error: 'Invalid message', details: err.errors });
+                  return;
+                }
+             }
+
+             route.message(ws.client, parsedData);
+           }
+        },
+
+        close: (ws: any, code: number, message: ArrayBuffer) => {
+          if (route.close) {
+             route.close(ws.client, code, Buffer.from(message).toString('utf8'));
+          }
+        },
+
+        drain: (ws: any) => {
+           if (route.drain) route.drain(ws.client);
+        }
+      };
+
+      this._server.ws<any>(route.path, behavior);
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Lifecycle
   // -------------------------------------------------------------------------
@@ -905,7 +1115,7 @@ export class NativeAdapter {
    * Use `listenClustered()` to saturate multiple CPU cores.
    */
   public listen(
-    callback?: () => void,
+    callback?: (port: number) => void,
     onError?: (err: Error) => void,
     portOverride?: number,
   ): void {
@@ -913,7 +1123,8 @@ export class NativeAdapter {
     this._server.listen(port, (token: unknown) => {
       if (token) {
         this._listenSocket = token;
-        callback?.();
+        this._installCrashGuard();
+        callback?.((uWS as any).us_socket_local_port(token));
       } else {
         const err = new Error(
           `[Axiomify/native] Port ${this._port} is occupied.`,
@@ -927,6 +1138,47 @@ export class NativeAdapter {
         }
       }
     });
+  }
+
+  /**
+   * Installs process-level crash guards that close the uWS listen socket
+   * on any fatal exit path (uncaught exception, unhandled rejection, SIGINT,
+   * SIGTERM). Without this, a crash leaves the port in TIME_WAIT and the
+   * process cannot restart on the same port immediately.
+   *
+   * Guards are installed exactly once per adapter instance and are idempotent
+   * — calling `close()` multiple times is safe.
+   */
+  private _crashGuardInstalled = false;
+  private _installCrashGuard(): void {
+    if (this._crashGuardInstalled) return;
+    this._crashGuardInstalled = true;
+
+    const cleanup = () => this.close();
+
+    // 'exit' is the last chance — runs synchronously, no async allowed.
+    process.once('exit', cleanup);
+
+    // Fatal errors: close the socket, then let the process die.
+    process.once('uncaughtException', (err) => {
+      cleanup();
+      console.error('[Axiomify/native] Uncaught exception — socket released:', err);
+      process.exit(1);
+    });
+
+    process.once('unhandledRejection', (reason) => {
+      cleanup();
+      console.error('[Axiomify/native] Unhandled rejection — socket released:', reason);
+      process.exit(1);
+    });
+
+    // Interactive stop (Ctrl+C) and orchestrator signals.
+    for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+      process.once(sig, () => {
+        cleanup();
+        process.exit(0);
+      });
+    }
   }
 
   /**
@@ -1000,7 +1252,6 @@ export class NativeAdapter {
     let isShuttingDown = false;
     let initialBootComplete = false;
     let l4Proxy: import('node:net').Server | null = null;
-    const nativeCrashTimes: number[] = [];
 
     // L4 TCP Proxy (macOS / Windows Only)
     // Pipes incoming connections to workers using round-robin.
@@ -1072,24 +1323,8 @@ export class NativeAdapter {
 
         if (isShuttingDown || wasDraining) return;
 
-        // Crash circuit breaker — abort if workers keep crashing on startup.
-        // This prevents a misconfigured worker (bad env, failed migration)
-        // from pinning a CPU in a tight respawn loop indefinitely.
-        const CRASH_THRESHOLD = 5;
-        const CRASH_WINDOW_MS = 30_000;
-        const now = Date.now();
-        nativeCrashTimes.push(now);
-        while (nativeCrashTimes.length && nativeCrashTimes[0] < now - CRASH_WINDOW_MS) {
-          nativeCrashTimes.shift();
-        }
-        if (nativeCrashTimes.length >= CRASH_THRESHOLD) {
-          console.error(
-            `[Axiomify/native] ${nativeCrashTimes.length} workers crashed within ` +
-            `${CRASH_WINDOW_MS}ms. Aborting primary to prevent runaway respawn loop.`,
-          );
-          process.exit(1);
-        }
-
+        // Let external orchestrators (Kubernetes/systemd) manage crash loops instead of
+        // suiciding the primary process. Backoff helps prevent CPU pinning.
         const nextDelay = Math.min((respawnDelayMs || 50) * 2, 5_000);
         setTimeout(() => spawnWorker(idx, nextDelay), nextDelay);
       });

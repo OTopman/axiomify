@@ -51,7 +51,7 @@ useSecurity(app, {
 
 ⚠️ maxBodySize checks Content-Length, which clients control.
    A chunked-transfer request can omit Content-Length entirely and stream any amount of data.
-   Always set bodyLimitBytes on the adapter (ExpressAdapter, FastifyAdapter, etc.) as well.
+   Always set maxBodySize on the NativeAdapter as well.
 
 ⚠️ botProtection only blocks User-Agents matching known patterns.
    A sophisticated attacker will spoof a legitimate UA.
@@ -60,9 +60,7 @@ useSecurity(app, {
 ## Combining with adapter-level limits
 
 ```typescript
-// Adapter: enforce body size on the actual stream (not just Content-Length header)
-const adapter = new FastifyAdapter(app, { bodyLimit: 1_048_576 });
-const expressAdapter = new ExpressAdapter(app, { bodyLimit: '1mb' });
+const adapter = new NativeAdapter(app, { maxBodySize: 1_048_576 });
 
 // Plugin: additional heuristic checks on parsed content
 useSecurity(app, { maxBodySize: 1_048_576 });

@@ -11,8 +11,7 @@ export interface MetricsOptions {
   /**
    * Optional WebSocket manager integration. When provided, the metrics endpoint
    * includes `wsConnections` and `wsRooms` from `WsManager.getStats()`.
-   *
-   * Pass the result of `getWsManager(app)` from `@axiomify/ws`.
+   * integration.
    */
   wsManager?: {
     getStats(): { connectedClients: number; rooms: Record<string, number> };

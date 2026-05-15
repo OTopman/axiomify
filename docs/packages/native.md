@@ -8,7 +8,7 @@ uWebSockets.js adapter — highest-throughput Axiomify transport.
 npm install @axiomify/native @axiomify/core zod
 ```
 
-Node.js ≥ 18, ≤ 20. uWS is a pre-compiled native binary — check the [uWebSockets.js release page](https://github.com/uNetworking/uWebSockets.js) for your platform support.
+Node.js ≥ 18, < 23. uWS is a pre-compiled native binary — check the [uWebSockets.js release page](https://github.com/uNetworking/uWebSockets.js) for your platform support.
 
 ## API
 
@@ -25,7 +25,7 @@ Node.js ≥ 18, ≤ 20. uWS is a pre-compiled native binary — check the [uWebS
 | `maxBodySize` | `number` | `1048576` | Max request body (1 MB) |
 | `trustProxy` | `boolean` | `false` | Trust `X-Forwarded-For` for `req.ip` |
 | `workers` | `number` | `os.availableParallelism()` | Worker count for `listenClustered()` |
-| `ws` | `NativeWsOptions` | — | Built-in uWS WebSocket options |
+| `ws` | `NativeWsOptions` | — | Built-in fallback uWS WebSocket options (Legacy)
 
 ## Usage
 
@@ -71,21 +71,22 @@ adapter.listenClustered({
 
 uWS workers bind via SO_REUSEPORT natively. The kernel distributes connections across workers at the socket layer — zero IPC in the request hot path.
 
-## Built-in WebSocket
+## WebSockets
+
+Axiomify Native fully supports Zod-validated, hook-integrated WebSockets directly via `app.ws()`:
 
 ```typescript
-const adapter = new NativeAdapter(app, {
-  port: 3000,
-  ws: {
-    path: '/ws',
-    open:    (ws) => ws.subscribe('room:1'),
-    message: (ws, msg, isBinary) => ws.publish('room:1', msg, isBinary),
-    close:   (ws, code) => console.log(`Closed (${code})`),
+app.ws({
+  path: '/chat',
+  schema: { message: z.object({ text: z.string() }) },
+  onPreHandler: async (req, res) => {
+     // authenticate
   },
+  message: (client, data) => {
+    client.publish('room', data);
+  }
 });
 ```
-
-For multi-room WebSocket management, use `@axiomify/ws` with `getServerFromAdapter()`.
 
 ## Express middleware bridge
 
@@ -104,7 +105,18 @@ Routes are registered directly on the uWS app via `server.get()`, `server.post()
 
 ## SSE
 
-SSE is not supported on `@axiomify/native`. uWS's push model is incompatible with SSE's streaming response pattern. Use `@axiomify/http` or `@axiomify/fastify` for SSE.
+Axiomify Native supports Server-Sent Events natively out of the box using `res.sseInit()` and `res.sseSend()`.
+
+```typescript
+app.route({
+  method: 'GET',
+  path: '/sse',
+  handler: (req, res) => {
+    res.sseInit(15000); // optional heartbeat
+    res.sseSend({ hello: 'world' }, 'greet');
+  }
+});
+```
 
 ## Benchmarks (8-core machine, autocannon 100 conns, pipelining 10, 12 s)
 

@@ -9,16 +9,10 @@
  *    3. Fastify 5
  *    4. Hapi 21
  *
- *  WITH Axiomify adapter:
- *    5. @axiomify/http   (Node.js native HTTP)
- *    6. @axiomify/express
- *    7. @axiomify/fastify
- *    8. @axiomify/hapi
- *
  *  Axiomify Native:
- *    9.  GET /ping              (JSON response, no body)
- *    10. POST /echo             (JSON body parse + echo)
- *    11. GET /users/:id/posts/:postId  (two named params)
+ *    5.  GET /ping              (JSON response, no body)
+ *    6. POST /echo             (JSON body parse + echo)
+ *    7. GET /users/:id/posts/:postId  (two named params)
  *
  * Methodology
  * ───────────
@@ -79,40 +73,6 @@ const SERVERS = [
     file: 'bare-hapi.mjs',
     port: 3103,
     url: 'http://localhost:3103/ping',
-    method: 'GET',
-  },
-
-  // ── WITH Axiomify adapters ────────────────────────────────────────────────
-  {
-    id: 'axiomify-http',
-    label: 'Axiomify + @axiomify/http',
-    file: 'axiomify-http.mjs',
-    port: 3110,
-    url: 'http://localhost:3110/ping',
-    method: 'GET',
-  },
-  {
-    id: 'axiomify-express',
-    label: 'Axiomify + @axiomify/express',
-    file: 'axiomify-express.mjs',
-    port: 3111,
-    url: 'http://localhost:3111/ping',
-    method: 'GET',
-  },
-  {
-    id: 'axiomify-fastify',
-    label: 'Axiomify + @axiomify/fastify',
-    file: 'axiomify-fastify.mjs',
-    port: 3112,
-    url: 'http://localhost:3112/ping',
-    method: 'GET',
-  },
-  {
-    id: 'axiomify-hapi',
-    label: 'Axiomify + @axiomify/hapi',
-    file: 'axiomify-hapi.mjs',
-    port: 3113,
-    url: 'http://localhost:3113/ping',
     method: 'GET',
   },
 

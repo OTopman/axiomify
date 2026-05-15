@@ -18,6 +18,7 @@ import type {
   RouteSchema,
   SerializerFn,
   SerializerInput,
+  WsRouteDefinition,
 } from './types';
 
 export type { AppConfigurator, AppContext, AppModule, AppPlugin };
@@ -75,6 +76,10 @@ export class Axiomify {
 
   public get registeredRoutes(): readonly RouteDefinition[] {
     return this.registry.registeredRoutes;
+  }
+
+  public get registeredWsRoutes(): readonly WsRouteDefinition<any, any>[] {
+    return this.registry.registeredWsRoutes;
   }
 
   public get router() {
@@ -280,6 +285,17 @@ export class Axiomify {
     return this;
   }
 
+  public ws<S extends RouteSchema, M = any>(definition: WsRouteDefinition<S, M>): this {
+    if (this._routesLocked) {
+      throw new Error(
+        `[Axiomify] Cannot register WS route "${definition.path}" after the server has started. ` +
+          (this._routesLockedReason ?? 'The routes array is locked.'),
+      );
+    }
+    this.registry.registerWs(definition as any);
+    return this;
+  }
+
   /**
    * Locks route registration once an adapter has bound transport routes.
    * Prevents silent route drift where late-registered routes never get
@@ -342,6 +358,13 @@ export class Axiomify {
           path: joinRoutePath(prefix, def.path),
           plugins: mergePlugins(inheritedPlugins, def.plugins),
         });
+      },
+      ws: <S extends RouteSchema, M = any>(def: WsRouteDefinition<S, M>) => {
+        return this.ws({
+          ...def,
+          path: joinRoutePath(prefix, def.path),
+          plugins: mergePlugins(inheritedPlugins, def.plugins),
+        } as any);
       },
       group: ((subPrefix, subOptionsOrCallback, subMaybeCallback) => {
         const subOptions =

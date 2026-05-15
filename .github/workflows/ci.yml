@@ -16,7 +16,7 @@ jobs:
       contents: read   # checkout
     strategy:
       matrix:
-        node-version: [18, 20]
+        node-version: [18, 20, 22]
     steps:
       - name: Checkout Code
         # Pin to SHA instead of floating tag to prevent supply-chain attacks.
@@ -42,9 +42,6 @@ jobs:
         run: npm run build
 
       - name: Run Tests & Coverage
-        # @axiomify/native uses uWS.js which only ships binaries for Node 16/18/20.
-        # native.test.ts detects the Node major version and skips itself on Node 22+
-        # via describe.skipIf, so the suite still passes on all matrix targets.
         run: npm run coverage
 
       - name: Upload Coverage to Codecov

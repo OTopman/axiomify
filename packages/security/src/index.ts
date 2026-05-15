@@ -18,7 +18,7 @@ export interface SecurityOptions {
    * A client using chunked transfer encoding can omit Content-Length entirely
    * and stream an arbitrarily large body past this check.
    * Enforce actual body size limits at the HTTP server or adapter layer
-   * (e.g. Express `express.json({ limit })`, Fastify `bodyLimit`).
+   * (e.g., NativeAdapter `maxBodySize` option).
    */
   maxBodySize?: number;
   /**

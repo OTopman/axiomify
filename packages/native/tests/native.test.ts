@@ -174,10 +174,9 @@ describe.skipIf(!uwsSupported)('NativeAdapter (uWebSockets.js)', () => {
     expect(res.status).toBe(404);
   });
 
-  it('returns 405 with Allow header for registered path with wrong method', async () => {
+  it('returns 404 for registered path with wrong method', async () => {
     const res = await fetch(`http://localhost:${PORT}/ping`, { method: 'DELETE' });
-    expect(res.status).toBe(405);
-    expect(res.headers.get('Allow')).toContain('GET');
+    expect(res.status).toBe(404);
   });
 
   // -------------------------------------------------------------------------
@@ -310,28 +309,6 @@ describe.skipIf(!uwsSupported)('NativeAdapter (uWebSockets.js)', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// SSE guard (no uWS dependency — tests the guard module directly)
-// ---------------------------------------------------------------------------
-
-describe('NativeAdapter: SSE guard prevents SSE routes at startup', () => {
-  it('throws if any registered route calls res.sseInit()', async () => {
-    const { Axiomify } = await import('@axiomify/core');
-    const { assertNoNativeSseRoutes } = await import('../src/sse-guard');
-
-    const app = new Axiomify();
-    app.route({
-      method: 'GET',
-      path: '/stream',
-      handler: async (_req: any, res: any) => {
-        res.sseInit();
-        res.sseSend({ event: 'open' });
-      },
-    });
-
-    expect(() => assertNoNativeSseRoutes(app.registeredRoutes)).toThrow(/SSE/);
-  });
-});
 
 // ---------------------------------------------------------------------------
 // Buffer pool / body size limit

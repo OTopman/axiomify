@@ -14,7 +14,7 @@ npx @axiomify/cli init my-api
 
 ### `axiomify init <name>`
 
-Scaffolds a new Axiomify project with your chosen adapter.
+Scaffolds a new Axiomify project with the native `uWebSockets.js` adapter.
 
 ```bash
 axiomify init my-api
@@ -22,15 +22,14 @@ axiomify init my-api
 
 Prompts:
 
-1. **Adapter** — Native (uWS, fastest) *(default)*, Fastify, Express, Hapi, or Node HTTP
-2. **Plugins** — Auth, CORS, Helmet, Rate Limit, Metrics, Logger, OpenAPI (multi-select)
-3. **Language** — TypeScript *(default)* or JavaScript
+1. **Plugins** — Auth, CORS, Helmet, Rate Limit, Metrics, Logger, OpenAPI (multi-select)
+2. **Language** — TypeScript *(default)* or JavaScript
 
 Generates:
 ```
 my-api/
 ├── src/
-│   ├── index.ts          # Entry point with chosen adapter
+│   ├── index.ts          # Entry point with NativeAdapter
 │   ├── routes/           # Example routes
 │   └── plugins/          # Plugin configuration
 ├── package.json
@@ -78,12 +77,4 @@ axiomify routes
 └─────────────────────────────────────┴────────┴───────────────────────────────┘
 ```
 
-## Adapter choices in `axiomify init`
 
-| Adapter | Req/s (1 core) | Use case |
-|---|---:|---|
-| **Native (uWS)** | ~50k | Maximum throughput, production APIs |
-| **Fastify** | ~10k | Recommended default — best ecosystem balance |
-| **Express** | ~5k | Legacy migration, Express middleware ecosystem |
-| **Hapi** | ~5k | Enterprise Hapi plugin ecosystem |
-| **Node HTTP** | ~10k | Zero dependencies, edge/serverless |

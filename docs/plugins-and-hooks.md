@@ -148,7 +148,6 @@ import { useLogger }    from '@axiomify/logger';
 import { useMetrics }   from '@axiomify/metrics';
 import { useOpenAPI }   from '@axiomify/openapi';
 import { useRateLimit } from '@axiomify/rate-limit';
-import { useWebSockets }from '@axiomify/ws';
 import { useSecurity }  from '@axiomify/security';
 import { useGraphQL }   from '@axiomify/graphql';
 

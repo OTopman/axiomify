@@ -14,7 +14,7 @@ npm install @axiomify/core zod
 
 ```typescript
 import { Axiomify } from '@axiomify/core';
-import { HttpAdapter } from '@axiomify/http';
+import { NativeAdapter } from '@axiomify/native';
 import { z } from 'zod';
 
 const app = new Axiomify({ logger: console });
@@ -32,7 +32,7 @@ app.route({
   },
 });
 
-new HttpAdapter(app).listen(3000);
+new NativeAdapter(app, { port: 3000 }).listen(() => console.log('Ready on 3000'));
 ```
 
 ## What's in this package

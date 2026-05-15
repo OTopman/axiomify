@@ -1,16 +1,12 @@
 # Production Checklist
 
-## Adapter selection
+## Native Performance
 
-| Adapter | When to use | Single-core | 2-worker |
-|---|---|---:|---:|
-| `@axiomify/native` | Maximum throughput | 73–84k req/s | ~91k† |
-| `@axiomify/http` | Minimal footprint, edge/serverless | 32.8k | 57.2k |
-| `@axiomify/fastify` | Fastify plugin ecosystem | 31.3k | 35.2k |
-| `@axiomify/express` | Legacy middleware | 7.3k | — |
-| `@axiomify/hapi` | Hapi ecosystem | 9.9k | — |
+Axiomify uses a highly optimized C++ Native HTTP server powered by uWebSockets.js.
 
-*8-core, co-located loadgen. † Native is autocannon-limited co-located. Dedicated loadgen gives higher numbers.*
+- **Single Core:** Expect ~73-84k req/s for a "Hello World"
+- **Multi-Core (Linux):** Scales near-linearly utilizing `SO_REUSEPORT`. Expect ~200k+ req/s on a 4-core machine.
+*Numbers vary heavily based on load-generator limits. Run load generator on a separate network machine for accurate multi-core numbers.*
 
 ## Multi-core deployment
 
@@ -41,9 +37,8 @@ adapter.listenClustered({
 - [ ] `@axiomify/cors` — explicit `origin` list, never `'*'` in production
 - [ ] `@axiomify/rate-limit` with `RedisStore` on all public routes
 - [ ] JWT secret ≥ 32 chars, from env var only
-- [ ] `bodyLimitBytes` set at adapter level
 - [ ] `trustProxy` only when behind a known proxy
-- [ ] `sanitize: true` in adapter options for prototype pollution protection
+- [ ] `maxBodySize` set at adapter level for payload limitations
 
 ## Logging
 
@@ -72,9 +67,7 @@ adapter.listenClustered({
 
 ## WebSockets
 
-- [ ] `maxConnections` set explicitly (default: 10,000)
-- [ ] `authenticate` callback configured
-- [ ] `ws.close()` called on SIGTERM before `adapter.close()`
+- [ ] `adapter.close()` called on SIGTERM
 
 ## Observability
 

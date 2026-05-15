@@ -5,36 +5,24 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-**Schema-first. Adapter-driven. Production-ready.**
+**Schema-first. Uncompromising Performance. Production-ready.**
 
-Axiomify is a high-performance Node.js framework that uses Zod schemas as a single source of truth for validation, TypeScript types, and OpenAPI documentation. Write your route once — run it on uWebSockets.js, native HTTP, Fastify, Hapi, or Express without changing a line of business logic.
+Axiomify is an ultra high-performance Node.js framework built exclusively on `uWebSockets.js` that uses Zod schemas as a single source of truth for validation, TypeScript types, and OpenAPI documentation. It is engineered from the ground up for zero-overhead routing, strict security, and raw throughput.
 
 ---
 
 ## Architecture highlights
 
-- **No double routing** — each adapter registers routes directly with its own router (uWS C++, Fastify's C++ trie, Hapi's, Express's). Axiomify's radix-trie router is consulted only in the 404/405 fallback.
-- **AJV-compiled validation** — Zod schemas converted to JSON Schema 2020-12 via `z.toJSONSchema()` at startup, compiled with AJV. Runtime cost: ~0.06 µs valid / 0.12 µs invalid — vs Zod's 0.30 µs / 49.75 µs. Transform-free schemas skip `schema.parse()` entirely (15–25% throughput gain on validated routes).
+- **Native C++ Routing** — delegates all request routing directly to the highly optimized `uWebSockets.js` C++ engine, completely bypassing JS-based Radix Trie overhead in the hot-path.
+- **Zod-Native Security** — strict validation pipeline using `schema.parse()` to automatically strip unknown payload keys and prevent Mass Assignment and Prototype Pollution attacks.
 - **Microtask-free hooks** — `HookManager.run()` returns `undefined` for empty hook lists. No Promise allocation, no microtask in the zero-hook fast path.
-- **True SO_REUSEPORT clustering** — all adapters set `cluster.SCHED_NONE` before the first fork and bind each worker via `reusePort: true`. Workers own their sockets — zero IPC in the request hot path. Measured 160–165% scaling at 2 workers on 8-core hardware.
+- **True SO_REUSEPORT clustering** — natively sets `cluster.SCHED_NONE` before the first fork and binds each worker via `reusePort: true`. Workers own their sockets — zero IPC in the request hot path.
 
 ---
 
 ## Package ecosystem
 
-### Adapters
 
-| Package | Description | Req/s (single-core) |
-|---|---|---:|
-| [`@axiomify/native`](packages/native/) | uWebSockets.js — C++ routing, SO_REUSEPORT | **73,000–84,000** |
-| [`@axiomify/http`](packages/http/) | Node.js `node:http` — zero dependencies | 32,800 |
-| [`@axiomify/fastify`](packages/fastify/) | Fastify 5 | 31,300 |
-| [`@axiomify/hapi`](packages/hapi/) | Hapi 21 — enterprise-grade | 9,900 |
-| [`@axiomify/express`](packages/express/) | Express 4 — widest middleware ecosystem | 7,300 |
-
-*8-core machine, autocannon 100 conns, pipelining 10, 12 s, co-located loadgen.*
-
-### Core
 
 | Package | Description |
 |---|---|
@@ -58,7 +46,7 @@ Axiomify is a high-performance Node.js framework that uses Zod schemas as a sing
 |---|---|
 | [`@axiomify/upload`](packages/upload/) | RAM-safe multipart streaming via Busboy + auto cleanup on error |
 | [`@axiomify/static`](packages/static/) | Static file serving — 36 MIME types, ETag, SPA index fallback |
-| [`@axiomify/ws`](packages/ws/) | WebSocket rooms, broadcast, heartbeat — all adapters compatible |
+
 | [`@axiomify/graphql`](packages/graphql/) | GraphQL endpoint + GraphiQL 3 + depth/alias limits |
 
 ### Observability
@@ -101,17 +89,23 @@ app.route({
   },
 });
 
-// Swap adapters without changing any route or handler
+app.ws({
+  path: '/chat',
+  schema: { message: z.object({ text: z.string() }) },
+  message: (client, data) => {
+    // data is typed and validated — { text: string }
+    client.send({ reply: `Echo: ${data.text}` });
+  }
+});
+
 new NativeAdapter(app, { port: 3000 }).listen(() => console.log('Ready on :3000'));
-// new HttpAdapter(app).listen(3000);
-// new FastifyAdapter(app).listen(3000);
 ```
 
 ---
 
 ## Multi-core clustering
 
-All adapters support `listenClustered()`. Since v5, all adapters use SO_REUSEPORT — each worker owns its socket, with zero IPC in the request hot path.
+The `NativeAdapter` supports `listenClustered()`. Since v5, it uses SO_REUSEPORT — each worker owns its socket, with zero IPC in the request hot path.
 
 ```typescript
 import { NativeAdapter } from '@axiomify/native';
@@ -126,24 +120,7 @@ adapter.listenClustered({
 });
 ```
 
-```typescript
-// HTTP, Fastify, Express, Hapi — identical API
-const adapter = new HttpAdapter(app, { workers: 4 });
-adapter.listenClustered(3000, {
-  onPrimary:    (pids) => console.log('Workers:', pids),
-  onWorkerExit: (pid, code) => console.error(`Worker ${pid} died`, code),
-});
-```
-
-Zero-downtime reload: `kill -USR2 <primary-pid>` — restarts workers one at a time.
-
-Workers default to `os.availableParallelism()` (respects Docker `--cpus` / Kubernetes `cpu:`). Never set `workers` above the physical core count available to your container.
-
----
-
-## Validation
-
-Axiomify compiles Zod schemas to AJV at startup. `hasTransforms()` detects at compile time whether a schema needs the second Zod pass — schemas with no `.transform()`, `.default()`, `.coerce`, or `.refine()` return the AJV-validated data directly.
+Axiomify executes Zod validation directly using `schema.parse()`. Unknown keys are automatically stripped from payloads to prevent Mass Assignment and Prototype Pollution attacks before your business logic is reached.
 
 ```typescript
 app.route({
@@ -217,24 +194,27 @@ const loginLimit = createRateLimitPlugin({
 
 ---
 
-## WebSockets
+## Native WebSockets
+
+Axiomify Native integrates `uWebSockets.js` directly into the core router. You can define WebSocket routes just like HTTP routes, with full support for plugins, schema validation on incoming messages, and route groups.
 
 ```typescript
-import { useWebSockets, getServerFromAdapter } from '@axiomify/ws';
-
-// @axiomify/http — direct
-const server = new HttpAdapter(app).listen(3000);
-useWebSockets(app, { server, path: '/ws' });
-
-// @axiomify/express, fastify, hapi — use getServerFromAdapter()
-const adapter = new ExpressAdapter(app);
-const server = adapter.listen(3000);
-useWebSockets(app, { server: getServerFromAdapter(adapter), path: '/ws' });
-
-// @axiomify/native — use built-in uWS WebSocket
-new NativeAdapter(app, {
-  port: 3000,
-  ws: { path: '/ws', open: (ws) => ws.send('hello') },
+app.ws({
+  path: '/chat',
+  schema: {
+    message: z.object({ text: z.string() })
+  },
+  plugins: [requireAuth],
+  open: (client, req) => {
+    client.send({ type: 'welcome', user: req.state.authUser.id });
+  },
+  message: (client, data) => {
+    // data is strongly typed as { text: string } and already validated
+    client.send({ reply: `Echo: ${data.text}` });
+  },
+  close: (client, code, reason) => {
+    console.log(`Connection closed: ${code} - ${reason}`);
+  }
 });
 ```
 
@@ -305,17 +285,11 @@ app.use({
 | **Axiomify Native — GET /users/:id/posts/:postId** | **83,947** | **11 ms** | **20 ms** |
 | **Axiomify Native — GET /ping** | **73,511** | **13 ms** | **26 ms** |
 | **Axiomify Native — POST /echo** | **54,720** | **18 ms** | **30 ms** |
-| Axiomify + `@axiomify/http` | 32,841 | 30 ms | 91 ms |
-| Axiomify + `@axiomify/fastify` | 31,334 | 31 ms | 58 ms |
-
-The ~25% dispatcher overhead vs bare adapters is the fixed cost of hook iteration, compiled-state lookup, and async pipeline — identical across all adapters.
 
 ### Clustered (8-core, co-located loadgen)
 
 | Adapter | 1 worker | 2 workers | Scaling |
 |---|---:|---:|---:|
-| `@axiomify/http` | 35,800 | 57,200 | **160%** |
-| `@axiomify/fastify` | 21,300 | 35,200 | **165%** |
 | Native (uWS) | 85,000 | 91,300 | 107%† |
 
 † Native is autocannon-limited at ~90k req/s co-located. Dedicated loadgen gives near-linear scaling.

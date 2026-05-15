@@ -14,7 +14,7 @@ npm install @axiomify/graphql graphql
 
 ```typescript
 import { Axiomify } from '@axiomify/core';
-import { HttpAdapter } from '@axiomify/http';
+import { NativeAdapter } from '@axiomify/native';
 import { buildSchema } from 'graphql';
 import { useGraphQL } from '@axiomify/graphql';
 
@@ -28,8 +28,8 @@ const schema = buildSchema(`
 
 useGraphQL(app, { schema });
 
-const adapter = new HttpAdapter(app);
-adapter.listen(3000, () => {
+const adapter = new NativeAdapter(app, { port: 3000 });
+adapter.listen(() => {
   console.log('GraphQL ready at http://localhost:3000/graphql');
   console.log('Playground at   http://localhost:3000/graphql/playground');
 });
@@ -144,7 +144,7 @@ Only malformed requests (unparseable query, failed validation, bad variables JSO
 
 ```typescript
 import { Axiomify } from '@axiomify/core';
-import { ExpressAdapter } from '@axiomify/express';
+import { NativeAdapter } from '@axiomify/native';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
 import { useGraphQL } from '@axiomify/graphql';
 
@@ -173,6 +173,6 @@ useGraphQL(app, {
   }),
 });
 
-const adapter = new ExpressAdapter(app);
-adapter.listen(3000);
+const adapter = new NativeAdapter(app, { port: 3000 });
+adapter.listen(() => console.log('Ready'));
 ```
