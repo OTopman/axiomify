@@ -83,7 +83,7 @@ The `onPreHandler` step is only compiled into the route pipeline when at least o
 Plugins are per-route async functions that run before the handler:
 
 ```typescript
-const requireAuth: PluginHandler = async (req, res) => {
+const requireAuth: RouteMiddleware = async (req, res) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return res.status(401).send(null, 'Unauthorized');
   // if a plugin calls res.send(), the handler never runs

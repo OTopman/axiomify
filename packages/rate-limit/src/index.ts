@@ -329,7 +329,17 @@ function buildLimiter(options: RateLimitOptions = {}) {
       key = req.ip ?? 'unknown';
     }
 
-    const { count, resetTime } = await store.increment(key, windowMs);
+    let count: number;
+    let resetTime: number;
+    try {
+      const res = await store.increment(key, windowMs);
+      count = res.count;
+      resetTime = res.resetTime;
+    } catch (err) {
+      // Store unavailable — fail closed with 503, not 429
+      res.status(503).send(null, 'Rate limit service unavailable');
+      return;
+    }
     const remaining = Math.max(0, max - count);
 
     res.header('X-RateLimit-Limit', String(max));

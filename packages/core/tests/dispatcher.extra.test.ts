@@ -197,6 +197,206 @@ describe('Dispatcher — ValidatingResponse and error dev stack', () => {
     expect(res.sendRaw).toHaveBeenCalledWith('raw payload', 'text/plain');
   });
 
+  it('returns 405 Method Not Allowed when method does not match', async () => {
+    const app = new Axiomify();
+    app.route({ method: 'GET', path: '/only-get', handler: async (_r, res) => res.send({}) });
+    const [res, events] = makeAxiomifyResPair();
+    const req = makeAxiomifyReq({ method: 'POST', path: '/only-get' });
+    await app.handle(req, res);
+    expect(events()).toContain('status:405');
+    expect(res.header).toHaveBeenCalledWith('Allow', expect.stringContaining('GET'));
+  });
+
+  it('streaming response: onClose hook fires on stream close', async () => {
+    const app = new Axiomify();
+    const closeFired: boolean[] = [];
+    app.addHook('onClose', () => { closeFired.push(true); });
+    app.route({
+      method: 'GET', path: '/streamy',
+      handler: async (_r, res) => {
+        (res as any).isStreaming = true;
+      },
+    });
+    const events: string[] = [];
+    let sent = false;
+    let onStreamCloseCb: (() => void) | null = null;
+    const res: any = {
+      status: vi.fn().mockReturnThis(),
+      header: vi.fn().mockReturnThis(),
+      getHeader: vi.fn(),
+      removeHeader: vi.fn().mockReturnThis(),
+      send: vi.fn(() => { sent = true; }),
+      sendRaw: vi.fn(), error: vi.fn(), stream: vi.fn(),
+      capabilities: { sse: false, streaming: true },
+      get statusCode() { return 200; },
+      get headersSent() { return sent; },
+      raw: {}, isStreaming: false,
+      get onStreamClose() { return onStreamCloseCb; },
+      set onStreamClose(cb: any) { onStreamCloseCb = cb; },
+    };
+    await app.handle(makeAxiomifyReq({ path: '/streamy' }), res);
+    expect(typeof onStreamCloseCb).toBe('function');
+    onStreamCloseCb!();
+    await new Promise((r) => setImmediate(r));
+    expect(closeFired).toHaveLength(1);
+  });
+
+  it('handleMatchedRoute: error path invokes onError hook', async () => {
+    const app = new Axiomify();
+    const errs: unknown[] = [];
+    app.addHook('onError', (err) => { errs.push(err); });
+    app.route({
+      method: 'GET', path: '/adapter-throws',
+      handler: async () => { throw new Error('adapter handler boom'); },
+    });
+    const route = app.registeredRoutes[0];
+    const [res] = makeAxiomifyResPair();
+    const req = makeAxiomifyReq({ path: '/adapter-throws' });
+    await app.handleMatchedRoute(ADAPTER_LOCK_TOKEN, req, res, route, {});
+    expect(errs).toHaveLength(1);
+  });
+
+  it('handleMatchedRoute: streaming response wires onStreamClose for onClose hook', async () => {
+    const app = new Axiomify();
+    const closeFired: boolean[] = [];
+    app.addHook('onClose', () => { closeFired.push(true); });
+    app.route({
+      method: 'GET', path: '/adapter-stream',
+      handler: async (_r, res) => { (res as any).isStreaming = true; },
+    });
+    const route = app.registeredRoutes[0];
+    let onStreamCloseCb: (() => void) | null = null;
+    let sent = false;
+    const res: any = {
+      status: vi.fn().mockReturnThis(),
+      header: vi.fn().mockReturnThis(),
+      getHeader: vi.fn(), removeHeader: vi.fn().mockReturnThis(),
+      send: vi.fn(() => { sent = true; }), sendRaw: vi.fn(),
+      error: vi.fn(), stream: vi.fn(),
+      capabilities: { sse: false, streaming: true },
+      get statusCode() { return 200; }, get headersSent() { return sent; },
+      raw: {}, isStreaming: false,
+      get onStreamClose() { return onStreamCloseCb; },
+      set onStreamClose(cb: any) { onStreamCloseCb = cb; },
+    };
+    await app.handleMatchedRoute(ADAPTER_LOCK_TOKEN, makeAxiomifyReq({ path: '/adapter-stream' }), res, route, {});
+    expect(typeof onStreamCloseCb).toBe('function');
+    onStreamCloseCb!();
+    await new Promise((r) => setImmediate(r));
+    expect(closeFired).toHaveLength(1);
+  });
+
+  it('ValidatingResponse delegates status/header/getHeader/removeHeader/capabilities/sse/raw/streaming getters', async () => {
+    const app = new Axiomify();
+    const { z } = await import('zod');
+    let captured: any;
+    app.route({
+      method: 'GET', path: '/all-delegations',
+      schema: { response: z.object({ ok: z.boolean() }) },
+      handler: async (_req, res: any) => {
+        captured = res;
+        // status / header / removeHeader / getHeader
+        res.status(201).header('X-Test', '1');
+        res.removeHeader('X-Test');
+        res.getHeader('X-Test');
+        // sse, streaming, raw getters
+        const _cap = res.capabilities;
+        const _raw = res.raw;
+        const _ss = res.isStreaming;
+        const _osc = res.onStreamClose;
+        res.onStreamClose = () => {};
+        res.sseInit(1000);
+        res.sseSend({ x: 1 }, 'msg');
+        res.send({ ok: true });
+      },
+    });
+    let onStreamCloseCb: any = null;
+    const innerHeaders: Record<string, string> = {};
+    const inner: any = {
+      status: vi.fn().mockReturnThis(),
+      header: vi.fn((k: string, v: string) => { innerHeaders[k] = v; return inner; }),
+      getHeader: vi.fn((k: string) => innerHeaders[k]),
+      removeHeader: vi.fn(() => inner),
+      send: vi.fn(),
+      sendRaw: vi.fn(),
+      error: vi.fn(),
+      stream: vi.fn(),
+      sseInit: vi.fn(),
+      sseSend: vi.fn(),
+      capabilities: { sse: true, streaming: true },
+      get statusCode() { return 201; },
+      get raw() { return { socket: 1 }; },
+      get headersSent() { return false; },
+      get isStreaming() { return false; },
+      get onStreamClose() { return onStreamCloseCb; },
+      set onStreamClose(cb: any) { onStreamCloseCb = cb; },
+    };
+    await app.handle(makeAxiomifyReq({ path: '/all-delegations' }), inner);
+    expect(inner.status).toHaveBeenCalledWith(201);
+    expect(inner.header).toHaveBeenCalledWith('X-Test', '1');
+    expect(inner.removeHeader).toHaveBeenCalledWith('X-Test');
+    expect(inner.getHeader).toHaveBeenCalledWith('X-Test');
+    expect(inner.sseInit).toHaveBeenCalledWith(1000);
+    expect(inner.sseSend).toHaveBeenCalledWith({ x: 1 }, 'msg');
+    expect(typeof onStreamCloseCb).toBe('function');
+  });
+
+  it('ValidatingResponse: capabilities fallback when inner has none', async () => {
+    const app = new Axiomify();
+    const { z } = await import('zod');
+    let caps: any;
+    app.route({
+      method: 'GET', path: '/caps',
+      schema: { response: z.object({ ok: z.boolean() }) },
+      handler: async (_req, res: any) => {
+        caps = res.capabilities;
+        res.send({ ok: true });
+      },
+    });
+    const inner: any = {
+      status: vi.fn().mockReturnThis(),
+      header: vi.fn().mockReturnThis(),
+      getHeader: vi.fn(),
+      removeHeader: vi.fn().mockReturnThis(),
+      send: vi.fn(),
+      sendRaw: vi.fn(), error: vi.fn(), stream: vi.fn(),
+      // No `capabilities` property → ValidatingResponse uses fallback
+      get statusCode() { return 200; },
+      get raw() { return {}; },
+      get headersSent() { return false; },
+    };
+    await app.handle(makeAxiomifyReq({ path: '/caps' }), inner);
+    expect(caps).toEqual({ sse: false, streaming: false });
+  });
+
+  it('ValidatingResponse onStreamClose setter accepts null', async () => {
+    const app = new Axiomify();
+    const { z } = await import('zod');
+    app.route({
+      method: 'GET', path: '/null-cb',
+      schema: { response: z.object({ ok: z.boolean() }) },
+      handler: async (_req, res: any) => {
+        res.onStreamClose = null;
+        res.send({ ok: true });
+      },
+    });
+    let innerCb: any = 'sentinel';
+    const inner: any = {
+      status: vi.fn().mockReturnThis(),
+      header: vi.fn().mockReturnThis(),
+      getHeader: vi.fn(), removeHeader: vi.fn().mockReturnThis(),
+      send: vi.fn(), sendRaw: vi.fn(), error: vi.fn(), stream: vi.fn(),
+      capabilities: { sse: false, streaming: false },
+      get statusCode() { return 200; },
+      get raw() { return {}; },
+      get headersSent() { return false; },
+      get onStreamClose() { return innerCb; },
+      set onStreamClose(cb: any) { innerCb = cb; },
+    };
+    await app.handle(makeAxiomifyReq({ path: '/null-cb' }), inner);
+    expect(innerCb).toBeNull();
+  });
+
   it('ValidatingResponse.error() delegates to inner', async () => {
     const app = new Axiomify();
     const { z } = await import('zod');

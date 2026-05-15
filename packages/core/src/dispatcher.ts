@@ -9,7 +9,7 @@ export class RequestDispatcher {
     private readonly router: Router,
     private readonly hooks: HookManager,
     private readonly validator: ValidationCompiler,
-  ) {}
+  ) { }
 
   public async handle(req: AxiomifyRequest, res: AxiomifyResponse): Promise<void> {
     try {
@@ -29,10 +29,10 @@ export class RequestDispatcher {
     } catch (err) {
       await this.handleError(err, req, res);
     } finally {
-      if ((res as any).isStreaming) {
-        (res as any).onStreamClose = () => {
+      if (res.isStreaming) {
+        res.onStreamClose = () => {
           const onCloseRet = this.hooks.runSafe('onClose', req, res);
-          if (onCloseRet) onCloseRet.catch(() => {});
+          if (onCloseRet) onCloseRet.catch(() => { });
         };
       } else {
         const onCloseRet = this.hooks.runSafe('onClose', req, res);
@@ -61,10 +61,10 @@ export class RequestDispatcher {
     } catch (err) {
       await this.handleError(err, req, res);
     } finally {
-      if ((res as any).isStreaming) {
-        (res as any).onStreamClose = () => {
+      if (res.isStreaming) {
+        res.onStreamClose = () => {
           const onCloseRet = this.hooks.runSafe('onClose', req, res);
-          if (onCloseRet) onCloseRet.catch(() => {});
+          if (onCloseRet) onCloseRet.catch(() => { });
         };
       } else {
         const onCloseRet = this.hooks.runSafe('onClose', req, res);
@@ -132,8 +132,8 @@ export class RequestDispatcher {
     const anyErr = err as Record<string, unknown>;
     const statusCode =
       typeof anyErr.statusCode === 'number' ? anyErr.statusCode
-      : typeof anyErr.status === 'number' ? anyErr.status
-      : 500;
+        : typeof anyErr.status === 'number' ? anyErr.status
+          : 500;
     const message = typeof anyErr.message === 'string' ? anyErr.message : 'Internal Server Error';
     const errorData =
       anyErr.issues ??
@@ -159,7 +159,7 @@ class ValidatingResponse implements AxiomifyResponse {
     private readonly validator: ValidationCompiler,
     private readonly method: string,
     private readonly routeId: string,
-  ) {}
+  ) { }
 
   status(code: number): this { this.inner.status(code); return this; }
   header(key: string, value: string): this { this.inner.header(key, value); return this; }
@@ -171,8 +171,7 @@ class ValidatingResponse implements AxiomifyResponse {
       this._sent = true;
       this.validator.validateResponse(this.routeId, data, this.inner.statusCode);
     }
-    if (this.method === 'HEAD') return this.inner.send(undefined, message);
-    this.inner.send(data, message);
+    this.inner.send(data, message); // NativeResponse handles HEAD suppression
   }
 
   sendRaw(payload: any, contentType?: string): void { this.inner.sendRaw(payload, contentType); }
@@ -181,12 +180,7 @@ class ValidatingResponse implements AxiomifyResponse {
   error(err: unknown): void { this.inner.error(err); }
 
   stream(readable: import('stream').Readable, contentType?: string): void {
-    (this.inner as any).isStreaming = true;
-    (this as any).isStreaming = true;
-    Object.defineProperty(this, 'onStreamClose', {
-      set: (cb) => { (this.inner as any).onStreamClose = cb; },
-      get: () => (this.inner as any).onStreamClose
-    });
+    this.inner.isStreaming = true;
     this.inner.stream(readable, contentType);
   }
 
@@ -196,4 +190,7 @@ class ValidatingResponse implements AxiomifyResponse {
   get statusCode(): number { return this.inner.statusCode; }
   get raw(): unknown { return this.inner.raw; }
   get headersSent(): boolean { return this.inner.headersSent; }
+  get isStreaming(): boolean | undefined { return this.inner.isStreaming; }
+  get onStreamClose(): (() => void) | null | undefined { return this.inner.onStreamClose; }
+  set onStreamClose(cb: (() => void) | null | undefined) { this.inner.onStreamClose = cb ?? null; }
 }

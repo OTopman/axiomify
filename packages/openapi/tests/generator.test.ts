@@ -8,6 +8,49 @@ describe('OpenApiGenerator', () => {
     info: { title: 'Test API', version: '1.0.0' },
   };
 
+  it('wraps non-object body schema under "payload" when files are also defined', () => {
+    const mockApp = {
+      registeredRoutes: [
+        {
+          method: 'POST',
+          path: '/upload',
+          schema: {
+            body: z.array(z.string()),
+            files: { avatar: { maxSize: 1024 } as any },
+          },
+          handler: () => {},
+        },
+      ],
+    } as unknown as Axiomify;
+
+    const generator = new OpenApiGenerator(mockApp, mockOptions);
+    const spec = generator.generate();
+    const body = spec.paths['/upload']['post'].requestBody;
+    const schema = body.content['multipart/form-data'].schema;
+    expect(schema.type).toBe('object');
+    expect(schema.properties.payload).toBeDefined();
+    expect(schema.properties.avatar).toBeDefined();
+  });
+
+  it('falls back to {type:"object"} when zodToJsonSchema is unavailable', () => {
+    // Provide a non-Zod schema (no toJSONSchema method) so the Zod v3 fallback
+    // path is exercised; zod-to-json-schema may not understand it.
+    const opaqueSchema = { safeParse: () => ({ success: false }) } as any;
+    const mockApp = {
+      registeredRoutes: [
+        {
+          method: 'POST',
+          path: '/opaque',
+          schema: { body: opaqueSchema },
+          handler: () => {},
+        },
+      ],
+    } as unknown as Axiomify;
+
+    const generator = new OpenApiGenerator(mockApp, mockOptions);
+    expect(() => generator.generate()).not.toThrow();
+  });
+
   it('produces a correct requestBody for a Zod Array schema', () => {
     const mockApp = {
       registeredRoutes: [

@@ -99,7 +99,10 @@ export function useCors(app: Axiomify, options: CorsOptions = {}): void {
       }
     } else if (typeof origin === 'function') {
       const allowed = await origin(requestOrigin);
-      if (allowed) resolvedOrigin = requestOrigin ?? '*';
+      if (allowed) {
+        // With credentials, requestOrigin must be explicit — never '*'.
+        resolvedOrigin = credentials ? requestOrigin : (requestOrigin ?? '*');
+      }
     }
 
     if (resolvedOrigin) {

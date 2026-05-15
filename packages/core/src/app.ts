@@ -278,7 +278,7 @@ export class Axiomify {
       const reason = this._routesLockedReason ? ` (${this._routesLockedReason})` : '';
       throw new Error(
         `Cannot register route ${definition.method} ${definition.path} after adapter binding${reason}. ` +
-          'Register all routes before creating an adapter.',
+        'Register all routes before creating an adapter.',
       );
     }
     this.registry.register(definition);
@@ -289,7 +289,7 @@ export class Axiomify {
     if (this._routesLocked) {
       throw new Error(
         `[Axiomify] Cannot register WS route "${definition.path}" after the server has started. ` +
-          (this._routesLockedReason ?? 'The routes array is locked.'),
+        (this._routesLockedReason ?? 'The routes array is locked.'),
       );
     }
     this.registry.registerWs(definition as any);
@@ -317,7 +317,7 @@ export class Axiomify {
     if (token !== ADAPTER_LOCK_TOKEN) {
       throw new Error(
         '[Axiomify] lockRoutes() is reserved for adapter use. ' +
-          'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
+        'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
       );
     }
     this._routesLocked = true;
@@ -400,8 +400,14 @@ export class Axiomify {
         await Promise.all(
           Object.entries(checks).map(async ([name, fn]) => {
             try {
-              results[name] = await fn();
-              if (!results[name]) passed = false;
+              const result = await Promise.race([
+                fn(),
+                new Promise<boolean>((_, reject) =>
+                  setTimeout(() => reject(new Error('timeout')), 5000),
+                ),
+              ]);
+              results[name] = result;
+              if (!result) passed = false;
             } catch {
               results[name] = false;
               passed = false;
@@ -437,7 +443,7 @@ export class Axiomify {
     if (token !== ADAPTER_LOCK_TOKEN) {
       throw new Error(
         '[Axiomify] handleMatchedRoute() is reserved for adapter use. ' +
-          'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
+        'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
       );
     }
     return this.dispatcher.handleMatchedRoute(req, res, route, params);

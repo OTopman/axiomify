@@ -94,6 +94,11 @@ export interface AxiomifyResponse {
   readonly statusCode: number;
   readonly raw: unknown;
   readonly headersSent: boolean;
+
+  /** Set by the response implementation when streaming has begun. */
+  isStreaming?: boolean;
+  /** Assigned by the dispatcher to defer onClose hooks until stream end. */
+  onStreamClose?: (() => void) | null;
 }
 
 export interface SseCapableResponse extends AxiomifyResponse {
@@ -160,11 +165,6 @@ export type RouteHandler<
 ) => Promise<void> | void;
 
 export type RouteMiddleware = (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void>;
-
-/** @deprecated Use RouteMiddleware instead. Will be removed in v6. */
-export type PluginHandler = RouteMiddleware;
-/** @deprecated Use RouteMiddleware instead. Will be removed in v6. */
-export type RoutePlugin = RouteMiddleware;
 
 export interface RouteGroupOptions {
   plugins?: RouteMiddleware[];

@@ -217,3 +217,42 @@ describe('useCors — setVary and edge case origins', () => {
     expect(typeof vary).toBe('string');
   });
 });
+
+describe('useCors — function origin and setVary fallback', () => {
+  it('function origin granting access without requestOrigin returns "*"', async () => {
+    const app = new Axiomify();
+    useCors(app, { origin: async () => true });
+    const req = makeReq({ headers: {} }); // no origin header
+    const res = makeRes();
+    for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
+    expect(res.headers['Access-Control-Allow-Origin']).toBe('*');
+  });
+
+  it('function origin returning false does not set ACAO', async () => {
+    const app = new Axiomify();
+    useCors(app, { origin: async () => false });
+    const req = makeReq({ headers: { origin: 'https://x.com' } });
+    const res = makeRes();
+    for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
+    expect(res.headers['Access-Control-Allow-Origin']).toBeUndefined();
+  });
+
+  it('setVary uses res.header when getHeader is missing', async () => {
+    const app = new Axiomify();
+    useCors(app, { origin: 'https://specific.com' });
+    // res without getHeader
+    const headers: Record<string, string> = {};
+    const res: any = {
+      header: (k: string, v: string) => { headers[k] = v; return res; },
+      // no getHeader on this response
+      status: () => res, send: vi.fn(), sendRaw: vi.fn(),
+      removeHeader: vi.fn(), error: vi.fn(), stream: vi.fn(),
+      headersSent: false, statusCode: 200, raw: {},
+      capabilities: { sse: false, streaming: false },
+      get headers() { return headers; },
+    };
+    const req = makeReq({ headers: { origin: 'https://specific.com' } });
+    for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
+    expect(headers['Vary']).toBeDefined();
+  });
+});

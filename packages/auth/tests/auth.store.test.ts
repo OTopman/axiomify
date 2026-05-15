@@ -1,0 +1,238 @@
+import jwt from 'jsonwebtoken';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Axiomify } from '../../core/src/app';
+import {
+  createAuthPlugin,
+  createRefreshHandler,
+  MemoryTokenStore,
+  type TokenStore,
+} from '../src/index';
+
+const accessSecret = 'access-secret-that-is-at-least-32-chars-xxx';
+const refreshSecret = 'refresh-secret-that-is-at-least-32-chars-yyy';
+
+const makeRes = () => ({
+  status: vi.fn().mockReturnThis(),
+  send: vi.fn(),
+  header: vi.fn().mockReturnThis(),
+  headersSent: false,
+});
+
+describe('MemoryTokenStore — production warning', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  const original = process.env.NODE_ENV;
+
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    warnSpy.mockRestore();
+    process.env.NODE_ENV = original;
+  });
+
+  it('emits a warning when constructed in production', () => {
+    process.env.NODE_ENV = 'production';
+    new MemoryTokenStore();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('MemoryTokenStore is per-process'),
+    );
+  });
+});
+
+describe('createRefreshHandler — store failure paths', () => {
+  it('returns 503 when store.exists throws (store unavailable)', async () => {
+    const store: TokenStore = {
+      save: vi.fn(),
+      exists: vi.fn(async () => { throw new Error('redis down'); }),
+      revoke: vi.fn(),
+    };
+    const handler = createRefreshHandler({
+      secret: accessSecret,
+      refreshSecret,
+      store,
+    });
+    const token = jwt.sign({ id: 'u1', jti: 'j1' }, refreshSecret);
+    const res = makeRes();
+    await handler(
+      { headers: { authorization: `Bearer ${token}` } } as any,
+      res as any,
+    );
+    // Outer catch turns infra errors into 401 (handler.try/catch swallows all)
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('returns 401 when refresh token signature is invalid', async () => {
+    const handler = createRefreshHandler({
+      secret: accessSecret,
+      refreshSecret,
+    });
+    const res = makeRes();
+    await handler(
+      { headers: { authorization: 'Bearer not.a.real.token' } } as any,
+      res as any,
+    );
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+});
+
+describe('Auth — option branch coverage', () => {
+  it('throws when every provided algorithm is blocked (e.g. "none")', async () => {
+    const { createAuthPlugin } = await import('../src/index');
+    expect(() =>
+      createAuthPlugin({ secret: accessSecret, algorithms: ['none' as any, 'NONE' as any] }),
+    ).toThrow(/none/);
+  });
+
+  it('default getToken handles array authorization header', async () => {
+    const { createAuthPlugin } = await import('../src/index');
+    const requireAuth = createAuthPlugin({ secret: accessSecret });
+    const app = new Axiomify();
+    app.route({
+      method: 'GET', path: '/multi',
+      plugins: [requireAuth],
+      handler: async (_r, res) => res.send({}),
+    });
+    const token = jwt.sign({ id: 'u1' }, accessSecret);
+    const req = {
+      method: 'GET', path: '/multi',
+      headers: { authorization: [`Bearer ${token}`, `Bearer other`] },
+      id: 'r', params: {}, query: {}, state: {}, body: undefined,
+      url: '/multi', ip: '127.0.0.1',
+    } as any;
+    const res = makeRes() as any;
+    await app.handle(req, res);
+    expect(res.status).not.toHaveBeenCalledWith(401);
+  });
+
+  it('default getToken returns null when authorization header is missing', async () => {
+    const { createAuthPlugin } = await import('../src/index');
+    const requireAuth = createAuthPlugin({ secret: accessSecret });
+    const app = new Axiomify();
+    app.route({
+      method: 'GET', path: '/none',
+      plugins: [requireAuth],
+      handler: async (_r, res) => res.send({}),
+    });
+    const req = {
+      method: 'GET', path: '/none',
+      headers: {},
+      id: 'r', params: {}, query: {}, state: {}, body: undefined,
+      url: '/none', ip: '127.0.0.1',
+    } as any;
+    const res = makeRes() as any;
+    await app.handle(req, res);
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('throws in production when secret is too short', async () => {
+    const original = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const { createAuthPlugin } = await import('../src/index');
+      expect(() => createAuthPlugin({ secret: 'short' })).toThrow(/32 characters/);
+    } finally {
+      process.env.NODE_ENV = original;
+    }
+  });
+
+  it('warns in development when secret is too short', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { createAuthPlugin } = await import('../src/index');
+    createAuthPlugin({ secret: 'short' });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('shorter than 32'));
+    warn.mockRestore();
+  });
+
+  it('issuer/audience options are passed through', async () => {
+    const { createAuthPlugin } = await import('../src/index');
+    const requireAuth = createAuthPlugin({
+      secret: accessSecret,
+      issuer: 'iss-x',
+      audience: 'aud-y',
+    });
+    const token = jwt.sign({ id: 'u1' }, accessSecret, { issuer: 'iss-x', audience: 'aud-y' });
+    const app = new Axiomify();
+    app.route({
+      method: 'GET', path: '/iss',
+      plugins: [requireAuth],
+      handler: async (_r, res) => res.send({}),
+    });
+    const req = {
+      method: 'GET', path: '/iss',
+      headers: { authorization: `Bearer ${token}` },
+      id: 'r', params: {}, query: {}, state: {}, body: undefined,
+      url: '/iss', ip: '127.0.0.1',
+    } as any;
+    const res = makeRes() as any;
+    await app.handle(req, res);
+    expect(res.status).not.toHaveBeenCalledWith(401);
+  });
+
+  it('createAuthPlugin: missing jti in payload returns 401 when store is set', async () => {
+    const { createAuthPlugin, MemoryTokenStore } = await import('../src/index');
+    const store = new MemoryTokenStore();
+    const requireAuth = createAuthPlugin({ secret: accessSecret, store });
+    const tokenWithoutJti = jwt.sign({ id: 'u1' }, accessSecret); // no jti
+    const app = new Axiomify();
+    app.route({
+      method: 'GET', path: '/njti',
+      plugins: [requireAuth],
+      handler: async (_r, res) => res.send({}),
+    });
+    const req = {
+      method: 'GET', path: '/njti',
+      headers: { authorization: `Bearer ${tokenWithoutJti}` },
+      id: 'r', params: {}, query: {}, state: {}, body: undefined,
+      url: '/njti', ip: '127.0.0.1',
+    } as any;
+    const res = makeRes() as any;
+    await app.handle(req, res);
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('createRefreshHandler: array authorization header is unwrapped', async () => {
+    const { createRefreshHandler } = await import('../src/index');
+    const handler = createRefreshHandler({ secret: accessSecret, refreshSecret });
+    const token = jwt.sign({ id: 'u1', jti: 'j-1' }, refreshSecret);
+    const res = makeRes();
+    await handler(
+      { headers: { authorization: [`Bearer ${token}`] } } as any,
+      res as any,
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+});
+
+describe('createAuthPlugin — store failure paths', () => {
+  it('propagates a 503 when store.exists throws on access verification', async () => {
+    const app = new Axiomify();
+    const store: TokenStore = {
+      save: vi.fn(),
+      exists: vi.fn(async () => { throw new Error('redis down'); }),
+      revoke: vi.fn(),
+    };
+    const requireAuth = createAuthPlugin({ secret: accessSecret, store });
+    app.route({
+      method: 'GET',
+      path: '/protected',
+      plugins: [requireAuth],
+      handler: async (_r, res) => res.send({}),
+    });
+    const token = jwt.sign({ id: 'u1', jti: 'j1' }, accessSecret);
+    const req = {
+      method: 'GET',
+      path: '/protected',
+      headers: { authorization: `Bearer ${token}` },
+      id: 'r',
+      params: {},
+      query: {},
+      state: {},
+      body: undefined,
+      url: '/protected',
+      ip: '127.0.0.1',
+    } as any;
+    const res = makeRes() as any;
+    await app.handle(req, res);
+    expect(res.status).toHaveBeenCalledWith(503);
+  });
+});

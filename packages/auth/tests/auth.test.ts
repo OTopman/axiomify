@@ -126,8 +126,8 @@ describe('createAuthPlugin — access token revocation via store', () => {
     await plugin(req, res);
 
     expect(res.status).not.toHaveBeenCalled();
-    expect(req.state.authUser).toBeDefined();
-    expect(req.state.authUser.id).toBe('user-1');
+    expect(req.state.user).toBeDefined();
+    expect(req.state.user.id).toBe('user-1');
   });
 
   it('rejects a token whose jti was revoked from the store', async () => {

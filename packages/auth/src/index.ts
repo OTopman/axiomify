@@ -1,7 +1,7 @@
 import type {
   AxiomifyRequest,
   AxiomifyResponse,
-  PluginHandler,
+  RouteMiddleware,
 } from '@axiomify/core';
 import { randomUUID } from 'crypto';
 import type { Algorithm, JwtPayload, SignOptions, VerifyOptions } from 'jsonwebtoken';
@@ -51,9 +51,9 @@ export class MemoryTokenStore implements TokenStore {
     if (process.env.NODE_ENV === 'production') {
       console.warn(
         '[axiomify/auth] MemoryTokenStore is per-process and not shared across ' +
-          'multiple instances or workers. Revoked tokens are not propagated to other ' +
-          'processes, making token revocation unreliable in multi-process deployments. ' +
-          'Use a distributed store (e.g. Redis) for production.',
+        'multiple instances or workers. Revoked tokens are not propagated to other ' +
+        'processes, making token revocation unreliable in multi-process deployments. ' +
+        'Use a distributed store (e.g. Redis) for production.',
       );
     }
   }
@@ -102,7 +102,7 @@ export interface RefreshOptions {
    * Optional rate-limit plugin reference for route wiring.
    * Apply it on your `/auth/refresh` route via `plugins: [rateLimitPlugin]`.
    */
-  rateLimitPlugin?: PluginHandler;
+  rateLimitPlugin?: RouteMiddleware;
 }
 
 const BLOCKED_ALGORITHMS = new Set(['none', 'NONE', 'None']);
@@ -139,7 +139,9 @@ async function verifyAsync(token: string, secret: string, options: VerifyOptions
   );
 
   if (!payload || typeof payload === "string") {
-    throw new Error('Invalid JWT payload type');
+    const err = new Error('Invalid JWT payload type');
+    err.name = 'JsonWebTokenError';
+    throw err;
   }
 
   return payload as JwtPayload;
@@ -154,7 +156,7 @@ async function signAsync(payload: string | Buffer | object, secret: string, opti
 /**
  * Creates refresh handler. Provide `store` for revocation; otherwise stolen tokens are valid until expiry.
  */
-export function createRefreshHandler(options: RefreshOptions): PluginHandler {
+export function createRefreshHandler(options: RefreshOptions): RouteMiddleware {
   validateSecret(options.secret, 'JWT access secret');
   validateSecret(options.refreshSecret, 'JWT refresh secret');
   const algorithms = validateAlgorithms(options.algorithms ?? ['HS256']);
@@ -162,7 +164,7 @@ export function createRefreshHandler(options: RefreshOptions): PluginHandler {
   const refreshTtl = options.refreshTokenTtl ?? 604_800;
   const issuerAudience = tokenOptions(options);
 
-  const handler: PluginHandler = async (req: AxiomifyRequest, res: AxiomifyResponse) => {
+  const handler: RouteMiddleware = async (req: AxiomifyRequest, res: AxiomifyResponse) => {
     const authHeader = Array.isArray(req.headers['authorization']) ? req.headers['authorization'][0] : (req.headers['authorization'] as string | undefined);
     const token = authHeader ? extractBearer(authHeader) : null;
     if (!token) return res.status(401).send(null, 'Missing refresh token');
@@ -174,8 +176,13 @@ export function createRefreshHandler(options: RefreshOptions): PluginHandler {
       if (typeof id !== 'string' || !id || typeof jti !== 'string' || !jti) return res.status(401).send(null, 'Invalid refresh token payload');
 
       if (options.store) {
-        const exists = await options.store.exists(jti);
-        if (!exists) return res.status(401).send(null, 'Refresh token has been revoked');
+        try {
+          const exists = await options.store.exists(jti);
+          if (!exists) return res.status(401).send(null, 'Refresh token has been revoked');
+        } catch (storeErr) {
+          // Store is unavailable — fail closed with 503
+          throw Object.assign(new Error('Token store unavailable'), { statusCode: 503 });
+        }
         await options.store.revoke(jti);
       }
 
@@ -193,7 +200,7 @@ export function createRefreshHandler(options: RefreshOptions): PluginHandler {
   return handler;
 }
 
-export function createAuthPlugin(options: AuthOptions): PluginHandler {
+export function createAuthPlugin(options: AuthOptions): RouteMiddleware {
   validateSecret(options.secret, 'JWT secret');
   const algorithms = validateAlgorithms(options.algorithms ?? ['HS256']);
   const getToken = buildGetToken(options);
@@ -203,21 +210,27 @@ export function createAuthPlugin(options: AuthOptions): PluginHandler {
     const token = getToken(req);
     if (!token) return res.status(401).send(null, 'Unauthorized: Missing token');
     try {
-      const decoded = (await verifyAsync(token, options.secret, { algorithms, ...issuerAudience })) as AuthUser & { jti?: string };
-
-      // Optional access token revocation — check the store if one was provided.
-      // If the jti is absent from the store (was never saved or was revoked),
-      // reject the request immediately without waiting for token expiry.
+      const decoded = await verifyAsync(token, options.secret, { algorithms, ...issuerAudience });
       if (options.store) {
-        const jti = decoded.jti;
+        const jti = (decoded as any).jti as string | undefined;
         if (!jti) return res.status(401).send(null, 'Unauthorized: Token missing jti claim');
-        const active = await options.store.exists(jti);
+        let active: boolean;
+        try {
+          active = await options.store.exists(jti);
+        } catch (storeErr) {
+          // Store is unavailable — fail closed with 500, not 401
+          throw Object.assign(new Error('Token store unavailable'), { statusCode: 503 });
+        }
         if (!active) return res.status(401).send(null, 'Unauthorized: Token has been revoked');
       }
-
-      req.state.authUser = decoded;
-    } catch {
-      return res.status(401).send(null, 'Unauthorized: Invalid or expired token');
+      req.state.user = decoded;
+    } catch (err) {
+      // Only treat JWT errors as 401; re-throw infra errors
+      const name = (err as Error)?.name ?? '';
+      if (name === 'JsonWebTokenError' || name === 'TokenExpiredError' || name === 'NotBeforeError') {
+        return res.status(401).send(null, 'Unauthorized: Invalid or expired token');
+      }
+      throw err; // 503 or other — dispatcher sends correct status
     }
   };
 }
@@ -225,5 +238,5 @@ export function createAuthPlugin(options: AuthOptions): PluginHandler {
 export const useAuth = createAuthPlugin;
 
 export function getAuthUser(req: AxiomifyRequest): AuthUser | undefined {
-  return req.state.authUser as AuthUser | undefined;
+  return req.state.user as AuthUser | undefined;
 }

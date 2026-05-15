@@ -75,23 +75,20 @@ export class RouteRegistry {
 
     if (effectiveTimeout > 0 || hasTelemetry) {
       // Full path: supports timeout and/or tracing.
-      const timeoutError = createTimeoutError();
       const telemetry = this.options.telemetry;
       pipeline.push(async (req, res) => {
+        const timeoutError = createTimeoutError();
+        const timeoutSignal = AbortSignal.timeout(effectiveTimeout);
         let span: { end(): void } | undefined;
         if (telemetry) {
           span = telemetry.startSpan('http.request', { method: req.method, path: definition.path });
         }
         try {
-          if (effectiveTimeout > 0) {
-            const timeoutSignal = AbortSignal.timeout(effectiveTimeout);
-            await Promise.race([
-              definition.handler(req as never, res),
-              rejectOnAbort(timeoutSignal, timeoutError),
-            ]);
-          } else {
-            await definition.handler(req as never, res);
-          }
+          await Promise.race([
+            definition.handler(req as never, res),
+            rejectOnAbort(timeoutSignal, timeoutError),
+          ]);
+
         } finally {
           span?.end();
         }

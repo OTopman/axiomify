@@ -253,3 +253,137 @@ describe('MemoryStore — cleanup and compaction', () => {
     expect(results.every(r => r.count >= 1)).toBe(true);
   });
 });
+
+describe('createRateLimitPlugin — store failure returns 503', () => {
+  it('fails closed with 503 when store.increment throws', async () => {
+    const brokenStore = {
+      increment: vi.fn(async () => { throw new Error('redis down'); }),
+    };
+    const plugin = createRateLimitPlugin({
+      store: brokenStore,
+      max: 10, windowMs: 60_000,
+      allowMemoryStoreInProduction: true,
+    });
+    const res = makeRes();
+    await plugin(makeReq({ ip: '7.7.7.7' }), res);
+    expect(res.status).toHaveBeenCalledWith(503);
+  });
+
+  it('swallows skip() throw — defaults to not skip', async () => {
+    const store = new MemoryStore();
+    const plugin = createRateLimitPlugin({
+      store, max: 1, windowMs: 60_000,
+      allowMemoryStoreInProduction: true,
+      skip: () => { throw new Error('skip broken'); },
+    });
+    const req = makeReq({ ip: '8.8.8.8' });
+    await plugin(req, makeRes());
+    const res = makeRes();
+    await plugin(req, res);
+    expect(res.status).toHaveBeenCalledWith(429);
+  });
+});
+
+describe('RedisStore — full path coverage', () => {
+  it('falls back to ioredis variadic eval when object form throws', async () => {
+    const client: any = {
+      eval: vi.fn().mockImplementation((...args: unknown[]) => {
+        // Object-form call (1 arg, object) fails; variadic call (script, n, ...) succeeds.
+        if (args.length === 1 && typeof args[0] === 'object') {
+          return Promise.reject(new Error('Unknown ERR'));
+        }
+        return Promise.resolve([1, 9999]);
+      }),
+    };
+    const store = new RedisStore(client);
+    const res = await store.increment('rk', 60_000);
+    expect(res.count).toBe(1);
+    // Both call styles were attempted: 1st is object, 2nd is variadic.
+    expect(client.eval).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws when client has no eval()', async () => {
+    const store = new RedisStore({} as any);
+    await expect(store.increment('rk', 60_000)).rejects.toThrow(/eval/);
+  });
+
+  it('evalsha NOSCRIPT triggers eval fallback', async () => {
+    const client: any = {
+      eval: vi.fn().mockResolvedValue([2, 1234]),
+      evalsha: vi.fn().mockRejectedValue(new Error('NOSCRIPT No matching script')),
+    };
+    const store = new RedisStore(client);
+    // First call loads the script via eval
+    await store.increment('rk', 60_000);
+    // Second call attempts evalsha (NOSCRIPT) and falls back to eval
+    const res = await store.increment('rk', 60_000);
+    expect(res.count).toBe(2);
+    expect(client.evalsha).toHaveBeenCalled();
+  });
+
+  it('evalsha non-NOSCRIPT error tries redis@4 object style and rethrows on failure', async () => {
+    let evalshaCalls = 0;
+    const client: any = {
+      eval: vi.fn().mockResolvedValue([1, 1234]),
+      evalsha: vi.fn().mockImplementation(() => {
+        evalshaCalls++;
+        return Promise.reject(new Error('WRONGTYPE'));
+      }),
+    };
+    const store = new RedisStore(client);
+    // First call: eval path (no evalsha), sets _scriptLoaded=true
+    await store.increment('rk', 60_000);
+    // Second call: evalsha first (variadic) fails with WRONGTYPE → tries object style (also fails) → rethrows variadic error
+    await expect(store.increment('rk', 60_000)).rejects.toThrow();
+    expect(evalshaCalls).toBeGreaterThanOrEqual(2);
+  });
+
+  it('evalsha object-style success returns result', async () => {
+    let calls = 0;
+    const client: any = {
+      eval: vi.fn().mockResolvedValue([1, 1234]),
+      evalsha: vi.fn().mockImplementation((_sha: string, second: unknown) => {
+        calls++;
+        // First variadic call rejects with non-NOSCRIPT (signals try object form)
+        if (calls === 1) return Promise.reject(new Error('WRONGTYPE'));
+        // Second (object) call: succeeds — covers the "redis@4 object style" branch
+        if (typeof second === 'object') return Promise.resolve([3, 9999]);
+        return Promise.reject(new Error('unexpected'));
+      }),
+    };
+    const store = new RedisStore(client);
+    await store.increment('rk', 60_000); // primes _scriptLoaded
+    const res = await store.increment('rk', 60_000);
+    expect(res.count).toBe(3);
+  });
+
+  it('client without evalsha/evalSha forces NOSCRIPT signal', async () => {
+    let evalCalls = 0;
+    const client: any = {
+      eval: vi.fn().mockImplementation(() => {
+        evalCalls++;
+        return Promise.resolve([evalCalls, 9999]);
+      }),
+    };
+    const store = new RedisStore(client);
+    // _scriptLoaded becomes true after first call. Manually force it true via private state.
+    (store as any)._scriptLoaded = true;
+    const res = await store.increment('rk', 60_000);
+    expect(res.count).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('MemoryStore — compaction', () => {
+  it('triggers timestamp compaction when start > 1024 in increment', async () => {
+    const store = new MemoryStore();
+    // Use a short window so old timestamps expire and start moves forward
+    const key = 'compaction-key';
+    for (let i = 0; i < 1100; i++) {
+      // 1ms window — each prior timestamp immediately falls outside
+      await store.increment(key, 1);
+      // Microtask yield to keep Date.now() ticking forward
+      if (i % 100 === 0) await new Promise(r => setTimeout(r, 2));
+    }
+    // No assertion — just verify the path didn't throw
+  });
+});

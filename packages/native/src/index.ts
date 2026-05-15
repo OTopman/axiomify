@@ -258,7 +258,7 @@ class NativeRequest implements AxiomifyRequest {
     req: null,
     res: null,
   };
-  public stream: Readable = new Readable({ read() {} });
+  public stream: Readable = new Readable({ read() { } });
 
   private _queryStr: string;
   private _parsedQuery?: Record<string, string | string[]>;
@@ -338,6 +338,8 @@ class NativeResponse implements AxiomifyResponse {
   public statusCode = 200;
   public headersSent = false;
   public aborted = false;
+  public isStreaming = false;
+  public onStreamClose: (() => void) | null = null;
   public raw: UWSResponse;
   public readonly capabilities: ResponseCapabilities = { ...NATIVE_CAPABILITIES, sse: true };
   public payload?: unknown;
@@ -435,8 +437,8 @@ class NativeResponse implements AxiomifyResponse {
       typeof payload === 'string'
         ? payload
         : Buffer.isBuffer(payload)
-        ? payload
-        : String(payload);
+          ? payload
+          : String(payload);
     const sl = statusLine(this.statusCode);
     const headers = this._headers;
 
@@ -471,6 +473,7 @@ class NativeResponse implements AxiomifyResponse {
   ): void {
     if (this.headersSent || this.aborted) return;
     this.headersSent = true;
+    this.isStreaming = true;
 
     const sl = statusLine(this.statusCode);
     const headers = this._headers;
@@ -551,7 +554,7 @@ class NativeResponse implements AxiomifyResponse {
       this._req.signal.addEventListener('abort', abortListener);
       readable.on('close', () => {
         this._req.signal.removeEventListener('abort', abortListener);
-        (self as any).onStreamClose?.();
+        self.onStreamClose?.();
       });
     }
   }
@@ -582,10 +585,10 @@ class NativeResponse implements AxiomifyResponse {
       }, sseHeartbeatMs);
       this._req.signal.addEventListener('abort', () => clearInterval(interval));
     }
-    
+
     // Support onClose hooks similar to streams
-    (this as any).isStreaming = true;
-    const abortListener = () => { (this as any).onStreamClose?.(); };
+    this.isStreaming = true;
+    const abortListener = () => { this.onStreamClose?.(); };
     this._req.signal.addEventListener('abort', abortListener);
   }
 
@@ -773,7 +776,7 @@ export class NativeAdapter {
 
   private _registerFallback(): void {
     this._server.any('/*', (res: UWSResponse, req: UWSRequest) => {
-      res.onAborted(() => {});
+      res.onAborted(() => { });
       res.cork(() => {
         res.writeStatus(CACHED_404.statusLine);
         res.writeHeader('Content-Type', 'application/json');
@@ -827,14 +830,8 @@ export class NativeAdapter {
       const contentType = headers['content-type'] ?? '';
       const ip = trustProxy
         ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
-          _ipDecoder.decode(res.getRemoteAddressAsText())
+        _ipDecoder.decode(res.getRemoteAddressAsText())
         : _ipDecoder.decode(res.getRemoteAddressAsText());
-
-      // Register abort handler BEFORE any async work.
-      res.onAborted(() => {
-        aborted = true;
-        axiomifyReq.onAbort();
-      });
 
       // Construct request and response objects.
       const axiomifyReq = new NativeRequest(
@@ -853,6 +850,13 @@ export class NativeAdapter {
         method,
         serialize,
       );
+
+      // Register abort handler BEFORE any async work.
+      res.onAborted(() => {
+        aborted = true;
+        axiomifyReq.onAbort();
+        axiomifyRes.aborted = true;
+      });
 
       // --- ASYNC SECTION ---
       (async () => {
@@ -909,8 +913,8 @@ export class NativeAdapter {
               typeof anyErr.statusCode === 'number'
                 ? anyErr.statusCode
                 : typeof anyErr.status === 'number'
-                ? anyErr.status
-                : 500;
+                  ? anyErr.status
+                  : 500;
             const errMsg =
               typeof anyErr.message === 'string'
                 ? anyErr.message
@@ -950,7 +954,7 @@ export class NativeAdapter {
           headers[k] = v;
         });
 
-        res.onAborted(() => {});
+        res.onAborted(() => { });
 
         res.cork(() => {
           res.upgrade(
@@ -963,9 +967,9 @@ export class NativeAdapter {
         });
       },
 
-      open: opts.open ?? (() => {}),
-      message: opts.message ?? (() => {}),
-      close: opts.close ?? (() => {}),
+      open: opts.open ?? (() => { }),
+      message: opts.message ?? (() => { }),
+      close: opts.close ?? (() => { }),
     };
 
     this._server.ws<WsUserData>(wsPath, behavior);
@@ -974,7 +978,7 @@ export class NativeAdapter {
   private _registerWsRoutes(): void {
     const validator = this._app.validator;
     const trustProxy = this._trustProxy;
-    
+
     for (const route of this._app.registeredWsRoutes) {
       const paramKeys = extractParamKeys(route.path);
       const routeId = `WS:${route.path}`;
@@ -986,7 +990,6 @@ export class NativeAdapter {
 
         upgrade: (res: UWSResponse, req: UWSRequest, context: unknown) => {
           let aborted = false;
-          res.onAborted(() => { aborted = true; });
 
           const params: Record<string, string> = Object.create(null);
           for (let i = 0; i < paramKeys.length; i++) {
@@ -1003,9 +1006,9 @@ export class NativeAdapter {
           const queryStr = req.getQuery();
           const ip = trustProxy
             ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
-              _ipDecoder.decode(res.getRemoteAddressAsText())
+            _ipDecoder.decode(res.getRemoteAddressAsText())
             : _ipDecoder.decode(res.getRemoteAddressAsText());
-            
+
           const secWebSocketKey = headers['sec-websocket-key'];
           const secWebSocketProtocol = headers['sec-websocket-protocol'];
           const secWebSocketExtensions = headers['sec-websocket-extensions'];
@@ -1021,44 +1024,57 @@ export class NativeAdapter {
           axiomifyReq.params = params;
           const axiomifyRes = new NativeResponse(res, this._app, axiomifyReq, 'GET', this._serialize);
 
+          res.onAborted(() => {
+            aborted = true;
+            axiomifyReq.onAbort();
+            axiomifyRes.aborted = true;
+          });
+
           (async () => {
-            // Run global pre-handlers and plugins manually
-            for (const hook of this._app.hooks.hooks.onPreHandler) {
-               await hook(axiomifyReq, axiomifyRes, { route: route as any, params });
-            }
+            // Run onRequest hooks (security, CORS, request-ID, etc.)
+            const onRequestRet = this._app.hooks.run('onRequest', axiomifyReq, axiomifyRes);
+            if (onRequestRet) await onRequestRet;
+            if (axiomifyRes.headersSent || aborted) return;
+
+            // Run onPreHandler hooks (rate-limit, auth plugins, etc.)
+            const onPreHandlerRet = this._app.hooks.run('onPreHandler', axiomifyReq, axiomifyRes, { route: route as any, params });
+            if (onPreHandlerRet) await onPreHandlerRet;
+            if (axiomifyRes.headersSent || aborted) return;
+
+            // Route-level plugins
             if (route.plugins) {
               for (const plugin of route.plugins) {
-                if (axiomifyRes.headersSent || aborted) return;
-                await plugin(axiomifyReq, axiomifyRes);
+                if (axiomifyRes.headersSent || aborted) break;
+                const ret = plugin(axiomifyReq, axiomifyRes);
+                if (ret instanceof Promise) await ret;
               }
             }
             if (axiomifyRes.headersSent || aborted) return;
 
-            // Do NOT use res.cork inside async upgrade callback, uWS throws error!
-            // According to uWS docs, async upgrade must NOT be wrapped in res.cork.
-            res.upgrade(
-              { state: axiomifyReq.state, req: axiomifyReq },
-              secWebSocketKey,
-              secWebSocketProtocol,
-              secWebSocketExtensions,
-              context,
-            );
-          })();
+            res.upgrade({ state: axiomifyReq.state, req: axiomifyReq }, secWebSocketKey, secWebSocketProtocol, secWebSocketExtensions, context);
+          })().catch((err: unknown) => {
+            if (!aborted && !axiomifyRes.headersSent) {
+              const e = err as Record<string, unknown>;
+              axiomifyRes
+                .status(typeof e.statusCode === 'number' ? e.statusCode : 500)
+                .send(null, typeof e.message === 'string' ? e.message : 'Internal Server Error');
+            }
+          });
         },
 
         open: (ws: any) => {
           const client = {
             state: ws.state,
             send: (message: any, isBinary?: boolean) => {
-               const data = typeof message === 'string' || Buffer.isBuffer(message) ? message : JSON.stringify(message);
-               ws.send(data, isBinary);
+              const data = typeof message === 'string' || Buffer.isBuffer(message) ? message : JSON.stringify(message);
+              ws.send(data, isBinary);
             },
             close: () => ws.close(),
             subscribe: (topic: string) => ws.subscribe(topic),
             unsubscribe: (topic: string) => ws.unsubscribe(topic),
             publish: (topic: string, message: any, isBinary?: boolean) => {
-               const data = typeof message === 'string' || Buffer.isBuffer(message) ? message : JSON.stringify(message);
-               ws.publish(topic, data, isBinary);
+              const data = typeof message === 'string' || Buffer.isBuffer(message) ? message : JSON.stringify(message);
+              ws.publish(topic, data, isBinary);
             }
           };
           ws.client = client;
@@ -1068,37 +1084,42 @@ export class NativeAdapter {
         },
 
         message: (ws: any, message: ArrayBuffer, isBinary: boolean) => {
-           if (route.message) {
-             const data = Buffer.from(message);
-             let parsedData: any = data;
-             
-             if (route.schema?.message) {
-                const asStr = data.toString('utf8');
-                try {
-                  parsedData = JSON.parse(asStr);
-                } catch {
-                  parsedData = asStr;
-                }
-                try {
-                  validator.execute(routeId + ':message', { body: parsedData } as any);
-                } catch (err: any) {
-                  ws.client.send({ error: 'Invalid message', details: err.errors });
-                  return;
-                }
-             }
+          if (route.message) {
+            const data = Buffer.from(message);
+            let parsedData: any = data;
 
-             route.message(ws.client, parsedData);
-           }
+            if (route.schema?.message) {
+              const asStr = data.toString('utf8');
+              try {
+                parsedData = JSON.parse(asStr);
+              } catch {
+                parsedData = asStr;
+              }
+              try {
+                validator.execute(routeId + ':message', { body: parsedData } as any);
+              } catch (err: unknown) {
+                const isProduction = process.env.NODE_ENV === 'production';
+                ws.client.send(
+                  isProduction
+                    ? { error: 'Invalid message' }
+                    : { error: 'Invalid message', details: (err as any).errors }
+                );
+                return;
+              }
+            }
+
+            route.message(ws.client, parsedData);
+          }
         },
 
         close: (ws: any, code: number, message: ArrayBuffer) => {
           if (route.close) {
-             route.close(ws.client, code, Buffer.from(message).toString('utf8'));
+            route.close(ws.client, code, Buffer.from(message).toString('utf8'));
           }
         },
 
         drain: (ws: any) => {
-           if (route.drain) route.drain(ws.client);
+          if (route.drain) route.drain(ws.client);
         }
       };
 
@@ -1158,19 +1179,6 @@ export class NativeAdapter {
 
     // 'exit' is the last chance — runs synchronously, no async allowed.
     process.once('exit', cleanup);
-
-    // Fatal errors: close the socket, then let the process die.
-    process.once('uncaughtException', (err) => {
-      cleanup();
-      console.error('[Axiomify/native] Uncaught exception — socket released:', err);
-      process.exit(1);
-    });
-
-    process.once('unhandledRejection', (reason) => {
-      cleanup();
-      console.error('[Axiomify/native] Unhandled rejection — socket released:', reason);
-      process.exit(1);
-    });
 
     // Interactive stop (Ctrl+C) and orchestrator signals.
     for (const sig of ['SIGINT', 'SIGTERM'] as const) {

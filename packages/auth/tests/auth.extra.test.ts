@@ -1,6 +1,6 @@
+import jwt from 'jsonwebtoken';
 import { describe, expect, it, vi } from 'vitest';
 import { Axiomify } from '../../core/src/app';
-import jwt from 'jsonwebtoken';
 import {
   createAuthPlugin,
   createRefreshHandler,

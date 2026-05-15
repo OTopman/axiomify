@@ -204,6 +204,86 @@ describe('Axiomify app — extended coverage', () => {
     });
   });
 
+  describe('default serializer', () => {
+    it('produces success envelope when isError is false', () => {
+      const app = new Axiomify();
+      const out = app.serializer({ data: { id: 1 }, isError: false } as any);
+      expect(out).toMatchObject({ status: 'success', data: { id: 1 } });
+    });
+
+    it('marks status failed when isError is true', () => {
+      const app = new Axiomify();
+      const out = app.serializer({ data: null, isError: true } as any);
+      expect(out.status).toBe('failed');
+    });
+
+    it('marks status failed when statusCode >= 400', () => {
+      const app = new Axiomify();
+      const out = app.serializer({ data: null, isError: false, statusCode: 404 } as any);
+      expect(out.status).toBe('failed');
+    });
+
+    it('uses provided message verbatim', () => {
+      const app = new Axiomify();
+      const out = app.serializer({ data: null, isError: false, message: 'custom' } as any);
+      expect(out.message).toBe('custom');
+    });
+  });
+
+  describe('readonly getters', () => {
+    it('exposes registeredWsRoutes, router, validator, timeout', () => {
+      const app = new Axiomify({ timeout: 1234 });
+      expect(Array.isArray(app.registeredWsRoutes)).toBe(true);
+      expect(app.router).toBeDefined();
+      expect(app.validator).toBeDefined();
+      expect(app.timeout).toBe(1234);
+    });
+
+    it('timeout defaults to 0', () => {
+      expect(new Axiomify().timeout).toBe(0);
+    });
+  });
+
+  describe('ws registration', () => {
+    it('registers a websocket route', () => {
+      const app = new Axiomify();
+      app.ws({ path: '/ws', handler: async () => {} } as any);
+      expect(app.registeredWsRoutes.some(r => r.path === '/ws')).toBe(true);
+    });
+
+    it('throws when registering ws after routes are locked', () => {
+      const app = new Axiomify();
+      app.lockRoutes(ADAPTER_LOCK_TOKEN, 'test');
+      expect(() =>
+        app.ws({ path: '/late', handler: async () => {} } as any),
+      ).toThrow(/after the server has started/);
+    });
+  });
+
+  describe('group.ws', () => {
+    it('registers ws route under group prefix', () => {
+      const app = new Axiomify();
+      app.group('/api', (g) => {
+        g.ws({ path: '/socket', handler: async () => {} } as any);
+      });
+      expect(app.registeredWsRoutes.some(r => r.path === '/api/socket')).toBe(true);
+    });
+  });
+
+  describe('healthCheck — failure path', () => {
+    it('returns degraded when a check throws', async () => {
+      const app = new Axiomify();
+      app.healthCheck('/h', { db: async () => { throw new Error('boom'); } });
+      const route = app.registeredRoutes.find(r => r.path === '/h')!;
+      const req = makeReq({ path: '/h' });
+      const res = makeRes();
+      await route.handler(req, res);
+      const [payload] = (res.send as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(payload.checks.db).toBe(false);
+      expect(payload.status).toBe('degraded');
+    });
+  });
+
   describe('logger', () => {
     it('default logger is defined', () => {
       const app = new Axiomify();
