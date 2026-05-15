@@ -22,15 +22,32 @@ export interface SecurityOptions {
    */
   maxBodySize?: number;
   /**
-   * Enables heuristic SQL injection pattern matching.
-   * ⚠️  This is NOT a reliable security control — see detector.ts.
-   * Parameterized queries are the only real defense.
+   * Heuristic SQL injection pattern matching. Off by default.
+   *
+   * ⚠️  This is NOT a reliable security control. The patterns are trivially
+   * bypassed via comment insertion, case variation, URL encoding, CASE/WHEN
+   * syntax, time-based blind injection, etc. In practice the main effect
+   * of enabling this on a real API is producing 403 false positives on
+   * legitimate JSON payloads that happen to contain the strings
+   * (e.g. `{"description": "select all union members from list"}`).
+   *
+   * Parameterized queries / prepared statements at the database layer are
+   * the only real defense. Enable this only as a supplementary logging
+   * signal, not as a gate.
+   *
+   * @default false
    */
   sqlInjectionProtection?: boolean;
   /**
-   * Enables heuristic NoSQL injection pattern matching.
-   * ⚠️  This is NOT a reliable security control — see detector.ts.
-   * Schema validation (Zod) stripping unexpected keys is the real defense.
+   * Heuristic NoSQL operator pattern matching. Off by default.
+   *
+   * ⚠️  Not a reliable security control. Schema validation (Zod) that strips
+   * unexpected keys before they reach the database driver is the real
+   * defense — by the time `$ne` reaches your query, you've already lost.
+   * Enabling this also produces false positives on legitimate JSON
+   * containing keys like `$ne` for unrelated reasons.
+   *
+   * @default false
    */
   noSqlInjectionProtection?: boolean;
   prototypePollutionProtection?: boolean;
@@ -43,16 +60,15 @@ export interface SecurityOptions {
 }
 
 function patchRequestProperty(req: AxiomifyRequest, key: keyof AxiomifyRequest, newValue: unknown) {
-  // Direct assignment is faster than Object.defineProperty — defineProperty
-  // switches V8's hidden-class optimization off for the object, degrading all
-  // subsequent property accesses. req.body / req.query / req.params are
-  // already writable on every adapter's AxiomifyRequest implementation.
-  Object.defineProperty(req, key, {
-    value: newValue,
-    writable: true,
-    enumerable: true,
-    configurable: true,
-  });
+  // Direct assignment. Object.defineProperty would force V8 to drop the
+  // request's hidden class and re-derive the inline cache for every subsequent
+  // property access on the object — measurable per-request cost.
+  //
+  // body / query / params are declared writable on the AxiomifyRequest
+  // interface (only id / method / url / path / ip / headers are readonly),
+  // so a plain `req[key] = newValue` is type-safe and shape-stable across
+  // every adapter implementation.
+  (req as unknown as Record<string, unknown>)[key as string] = newValue;
 }
 
 export function useSecurity(
@@ -63,8 +79,11 @@ export function useSecurity(
     xssProtection = true,
     hppProtection = true,
     maxBodySize = 1024 * 1024,
-    sqlInjectionProtection = true,
-    noSqlInjectionProtection = true,
+    // Heuristic detectors default to OFF. They are bypassable and produce
+    // false positives on legitimate JSON. Use as supplementary logging
+    // signals (opt-in), not as primary gates.
+    sqlInjectionProtection = false,
+    noSqlInjectionProtection = false,
     prototypePollutionProtection = true,
     nullByteProtection = true,
     botProtection = true,

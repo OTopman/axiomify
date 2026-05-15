@@ -688,6 +688,28 @@ export interface NativeAdapterOptions {
    * Only used by `listenClustered()` — `listen()` is always single-process.
    */
   workers?: number;
+  /**
+   * Opt-in to the userspace L4 TCP proxy used by `listenClustered()` on
+   * non-Linux platforms (macOS, Windows). uWS's `SO_REUSEPORT` clustering is
+   * Linux-only; on other platforms the primary process must proxy traffic to
+   * worker processes in userspace, which adds two event-loop hops per byte
+   * and roughly negates the perf benefit of using uWS in the first place.
+   *
+   * `listenClustered()` will THROW on non-Linux unless this flag is `true`.
+   * Set it explicitly only if you understand the tradeoff. On Linux this
+   * flag is ignored.
+   *
+   * @default false
+   */
+  allowUserspaceProxy?: boolean;
+  /**
+   * Optional structured logger for adapter-level warnings (userspace proxy
+   * activation, worker respawn, etc.). Falls back to `console` when omitted.
+   */
+  logger?: {
+    warn(message: string, meta?: Record<string, unknown>): void;
+    error(message: string, meta?: Record<string, unknown>): void;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -701,9 +723,12 @@ export class NativeAdapter {
   private readonly _maxBodySize: number;
   private readonly _trustProxy: boolean;
   private readonly _workers: number;
+  private readonly _allowUserspaceProxy: boolean;
+  private readonly _logger: NonNullable<NativeAdapterOptions['logger']>;
   /** Serializer arity cached at construction time — not re-checked per request. */
   private readonly _serialize: (input: SerializerInput) => unknown;
   private _listenSocket: unknown = null;
+  private _onShutdown?: () => void | Promise<void>;
 
   constructor(app: Axiomify, options: NativeAdapterOptions = {}) {
     this._app = app;
@@ -712,6 +737,11 @@ export class NativeAdapter {
     this._maxBodySize = options.maxBodySize ?? 1_048_576;
     this._trustProxy = options.trustProxy ?? false;
     this._workers = options.workers ?? availableParallelism();
+    this._allowUserspaceProxy = options.allowUserspaceProxy ?? false;
+    this._logger = options.logger ?? {
+      warn: (msg, meta) => console.warn(msg, meta ?? ''),
+      error: (msg, meta) => console.error(msg, meta ?? ''),
+    };
     this._serialize = makeSerialize(this._app.serializer);
 
     buildErrorCache(this._app.serializer);
@@ -1169,8 +1199,13 @@ export class NativeAdapter {
    *
    * Guards are installed exactly once per adapter instance and are idempotent
    * — calling `close()` multiple times is safe.
+   *
+   * The signal handlers installed here are stored on the instance so
+   * `gracefulShutdown()` can detach them and take ownership of SIGINT/SIGTERM,
+   * regardless of which method the caller invokes first.
    */
   private _crashGuardInstalled = false;
+  private _crashSignalHandlers: { sig: 'SIGINT' | 'SIGTERM'; fn: () => void }[] = [];
   private _installCrashGuard(): void {
     if (this._crashGuardInstalled) return;
     this._crashGuardInstalled = true;
@@ -1180,12 +1215,18 @@ export class NativeAdapter {
     // 'exit' is the last chance — runs synchronously, no async allowed.
     process.once('exit', cleanup);
 
+    // If gracefulShutdown() already claimed signal ownership, stop here —
+    // the 'exit' guard above still runs if anything else kills the process.
+    if (this._onShutdown !== undefined) return;
+
     // Interactive stop (Ctrl+C) and orchestrator signals.
     for (const sig of ['SIGINT', 'SIGTERM'] as const) {
-      process.once(sig, () => {
+      const fn = () => {
         cleanup();
         process.exit(0);
-      });
+      };
+      this._crashSignalHandlers.push({ sig, fn });
+      process.once(sig, fn);
     }
   }
 
@@ -1216,6 +1257,22 @@ export class NativeAdapter {
   ): void {
     const gracefulTimeoutMs = opts.gracefulTimeoutMs ?? 10_000;
     const isLinux = process.platform === 'linux';
+
+    // ── Platform gate ───────────────────────────────────────────────────
+    // uWS's SO_REUSEPORT clustering only works on Linux. On macOS/Windows we
+    // would fall back to a userspace L4 proxy that defeats the perf rationale
+    // of using uWS in the first place. Require an explicit opt-in so users
+    // discover the tradeoff at boot, not in production under load.
+    if (!isLinux && !this._allowUserspaceProxy) {
+      throw new Error(
+        `[Axiomify/native] listenClustered() requires Linux for SO_REUSEPORT-based ` +
+        `clustering. Current platform: ${process.platform}. On non-Linux platforms ` +
+        `Axiomify falls back to a userspace TCP proxy that adds two event-loop hops ` +
+        `per byte and largely negates uWS's performance advantage. ` +
+        `Either deploy on Linux, use listen() for single-process operation, or set ` +
+        `allowUserspaceProxy: true on NativeAdapter options to acknowledge this.`,
+      );
+    }
 
     // ── Worker Process ───────────────────────────────────────────────────
     if (!cluster.isPrimary) {
@@ -1262,8 +1319,18 @@ export class NativeAdapter {
     let l4Proxy: import('node:net').Server | null = null;
 
     // L4 TCP Proxy (macOS / Windows Only)
-    // Pipes incoming connections to workers using round-robin.
+    // Reached only when allowUserspaceProxy=true on a non-Linux platform.
+    // The platform gate at the top of this method has already enforced opt-in;
+    // here we emit a startup warning so the degradation is visible in logs.
     if (!isLinux) {
+      this._logger.warn(
+        `[Axiomify/native] Userspace L4 TCP proxy is active on port ${this._port} ` +
+        `(platform: ${process.platform}). Each request now traverses Node.js twice ` +
+        `(primary → worker) — expect a significant throughput reduction vs Linux ` +
+        `SO_REUSEPORT clustering. This path is intended for development only.`,
+        { platform: process.platform, port: this._port, workers: targetWorkers },
+      );
+
       let rrIndex = 0;
       const net = require('node:net');
       l4Proxy = net.createServer((client: import('node:net').Socket) => {
@@ -1283,11 +1350,7 @@ export class NativeAdapter {
         backend.on('error', () => client.destroy());
       });
 
-      l4Proxy?.listen(this._port, () => {
-        console.log(
-          `[Axiomify] Development L4 Proxy listening on ${this._port} (macOS/Win)`,
-        );
-      });
+      l4Proxy?.listen(this._port);
     }
 
     const spawnWorker = (idx: number, respawnDelayMs = 0) => {
@@ -1389,6 +1452,76 @@ export class NativeAdapter {
       uWS.us_listen_socket_close(this._listenSocket);
       this._listenSocket = null;
     }
+  }
+
+  /**
+   * Wires SIGINT/SIGTERM to a graceful drain sequence:
+   *   1. Stop accepting new connections (close the uWS listen socket).
+   *   2. Run the caller-supplied `onShutdown` hook (close DB pools, flush
+   *      logger buffers, etc.). It is awaited.
+   *   3. `process.exit(0)`.
+   * If `onShutdown` throws, exits with code 1.
+   * If step 2 doesn't complete within `timeoutMs`, force-exits with code 1.
+   *
+   * This is the unified shutdown entry point for NativeAdapter. Do NOT call
+   * `gracefulShutdown()` from `@axiomify/core` on a NativeAdapter — that
+   * helper takes a Node.js `http.Server` and will not understand uWS's
+   * listen socket. Use this method instead.
+   *
+   * @example
+   * const adapter = new NativeAdapter(app);
+   * adapter.listen();
+   * adapter.gracefulShutdown({
+   *   onShutdown: async () => { await db.close(); },
+   *   timeoutMs: 15_000,
+   * });
+   */
+  public gracefulShutdown(options: {
+    onShutdown?: () => void | Promise<void>;
+    timeoutMs?: number;
+  } = {}): void {
+    const timeoutMs = options.timeoutMs ?? 10_000;
+    this._onShutdown = options.onShutdown ?? (() => {});
+
+    // Detach any signal handlers installed by _installCrashGuard so they
+    // don't race the drain sequence below. This makes gracefulShutdown()
+    // safe to call either before or after listen().
+    for (const { sig, fn } of this._crashSignalHandlers) {
+      process.removeListener(sig, fn);
+    }
+    this._crashSignalHandlers = [];
+
+    let draining = false;
+    const drain = async () => {
+      if (draining) return;
+      draining = true;
+
+      // Force-exit safety net. Unref'd so it never keeps the loop alive
+      // on its own. Cleared on clean exit.
+      const forceExit = setTimeout(() => {
+        this._logger.error(
+          '[Axiomify/native] Graceful shutdown timeout exceeded. Forcing exit.',
+          { timeoutMs },
+        );
+        process.exit(1);
+      }, timeoutMs);
+      forceExit.unref();
+
+      this.close();
+
+      try {
+        if (this._onShutdown) await this._onShutdown();
+        clearTimeout(forceExit);
+        process.exit(0);
+      } catch (err) {
+        clearTimeout(forceExit);
+        this._logger.error('[Axiomify/native] onShutdown threw', { error: err });
+        process.exit(1);
+      }
+    };
+
+    process.once('SIGTERM', () => void drain());
+    process.once('SIGINT', () => void drain());
   }
 }
 
