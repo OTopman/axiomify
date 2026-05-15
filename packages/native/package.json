@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/native",
-  "version": "4.0.0",
+  "version": "5.0.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -29,7 +29,14 @@
   "peerDependencies": {
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.48.0"
   },
+  "peerDependenciesMeta": {
+    "uWebSockets.js": { "optional": true }
+  },
   "optionalDependencies": {
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.48.0"
+    "simdjson": "^0.9.2"
+  },
+  "devDependencies": {
+    "ws": "^8.18.0",
+    "@types/ws": "^8.5.13"
   }
 }

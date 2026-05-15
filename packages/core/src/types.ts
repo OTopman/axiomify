@@ -219,13 +219,34 @@ export interface WsRouteDefinition<
   drain?: (client: WsClient<RequestState>) => void;
 }
 
-// ---------------------------------------------------------------------------
-// App plugin / module types
-// ---------------------------------------------------------------------------
+/**
+ * Global service registry.
+ * Users and plugins should augment this interface via declaration merging
+ * to guarantee compile-time type safety for Dependency Injection.
+ * * @example
+ * declare module '@axiomify/core' {
+ * interface AppServices {
+ * 'db': DatabaseConnection;
+ * 'logger': Logger;
+ * }
+ * }
+ */
+export interface AppServices {}
 
 export interface AppContext {
-  provide<T>(key: string, value: T): void;
-  resolve<T>(key: string): T;
+  /**
+   * Register a service. Enforces type correctness if the token is declared in AppServices.
+   */
+  provide<K extends keyof AppServices>(token: K, value: AppServices[K]): void;
+  // Fallback overload for untyped legacy plugins (optional, but realistic for JS consumers)
+  provide(token: string | symbol, value: unknown): void;
+
+  /**
+   * Resolve a service. Guarantees the correct return type without manual generic casting.
+   */
+  resolve<K extends keyof AppServices>(token: K): AppServices[K];
+  // Fallback overload. Warns the user they are leaving type-safe territory.
+  resolve<T = unknown>(token: string | symbol): T;
 }
 
 /** @deprecated Use AppConfigurator instead. Will be removed in v6. */

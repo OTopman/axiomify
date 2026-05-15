@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.30.0",
+    "@hapi/hapi": "^21.4.9",
     "@types/node": "^25.5.2",
     "@vitest/coverage-v8": "^3.2.4",
     "autocannon": "^8.0.0",

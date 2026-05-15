@@ -8,7 +8,7 @@ Axiomify uses a highly optimized C++ Native HTTP server powered by uWebSockets.j
 - **Multi-Core (Linux):** Scales near-linearly utilizing `SO_REUSEPORT`. Expect ~200k+ req/s on a 4-core machine.
 *Numbers vary heavily based on load-generator limits. Run load generator on a separate network machine for accurate multi-core numbers.*
 
-## Multi-core deployment
+## Multi-core deployment (Linux)
 
 ```typescript
 // Use availableParallelism() — respects container CPU limits
@@ -21,8 +21,11 @@ adapter.listenClustered({
 });
 ```
 
+`listenClustered()` uses `SO_REUSEPORT` and is **Linux-only by default**. On macOS / Windows it throws unless you pass `allowUserspaceProxy: true` to the `NativeAdapter` constructor — the non-Linux path falls back to a userspace L4 proxy that defeats uWS's perf rationale and is intended for development only.
+
 ## Clustering checklist
 
+- [ ] **Deploy on Linux.** macOS/Windows clustering requires `allowUserspaceProxy: true` and is dev-only
 - [ ] `workers` set explicitly — do not rely on defaults in containers
 - [ ] `workers` ≤ `os.availableParallelism()` — oversubscription degrades throughput
 - [ ] `gracefulTimeoutMs` ≥ your p99 latency × 2
@@ -65,9 +68,12 @@ adapter.listenClustered({
 - [ ] `RedisStore` (not `MemoryStore`) in multi-process or multi-container deployments
 - [ ] Key generator uses authenticated user ID for protected routes
 
-## WebSockets
+## Graceful shutdown
 
-- [ ] `adapter.close()` called on SIGTERM
+- [ ] `adapter.gracefulShutdown({ onShutdown, timeoutMs })` wired up — this is the unified entry point for both HTTP and WebSocket drain
+- [ ] `onShutdown` closes DB pools, flushes logger buffers, releases any external resources
+- [ ] `timeoutMs` greater than your slowest expected drain (e.g. p99 latency × 2)
+- [ ] **Do NOT** call `gracefulShutdown()` from `@axiomify/core` against a NativeAdapter — that helper is for `http.Server`, not uWS. Use `adapter.gracefulShutdown()` instead
 
 ## Observability
 

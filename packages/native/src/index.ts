@@ -20,6 +20,43 @@ import type {
 } from 'uWebSockets.js';
 import uWS from 'uWebSockets.js';
 
+// ---------------------------------------------------------------------------
+// Optional simdjson acceleration
+//
+// `simdjson` ships native bindings that, when they load and work, parse JSON
+// at multi-GB/s. The bindings DO NOT build on every platform (musl Alpine,
+// some ARM containers, sandboxed CI) — a top-level static `import` would
+// take the whole adapter down on those targets. Instead we:
+//
+//   1. Attempt `require('simdjson')` inside try/catch — load-time failure
+//      degrades to V8 JSON.parse, the adapter still works.
+//   2. Round-trip a probe payload — a binding that loads but is broken
+//      (mismatched ABI, partial install) is treated the same as missing.
+//   3. Set `simdParse = null` on either failure; the hot path checks for
+//      null and uses JSON.parse.
+//
+// `simdjson` MUST be listed in `optionalDependencies` (not `dependencies`)
+// for `npm install` to tolerate a build failure. The runtime fallback here
+// is the second line of defence, not the first.
+// ---------------------------------------------------------------------------
+
+type SimdParseFn = (s: string) => unknown;
+let simdParse: SimdParseFn | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const mod = require('simdjson') as { parse?: SimdParseFn };
+  if (typeof mod.parse === 'function') {
+    // Probe — a broken native binding can be required successfully but throw
+    // on the first call. Catch that here so the hot path never sees it.
+    mod.parse('{}');
+    simdParse = mod.parse;
+  }
+} catch {
+  // Either the package isn't installed (optionalDependencies skipped on this
+  // platform) or its native bindings failed to load / are broken. Either way,
+  // fall back silently — every call site below checks `simdParse !== null`.
+  simdParse = null;
+}
 
 // ---------------------------------------------------------------------------
 // Capabilities — native uWS adapter supports streaming but NOT SSE
@@ -177,13 +214,11 @@ function readBody(
     res.onData((ab: ArrayBuffer, isLast: boolean) => {
       if (settled) return;
 
-      // ArrayBuffer is ONLY valid during this callback — copy immediately.
-      const chunk = Buffer.from(ab);
+      const chunk = Buffer.from(ab.slice(0));
       totalSize += chunk.byteLength;
 
       if (totalSize > maxSize) {
         settled = true;
-        // Drain remaining data without processing.
         resolve({ raw: Buffer.alloc(0), tooLarge: true });
         return;
       }
@@ -195,7 +230,6 @@ function readBody(
         if (chunks.length === 0) {
           resolve(null);
         } else if (chunks.length === 1) {
-          // Fast path — single chunk: no concat needed.
           resolve({ raw: chunks[0], tooLarge: false });
         } else {
           resolve({ raw: Buffer.concat(chunks), tooLarge: false });
@@ -212,14 +246,22 @@ function readBody(
 function parseBodyBuffer(raw: Buffer, contentType: string): unknown {
   if (contentType.includes('application/json')) {
     try {
+      // simdParse is the captured reference: non-null when bindings loaded
+      // and the probe succeeded. The narrow check satisfies TS strict-null,
+      // and lets V8 inline the JSON.parse path when simdjson is absent.
+      if (simdParse !== null) {
+        return simdParse(raw.toString('utf8'));
+      }
       return JSON.parse(raw.toString('utf8'));
     } catch {
       return undefined;
     }
   }
+
   if (contentType.includes('application/x-www-form-urlencoded')) {
-    return Object.fromEntries(new URLSearchParams(raw.toString('utf8')));
+    return fastParseQuery(raw.toString('utf8'));
   }
+
   // Return raw Buffer — @axiomify/upload or custom handlers consume it.
   return raw;
 }
@@ -241,6 +283,73 @@ interface WorkerRecord {
   state: WorkerState;
 }
 
+/**
+ * Tolerant `decodeURIComponent` — returns the raw (un-decoded) string when
+ * the input contains malformed percent-encoding instead of throwing
+ * `URIError: URI malformed`. Form bodies and query strings from real clients
+ * regularly include bytes that look like the start of a percent escape but
+ * aren't valid UTF-8 (`%E0` truncated, `%XY` non-hex, etc.); rejecting those
+ * with a 500 is worse than passing the literal bytes through. The handler
+ * can still validate the resulting string via Zod.
+ */
+function safeDecodeURIComponent(s: string): string {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
+function fastParseQuery(str: string): Record<string, string | string[]> {
+  const result: Record<string, string | string[]> = Object.create(null);
+  if (!str) return result;
+
+  let start = 0;
+  let eqIdx = -1;
+  const len = str.length;
+
+  for (let i = 0; i <= len; i++) {
+    if (i === len || str.charCodeAt(i) === 38) {
+      // 38 is '&'
+      if (start === i) {
+        start = i + 1;
+        eqIdx = -1;
+        continue;
+      }
+
+      const keyEnd = eqIdx === -1 ? i : eqIdx;
+
+      // Form bodies encode spaces as '+'. Replace before decoding.
+      const keyStr = str.substring(start, keyEnd).replace(/\+/g, ' ');
+      const valStr =
+        eqIdx === -1 ? '' : str.substring(eqIdx + 1, i).replace(/\+/g, ' ');
+
+      // safeDecodeURIComponent: malformed percent-encoding from a real client
+      // would otherwise propagate as an unhandled URIError and crash the
+      // request as a 500. Passing the raw bytes through is the conservative
+      // choice — handler-level validation (Zod) is the right place to reject.
+      const key = safeDecodeURIComponent(keyStr);
+      const val = safeDecodeURIComponent(valStr);
+
+      const existing = result[key];
+      if (existing === undefined) {
+        result[key] = val;
+      } else if (Array.isArray(existing)) {
+        existing.push(val);
+      } else {
+        result[key] = [existing as string, val];
+      }
+
+      start = i + 1;
+      eqIdx = -1;
+    } else if (str.charCodeAt(i) === 61 && eqIdx === -1) {
+      // 61 is '='
+      eqIdx = i;
+    }
+  }
+  return result;
+}
+
 // ---------------------------------------------------------------------------
 // NativeRequest — allocation-minimal AxiomifyRequest implementation
 // ---------------------------------------------------------------------------
@@ -258,7 +367,7 @@ class NativeRequest implements AxiomifyRequest {
     req: null,
     res: null,
   };
-  public stream: Readable = new Readable({ read() { } });
+  public stream: Readable = new Readable({ read() {} });
 
   private _queryStr: string;
   private _parsedQuery?: Record<string, string | string[]>;
@@ -298,14 +407,7 @@ class NativeRequest implements AxiomifyRequest {
    */
   get query(): Record<string, string | string[]> {
     if (!this._parsedQuery) {
-      this._parsedQuery = Object.create(null) as Record<string, string | string[]>;
-      if (this._queryStr) {
-        const sp = new URLSearchParams(this._queryStr);
-        for (const key of new Set(sp.keys())) {
-          const values = sp.getAll(key);
-          this._parsedQuery[key] = values.length === 1 ? values[0] : values;
-        }
-      }
+      this._parsedQuery = fastParseQuery(this._queryStr);
     }
     return this._parsedQuery;
   }
@@ -341,7 +443,10 @@ class NativeResponse implements AxiomifyResponse {
   public isStreaming = false;
   public onStreamClose: (() => void) | null = null;
   public raw: UWSResponse;
-  public readonly capabilities: ResponseCapabilities = { ...NATIVE_CAPABILITIES, sse: true };
+  public readonly capabilities: ResponseCapabilities = {
+    ...NATIVE_CAPABILITIES,
+    sse: true,
+  };
   public payload?: unknown;
   public responseMessage?: string;
 
@@ -437,8 +542,8 @@ class NativeResponse implements AxiomifyResponse {
       typeof payload === 'string'
         ? payload
         : Buffer.isBuffer(payload)
-          ? payload
-          : String(payload);
+        ? payload
+        : String(payload);
     const sl = statusLine(this.statusCode);
     const headers = this._headers;
 
@@ -550,7 +655,9 @@ class NativeResponse implements AxiomifyResponse {
     if (this._req.signal.aborted) {
       readable.destroy();
     } else {
-      const abortListener = () => { readable.destroy(); };
+      const abortListener = () => {
+        readable.destroy();
+      };
       this._req.signal.addEventListener('abort', abortListener);
       readable.on('close', () => {
         this._req.signal.removeEventListener('abort', abortListener);
@@ -588,7 +695,9 @@ class NativeResponse implements AxiomifyResponse {
 
     // Support onClose hooks similar to streams
     this.isStreaming = true;
-    const abortListener = () => { this.onStreamClose?.(); };
+    const abortListener = () => {
+      this.onStreamClose?.();
+    };
     this._req.signal.addEventListener('abort', abortListener);
   }
 
@@ -806,7 +915,7 @@ export class NativeAdapter {
 
   private _registerFallback(): void {
     this._server.any('/*', (res: UWSResponse, req: UWSRequest) => {
-      res.onAborted(() => { });
+      res.onAborted(() => {});
       res.cork(() => {
         res.writeStatus(CACHED_404.statusLine);
         res.writeHeader('Content-Type', 'application/json');
@@ -860,7 +969,7 @@ export class NativeAdapter {
       const contentType = headers['content-type'] ?? '';
       const ip = trustProxy
         ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
-        _ipDecoder.decode(res.getRemoteAddressAsText())
+          _ipDecoder.decode(res.getRemoteAddressAsText())
         : _ipDecoder.decode(res.getRemoteAddressAsText());
 
       // Construct request and response objects.
@@ -925,7 +1034,13 @@ export class NativeAdapter {
         if (aborted) return;
         axiomifyRes.aborted = aborted;
 
-        await app.handleMatchedRoute(ADAPTER_LOCK_TOKEN, axiomifyReq, axiomifyRes, route, params);
+        await app.handleMatchedRoute(
+          ADAPTER_LOCK_TOKEN,
+          axiomifyReq,
+          axiomifyRes,
+          route,
+          params,
+        );
       })().catch((err: unknown) => {
         // A .catch() is mandatory on all uWS async handlers. Without it, any
         // unhandled rejection (handler bug, DB drop, timeout) reaches Node's
@@ -943,8 +1058,8 @@ export class NativeAdapter {
               typeof anyErr.statusCode === 'number'
                 ? anyErr.statusCode
                 : typeof anyErr.status === 'number'
-                  ? anyErr.status
-                  : 500;
+                ? anyErr.status
+                : 500;
             const errMsg =
               typeof anyErr.message === 'string'
                 ? anyErr.message
@@ -968,7 +1083,7 @@ export class NativeAdapter {
 
     const behavior: WebSocketBehavior<WsUserData> = {
       compression: opts.compression ?? uWS.SHARED_COMPRESSOR,
-      maxPayloadLength: opts.maxPayloadLength ?? 16 * 1024 * 1024,
+      maxPayloadLength: opts.maxPayloadLength ?? 256 * 1024,
       idleTimeout: opts.idleTimeout ?? 120,
 
       upgrade: (res: UWSResponse, req: UWSRequest, context: unknown) => {
@@ -984,7 +1099,7 @@ export class NativeAdapter {
           headers[k] = v;
         });
 
-        res.onAborted(() => { });
+        res.onAborted(() => {});
 
         res.cork(() => {
           res.upgrade(
@@ -997,9 +1112,9 @@ export class NativeAdapter {
         });
       },
 
-      open: opts.open ?? (() => { }),
-      message: opts.message ?? (() => { }),
-      close: opts.close ?? (() => { }),
+      open: opts.open ?? (() => {}),
+      message: opts.message ?? (() => {}),
+      close: opts.close ?? (() => {}),
     };
 
     this._server.ws<WsUserData>(wsPath, behavior);
@@ -1015,7 +1130,7 @@ export class NativeAdapter {
 
       const behavior: WebSocketBehavior<any> = {
         compression: uWS.SHARED_COMPRESSOR,
-        maxPayloadLength: 16 * 1024 * 1024,
+        maxPayloadLength: 256 * 1024,
         idleTimeout: 120,
 
         upgrade: (res: UWSResponse, req: UWSRequest, context: unknown) => {
@@ -1036,7 +1151,7 @@ export class NativeAdapter {
           const queryStr = req.getQuery();
           const ip = trustProxy
             ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
-            _ipDecoder.decode(res.getRemoteAddressAsText())
+              _ipDecoder.decode(res.getRemoteAddressAsText())
             : _ipDecoder.decode(res.getRemoteAddressAsText());
 
           const secWebSocketKey = headers['sec-websocket-key'];
@@ -1052,7 +1167,13 @@ export class NativeAdapter {
             undefined,
           );
           axiomifyReq.params = params;
-          const axiomifyRes = new NativeResponse(res, this._app, axiomifyReq, 'GET', this._serialize);
+          const axiomifyRes = new NativeResponse(
+            res,
+            this._app,
+            axiomifyReq,
+            'GET',
+            this._serialize,
+          );
 
           res.onAborted(() => {
             aborted = true;
@@ -1062,12 +1183,21 @@ export class NativeAdapter {
 
           (async () => {
             // Run onRequest hooks (security, CORS, request-ID, etc.)
-            const onRequestRet = this._app.hooks.run('onRequest', axiomifyReq, axiomifyRes);
+            const onRequestRet = this._app.hooks.run(
+              'onRequest',
+              axiomifyReq,
+              axiomifyRes,
+            );
             if (onRequestRet) await onRequestRet;
             if (axiomifyRes.headersSent || aborted) return;
 
             // Run onPreHandler hooks (rate-limit, auth plugins, etc.)
-            const onPreHandlerRet = this._app.hooks.run('onPreHandler', axiomifyReq, axiomifyRes, { route: route as any, params });
+            const onPreHandlerRet = this._app.hooks.run(
+              'onPreHandler',
+              axiomifyReq,
+              axiomifyRes,
+              { route: route as any, params },
+            );
             if (onPreHandlerRet) await onPreHandlerRet;
             if (axiomifyRes.headersSent || aborted) return;
 
@@ -1081,13 +1211,24 @@ export class NativeAdapter {
             }
             if (axiomifyRes.headersSent || aborted) return;
 
-            res.upgrade({ state: axiomifyReq.state, req: axiomifyReq }, secWebSocketKey, secWebSocketProtocol, secWebSocketExtensions, context);
+            res.upgrade(
+              { state: axiomifyReq.state, req: axiomifyReq },
+              secWebSocketKey,
+              secWebSocketProtocol,
+              secWebSocketExtensions,
+              context,
+            );
           })().catch((err: unknown) => {
             if (!aborted && !axiomifyRes.headersSent) {
               const e = err as Record<string, unknown>;
               axiomifyRes
                 .status(typeof e.statusCode === 'number' ? e.statusCode : 500)
-                .send(null, typeof e.message === 'string' ? e.message : 'Internal Server Error');
+                .send(
+                  null,
+                  typeof e.message === 'string'
+                    ? e.message
+                    : 'Internal Server Error',
+                );
             }
           });
         },
@@ -1096,16 +1237,22 @@ export class NativeAdapter {
           const client = {
             state: ws.state,
             send: (message: any, isBinary?: boolean) => {
-              const data = typeof message === 'string' || Buffer.isBuffer(message) ? message : JSON.stringify(message);
+              const data =
+                typeof message === 'string' || Buffer.isBuffer(message)
+                  ? message
+                  : JSON.stringify(message);
               ws.send(data, isBinary);
             },
             close: () => ws.close(),
             subscribe: (topic: string) => ws.subscribe(topic),
             unsubscribe: (topic: string) => ws.unsubscribe(topic),
             publish: (topic: string, message: any, isBinary?: boolean) => {
-              const data = typeof message === 'string' || Buffer.isBuffer(message) ? message : JSON.stringify(message);
+              const data =
+                typeof message === 'string' || Buffer.isBuffer(message)
+                  ? message
+                  : JSON.stringify(message);
               ws.publish(topic, data, isBinary);
-            }
+            },
           };
           ws.client = client;
           if (route.open) {
@@ -1114,32 +1261,58 @@ export class NativeAdapter {
         },
 
         message: (ws: any, message: ArrayBuffer, isBinary: boolean) => {
-          if (route.message) {
-            const data = Buffer.from(message);
-            let parsedData: any = data;
+          if (!route.message) return;
 
-            if (route.schema?.message) {
-              const asStr = data.toString('utf8');
-              try {
-                parsedData = JSON.parse(asStr);
-              } catch {
-                parsedData = asStr;
-              }
-              try {
-                validator.execute(routeId + ':message', { body: parsedData } as any);
-              } catch (err: unknown) {
-                const isProduction = process.env.NODE_ENV === 'production';
-                ws.client.send(
-                  isProduction
-                    ? { error: 'Invalid message' }
-                    : { error: 'Invalid message', details: (err as any).errors }
-                );
-                return;
-              }
+          // Binary payloads bypass JSON parsing and schema validation —
+          // the handler receives a Buffer. uWS reuses the ArrayBuffer after
+          // this callback, so the copy MUST happen before the handler runs.
+          if (isBinary) {
+            route.message(ws.client, Buffer.from(message.slice(0)));
+            return;
+          }
+
+          // Text payloads: defensive deep copy first (uWS recycles the
+          // ArrayBuffer), then optional simdjson + Zod schema validation.
+          const safeBuffer = Buffer.from(message.slice(0));
+          let parsedData: unknown = safeBuffer;
+
+          if (route.schema?.message) {
+            const asStr = safeBuffer.toString('utf8');
+
+            // Parse JSON. A parse failure here is treated the same as a
+            // schema violation — the message never reaches the handler.
+            try {
+              parsedData = simdParse !== null
+                ? simdParse(asStr)
+                : JSON.parse(asStr);
+            } catch (err: unknown) {
+              const isProduction = process.env.NODE_ENV === 'production';
+              ws.client.send(
+                isProduction
+                  ? { error: 'Invalid message' }
+                  : { error: 'Invalid message', details: { body: { _root: (err as Error).message } } },
+              );
+              return;
             }
 
-            route.message(ws.client, parsedData);
+            // Run the compiled validator registered at app.ws() time.
+            // ValidationCompiler.execute() throws ValidationError on failure;
+            // catch and surface to the client as a schema rejection.
+            try {
+              validator.execute(routeId + ':message', { body: parsedData } as any);
+            } catch (err: unknown) {
+              const isProduction = process.env.NODE_ENV === 'production';
+              const details = (err as { errors?: unknown }).errors;
+              ws.client.send(
+                isProduction
+                  ? { error: 'Invalid message' }
+                  : { error: 'Invalid message', details },
+              );
+              return;
+            }
           }
+
+          route.message(ws.client, parsedData);
         },
 
         close: (ws: any, code: number, message: ArrayBuffer) => {
@@ -1150,7 +1323,7 @@ export class NativeAdapter {
 
         drain: (ws: any) => {
           if (route.drain) route.drain(ws.client);
-        }
+        },
       };
 
       this._server.ws<any>(route.path, behavior);
@@ -1205,7 +1378,10 @@ export class NativeAdapter {
    * regardless of which method the caller invokes first.
    */
   private _crashGuardInstalled = false;
-  private _crashSignalHandlers: { sig: 'SIGINT' | 'SIGTERM'; fn: () => void }[] = [];
+  private _crashSignalHandlers: {
+    sig: 'SIGINT' | 'SIGTERM';
+    fn: () => void;
+  }[] = [];
   private _installCrashGuard(): void {
     if (this._crashGuardInstalled) return;
     this._crashGuardInstalled = true;
@@ -1266,11 +1442,11 @@ export class NativeAdapter {
     if (!isLinux && !this._allowUserspaceProxy) {
       throw new Error(
         `[Axiomify/native] listenClustered() requires Linux for SO_REUSEPORT-based ` +
-        `clustering. Current platform: ${process.platform}. On non-Linux platforms ` +
-        `Axiomify falls back to a userspace TCP proxy that adds two event-loop hops ` +
-        `per byte and largely negates uWS's performance advantage. ` +
-        `Either deploy on Linux, use listen() for single-process operation, or set ` +
-        `allowUserspaceProxy: true on NativeAdapter options to acknowledge this.`,
+          `clustering. Current platform: ${process.platform}. On non-Linux platforms ` +
+          `Axiomify falls back to a userspace TCP proxy that adds two event-loop hops ` +
+          `per byte and largely negates uWS's performance advantage. ` +
+          `Either deploy on Linux, use listen() for single-process operation, or set ` +
+          `allowUserspaceProxy: true on NativeAdapter options to acknowledge this.`,
       );
     }
 
@@ -1325,10 +1501,14 @@ export class NativeAdapter {
     if (!isLinux) {
       this._logger.warn(
         `[Axiomify/native] Userspace L4 TCP proxy is active on port ${this._port} ` +
-        `(platform: ${process.platform}). Each request now traverses Node.js twice ` +
-        `(primary → worker) — expect a significant throughput reduction vs Linux ` +
-        `SO_REUSEPORT clustering. This path is intended for development only.`,
-        { platform: process.platform, port: this._port, workers: targetWorkers },
+          `(platform: ${process.platform}). Each request now traverses Node.js twice ` +
+          `(primary → worker) — expect a significant throughput reduction vs Linux ` +
+          `SO_REUSEPORT clustering. This path is intended for development only.`,
+        {
+          platform: process.platform,
+          port: this._port,
+          workers: targetWorkers,
+        },
       );
 
       let rrIndex = 0;
@@ -1476,10 +1656,12 @@ export class NativeAdapter {
    *   timeoutMs: 15_000,
    * });
    */
-  public gracefulShutdown(options: {
-    onShutdown?: () => void | Promise<void>;
-    timeoutMs?: number;
-  } = {}): void {
+  public gracefulShutdown(
+    options: {
+      onShutdown?: () => void | Promise<void>;
+      timeoutMs?: number;
+    } = {},
+  ): void {
     const timeoutMs = options.timeoutMs ?? 10_000;
     this._onShutdown = options.onShutdown ?? (() => {});
 
@@ -1515,7 +1697,9 @@ export class NativeAdapter {
         process.exit(0);
       } catch (err) {
         clearTimeout(forceExit);
-        this._logger.error('[Axiomify/native] onShutdown threw', { error: err });
+        this._logger.error('[Axiomify/native] onShutdown threw', {
+          error: err,
+        });
         process.exit(1);
       }
     };
@@ -1526,3 +1710,13 @@ export class NativeAdapter {
 }
 
 export { adaptMiddleware } from './bridge';
+
+/**
+ * Internal helpers exposed for unit testing only.
+ * Not part of the public API — do not import from application code.
+ * @internal
+ */
+export const __internal = {
+  fastParseQuery,
+  safeDecodeURIComponent,
+};

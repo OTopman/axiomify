@@ -63,7 +63,7 @@ export class Axiomify {
   private readonly _timeout: number;
   private readonly _telemetry?: AxiomifyOptions['telemetry'];
   private readonly _logger: AxiomifyLogger;
-  private readonly _services = new Map<string, unknown>();
+  private readonly _services = new Map<string | symbol, unknown>();
   private readonly _modules = new Set<string>();
   private _routesLocked = false;
   private _routesLockedReason?: string;
@@ -160,16 +160,23 @@ export class Axiomify {
    * Accepted forms:
    *   - AppConfigurator: (app, context) => void — preferred
    *   - AppModule: named object with register() + optional dependencies[]
-   *   - AppPlugin: (app) => void — @deprecated, use AppConfigurator
    */
-  public use(configurator: AppPlugin | AppConfigurator | AppModule): this {
+  public use(configurator: AppConfigurator | AppModule): this {
     const context: AppContext = {
-      provide: (token, value) => this._services.set(token, value),
-      // Double-cast through unknown: the Map stores `unknown` values but the
-      // AppContext interface exposes resolve<T>() so callers get type safety at
-      // the call site. The alternative (Map<string, T>) would require a generic
-      // Axiomify class which breaks the plugin registration API.
-      resolve: <T>(token: string) => this._services.get(token) as unknown as T,
+      provide: (token: any, value: any) => {
+        this._services.set(token, value);
+      },
+      resolve: (token: any) => {
+        const svc = this._services.get(token);
+        if (svc === undefined) {
+          throw new Error(
+            `[Axiomify] DI Error: Cannot resolve unregistered service "${String(
+              token,
+            )}".`,
+          );
+        }
+        return svc;
+      },
     };
 
     if (typeof configurator === 'function') {

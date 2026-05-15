@@ -174,12 +174,14 @@ function createZodValidator(schema: ZodTypeAny): ValidateFunction {
     const errors: Record<string, string> = {};
     for (const issue of result.error.issues) {
       const path = issue.path.length > 0 ? issue.path.join('.') : '_root';
+      // Root-level type mismatch (null/undefined/non-object body when an
+      // object was expected). Detection is code-based — NOT string-matched
+      // — so it survives Zod locale changes, custom error maps, and minor
+      // version upgrades that reword `issue.message`.
       const isRootMissing =
         issue.path.length === 0 &&
         issue.code === 'invalid_type' &&
-        (issue.message === 'Required' ||
-          issue.message.includes('received undefined') ||
-          issue.message.includes('received null'));
+        (data === null || data === undefined);
       errors[path] = isRootMissing ? 'The request body is missing or empty' : issue.message;
     }
     return { valid: false, errors };

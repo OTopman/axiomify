@@ -14,8 +14,9 @@ Node.js ≥ 18, < 23. uWS is a pre-compiled native binary — check the [uWebSoc
 
 - `new NativeAdapter(app, options?)` — create adapter
 - `adapter.listen(callback?)` → starts listening
-- `adapter.listenClustered(opts)` — fork N worker processes with SO_REUSEPORT
-- `adapter.close()` — closes the listening socket
+- `adapter.listenClustered(opts)` — fork N worker processes with SO_REUSEPORT (Linux only by default)
+- `adapter.gracefulShutdown(opts?)` — wire SIGINT/SIGTERM to a drain + onShutdown sequence
+- `adapter.close()` — synchronously closes the listening socket (low-level)
 
 ## Options
 
@@ -25,7 +26,9 @@ Node.js ≥ 18, < 23. uWS is a pre-compiled native binary — check the [uWebSoc
 | `maxBodySize` | `number` | `1048576` | Max request body (1 MB) |
 | `trustProxy` | `boolean` | `false` | Trust `X-Forwarded-For` for `req.ip` |
 | `workers` | `number` | `os.availableParallelism()` | Worker count for `listenClustered()` |
-| `ws` | `NativeWsOptions` | — | Built-in fallback uWS WebSocket options (Legacy)
+| `allowUserspaceProxy` | `boolean` | `false` | See [Clustering on macOS / Windows](#clustering-on-macos--windows) |
+| `logger` | `AxiomifyLogger` | `console` | Structured logger for adapter-level warnings |
+| `ws` | `NativeWsOptions` | — | Built-in fallback uWS WebSocket options (Legacy) |
 
 ## Usage
 
@@ -69,7 +72,50 @@ adapter.listenClustered({
 });
 ```
 
-uWS workers bind via SO_REUSEPORT natively. The kernel distributes connections across workers at the socket layer — zero IPC in the request hot path.
+uWS workers bind via `SO_REUSEPORT` natively. The kernel distributes connections across workers at the socket layer — zero IPC in the request hot path.
+
+### Clustering on macOS / Windows
+
+`SO_REUSEPORT` is a Linux-only kernel feature. On macOS and Windows, `listenClustered()` would have to fall back to a userspace L4 TCP proxy that pipes traffic from the primary process to workers. Each byte traverses Node.js twice, which largely negates the perf advantage of using uWS in the first place.
+
+To prevent silent production regressions, `listenClustered()` **throws** on non-Linux platforms unless you explicitly opt in:
+
+```typescript
+const adapter = new NativeAdapter(app, {
+  port: 3000,
+  allowUserspaceProxy: true, // acknowledge the perf cliff
+});
+adapter.listenClustered({ /* ... */ });
+```
+
+When the userspace proxy activates, the adapter emits a structured `logger.warn` so the degradation is visible in your log pipeline. For production, deploy on Linux or run a single process via `listen()`.
+
+## Graceful shutdown
+
+Wire SIGINT and SIGTERM to a drain sequence that:
+
+1. Closes the uWS listen socket (no new connections accepted).
+2. Awaits your `onShutdown` hook (close DB pools, flush logger buffers, etc.).
+3. Calls `process.exit(0)`.
+
+If the drain exceeds `timeoutMs`, the adapter force-exits with code `1`.
+
+```typescript
+const adapter = new NativeAdapter(app, { port: 3000 });
+adapter.listen();
+
+adapter.gracefulShutdown({
+  onShutdown: async () => {
+    await db.close();
+    await logger.flush();
+  },
+  timeoutMs: 15_000,
+});
+```
+
+`gracefulShutdown()` is safe to call before *or* after `listen()` — it detaches the synchronous crash-guard signal handlers that `listen()` installs by default, so only one drain runs per signal.
+
+> **Do not** call `gracefulShutdown()` from `@axiomify/core` against a `NativeAdapter`. That core helper expects a Node.js `http.Server` and will not understand uWS's listen socket. Use `adapter.gracefulShutdown()` instead.
 
 ## WebSockets
 

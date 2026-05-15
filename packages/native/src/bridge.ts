@@ -20,18 +20,12 @@ export function createNodeReqPolyfill(req: AxiomifyRequest): Record<string, unkn
     socket: { remoteAddress: req.ip },
     connection: { remoteAddress: req.ip },
     on(event: string, cb: (data?: unknown) => void): void {
-      // Emit buffered body data so middleware that reads the stream
-      // (e.g. body parsers) receives the already-parsed content.
-      if (event === 'data' && req.body !== undefined) {
-        const raw =
-          req.body instanceof Buffer
-            ? req.body
-            : Buffer.from(JSON.stringify(req.body));
-        // Defer to give the caller time to attach all event handlers.
-        queueMicrotask(() => cb(raw));
-      }
-      if (event === 'end') {
-        queueMicrotask(() => cb());
+      if (event === 'data' || event === 'end') {
+        throw new Error(
+          `[Axiomify/native] Fatal: Express middleware attempted to consume the request body stream via req.on('${event}'). ` +
+            `This is strictly prohibited. Axiomify parses bodies natively before middleware runs. ` +
+            `Remove body-parser, multer, or express.json() from your adapter pipeline.`,
+        );
       }
     },
   };
