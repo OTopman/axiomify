@@ -14,7 +14,7 @@ You write routes once and the framework executes them at lightning speed.
 
 ## Routing
 
-Routes are registered on `Axiomify` and compiled into a radix trie at startup:
+Routes are registered on `Axiomify` and dispatched by **two** routers depending on the entrypoint:
 
 ```typescript
 app.route({
@@ -27,9 +27,10 @@ app.route({
 });
 ```
 
-**No double routing.** The NativeAdapter resolves routes directly through the internal trie.
+- **Production (`@axiomify/native`)** — each route is registered directly with `uWebSockets.js` at startup. Method + path matching happens in C++ with zero JavaScript on the routing hot path. `app.handleMatchedRoute()` is called with a pre-resolved route, so the dispatcher skips routing entirely.
+- **Test / SSR (`app.handle()`)** — the JS radix trie in `packages/core/src/router.ts` matches the route. Used by unit tests, server-side rendering, and any embedder that drives the framework without an HTTP adapter. Production traffic never touches this code path.
 
-The radix trie uses **character-by-character path walking** with a pre-allocated flat param accumulator — no `split('/')` allocation per lookup, no spread per matched segment. Lookup is O(k) where k = path depth.
+The JS radix trie uses character-by-character path walking with a pre-allocated flat param accumulator — no `split('/')` allocation per lookup, no spread per matched segment. Lookup is O(k) where k = path depth. It also powers 404 vs 405 disambiguation (registered method enumeration for the `Allow` header).
 
 ---
 

@@ -299,7 +299,7 @@ export class Axiomify {
         (this._routesLockedReason ?? 'The routes array is locked.'),
       );
     }
-    this.registry.registerWs(definition as any);
+    this.registry.registerWs(definition);
     return this;
   }
 
@@ -333,6 +333,18 @@ export class Axiomify {
   }
 
   public setSerializer(fn: SerializerFn): this {
+    // Serializer cannot be changed after an adapter has bound — adapters
+    // pre-build error-payload caches (404/413/500) from the current serializer
+    // at construction time. Allowing a swap after that produces inconsistent
+    // response envelopes between cached fallbacks and live responses.
+    if (this._routesLocked) {
+      const reason = this._routesLockedReason ? ` (${this._routesLockedReason})` : '';
+      throw new Error(
+        `[Axiomify] Cannot replace serializer after adapter binding${reason}. ` +
+        'Call setSerializer() before constructing the adapter — error payload ' +
+        'caches are sealed at that point.',
+      );
+    }
     // Normalize to the single-argument form once, so every subsequent call
     // to this.serializer goes through a direct (input) => fn(input) path
     // with no runtime arity check. makeSerialize is shared with adapters.
@@ -367,11 +379,11 @@ export class Axiomify {
         });
       },
       ws: <S extends RouteSchema, M = any>(def: WsRouteDefinition<S, M>) => {
-        return this.ws({
+        return this.ws<S, M>({
           ...def,
           path: joinRoutePath(prefix, def.path),
           plugins: mergePlugins(inheritedPlugins, def.plugins),
-        } as any);
+        });
       },
       group: ((subPrefix, subOptionsOrCallback, subMaybeCallback) => {
         const subOptions =

@@ -41,9 +41,11 @@ describe('Security Package', () => {
     expect(req.query.user).toBe('attacker');
   });
 
-  it('should detect SQL injection when explicitly enabled', async () => {
-    // Heuristic SQL injection detection is OFF by default — opt-in only.
-    const hook = setup({ sqlInjectionProtection: true });
+  it('does NOT block SQL-like payloads (heuristic was removed in v5.0)', async () => {
+    // The SQL heuristic was trivially bypassable AND produced false positives
+    // on legitimate JSON. Removed entirely; tests reflect the new contract.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const hook = setup({ sqlInjectionProtection: true } as any);
     const req: any = {
       headers: {},
       query: { id: '1 UNION SELECT * FROM users' },
@@ -51,22 +53,13 @@ describe('Security Package', () => {
       body: {},
     };
     const res = makeRes();
-
-    await hook(req, res);
-    expect(res.status).toHaveBeenCalledWith(403);
-  });
-
-  it('does NOT block SQL-like payloads by default (heuristic is opt-in)', async () => {
-    const hook = setup();
-    const req: any = {
-      headers: {},
-      query: { description: 'union select committee members from list' },
-      params: {},
-      body: {},
-    };
-    const res = makeRes();
     await hook(req, res);
     expect(res.status).not.toHaveBeenCalledWith(403);
+    // Should warn that the option has no effect.
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('sqlInjectionProtection'),
+    );
+    warn.mockRestore();
   });
 
   it('should detect NoSQL injection operators when explicitly enabled', async () => {

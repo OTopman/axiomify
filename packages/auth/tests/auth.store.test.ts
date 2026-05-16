@@ -57,8 +57,33 @@ describe('createRefreshHandler — store failure paths', () => {
       { headers: { authorization: `Bearer ${token}` } } as any,
       res as any,
     );
-    // Outer catch turns infra errors into 401 (handler.try/catch swallows all)
-    expect(res.status).toHaveBeenCalledWith(401);
+    // Infrastructure failures now surface as 503 (was 401 in the old code that
+    // swallowed all errors in the outer catch).
+    expect(res.status).toHaveBeenCalledWith(503);
+  });
+
+  it('does NOT revoke the old token when store.save fails on the new one', async () => {
+    const revoke = vi.fn();
+    const store: TokenStore = {
+      save: vi.fn(async () => { throw new Error('redis write failed'); }),
+      exists: vi.fn(async () => true),
+      revoke,
+    };
+    const handler = createRefreshHandler({
+      secret: accessSecret,
+      refreshSecret,
+      store,
+    });
+    const token = jwt.sign({ id: 'u1', jti: 'old-jti' }, refreshSecret);
+    const res = makeRes();
+    await handler(
+      { headers: { authorization: `Bearer ${token}` } } as any,
+      res as any,
+    );
+    expect(res.status).toHaveBeenCalledWith(503);
+    // Critical: the old jti must NOT have been revoked, so the client can
+    // safely retry the refresh request.
+    expect(revoke).not.toHaveBeenCalled();
   });
 
   it('returns 401 when refresh token signature is invalid', async () => {
@@ -129,7 +154,7 @@ describe('Auth — option branch coverage', () => {
     process.env.NODE_ENV = 'production';
     try {
       const { createAuthPlugin } = await import('../src/index');
-      expect(() => createAuthPlugin({ secret: 'short' })).toThrow(/32 characters/);
+      expect(() => createAuthPlugin({ secret: 'short' })).toThrow(/32 bytes/);
     } finally {
       process.env.NODE_ENV = original;
     }
@@ -139,7 +164,7 @@ describe('Auth — option branch coverage', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { createAuthPlugin } = await import('../src/index');
     createAuthPlugin({ secret: 'short' });
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('shorter than 32'));
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/bytes.*256 bits/));
     warn.mockRestore();
   });
 

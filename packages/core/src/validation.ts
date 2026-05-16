@@ -94,6 +94,17 @@ type ValidateFunction = (data: unknown) => {
  *
  * When `ajv` is NOT installed, falls back to Zod `safeParse` (correct, ~1.6x slower).
  */
+// A schema we can duck-type. Zod v4 ships `toJSONSchema()` as an instance
+// method; Zod v3 does not. We isolate the unsafe cast in one place rather
+// than `as unknown as <inline-type>` at every call site.
+interface ZodV4Schema { toJSONSchema(): object }
+function asZodV4(schema: ZodTypeAny): ZodV4Schema | null {
+  const candidate = schema as unknown as { toJSONSchema?: unknown };
+  return typeof candidate.toJSONSchema === 'function'
+    ? (candidate as ZodV4Schema)
+    : null;
+}
+
 function buildValidator(schema: ZodTypeAny): ValidateFunction {
   const ajv = getAjv();
 
@@ -101,13 +112,14 @@ function buildValidator(schema: ZodTypeAny): ValidateFunction {
     try {
       // `z.toJSONSchema` is Zod v4's built-in method. It emits JSON Schema
       // 2020-12 — the dialect AJV/dist/2020 understands natively.
-      const jsonSchema = (schema as unknown as { toJSONSchema?: () => object }).toJSONSchema?.() ??
+      const v4 = asZodV4(schema);
+      const jsonSchema = v4?.toJSONSchema() ??
         // Fallback for Zod v3 via zod-to-json-schema if it's installed.
         (() => {
           try {
             // eslint-disable-next-line @typescript-eslint/no-var-requires
             const { zodToJsonSchema } = require('zod-to-json-schema');
-            return zodToJsonSchema(schema as unknown as Parameters<typeof zodToJsonSchema>[0], {
+            return zodToJsonSchema(schema, {
               target: 'jsonSchema7',
               $refStrategy: 'none',
             });

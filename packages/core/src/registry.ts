@@ -112,7 +112,20 @@ export class RouteRegistry {
   public registerWs<S extends RouteSchema, M = any>(definition: WsRouteDefinition<S, M>): void {
     const routeId = `WS:${definition.path}`;
     if (definition.schema?.message) {
-      this.validator.compile(routeId + ':message', { ...definition.schema, body: definition.schema.message } as any);
+      // The ValidationCompiler is a request-shape validator (body / query /
+      // params / response). WS messages don't fit that shape directly, so
+      // we project the message schema into the `body` slot and reuse the
+      // same compiled-AJV pipeline. The shape below is a valid RouteSchema
+      // structurally — explicit object construction (not a spread + cast)
+      // so TypeScript can verify it without a cast escape hatch.
+      const messageSchema: RouteSchema = {
+        body: definition.schema.message,
+        query: definition.schema.query,
+        params: definition.schema.params,
+        response: definition.schema.response,
+        files: definition.schema.files,
+      };
+      this.validator.compile(routeId + ':message', messageSchema);
     }
     this.wsRoutes.push(definition);
   }

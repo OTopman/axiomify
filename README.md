@@ -13,7 +13,7 @@ Axiomify is an ultra high-performance Node.js framework built exclusively on `uW
 
 ## Architecture highlights
 
-- **Native C++ Routing** — delegates all request routing directly to the highly optimized `uWebSockets.js` C++ engine, completely bypassing JS-based Radix Trie overhead in the hot-path.
+- **Native C++ Routing (production)** — `@axiomify/native` registers every route directly with `uWebSockets.js` so HTTP requests are routed in C++. A JS radix trie (`packages/core/src/router.ts`) is built at startup and used only by `app.handle()` — the test / SSR entrypoint that bypasses the native adapter. Production traffic never touches the JS router.
 - **Zod-Native Security** — strict validation pipeline using `schema.parse()` to automatically strip unknown payload keys and prevent Mass Assignment and Prototype Pollution attacks.
 - **Microtask-free hooks** — `HookManager.run()` returns `undefined` for empty hook lists. No Promise allocation, no microtask in the zero-hook fast path.
 - **True SO_REUSEPORT clustering** — natively sets `cluster.SCHED_NONE` before the first fork and binds each worker via `reusePort: true`. Workers own their sockets — zero IPC in the request hot path.

@@ -15,7 +15,7 @@ describe('Auth Plugin & Refresh', () => {
     const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     createAuthPlugin({ secret: 'short' });
     expect(spy).toHaveBeenCalledWith(
-      expect.stringContaining('shorter than 32 characters'),
+      expect.stringMatching(/bytes.*256 bits/),
     );
     spy.mockRestore();
   });

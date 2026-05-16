@@ -174,9 +174,18 @@ describe.skipIf(!uwsSupported)('NativeAdapter (uWebSockets.js)', () => {
     expect(res.status).toBe(404);
   });
 
-  it('returns 404 for registered path with wrong method', async () => {
+  it('returns 405 with Allow header for registered path with wrong method', async () => {
+    // RFC 9110 §15.5.6: an origin server MUST return 405 (not 404) when the
+    // method is not supported for an existing resource, and MUST include
+    // an Allow header listing the supported methods. The previous adapter
+    // returned a generic 404 from the `any('/*')` fallback — this test
+    // pins the corrected behaviour so it doesn't regress.
     const res = await fetch(`http://localhost:${PORT}/ping`, { method: 'DELETE' });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(405);
+    const allow = res.headers.get('allow');
+    expect(allow).not.toBeNull();
+    // GET is registered explicitly; HEAD is auto-registered alongside GET.
+    expect(allow!.split(',').map((s) => s.trim()).sort()).toEqual(['GET', 'HEAD']);
   });
 
   // -------------------------------------------------------------------------

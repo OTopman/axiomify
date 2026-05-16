@@ -17,12 +17,22 @@ import type { AxiomifyRequest } from './types';
 export function makeSerialize(
   fn: import('./types').SerializerFn,
 ): (input: import('./types').SerializerInput) => unknown {
-  if (fn.length <= 1) {
-    return (input) => (fn as (i: import('./types').SerializerInput) => unknown)(input);
-  }
-  // 5-argument positional form detected. Emit a one-time warning in non-production
-  // environments so developers know to migrate to the object form.
-  if (process.env['NODE_ENV'] !== 'production') {
+  const normalized: (input: import('./types').SerializerInput) => unknown =
+    fn.length <= 1
+      ? (input) =>
+          (fn as (i: import('./types').SerializerInput) => unknown)(input)
+      : (input) =>
+          (
+            fn as (
+              data: unknown,
+              message?: string,
+              statusCode?: number,
+              isError?: boolean,
+              req?: AxiomifyRequest,
+            ) => unknown
+          )(input.data, input.message, input.statusCode, input.isError, input.req);
+
+  if (fn.length > 1 && process.env['NODE_ENV'] !== 'production') {
     console.warn(
       '[Axiomify] SerializerFn: the 5-argument positional form ' +
       '(data, message, statusCode, isError, req) is deprecated and will be ' +
@@ -30,14 +40,25 @@ export function makeSerialize(
       '({ data, message, statusCode, isError, req }) => ...',
     );
   }
-  return (input) =>
-    (
-      fn as (
-        data: unknown,
-        message?: string,
-        statusCode?: number,
-        isError?: boolean,
-        req?: AxiomifyRequest,
-      ) => unknown
-    )(input.data, input.message, input.statusCode, input.isError, input.req);
+
+  // Reject async serializers at adapter-construction time. A Promise return
+  // would be JSON.stringify'd as "{}" or "[object Promise]" on the hot path
+  // — silent body corruption that's almost impossible to debug. Probe with
+  // a sentinel input; if the result is thenable, fail fast and loudly.
+  const probe = normalized({
+    data: null,
+    message: undefined,
+    statusCode: 200,
+    isError: false,
+  });
+  if (probe && typeof (probe as { then?: unknown }).then === 'function') {
+    throw new Error(
+      '[Axiomify] SerializerFn must be synchronous. The configured serializer ' +
+      'returned a Promise — async serialization would corrupt response bodies ' +
+      'because JSON.stringify cannot serialize Promises. If you need to perform ' +
+      'async work, do it in a route handler or onPostHandler hook before send().',
+    );
+  }
+
+  return normalized;
 }

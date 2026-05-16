@@ -128,3 +128,43 @@ jobs:
       - name: Typecheck example app
         working-directory: examples/my-app
         run: npx tsc --noEmit
+
+  # ---------------------------------------------------------------------------
+  # Smoke benchmark — proves the benchmark harness still works and uploads
+  # the raw autocannon result as a CI artifact. Does NOT gate on absolute
+  # req/s numbers (cloud CI runners vary too much to make that meaningful)
+  # — but DOES fail on broken servers, non-2xx responses, and catastrophic
+  # regressions (< 1000 req/s on /ping is "something is on fire").
+  #
+  # See `benchmarks/smoke.mjs` for the implementation and `benchmarks/README.md`
+  # for the methodology of the full suite.
+  # ---------------------------------------------------------------------------
+  bench-smoke:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build workspace packages
+        run: npm run build
+
+      - name: Run smoke benchmark
+        run: node benchmarks/smoke.mjs
+
+      - name: Upload smoke-result.json
+        if: always()
+        # SHA pin: actions/upload-artifact@v4.4.0
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874
+        with:
+          name: bench-smoke-result-${{ github.sha }}
+          path: benchmarks/smoke-result.json
+          if-no-files-found: warn
+          retention-days: 30

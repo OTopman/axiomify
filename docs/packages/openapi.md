@@ -15,7 +15,7 @@ npm install @axiomify/openapi
 import { useSwagger } from '@axiomify/openapi';
 
 useSwagger(app, {
-  routePrefix: '/docs',         // Swagger UI at /docs, spec at /docs/openapi.json
+  prefix: '/docs',              // Swagger UI at /docs, spec at /docs/openapi.json
   info: {
     title: 'My API',
     version: '1.0.0',

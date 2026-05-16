@@ -2,9 +2,7 @@ import type { Axiomify, AxiomifyRequest } from '@axiomify/core';
 import {
   DEFAULT_BLOCKED_UA_PATTERNS,
   DEFAULT_NOSQL_PATTERNS,
-  DEFAULT_SQL_PATTERNS,
   detectNoSqlInjection,
-  detectSqlInjection,
   isSuspiciousUserAgent,
 } from './utils/detector';
 import { normalizeHpp, sanitizeInput } from './utils/sanitizer';
@@ -22,30 +20,16 @@ export interface SecurityOptions {
    */
   maxBodySize?: number;
   /**
-   * Heuristic SQL injection pattern matching. Off by default.
-   *
-   * ⚠️  This is NOT a reliable security control. The patterns are trivially
-   * bypassed via comment insertion, case variation, URL encoding, CASE/WHEN
-   * syntax, time-based blind injection, etc. In practice the main effect
-   * of enabling this on a real API is producing 403 false positives on
-   * legitimate JSON payloads that happen to contain the strings
-   * (e.g. `{"description": "select all union members from list"}`).
-   *
-   * Parameterized queries / prepared statements at the database layer are
-   * the only real defense. Enable this only as a supplementary logging
-   * signal, not as a gate.
-   *
-   * @default false
-   */
-  sqlInjectionProtection?: boolean;
-  /**
    * Heuristic NoSQL operator pattern matching. Off by default.
    *
-   * ⚠️  Not a reliable security control. Schema validation (Zod) that strips
-   * unexpected keys before they reach the database driver is the real
-   * defense — by the time `$ne` reaches your query, you've already lost.
-   * Enabling this also produces false positives on legitimate JSON
-   * containing keys like `$ne` for unrelated reasons.
+   * Catches the narrow Mongo-style injection where an attacker passes a
+   * JSON object containing `$ne`, `$gt`, `$where`, etc. as a field value
+   * that would otherwise be a primitive (`{"username": {"$ne": null}}`).
+   *
+   * The REAL defense is Zod schema validation that rejects unexpected
+   * object shapes before they reach the database driver. This option is a
+   * supplementary belt-and-braces signal — useful for legacy code without
+   * full schema coverage, harmful if you're already validating end-to-end.
    *
    * @default false
    */
@@ -54,9 +38,19 @@ export interface SecurityOptions {
   nullByteProtection?: boolean;
   botProtection?: boolean;
   blockedUserAgentPatterns?: RegExp[];
-  sqlPatterns?: RegExp[];
   noSqlPatterns?: RegExp[];
   sanitizerMaxDepth?: number;
+  /**
+   * @deprecated Removed in v5.0. The regex-based SQL injection detector
+   * was bypassable in ~30 seconds (comment insertion, case variation,
+   * encoding) AND produced false positives on legitimate JSON containing
+   * the strings `union select`, `or 1=1`, etc. Setting this option now
+   * has no effect; parameterized queries at the DB layer are the only
+   * defense. Will be removed entirely in v6.
+   */
+  sqlInjectionProtection?: boolean;
+  /** @deprecated See `sqlInjectionProtection`. No longer used. */
+  sqlPatterns?: RegExp[];
 }
 
 function patchRequestProperty(req: AxiomifyRequest, key: keyof AxiomifyRequest, newValue: unknown) {
@@ -79,19 +73,28 @@ export function useSecurity(
     xssProtection = true,
     hppProtection = true,
     maxBodySize = 1024 * 1024,
-    // Heuristic detectors default to OFF. They are bypassable and produce
-    // false positives on legitimate JSON. Use as supplementary logging
-    // signals (opt-in), not as primary gates.
-    sqlInjectionProtection = false,
+    // NoSQL operator-key check defaults to OFF — supplementary defense for
+    // codebases without full Zod schema coverage; opt-in only.
     noSqlInjectionProtection = false,
     prototypePollutionProtection = true,
     nullByteProtection = true,
     botProtection = true,
     blockedUserAgentPatterns = DEFAULT_BLOCKED_UA_PATTERNS,
-    sqlPatterns = DEFAULT_SQL_PATTERNS,
     noSqlPatterns = DEFAULT_NOSQL_PATTERNS,
     sanitizerMaxDepth = 64,
   } = options;
+
+  // Honour the legacy `sqlInjectionProtection` option as a no-op + warning
+  // so users discover it's gone instead of silently losing what they thought
+  // was a defense.
+  if (options.sqlInjectionProtection === true) {
+    console.warn(
+      '[axiomify/security] `sqlInjectionProtection` was removed in v5.0 — ' +
+      'the regex heuristic was trivially bypassed and produced false ' +
+      'positives. Use parameterized queries at the database layer instead. ' +
+      'This option no longer has any effect.',
+    );
+  }
 
   app.addHook('onRequest', async (req: AxiomifyRequest, res) => {
     // Content-Length guard — fast rejection for well-behaved clients.
@@ -119,17 +122,8 @@ export function useSecurity(
       }
     }
 
-    // Heuristic injection detection — see detector.ts for bypass surface.
-    if (
-      sqlInjectionProtection &&
-      (detectSqlInjection(req.query, sqlPatterns) ||
-        detectSqlInjection(req.params, sqlPatterns) ||
-        detectSqlInjection(req.body, sqlPatterns))
-    ) {
-      res.status(403).send(null, 'Forbidden');
-      return;
-    }
-
+    // Narrow Mongo-style operator-key check, opt-in. See detector.ts
+    // and the option doc for why this is not a primary defense.
     if (
       noSqlInjectionProtection &&
       (detectNoSqlInjection(req.query, noSqlPatterns) ||

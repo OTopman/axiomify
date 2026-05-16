@@ -5,25 +5,11 @@ export interface DetectorOptions {
 }
 
 /**
- * ⚠️  HEURISTIC ONLY — NOT A RELIABLE SQL INJECTION DEFENSE.
- *
- * These patterns catch the most obvious script-kiddie payloads but are
- * trivially bypassed via comment insertion (`union`), case variation,
- * URL encoding, CASE/WHEN syntax, time-based blind injection, and dozens of
- * other techniques.
- *
- * The ONLY reliable defense against SQL injection is parameterized queries /
- * prepared statements at the database layer. These patterns are a supplementary
- * signal (e.g. for logging/alerting), not a security gate.
+ * @deprecated Removed in v5.0. The regex-based SQL detector was trivially
+ * bypassable AND produced false positives on legitimate text. Kept as an
+ * empty array so existing imports don't break; will be removed in v6.
  */
-export const DEFAULT_SQL_PATTERNS = [
-  /(?:\bunion\b\s+\bselect\b)/i,
-  /(?:\bor\b\s+\d+\s*=\s*\d+)/i,
-  /(?:--|\/\*|\*\/|;\s*drop\s+table|\bexec\b\s*\()/i,
-  // NOTE: the `select...from` pattern below generates false positives on
-  // legitimate JSON payloads containing those words. Disabled by default.
-  // /(?:\bselect\b.+\bfrom\b)/i,
-];
+export const DEFAULT_SQL_PATTERNS: readonly RegExp[] = [];
 
 /**
  * ⚠️  HEURISTIC ONLY — NOT A RELIABLE NOSQL INJECTION DEFENSE.
@@ -62,11 +48,15 @@ export function hasPatternMatch(input: unknown, patterns: RegExp[]): boolean {
   return false;
 }
 
+/**
+ * @deprecated Removed in v5.0. Use parameterized queries at the DB layer.
+ * Always returns false; kept for one major version to avoid breaking imports.
+ */
 export function detectSqlInjection(
-  input: unknown,
-  patterns = DEFAULT_SQL_PATTERNS,
+  _input: unknown,
+  _patterns?: readonly RegExp[],
 ): boolean {
-  return hasPatternMatch(input, patterns);
+  return false;
 }
 
 export function detectNoSqlInjection(

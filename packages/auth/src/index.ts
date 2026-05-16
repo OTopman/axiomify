@@ -123,8 +123,16 @@ function buildGetToken(options: AuthOptions) {
   });
 }
 function validateSecret(secret: string, context: string): void {
-  if (secret.length < 32) {
-    const msg = `[axiomify/auth] ${context} is shorter than 32 characters. Use a cryptographically random secret of at least 256 bits.`;
+  // RFC 7518 §3.2 requires HS256 keys to be at least 256 bits (32 bytes).
+  // We measure UTF-8 byte length, not character count: a 32-character base64
+  // string is only 24 bytes (192 bits), well below spec. Counting characters
+  // would silently accept under-strength keys.
+  const byteLength = Buffer.byteLength(secret, 'utf8');
+  if (byteLength < 32) {
+    const msg =
+      `[axiomify/auth] ${context} is ${byteLength} bytes; ` +
+      `the JWA spec (RFC 7518 §3.2) requires at least 32 bytes (256 bits) for HS256. ` +
+      `Generate one with: node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`;
     if (process.env.NODE_ENV === 'production') throw new Error(msg);
     console.warn(msg);
   }
@@ -169,32 +177,75 @@ export function createRefreshHandler(options: RefreshOptions): RouteMiddleware {
     const token = authHeader ? extractBearer(authHeader) : null;
     if (!token) return res.status(401).send(null, 'Missing refresh token');
 
+    // Split JWT validation from infrastructure errors so the outer catch can
+    // surface 503s for store/sign failures instead of masking them as 401s.
+    let decoded: JwtPayload;
     try {
-      const decoded = await verifyAsync(token, options.refreshSecret, { algorithms, ...issuerAudience });
-      const id = decoded?.id ?? decoded?.sub;
-      const jti = decoded?.jti;
-      if (typeof id !== 'string' || !id || typeof jti !== 'string' || !jti) return res.status(401).send(null, 'Invalid refresh token payload');
-
-      if (options.store) {
-        try {
-          const exists = await options.store.exists(jti);
-          if (!exists) return res.status(401).send(null, 'Refresh token has been revoked');
-        } catch (storeErr) {
-          // Store is unavailable — fail closed with 503
-          throw Object.assign(new Error('Token store unavailable'), { statusCode: 503 });
-        }
-        await options.store.revoke(jti);
-      }
-
-      const accessToken = await signAsync({ id }, options.secret, { expiresIn: accessTtl, jwtid: randomUUID(), ...issuerAudience });
-      const nextJti = randomUUID();
-      const newRefreshToken = await signAsync({ id }, options.refreshSecret, { expiresIn: refreshTtl, jwtid: nextJti, ...issuerAudience });
-      if (options.store) await options.store.save(nextJti, refreshTtl);
-
-      res.status(200).send({ accessToken, refreshToken: newRefreshToken, expiresIn: accessTtl });
+      decoded = await verifyAsync(token, options.refreshSecret, { algorithms, ...issuerAudience });
     } catch {
-      res.status(401).send(null, 'Invalid refresh token');
+      return res.status(401).send(null, 'Invalid refresh token');
     }
+
+    const id = decoded?.id ?? decoded?.sub;
+    const jti = decoded?.jti;
+    if (typeof id !== 'string' || !id || typeof jti !== 'string' || !jti) {
+      return res.status(401).send(null, 'Invalid refresh token payload');
+    }
+
+    // Check token existence in the revocation store. A store error here is
+    // infrastructure failure (not a client problem) → 503.
+    if (options.store) {
+      let exists: boolean;
+      try {
+        exists = await options.store.exists(jti);
+      } catch {
+        return res.status(503).send(null, 'Token store unavailable');
+      }
+      if (!exists) return res.status(401).send(null, 'Refresh token has been revoked');
+    }
+
+    // Order is critical: save the NEW jti BEFORE revoking the OLD one. If
+    // signAsync() or store.save() fails, the user can retry the same refresh
+    // request — the old refresh token is still valid. The previous order
+    // (revoke → sign → save) silently logged users out on transient store
+    // failures by destroying the old token before its replacement existed.
+    let accessToken: string;
+    let newRefreshToken: string;
+    const nextJti = randomUUID();
+    try {
+      accessToken = await signAsync(
+        { id },
+        options.secret,
+        { expiresIn: accessTtl, jwtid: randomUUID(), ...issuerAudience },
+      );
+      newRefreshToken = await signAsync(
+        { id },
+        options.refreshSecret,
+        { expiresIn: refreshTtl, jwtid: nextJti, ...issuerAudience },
+      );
+    } catch {
+      return res.status(500).send(null, 'Failed to issue tokens');
+    }
+
+    if (options.store) {
+      try {
+        await options.store.save(nextJti, refreshTtl);
+      } catch {
+        // New jti could not be persisted → do NOT revoke the old one.
+        // Client can safely retry the refresh.
+        return res.status(503).send(null, 'Token store unavailable');
+      }
+      // New token now exists in the store. Safe to revoke the old one.
+      // A failure here is a soft inconsistency — caller still has a valid new
+      // pair; the old jti will expire naturally. Log but do not fail the call.
+      try {
+        await options.store.revoke(jti);
+      } catch {
+        // Intentionally swallowed: client already has new credentials.
+      }
+    }
+
+    res.status(200).send({ accessToken, refreshToken: newRefreshToken, expiresIn: accessTtl });
   };
 
   return handler;

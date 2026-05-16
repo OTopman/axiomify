@@ -8,9 +8,19 @@ describe('makeSerialize', () => {
     it('wraps a 1-arg serializer and passes SerializerInput through', () => {
       const fn = vi.fn((input: any) => ({ wrapped: input.data }));
       const serialize = makeSerialize(fn);
+      // makeSerialize probes the serializer once at construction time to
+      // detect async return values (which would corrupt response bodies).
+      // Snapshot the call count so the actual send-path call is what we
+      // assert on.
+      const callsBefore = fn.mock.calls.length;
       const result = serialize({ data: 42, message: 'ok', statusCode: 200, isError: false });
       expect(result).toEqual({ wrapped: 42 });
-      expect(fn).toHaveBeenCalledOnce();
+      expect(fn.mock.calls.length - callsBefore).toBe(1);
+    });
+
+    it('rejects async serializers at construction time', () => {
+      const asyncFn = (_input: any) => Promise.resolve({});
+      expect(() => makeSerialize(asyncFn)).toThrow(/must be synchronous/);
     });
 
     it('recognises arrow functions with destructured param as 1-arg', () => {
