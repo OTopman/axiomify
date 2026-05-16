@@ -2,18 +2,19 @@
 
 ## Prerequisites
 
-- Node.js 18, 20, or 22
-- TypeScript 5+
+- Node.js **18, 20, 21, or 22** (uWebSockets.js pre-built binaries; Node 23+ not yet supported by uWS)
+- TypeScript 5+ (the workspace itself uses TypeScript 6.x; either works for consumers)
 
 ## Create a project
 
 ```bash
-npx axiomify init my-api
+npx @axiomify/cli init my-api
 cd my-api
+npm install
 npm run dev
 ```
 
-The CLI prompts for your preferred package manager and handles the native setup automatically.
+The CLI scaffolds a TypeScript project, copies a starter `src/index.ts`, and installs `@axiomify/core` + `@axiomify/native` + `zod`. After `npm install`, `npm run dev` boots the dev server with auto-reload.
 
 ## Manual setup
 
@@ -59,16 +60,63 @@ adapter.listen(() => {
 
 ## Response envelope
 
-Every response is wrapped:
+Every `res.send(data, message?)` call is wrapped by the default serializer:
 
 ```json
-{ "status": "success", "message": "Operation successful", "data": { ... } }
-{ "status": "failed",  "message": "Validation failed",    "data": null }
+// 2xx response — message defaults to "Operation successful"
+{ "status": "success", "message": "Operation successful", "data": { /* your data */ } }
+
+// 4xx / 5xx response — message defaults to "Error", overrideable via res.send(data, "Custom message")
+{ "status": "failed",  "message": "Error",                "data": null }
 ```
+
+Replace the wrapper with `app.setSerializer(({ data, message, statusCode, isError, req }) => ...)`. The serializer must be synchronous — async serializers throw at adapter construction time (they'd corrupt response bodies via `JSON.stringify([object Promise])`).
 
 ## Validation
 
-Zod schemas in `schema.body`, `schema.params`, and `schema.query` are compiled to AJV validators at startup. Invalid requests receive 400 with field-level errors before the handler runs.
+Zod schemas in `schema.body`, `schema.params`, and `schema.query` are converted to JSON Schema 2020-12 at startup and compiled by AJV (or fall back to Zod `safeParse` if AJV is unavailable — ~1.6× slower but always correct). Invalid requests receive 400 with field-level errors before the handler runs.
+
+When a Zod schema declares `.transform()`, validation runs a second pass through `schema.parse()` so transforms apply. Schemas without transforms run only the AJV compiled function.
+
+---
+
+## What you get out of the box from `@axiomify/cli`
+
+After `npm run dev` is working, four other CLI commands are immediately useful:
+
+```bash
+# 1. Visualise every registered route + WebSocket endpoint.
+npx axiomify routes
+
+# 2. Generate the OpenAPI spec for client codegen (openapi-typescript, etc).
+npx axiomify openapi -o openapi.json
+
+# 3. Static production-readiness audit — catches missing env vars,
+#    deprecated meta fields, missing health checks, unprotected docs, etc.
+#    Exit 1 on any fail — wire into CI to gate deploys.
+npx axiomify check
+
+# 4. Diagnose the host environment (Node version, uWS bindings, port
+#    availability, dep drift). Run on a fresh clone or new CI runner.
+npx axiomify doctor
+```
+
+For the routes / openapi / check commands, the entry file MUST export your `Axiomify` instance:
+
+```typescript
+// Named export — preferred
+export const app = new Axiomify();
+// ...
+
+// Guard the listener so CLI inspection doesn't boot a real server:
+if (require.main === module) {
+  new NativeAdapter(app, { port: 3000 }).listen();
+}
+```
+
+Full CLI reference: [docs/packages/cli.md](./packages/cli.md).
+
+---
 
 - [Plugins and Hooks](./plugins-and-hooks.md)
 - [Production Checklist](./production-checklist.md)

@@ -23,7 +23,7 @@ describe.skipIf(!uwsSupported)('useOpenAPI plugin routes', () => {
       handler: async (_req, res) => res.send({ ok: true }),
     });
     useOpenAPI(app, {
-      routePrefix: '/docs',
+      prefix: '/docs',
       info: { title: 'Test API', version: '1.0.0' },
     });
 
@@ -52,13 +52,13 @@ describe.skipIf(!uwsSupported)('useOpenAPI plugin routes', () => {
       req.end();
     });
 
-  it('serves docs UI on routePrefix without trailing slash', async () => {
+  it('serves docs UI on prefix without trailing slash', async () => {
     const res = await request('/docs');
     expect(res.status).toBe(200);
     expect(res.body).toContain('SwaggerUIBundle');
   });
 
-  it('serves docs UI on routePrefix with trailing slash', async () => {
+  it('serves docs UI on prefix with trailing slash', async () => {
     const res = await request('/docs');
     expect(res.status).toBe(200);
     expect(res.body).toContain('SwaggerUIBundle');
@@ -102,10 +102,10 @@ describe.skipIf(!uwsSupported)('useOpenAPI plugin guards and root prefix', () =>
       req.end();
     });
 
-  it('supports root routePrefix "/"', async () => {
+  it('supports root prefix "/"', async () => {
     const { adapter, port } = await startServer((app) => {
       useOpenAPI(app, {
-        routePrefix: '/',
+        prefix: '/',
         info: { title: 'Root Docs', version: '1.0.0' },
       });
     });
@@ -124,7 +124,7 @@ describe.skipIf(!uwsSupported)('useOpenAPI plugin guards and root prefix', () =>
   it('returns 403 when protect callback denies access', async () => {
     const { adapter, port } = await startServer((app) => {
       useOpenAPI(app, {
-        routePrefix: '/docs',
+        prefix: '/docs',
         info: { title: 'Protected Docs', version: '1.0.0' },
         protect: async () => false,
       });
@@ -144,7 +144,7 @@ describe.skipIf(!uwsSupported)('useOpenAPI plugin guards and root prefix', () =>
     process.env.NODE_ENV = 'production';
     const { adapter, port } = await startServer((app) => {
       useOpenAPI(app, {
-        routePrefix: '/docs',
+        prefix: '/docs',
         info: { title: 'Prod Docs', version: '1.0.0' },
       });
     });

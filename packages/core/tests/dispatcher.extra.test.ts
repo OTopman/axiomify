@@ -397,19 +397,7 @@ describe('Dispatcher — ValidatingResponse and error dev stack', () => {
     expect(innerCb).toBeNull();
   });
 
-  it('ValidatingResponse.error() delegates to inner', async () => {
-    const app = new Axiomify();
-    const { z } = await import('zod');
-    app.route({
-      method: 'GET', path: '/err-delegate',
-      schema: { response: z.object({ ok: z.boolean() }) },
-      handler: async (_req, res) => {
-        (res as any).error(new Error('test'));
-      },
-    });
-    const [res] = makeAxiomifyResPair();
-    const req = makeAxiomifyReq({ path: '/err-delegate' });
-    await app.handle(req, res);
-    expect(res.error).toHaveBeenCalled();
-  });
+  // The `res.error()` shorthand was deprecated in 5.0 and removed in 6.0;
+  // callers should use `res.status(500).send(null, msg)` directly. The
+  // dispatcher's ValidatingResponse no longer wraps it.
 });

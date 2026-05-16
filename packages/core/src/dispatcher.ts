@@ -176,9 +176,6 @@ class ValidatingResponse implements AxiomifyResponse {
 
   sendRaw(payload: any, contentType?: string): void { this.inner.sendRaw(payload, contentType); }
 
-  /** @deprecated See AxiomifyResponse.error */
-  error(err: unknown): void { this.inner.error(err); }
-
   stream(readable: import('stream').Readable, contentType?: string): void {
     this.inner.isStreaming = true;
     this.inner.stream(readable, contentType);

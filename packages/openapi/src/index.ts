@@ -1,18 +1,19 @@
 import type { Axiomify, AxiomifyRequest } from '@axiomify/core';
 import { OpenApiGenerator, OpenApiOptions } from './generator';
 
+// Re-export the generator so consumers (notably the `axiomify openapi` CLI
+// command and any custom codegen pipelines) can build the spec without
+// mounting Swagger UI on the app. The `useOpenAPI` helper below remains
+// the recommended path for live serving.
+export { OpenApiGenerator };
+export type { OpenApiOptions };
+
 export interface SwaggerPluginOptions extends OpenApiOptions {
   /**
    * URL prefix the docs UI and spec endpoint are mounted under.
    * @default '/docs'
    */
   prefix?: string;
-  /**
-   * @deprecated Renamed to `prefix` in v6.0 for consistency with other
-   * multi-endpoint plugins (e.g. `@axiomify/static`). The old name still
-   * works but will be removed in v7.
-   */
-  routePrefix?: string;
   /**
    * Optional gate for the docs UI and the raw spec endpoint.
    * Return false to deny. Recommended for production / non-public APIs.
@@ -97,15 +98,9 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
   // literal path "undefined/openapi.json". Also normalize trailing slashes
   // so "/docs" and "/docs/" behave identically.
   //
-  // Accept both `prefix` (canonical from v5.0) and `routePrefix` (legacy);
-  // warn when only the legacy name is used so users discover the rename.
-  if (options.routePrefix !== undefined && options.prefix === undefined) {
-    console.warn(
-      '[axiomify/openapi] `routePrefix` is deprecated; use `prefix` instead. ' +
-      'The old name will be removed in v6.',
-    );
-  }
-  const rawPrefix = options.prefix ?? options.routePrefix ?? '/docs';
+  // `routePrefix` was deprecated through 5.x and removed in 6.0 — only
+  // `prefix` is accepted.
+  const rawPrefix = options.prefix ?? '/docs';
   const normalizedPrefix = rawPrefix.startsWith('/')
     ? rawPrefix
     : `/${rawPrefix}`;

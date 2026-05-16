@@ -1,5 +1,14 @@
 # Production Checklist
 
+> **Tip:** before going through this list manually, run the static auditor — it covers most of the routine items automatically and exits 1 on real defects, so you can wire it into CI:
+>
+> ```bash
+> npx axiomify check    # static readiness audit
+> npx axiomify doctor   # host environment diagnostic
+> ```
+>
+> The remaining items below are things only you can verify (network topology, real secrets, SLO budgets).
+
 ## Native Performance
 
 Axiomify uses a highly optimized C++ Native HTTP server powered by uWebSockets.js.
@@ -36,12 +45,15 @@ adapter.listenClustered({
 ## Security
 
 - [ ] `app.enableRequestId()` called (opt-in since v5)
-- [ ] `@axiomify/helmet` applied on every adapter
-- [ ] `@axiomify/cors` — explicit `origin` list, never `'*'` in production
-- [ ] `@axiomify/rate-limit` with `RedisStore` on all public routes
-- [ ] JWT secret ≥ 32 chars, from env var only
-- [ ] `trustProxy` only when behind a known proxy
-- [ ] `maxBodySize` set at adapter level for payload limitations
+- [ ] `@axiomify/helmet` registered for CSP / HSTS / COOP / CORP / framing headers
+- [ ] `@axiomify/cors` — explicit `origin` list, never `'*'` in production; `credentials: true` + `'*'` throws at startup
+- [ ] `@axiomify/rate-limit` with `RedisStore` on all public routes (multi-process / multi-host deployments require Redis, not MemoryStore)
+- [ ] JWT secret ≥ **32 bytes (256 bits)** per RFC 7518 §3.2 — the framework throws in production on weaker secrets. Generate one via `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`
+- [ ] JWT algorithms pinned via `createAuthPlugin({ algorithms: ['HS256'] })` — `'none'` is always rejected
+- [ ] `trustProxy: true` ONLY when running behind a proxy you control (otherwise clients can forge `X-Forwarded-For`)
+- [ ] `maxBodySize` set on `NativeAdapter` — enforced on the actual byte stream, not just `Content-Length`
+- [ ] User-controlled values are never passed directly to `res.header(name, value)` without first stripping CR/LF (the framework throws on CRLF/NUL in 5.0, but defensive sanitisation upstream is still recommended)
+- [ ] Response streams (`res.stream`, `res.sseSend`) are aware of the per-response backpressure caps (8 MiB stream, 1 MiB SSE) — slow consumers get their connections closed, not OOM the process
 
 ## Logging
 

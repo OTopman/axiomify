@@ -1,11 +1,168 @@
 # Changelog
 
-## [Unreleased] — staged for `5.0.0-rc.1`
+## [Unreleased] — staged for `6.0.0-rc.1`
+
+This entry tracks the deprecation-removal pass that follows the 5.0
+work below. Every API marked `@deprecated` in 5.x is now gone. The 5.x
+audit work itself remains the feature baseline — this section just lists
+what was removed on top.
+
+### ⚠️ Breaking — every 5.x-deprecated API is removed
+
+| Removed | Migration |
+|---|---|
+| `RouteMeta` type alias | Use `OpenApiOperation`. `import { OpenApiOperation } from '@axiomify/core';` |
+| `RouteDefinition.meta` field | Rename to `openapi`. Identical shape — paste your `meta: {...}` body under `openapi: {...}`. |
+| `useOpenAPI({ routePrefix })` option | Rename to `prefix`. |
+| `useSecurity({ sqlInjectionProtection, sqlPatterns })` options | Removed without replacement. Use parameterised queries at the DB layer — regex SQL detection was always a false-positive generator and trivially bypassable. |
+| `DEFAULT_SQL_PATTERNS` / `detectSqlInjection` exports from `@axiomify/security/utils/detector` | Removed. See above. |
+| `AxiomifyResponse.error(err)` method (and `NativeResponse.error`) | Use `res.status(500).send(null, msg)` directly — the helper was always a less-flexible alias. |
+| `ValidatingResponse.error` wrapper in the dispatcher | Removed — `error()` is no longer part of `AxiomifyResponse`. |
+
+The `axiomify migrate` command applies the mechanical renames (`meta` →
+`openapi`, `RouteMeta` → `OpenApiOperation`, etc) automatically; the
+`res.error()` and `sqlInjectionProtection` removals require by-hand
+audit because they touch handler bodies and security posture.
+
+After migration, run:
+
+```bash
+npx axiomify check     # exits 1 on remaining `meta:` usage, etc.
+```
+
+`axiomify check` now treats `meta:` on a route definition as a hard FAIL
+(not a warning) — the field is unrecognised in 6.0, so silently
+shipping with it loses your OpenAPI docs surface entirely.
+
+### Cleanup
+
+- The runtime no-op `sqlInjectionProtection: true` warning shim from
+  5.0 is gone. Setting that option now produces a TypeScript compile
+  error (excess property) instead of a runtime warning.
+- The `useOpenAPI` runtime `routePrefix` deprecation warning is gone.
+- `route.meta` is no longer read by the OpenAPI generator — routes
+  carrying it produce no operation metadata.
+
+### Tests
+
+- 484 passing (down from 486 by 2 — both removed tests pinned the
+  now-removed deprecated APIs)
+- Coverage held at 97.46% lines / 98.50% functions
+
+### Upgrade path
+
+```bash
+# In a 5.x project:
+npx axiomify migrate --dry-run    # preview every rename
+npx axiomify migrate              # apply
+npx axiomify check                # validate; exit 1 surfaces what's left
+```
+
+For the full guide, see [docs/migration-v4-to-v5.md](./docs/migration-v4-to-v5.md)
+— the migrate command applies the same renames that 4.x → 5.x users
+went through, with the additional rule that 6.0 also removes
+`route.meta`, `RouteMeta`, `routePrefix`, the SQL detector, and
+`res.error`.
+
+---
+
+## [5.0.0]
+
+Audit-remediation release. Closes every §16 hard-blocker from the
+production review plus the should-fix items. See the section below
+for the granular per-package changes.
+
+Originally staged as `5.0.0-rc.1` for soak testing; the 6.0.0-rc.1
+deprecation-removal pass landed on top before final promotion.
 
 This is the audit-remediation pass. The previous `5.0.0` entry below was the
 feature baseline; everything in this section is correctness / security /
 ergonomics fixes on top of it. Recommend tagging as `5.0.0-rc.1` for a 72-hour
 soak under hostile traffic before promoting to `5.0.0` stable.
+
+### ⚠️ Breaking changes (beyond the 5.0.0 baseline below)
+
+These two land in 5.0.0 — *not* a future v6 — because the deprecation
+warnings have been live through 4.x and the rc cycle gives us a window
+to remove them cleanly. Both are mechanical migrations.
+
+- **`SerializerFn` is single-argument only.** The legacy
+  `(data, message, statusCode, isError, req) => unknown` positional form
+  was deprecated through 4.x with a runtime warning. `makeSerialize()`
+  now THROWS at adapter-construction time with a migration message if it
+  detects `fn.length > 1`. Migrate:
+  ```ts
+  // 4.x (removed in 5.0):
+  app.setSerializer((data, message, statusCode, isError, req) => ({ data, ok: !isError }));
+
+  // 5.0+:
+  app.setSerializer(({ data, message, statusCode, isError, req }) => ({ data, ok: !isError }));
+  ```
+- **`AppPlugin` type alias removed.** The deprecated 1-arg plugin shape
+  is gone from `@axiomify/core`. The runtime still accepts 1-arg
+  configurators (JS drops the extra positional silently) — only the
+  named type alias is removed. Code using
+  `(app) => { ... }` continues to work; only explicit type annotations
+  like `const plugin: AppPlugin = ...` need updating to `AppConfigurator`:
+  ```ts
+  // 4.x (removed in 5.0):
+  const myPlugin: AppPlugin = (app) => { /* ... */ };
+
+  // 5.0+:
+  const myPlugin: AppConfigurator = (app) => { /* ... */ };
+  // …or just drop the annotation entirely; 1-arg fns are inferred.
+  ```
+
+- **OpenAPI metadata field renamed: `meta` → `openapi`.**
+  The route-level metadata field has been renamed to match OAS 3.0.3
+  terminology exactly — its shape mirrors the
+  [Operation Object](https://spec.openapis.org/oas/v3.0.3#operation-object)
+  verbatim, so authors can paste fragments straight from the spec. The
+  type alias `RouteMeta` is renamed to `OpenApiOperation`; the old name
+  is kept as a deprecated alias through 5.x.
+
+  Both `openapi` and `meta` work through the 5.x line — the generator
+  reads `openapi` first, falls back to `meta`. If both are present,
+  `openapi` wins (no merge — merge would produce surprising precedence).
+  The `meta` field is removed in 6.0.
+
+  ```ts
+  // 4.x
+  app.route({ method: 'GET', path: '/u/:id', meta: { tags: ['U'], operationId: 'getU' }, handler });
+
+  // 5.0+
+  app.route({ method: 'GET', path: '/u/:id', openapi: { tags: ['U'], operationId: 'getU' }, handler });
+  ```
+
+### 📘 OpenAPI — 100% Operation Object coverage
+
+The OpenAPI generator now emits every OAS 3.0.3 Operation Object property.
+Five fields were unreachable from a route definition before this pass
+(silent gaps for anyone running `openapi-typescript` / `openapi-generator`
+against the spec — generated clients lost names, deprecation flags, and
+async callback contracts):
+
+- **`operationId`** (OAS §4.7.10.5) — supplied via `openapi.operationId`,
+  or synthesised stably from `${method}${path}` when omitted
+  (`GET /users/:id` → `getUsersById`). Deterministic across releases.
+- **`deprecated`** (OAS §4.7.10.9) — `openapi.deprecated: true`.
+- **`externalDocs`** (OAS §4.7.10.4) — `openapi.externalDocs: { url, description? }`.
+- **`servers`** (OAS §4.7.10.11) — `openapi.servers` array. Use when a
+  single endpoint lives at a different host than the rest of the API.
+- **`callbacks`** (OAS §4.7.10.8) — `openapi.callbacks: Record<string, unknown>`.
+  Passed through verbatim; authors supply the OAS Callback Object shape.
+
+Plus two Axiomify-specific helpers for the schema-derived sections:
+- **`requestBodyDescription`** — overrides the auto-generated requestBody
+  description.
+- **`responseDescriptions`** — `Record<status, description>` map that
+  overrides the generator defaults (`Successful response` / `Response 4xx`).
+
+A latent correctness bug was also fixed in the same pass: the previous
+`if (security)` truthiness check happened to work because `[]` is truthy
+in JS, but the code was structurally fragile. Replaced with explicit
+`if (security !== undefined)` so the OAS §4.7.10.10 semantic (`[]` opts
+the route OUT of global security) is unambiguous in the source.
 
 ### 🔒 Security
 
@@ -158,7 +315,10 @@ soak under hostile traffic before promoting to `5.0.0` stable.
 
 ---
 
-## [5.0.0] — 2026-05-07
+## [5.0.0-feature-baseline] — 2026-05-07
+
+Pre-audit feature snapshot. The audit work above ([5.0.0]) refines and
+hardens what this entry introduced; both ship together as `5.0.0`.
 
 ### ⚠️ Breaking changes
 

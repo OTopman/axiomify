@@ -14,12 +14,13 @@ It is organized in two layers:
 - [Plugins and Hooks](./plugins-and-hooks.md)
 - [Examples](./examples.md)
 - [Production Checklist](./production-checklist.md)
+- [Migration: v4 → v5](./migration-v4-to-v5.md)
 
 ## Package Docs
 
 - [Packages Index](./packages/README.md)
 - [@axiomify/auth](./packages/auth.md)
-- [@axiomify/cli](./packages/cli.md)
+- [@axiomify/cli](./packages/cli.md) — `init` / `dev` / `build` / `routes` / `openapi` / `check` / `doctor`
 - [@axiomify/core](./packages/core.md)
 - [@axiomify/cors](./packages/cors.md)
 - [@axiomify/fingerprint](./packages/fingerprint.md)

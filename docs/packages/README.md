@@ -13,6 +13,7 @@ This index lists every Axiomify package alphabetically.
 - [@axiomify/metrics](./metrics.md)
 - [@axiomify/native](./native.md)
 - [@axiomify/openapi](./openapi.md)
+- [@axiomify/rate-limit](./rate-limit.md)
 - [@axiomify/security](./security.md)
 - [@axiomify/static](./static.md)
 - [@axiomify/upload](./upload.md)

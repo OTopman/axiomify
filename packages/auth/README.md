@@ -19,7 +19,7 @@ const tokenStore = new MemoryTokenStore();
 
 // Auth plugin — attach to any route that requires a valid JWT
 const requireAuth = createAuthPlugin({
-  secret: process.env.JWT_SECRET!,   // minimum 32 characters
+  secret: process.env.JWT_SECRET!,   // ≥ 32 bytes (256 bits, RFC 7518 §3.2)
   algorithms: ['HS256'],
   store: tokenStore,  // optional: enables access token revocation
 });
@@ -53,7 +53,7 @@ app.route({
 
 | Option | Type | Description |
 |---|---|---|
-| `secret` | `string` | JWT signing secret. Minimum 32 characters. |
+| `secret` | `string` | JWT signing secret. Minimum **32 bytes** (256 bits) per RFC 7518 §3.2. Throws in production / warns in development for shorter values. |
 | `algorithms` | `Algorithm[]` | Accepted algorithms. Default: `['HS256']`. Never include `'none'`. |
 | `getToken` | `(req) => string \| null` | Custom token extractor. Default: `Authorization: Bearer <token>`. |
 | `issuer` | `string` | Validates the `iss` claim. |

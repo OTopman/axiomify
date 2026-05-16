@@ -1,15 +1,20 @@
 # Axiomify Security & CLI Update Guide
 
-This guide details the changes made to the Axiomify framework to harden security, expand CLI capabilities, and improve logging.
+This document records substantive feature additions to the Axiomify framework. For the canonical version-by-version changelog see [CHANGELOG.md](./CHANGELOG.md); this guide focuses on conceptual changes and how to use them.
 
 ## 1. Security Hardening
 
-### @axiomify/security (New Package)
+### @axiomify/security
 A dedicated package for request-level security.
-- **XSS Protection**: Automatically sanitizes `body`, `query`, and `params` using `xss`.
-- **SQL Injection Detection**: Basic heuristic detection for common SQLi patterns.
-- **Parameter Pollution (HPP)**: Prevents multiple parameters with the same name from being used to bypass filters.
-- **Payload Limit**: Configurable `maxBodySize` to prevent DoS attacks.
+- **XSS Protection**: Built-in recursive sanitiser strips `<script>`, `javascript:` / `data:` URIs, inline event handlers, and unsafe tags (`<iframe>`, `<svg>`, `<object>`, `<embed>`, `<base>`) from string values in `body`, `query`, and `params`. Uses a "replace-until-stable" loop so multi-character bypass patterns don't survive a single pass. Note: this is defence-in-depth — for rendering user-supplied HTML, use a dedicated HTML sanitiser (DOMPurify) on a real parser.
+- **Parameter Pollution (HPP)**: Collapses repeated query keys to the last value (`?a=1&a=2` → `{a: '2'}`).
+- **Prototype Pollution**: Drops `__proto__`, `constructor`, `prototype` keys recursively.
+- **Null bytes**: Stripped from string values by default.
+- **Bot UA detection**: Blocks scanner User-Agents (`sqlmap`, `nikto`, `acunetix`, `nessus`, `nmap`, `masscan`, `zgrab`).
+- **Narrow NoSQL operator check** (opt-in): Catches `{"username": {"$ne": null}}`-style operator injection. Off by default.
+- **Payload limit (`maxBodySize`)**: Checks `Content-Length`. Belt-and-braces with the adapter-level limit, which enforces on the actual byte stream.
+
+> The regex-based SQL injection detector that shipped in 4.x was **removed in 5.0**. The patterns were trivially bypassable (comment insertion, case variation, URL encoding) and produced false positives on legitimate JSON. Parameterised queries at the DB layer are the only real defence. Setting `sqlInjectionProtection: true` now warns and has no runtime effect.
 
 ### @axiomify/helmet (Updated)
 Expanded to include more security headers and header removal.
@@ -62,8 +67,10 @@ useHelmet(app, {
 });
 
 useSecurity(app, {
-  maxBodySize: 1024 * 1024, // 1MB
-  sqlInjectionProtection: true
+  maxBodySize: 1024 * 1024, // 1MB Content-Length guard (NOT a stream limit)
+  // sqlInjectionProtection was removed in 5.0 — see banner above.
+  // Use parameterised queries at the DB layer for real SQLi defence.
+  noSqlInjectionProtection: true, // narrow Mongo $op check; off by default
 });
 
 useFingerprint(app, {

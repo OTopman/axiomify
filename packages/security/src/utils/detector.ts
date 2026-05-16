@@ -1,15 +1,7 @@
 export interface DetectorOptions {
-  sqlPatterns?: RegExp[];
   noSqlPatterns?: RegExp[];
   blockedUserAgentPatterns?: RegExp[];
 }
-
-/**
- * @deprecated Removed in v5.0. The regex-based SQL detector was trivially
- * bypassable AND produced false positives on legitimate text. Kept as an
- * empty array so existing imports don't break; will be removed in v6.
- */
-export const DEFAULT_SQL_PATTERNS: readonly RegExp[] = [];
 
 /**
  * ⚠️  HEURISTIC ONLY — NOT A RELIABLE NOSQL INJECTION DEFENSE.
@@ -45,17 +37,6 @@ export function hasPatternMatch(input: unknown, patterns: RegExp[]): boolean {
         hasPatternMatch(value, patterns),
     );
   }
-  return false;
-}
-
-/**
- * @deprecated Removed in v5.0. Use parameterized queries at the DB layer.
- * Always returns false; kept for one major version to avoid breaking imports.
- */
-export function detectSqlInjection(
-  _input: unknown,
-  _patterns?: readonly RegExp[],
-): boolean {
   return false;
 }
 

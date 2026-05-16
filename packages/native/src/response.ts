@@ -177,26 +177,6 @@ export class NativeResponse implements AxiomifyResponse {
     });
   }
 
-  /**
-   * @deprecated Use `res.status(code).send(data, message)` instead. This
-   * helper always emits a 500 and ignores the err argument's `statusCode`.
-   */
-  error(_err: unknown): void {
-    if (this.headersSent || this.aborted) return;
-    this.headersSent = true;
-
-    const headers = this._headers;
-    const cached500 = this._errorCache.cached500;
-    this.raw.cork(() => {
-      this.raw.writeStatus(cached500.statusLine);
-      this.raw.writeHeader('Content-Type', 'application/json');
-      for (const k in headers) {
-        this.raw.writeHeader(k, headers[k]);
-      }
-      this.raw.end(cached500.body);
-    });
-  }
-
   stream(
     readable: import('stream').Readable,
     contentType = 'application/octet-stream',

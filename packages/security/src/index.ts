@@ -40,17 +40,6 @@ export interface SecurityOptions {
   blockedUserAgentPatterns?: RegExp[];
   noSqlPatterns?: RegExp[];
   sanitizerMaxDepth?: number;
-  /**
-   * @deprecated Removed in v5.0. The regex-based SQL injection detector
-   * was bypassable in ~30 seconds (comment insertion, case variation,
-   * encoding) AND produced false positives on legitimate JSON containing
-   * the strings `union select`, `or 1=1`, etc. Setting this option now
-   * has no effect; parameterized queries at the DB layer are the only
-   * defense. Will be removed entirely in v6.
-   */
-  sqlInjectionProtection?: boolean;
-  /** @deprecated See `sqlInjectionProtection`. No longer used. */
-  sqlPatterns?: RegExp[];
 }
 
 function patchRequestProperty(req: AxiomifyRequest, key: keyof AxiomifyRequest, newValue: unknown) {
@@ -83,18 +72,6 @@ export function useSecurity(
     noSqlPatterns = DEFAULT_NOSQL_PATTERNS,
     sanitizerMaxDepth = 64,
   } = options;
-
-  // Honour the legacy `sqlInjectionProtection` option as a no-op + warning
-  // so users discover it's gone instead of silently losing what they thought
-  // was a defense.
-  if (options.sqlInjectionProtection === true) {
-    console.warn(
-      '[axiomify/security] `sqlInjectionProtection` was removed in v5.0 — ' +
-      'the regex heuristic was trivially bypassed and produced false ' +
-      'positives. Use parameterized queries at the database layer instead. ' +
-      'This option no longer has any effect.',
-    );
-  }
 
   app.addHook('onRequest', async (req: AxiomifyRequest, res) => {
     // Content-Length guard — fast rejection for well-behaved clients.

@@ -175,7 +175,6 @@ describe('sanitizeInput — object and array recursion', () => {
 describe('sanitizeInput — disabled protections', () => {
   it('preserves null bytes when nullByteProtection is false', () => {
     const result = sanitizeInput('a\0b', {
-      sqlInjectionProtection: false,
       pathTraversalProtection: false,
       commandInjectionProtection: false,
       xssProtection: false,
@@ -188,7 +187,6 @@ describe('sanitizeInput — disabled protections', () => {
 
   it('preserves raw HTML when xssProtection is false', () => {
     const result = sanitizeInput('<script>x</script>', {
-      sqlInjectionProtection: false,
       pathTraversalProtection: false,
       commandInjectionProtection: false,
       xssProtection: false,

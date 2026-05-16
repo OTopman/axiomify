@@ -14,9 +14,9 @@ Axiomify is an ultra high-performance Node.js framework built exclusively on `uW
 ## Architecture highlights
 
 - **Native C++ Routing (production)** — `@axiomify/native` registers every route directly with `uWebSockets.js` so HTTP requests are routed in C++. A JS radix trie (`packages/core/src/router.ts`) is built at startup and used only by `app.handle()` — the test / SSR entrypoint that bypasses the native adapter. Production traffic never touches the JS router.
-- **Zod-Native Security** — strict validation pipeline using `schema.parse()` to automatically strip unknown payload keys and prevent Mass Assignment and Prototype Pollution attacks.
-- **Microtask-free hooks** — `HookManager.run()` returns `undefined` for empty hook lists. No Promise allocation, no microtask in the zero-hook fast path.
-- **True SO_REUSEPORT clustering** — natively sets `cluster.SCHED_NONE` before the first fork and binds each worker via `reusePort: true`. Workers own their sockets — zero IPC in the request hot path.
+- **Compiled validation** — Zod schemas are converted to JSON Schema 2020-12 once at route registration time and compiled by AJV. Per-request validation runs the compiled AJV function; `schema.parse()` is called only when the schema declares transforms. Falls back to Zod `safeParse` (~1.6× slower but always correct) when AJV is not installed.
+- **Microtask-free hooks** — `HookManager.run()` returns `undefined` for empty hook lists. No Promise allocation, no microtask in the zero-hook fast path. Hook arrays are snapshotted before iteration so hooks added during a request take effect on the next request.
+- **Linux SO_REUSEPORT clustering** — `listenClustered()` forks one uWS app per worker; each worker binds the same port via uWS's `SO_REUSEPORT` support on Linux. The kernel distributes connections at the socket layer — zero IPC in the request hot path. On macOS / Windows, clustering requires an explicit `allowUserspaceProxy: true` opt-in because the userspace L4 proxy fallback defeats the perf rationale.
 
 ---
 
@@ -27,17 +27,17 @@ Axiomify is an ultra high-performance Node.js framework built exclusively on `uW
 | Package | Description |
 |---|---|
 | [`@axiomify/core`](packages/core/) | Router, AJV validation, hook manager, dispatcher, module system |
-| [`@axiomify/cli`](packages/cli/) | `axiomify init`, `dev`, `build`, `routes` visualisation |
+| [`@axiomify/cli`](packages/cli/) | `init` · `dev` · `build` · `routes` · `openapi` · `check` · `doctor` |
 
 ### Security
 
 | Package | Description |
 |---|---|
-| [`@axiomify/auth`](packages/auth/) | JWT + refresh rotation + access token revocation via `TokenStore` |
+| [`@axiomify/auth`](packages/auth/) | JWT + refresh rotation + access token revocation via `TokenStore` (`MemoryTokenStore` shipped; Redis/DB stores BYO via the `TokenStore` interface) |
 | [`@axiomify/cors`](packages/cors/) | CORS with strict preflight, `Vary` management, startup validation |
 | [`@axiomify/helmet`](packages/helmet/) | 15 security headers (CSP, HSTS, COEP, COOP, CORP, …) |
 | [`@axiomify/rate-limit`](packages/rate-limit/) | Sliding-window rate limiting + EVALSHA caching + ioredis/redis@4 |
-| [`@axiomify/security`](packages/security/) | XSS, HPP, SQLi heuristics, prototype pollution, null bytes, bot detection |
+| [`@axiomify/security`](packages/security/) | XSS sanitisation, HPP normalisation, prototype-pollution + null-byte filtering, bot UA detection; opt-in narrow Mongo-operator detector |
 | [`@axiomify/fingerprint`](packages/fingerprint/) | Server-side request fingerprinting with confidence scoring |
 
 ### Content & I/O
@@ -46,7 +46,6 @@ Axiomify is an ultra high-performance Node.js framework built exclusively on `uW
 |---|---|
 | [`@axiomify/upload`](packages/upload/) | RAM-safe multipart streaming via Busboy + auto cleanup on error |
 | [`@axiomify/static`](packages/static/) | Static file serving — 36 MIME types, ETag, SPA index fallback |
-
 | [`@axiomify/graphql`](packages/graphql/) | GraphQL endpoint + GraphiQL 3 + depth/alias limits |
 
 ### Observability
@@ -120,7 +119,9 @@ adapter.listenClustered({
 });
 ```
 
-Axiomify executes Zod validation directly using `schema.parse()`. Unknown keys are automatically stripped from payloads to prevent Mass Assignment and Prototype Pollution attacks before your business logic is reached.
+## Validation in action
+
+Zod schemas are converted to JSON Schema 2020-12 at route registration and compiled by AJV. Per-request validation runs the compiled function; transforms (`.default()`, `.coerce.*`, `.transform()`) trigger a second `schema.parse()` pass on the valid path. Unknown-key behaviour is controlled by your Zod schema (`.strict()` / `.passthrough()` / default), not by the framework.
 
 ```typescript
 app.route({
@@ -151,7 +152,10 @@ app.route({
 ```typescript
 import { createAuthPlugin, createRefreshHandler, MemoryTokenStore } from '@axiomify/auth';
 
-const tokenStore = new MemoryTokenStore(); // use RedisTokenStore in production
+// `MemoryTokenStore` is per-process. For multi-process or multi-host
+// deployments, implement the `TokenStore` interface against Redis / DB /
+// your store of choice — see docs/packages/auth.md.
+const tokenStore = new MemoryTokenStore();
 
 const requireAuth = createAuthPlugin({
   secret: process.env.JWT_SECRET!,
@@ -170,7 +174,7 @@ app.route({ method: 'POST', path: '/auth/refresh', handler: refresh });
 app.route({
   method: 'GET', path: '/me',
   plugins: [requireAuth],
-  handler: async (req, res) => res.send(req.state.authUser),
+  handler: async (req, res) => res.send(req.state.user),
 });
 ```
 
@@ -206,7 +210,7 @@ app.ws({
   },
   plugins: [requireAuth],
   open: (client, req) => {
-    client.send({ type: 'welcome', user: req.state.authUser.id });
+    client.send({ type: 'welcome', user: req.state.user.id });
   },
   message: (client, data) => {
     // data is strongly typed as { text: string } and already validated
@@ -223,10 +227,11 @@ app.ws({
 ## OpenAPI — Zod v4 native
 
 ```typescript
-import { useSwagger } from '@axiomify/openapi';
+import { useOpenAPI } from '@axiomify/openapi';
 
-useSwagger(app, {
+useOpenAPI(app, {
   info: { title: 'My API', version: '1.0.0' },
+  prefix: '/docs',
   components: {
     securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
   },
@@ -234,7 +239,7 @@ useSwagger(app, {
 // Swagger UI at /docs, spec at /docs/openapi.json
 ```
 
-Uses `z.toJSONSchema()` (Zod v4 built-in, emits JSON Schema 2020-12). No third-party schema bridge needed.
+Uses `z.toJSONSchema()` (Zod v4 built-in, emits JSON Schema 2020-12). No third-party schema bridge needed. Per-route docs live on `route.openapi` and mirror the [OAS 3.0.3 Operation Object](https://spec.openapis.org/oas/v3.0.3#operation-object) verbatim — see [docs/packages/openapi.md](docs/packages/openapi.md).
 
 ---
 
@@ -261,16 +266,65 @@ app.group('/api/v1', { plugins: [requireAuth] }, (v1) => {
 ## Module system
 
 ```typescript
+import { MemoryTokenStore, type TokenStore } from '@axiomify/auth';
+
 // Modules with topological dependency resolution
 app.use({
   name: 'auth',
   dependencies: ['cors'],   // cors is registered before auth, regardless of call order
   register: (app, ctx) => {
-    ctx.provide('tokenStore', new RedisTokenStore(redis));
+    // MemoryTokenStore for single-process; supply your own TokenStore impl
+    // backed by Redis / DB / etc. for multi-process or multi-host deployments.
+    const tokenStore: TokenStore = new MemoryTokenStore();
+    ctx.provide('tokenStore', tokenStore);
     app.addHook('onRequest', verifyToken);
   },
 });
 ```
+
+---
+
+## CLI
+
+`@axiomify/cli` ships with the framework. Beyond `init` / `dev` / `build`, it has commands for route inspection, OpenAPI generation, production-readiness auditing, and environment diagnostics — useful in CI as well as locally.
+
+```bash
+npx axiomify routes                      # colour-coded route table (HTTP + WS)
+npx axiomify openapi -o openapi.json     # emit spec for client codegen
+npx axiomify check                       # static production-readiness audit
+npx axiomify doctor                      # diagnose Node version / uWS / ports
+```
+
+`axiomify routes` example:
+
+```
+┌─────────┬──────────────────────┬───────────────┬───────────────────────────────────────┐
+│ METHOD  │ PATH                 │ VALIDATION    │ META                                  │
+├─────────┼──────────────────────┼───────────────┼───────────────────────────────────────┤
+│ WS      │ /chat                │ Message       │ —                                     │
+│ GET     │ /health              │ —             │ —                                     │
+│ POST    │ /users ⊘ DEPRECATED  │ Body,Response │ op:createUser #Users 5000ms +1 plugin │
+│ GET     │ /users/:id           │ Params        │ op:getUser #Users                     │
+│ DELETE  │ /users/:id           │ Params        │ —                                     │
+└─────────┴──────────────────────┴───────────────┴───────────────────────────────────────┘
+
+  ✓ 5 routes   DELETE 1 · GET 2 · POST 1 · WS 1
+    └ 1 WebSocket route included
+```
+
+Flags: `--json` (machine-readable), `--method GET,POST,WS`, `--filter "/api/v1/*"`, `--sort path|method`. WebSocket routes (`app.ws(...)`) are listed alongside HTTP routes — earlier CLI versions silently omitted them.
+
+In CI:
+
+```yaml
+- run: npx axiomify doctor                                              # env sanity
+- run: npx axiomify check                                               # readiness gate (exit 1 on fail)
+- run: npx axiomify build
+- run: npx axiomify openapi -o openapi.json --spec-version "$GITHUB_SHA"
+- run: npx axiomify routes --json > routes.json                          # API surface snapshot
+```
+
+Full reference: [docs/packages/cli.md](docs/packages/cli.md).
 
 ---
 
@@ -300,25 +354,27 @@ For authoritative clustered numbers: `SERVER_HOST=<server-ip> node benchmarks/ru
 
 ## Security defaults
 
-- **Prototype pollution** — adapters strip `__proto__`, `constructor`, `prototype` from JSON bodies (opt-in via `sanitize: true`)
-- **AJV strict mode** — `coerceTypes: false`, no `removeAdditional` — no silent data mutation
-- **JWT algorithm pinning** — `createAuthPlugin` rejects tokens signed with non-listed algorithms; weak secrets throw at startup
-- **CORS startup validation** — `credentials: true` + `origin: '*'` throws at startup
-- **Path traversal** — `@axiomify/static` uses `realpath()` + root containment check
-- **Body stream limits** — all adapters enforce size on the actual stream, not just `Content-Length`
+- **Prototype pollution** — when `@axiomify/security` is registered, the sanitiser walks `req.body` / `req.query` / `req.params` and drops `__proto__` / `constructor` / `prototype` keys. Enabled by default.
+- **AJV non-coercing** — `coerceTypes: false` and no `removeAdditional` flag — AJV never mutates request data silently. Validation rejects on bad shape; transforms only run if you declared them in your Zod schema.
+- **JWT algorithm pinning** — `createAuthPlugin` and `createRefreshHandler` reject tokens signed with algorithms not in the configured list. Weak secrets (< 32 bytes / 256 bits per RFC 7518) throw at startup in production, warn in development.
+- **CORS startup validation** — `credentials: true` combined with a literal `origin: '*'` throws at construction time, not on first request.
+- **Path traversal** — `@axiomify/static` resolves via `realpath()` and verifies containment under the configured root.
+- **Body stream limits** — `NativeAdapter` enforces `maxBodySize` on the actual byte stream from uWS, not the Client-controlled `Content-Length` header.
+- **Header injection** — `res.header(name, value)` throws on CR / LF / NUL bytes in either argument, preventing response-splitting attacks.
 
 ---
 
 ## Testing
 
 ```bash
-npm test         # vitest — 321 tests, 37 test files
-npm run coverage # V8 coverage report
+npm test         # vitest — 473 tests across 43 files (28 skipped on Node ≥23 where uWS doesn't load)
+npm run coverage # V8 coverage report (97% lines / 98% functions on gated packages)
 ```
 
-- Cross-adapter parity tests (`describe.each` across all adapters) — identical behaviour guaranteed
-- Unit + integration tests for every package
-- Real HTTP round-trips (no adapter-layer mocking)
+- Unit tests for every package
+- Integration tests against a real `uWebSockets.js` listener (Linux + Node ≤22)
+- Header-injection regression tests and property-based fuzz coverage of the query parser via `fast-check`
+- Smoke benchmark in CI (`benchmarks/smoke.mjs`); see `benchmarks/README.md` for the full perf harness
 
 ---
 
@@ -330,11 +386,14 @@ Quick reference:
 
 | v4 | v5 |
 |---|---|
-| `new Axiomify()` injects X-Request-Id | `app.enableRequestId()` to opt in |
-| `app.serializer = fn` | `app.setSerializer(fn)` |
-| `app.lockRoutes(reason)` | `app.lockRoutes(ADAPTER_LOCK_TOKEN, reason)` |
-| `RoutePlugin` / `PluginHandler` | `RouteMiddleware` |
-| Node.js cluster round-robin | SO_REUSEPORT (kernel load-balancing) |
+| `new Axiomify()` injects X-Request-Id automatically | Opt in with `app.enableRequestId()` |
+| `app.lockRoutes(reason)` (any caller could lock) | `app.lockRoutes(ADAPTER_LOCK_TOKEN, reason)` (token-gated for adapters) |
+| `meta: { tags, summary, ... }` on routes | `openapi: { tags, summary, ... }` — `meta` still works through 5.x, removed in 6.0 |
+| 5-arg `SerializerFn(data, msg, code, isErr, req)` | `SerializerFn(input)` only — the 5-arg form throws at construction time in 5.0 |
+| `AppPlugin` type alias | Removed; use `AppConfigurator`. Runtime accepts 1-arg fns identically |
+| `useSwagger` import | `useOpenAPI` (the function was never named `useSwagger` in shipped code; older docs were wrong) |
+| `routePrefix: '/docs'` on `useOpenAPI` | `prefix: '/docs'` (matches `@axiomify/static`); `routePrefix` warns + still works through 5.x |
+| Node.js cluster round-robin | SO_REUSEPORT (Linux kernel load-balancing); non-Linux requires `allowUserspaceProxy: true` opt-in |
 
 ---
 
@@ -344,14 +403,13 @@ Quick reference:
 |---|---|
 | [Getting started](docs/getting-started.md) | Install, first route, first adapter |
 | [Core concepts](docs/core-concepts.md) | Routing, validation, hooks, serialiser |
-| [Adapters guide](docs/adapters.md) | Choosing, configuring, clustering |
 | [Plugins & hooks](docs/plugins-and-hooks.md) | Writing plugins, hook execution order |
 | [Production checklist](docs/production-checklist.md) | Security, clustering, health checks |
-| [Examples](examples/) | Runnable servers for every adapter and plugin |
+| [Examples](examples/) | Runnable servers showing the full ecosystem |
 
 ### Package docs
 
-[core](docs/packages/core.md) · [native](docs/packages/native.md) · [auth](docs/packages/auth.md) · [cors](docs/packages/cors.md) · [rate-limit](docs/packages/rate-limit.md) · [ws](docs/packages/ws.md) · [openapi](docs/packages/openapi.md) · [security](docs/packages/security.md) · [static](docs/packages/static.md) · [upload](docs/packages/upload.md) · [helmet](docs/packages/helmet.md) · [logger](docs/packages/logger.md) · [metrics](docs/packages/metrics.md) · [fingerprint](docs/packages/fingerprint.md) · [graphql](docs/packages/graphql.md)
+[core](docs/packages/core.md) · [native](docs/packages/native.md) (HTTP + WebSocket adapter) · [auth](docs/packages/auth.md) · [cors](docs/packages/cors.md) · [rate-limit](docs/packages/rate-limit.md) · [openapi](docs/packages/openapi.md) · [security](docs/packages/security.md) · [static](docs/packages/static.md) · [upload](docs/packages/upload.md) · [helmet](docs/packages/helmet.md) · [logger](docs/packages/logger.md) · [metrics](docs/packages/metrics.md) · [fingerprint](docs/packages/fingerprint.md) · [graphql](docs/packages/graphql.md) · [cli](docs/packages/cli.md)
 
 ---
 

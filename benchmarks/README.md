@@ -55,7 +55,11 @@ After `listenClustered()` starts:
 lsof -i :3000
 ```
 
-You should see N separate processes each owning a `LISTEN` socket. If only one process (the primary) appears, SO_REUSEPORT is not active — check that your Node.js version is ≥ 16.9 for `reusePort: true`.
+You should see N separate processes each owning a `LISTEN` socket on the same port. If only one process (the primary) appears, SO_REUSEPORT is not active. Verify:
+
+- You're on Linux (macOS / Windows fall back to a userspace L4 proxy — see `allowUserspaceProxy` in [docs/packages/native.md](../docs/packages/native.md#clustering-on-macos--windows)).
+- Your kernel supports `SO_REUSEPORT` (Linux ≥ 3.9 — present on every supported distribution).
+- The `listenClustered()` call is being made from the primary process; the adapter fans out to workers internally.
 
 ## Running the benchmarks
 
@@ -73,6 +77,39 @@ SERVER_HOST=<server-ip> node benchmarks/run-clustered.mjs
 # benchmarks/results.json          (single-process)
 # benchmarks/results-clustered.json (clustered)
 ```
+
+## Quick checks vs full runs
+
+This directory has three benchmark entry points with different cost/precision tradeoffs:
+
+| Script | Duration | Asserts | Use case |
+|---|---|---|---|
+| `smoke.mjs` | ~5 s | server didn't crash, ≥1k req/s | Every PR. CI-friendly. Skips cleanly on hosts without uWS. |
+| `stress.mjs` | ~90 s (30 s × 3 scenarios) | p99 budgets, optional baseline diff | Pre-release sanity check on dedicated hardware. |
+| `run-all.mjs` | ~3-5 min | none (writes raw results) | Cross-framework comparison (Axiomify vs Fastify vs Hapi vs bare Node). |
+
+### Stress (`stress.mjs`) — perf-budget regression detection
+
+```bash
+# Default 30s per scenario
+node benchmarks/stress.mjs
+
+# Custom load
+node benchmarks/stress.mjs --duration 60 --connections 200 --pipelining 16
+
+# Diff against a previous run's report — fails (exit 2) if any scenario
+# regressed by more than 15% in req/s or p99 latency.
+node benchmarks/stress.mjs --baseline benchmarks/stress-baseline.json
+```
+
+Output: `benchmarks/stress-result.json`. Exit codes:
+- `0` — all scenarios within budget (and within baseline if provided)
+- `1` — harness/server broke (non-2xx responses, boot failure)
+- `2` — budget or baseline violation
+
+The default budgets in `stress.mjs` are intentionally generous (30k req/s floor, 50-60ms p99). Tighten them on your own hardware by committing a `stress-baseline.json` and passing `--baseline`.
+
+**Do not run this on cloud CI runners.** Shared cores + virtualised NICs make the variance too high to gate on. Use `smoke.mjs` in CI; reserve `stress.mjs` for a quiet box you control.
 
 ## Worker count recommendations
 

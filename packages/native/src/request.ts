@@ -91,6 +91,10 @@ export class NativeRequest implements AxiomifyRequest {
     return this._parsedQuery;
   }
 
+  set query(val: Record<string, string | string[]>) {
+    this._parsedQuery = val;
+  }
+
   /**
    * Lazy AbortSignal — AbortController is never created for requests that
    * don't need cancellation support, saving ~1µs per request.

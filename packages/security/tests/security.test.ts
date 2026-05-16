@@ -41,11 +41,12 @@ describe('Security Package', () => {
     expect(req.query.user).toBe('attacker');
   });
 
-  it('does NOT block SQL-like payloads (heuristic was removed in v5.0)', async () => {
-    // The SQL heuristic was trivially bypassable AND produced false positives
-    // on legitimate JSON. Removed entirely; tests reflect the new contract.
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const hook = setup({ sqlInjectionProtection: true } as any);
+  it('does NOT block SQL-like payloads (heuristic removed in 5.0; option gone in 6.0)', async () => {
+    // The SQL injection regex heuristic was trivially bypassable AND
+    // produced false positives on legitimate JSON. Removed in 5.0 (no-op),
+    // option entirely deleted in 6.0. Setting it on the options object
+    // is now just an excess property that TS will reject at compile-time.
+    const hook = setup({});
     const req: any = {
       headers: {},
       query: { id: '1 UNION SELECT * FROM users' },
@@ -55,11 +56,6 @@ describe('Security Package', () => {
     const res = makeRes();
     await hook(req, res);
     expect(res.status).not.toHaveBeenCalledWith(403);
-    // Should warn that the option has no effect.
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('sqlInjectionProtection'),
-    );
-    warn.mockRestore();
   });
 
   it('should detect NoSQL injection operators when explicitly enabled', async () => {

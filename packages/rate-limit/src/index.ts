@@ -280,15 +280,31 @@ export interface RateLimitOptions {
   memoryStoreMaxKeys?: number;
 }
 
-// Emitted once per process to avoid log flooding.
-let _emittedIpWarning = false;
-let _emittedStoreWarning = false;
+/**
+ * Per-plugin warning state. Module-level flags would suppress legitimate
+ * warnings the second time the plugin is constructed in the same process
+ * — bad ergonomics for tests, multi-tenant deployments, and any setup
+ * where two `createRateLimitPlugin()` calls exist in one Node.js process.
+ *
+ * Each call to `buildLimiter` creates a fresh WarningCtx so warnings fire
+ * once per plugin instance, not once per process.
+ */
+interface WarningCtx {
+  ipEmitted: boolean;
+  storeEmitted: boolean;
+}
 
-function createDefaultKeyGenerator(): (req: AxiomifyRequest) => string {
+function newWarningCtx(): WarningCtx {
+  return { ipEmitted: false, storeEmitted: false };
+}
+
+function createDefaultKeyGenerator(
+  warnings: WarningCtx,
+): (req: AxiomifyRequest) => string {
   return (req: AxiomifyRequest) => {
     if (!req.ip) {
-      if (!_emittedIpWarning) {
-        _emittedIpWarning = true;
+      if (!warnings.ipEmitted) {
+        warnings.ipEmitted = true;
         console.warn(
           '[axiomify/rate-limit] req.ip is falsy on an incoming request. ' +
             'These requests will share the "unknown" rate-limit bucket, which ' +
@@ -302,7 +318,7 @@ function createDefaultKeyGenerator(): (req: AxiomifyRequest) => string {
   };
 }
 
-function createStore(options: RateLimitOptions): RateLimitStore {
+function createStore(options: RateLimitOptions, warnings: WarningCtx): RateLimitStore {
   const provided = options.store;
   if (provided) return provided;
 
@@ -320,9 +336,9 @@ function createStore(options: RateLimitOptions): RateLimitStore {
   if (
     process.env.NODE_ENV === 'production' &&
     options.allowMemoryStoreInProduction &&
-    !_emittedStoreWarning
+    !warnings.storeEmitted
   ) {
-    _emittedStoreWarning = true;
+    warnings.storeEmitted = true;
     console.warn(
       '[axiomify/rate-limit] Using in-memory MemoryStore in production. ' +
         'MemoryStore is per-process: each Node.js worker or container instance ' +
@@ -338,9 +354,11 @@ function createStore(options: RateLimitOptions): RateLimitStore {
 function buildLimiter(options: RateLimitOptions = {}) {
   const windowMs = options.windowMs ?? 60_000;
   const max = options.max ?? options.maxRequests ?? 100;
-  const store = createStore(options);
+  // Per-plugin warning state — see WarningCtx docs above.
+  const warnings = newWarningCtx();
+  const store = createStore(options, warnings);
   const keyGenerator =
-    options.keyGenerator ?? options.keyExtractor ?? createDefaultKeyGenerator();
+    options.keyGenerator ?? options.keyExtractor ?? createDefaultKeyGenerator(warnings);
 
   return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
     // Wrap skip() in try/catch — a throwing skip silently bypasses rate limiting.

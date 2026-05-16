@@ -15,7 +15,7 @@ npm install --save-dev @types/jsonwebtoken
 |---|---|
 | `createAuthPlugin(options)` | Route plugin that validates Bearer JWT tokens |
 | `createRefreshHandler(options)` | Route handler that rotates refresh tokens |
-| `getAuthUser(req)` | Gets the authenticated user from `req.state.authUser` |
+| `getAuthUser(req)` | Returns the authenticated payload from `req.state.user` (set by `createAuthPlugin` after token verification). |
 | `MemoryTokenStore` | In-process token store — **dev/single-process only** |
 
 ## Quick start
@@ -25,7 +25,7 @@ import { createAuthPlugin, createRefreshHandler, getAuthUser } from '@axiomify/a
 
 // Protect routes
 const requireAuth = createAuthPlugin({
-  secret: process.env.JWT_SECRET!,  // ≥ 32 characters
+  secret: process.env.JWT_SECRET!,  // ≥ 32 bytes (256 bits, RFC 7518 §3.2)
   algorithms: ['HS256'],
 });
 
@@ -74,11 +74,15 @@ Without `store`, access tokens are valid until they expire regardless of logout.
 ## Refresh token rotation
 
 `createRefreshHandler` with `store` performs full token rotation:
-1. Verifies the incoming refresh token against `refreshSecret`
-2. Calls `store.exists(jti)` — rejects if missing (revoked or never saved)
-3. Calls `store.revoke(jti)` — invalidates the consumed refresh token
-4. Issues a new access token and a new refresh token with a new JTI
-5. Calls `store.save(newJti, refreshTokenTtl)` — activates the new refresh token
+
+1. Verifies the incoming refresh token against `refreshSecret`. JWT verification failures → **401**.
+2. Calls `store.exists(jti)` — rejects with **401** if missing (revoked or never saved). Infrastructure errors here → **503** (was silently coerced to 401 in 4.x).
+3. Signs the new access token and the new refresh token with a fresh `jti`.
+4. Calls `store.save(newJti, refreshTokenTtl)` — activates the new refresh token. Store failure → **503** and the old `jti` is **NOT** revoked, so the client can safely retry.
+5. Returns the new token pair to the client.
+6. Calls `store.revoke(oldJti)` — invalidates the consumed refresh token. Failures here are soft-swallowed; the client already has new credentials and the old `jti` will expire naturally.
+
+> **Why save-then-revoke and not revoke-then-save?** A transient Redis blip between revoke and save in the old order hard-logged-out users — the previous refresh token was destroyed but the replacement was never persisted. Save-then-revoke makes the worst case a recoverable retry instead of a permanent logout.
 
 ## TokenStore interface
 
@@ -110,7 +114,7 @@ const redisTokenStore: TokenStore = {
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `secret` | `string` | required | JWT signing secret. Minimum 32 characters. Validated at startup. |
+| `secret` | `string` | required | JWT signing secret. Minimum **32 bytes** (256 bits, per RFC 7518 §3.2 for HS256). Validated at startup — throws in production, warns in development. Generate via `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`. |
 | `algorithms` | `Algorithm[]` | `['HS256']` | Accepted algorithms. The `'none'` algorithm is always blocked. |
 | `getToken` | `(req) => string \| null` | `Authorization: Bearer` | Custom token extractor. |
 | `issuer` | `string` | — | Validates the `iss` claim. |
@@ -151,7 +155,7 @@ app.route({
 ## Production requirements
 
 - [ ] Secrets in environment variables — never in source code or config files
-- [ ] Secrets ≥ 32 characters (enforced at startup in production)
+- [ ] Secrets ≥ 32 **bytes** (256 bits) — enforced at startup in production via `Buffer.byteLength(secret, 'utf8')`
 - [ ] `accessTokenTtl` ≤ 900 seconds (15 min)
 - [ ] Redis-backed `TokenStore` — `MemoryTokenStore` is per-process
 - [ ] `/auth/refresh` rate-limited

@@ -7,7 +7,6 @@ import type {
   AppConfigurator,
   AppContext,
   AppModule,
-  AppPlugin,
   AxiomifyRequest,
   AxiomifyResponse,
   HookType,
@@ -21,7 +20,7 @@ import type {
   WsRouteDefinition,
 } from './types';
 
-export type { AppConfigurator, AppContext, AppModule, AppPlugin };
+export type { AppConfigurator, AppContext, AppModule };
 
 export interface AxiomifyOptions {
   timeout?: number;
@@ -180,11 +179,12 @@ export class Axiomify {
     };
 
     if (typeof configurator === 'function') {
-      // Both AppPlugin and AppConfigurator are called the same way.
-      // AppPlugin ignores the second argument; AppConfigurator uses it.
-      // The previous arity-check approach is removed — it misidentified
-      // intentional 1-arg arrow functions as the deprecated form.
-      (configurator as AppConfigurator)(this, context);
+      // AppConfigurator is the only accepted function shape. 1-arg
+      // configurators that ignore `context` still work fine — JS silently
+      // drops the extra positional. The legacy `AppPlugin` type alias
+      // (1-arg signature) was removed from the public API in 5.0.0; the
+      // runtime accepts both arities identically.
+      configurator(this, context);
       return this;
     }
 

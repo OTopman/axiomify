@@ -1,48 +1,45 @@
-import type { AxiomifyRequest } from './types';
-
 /**
- * Normalises a {@link SerializerFn} into a guaranteed single-argument form.
+ * Validates a {@link SerializerFn} at adapter-construction time.
  *
- * Evaluated ONCE at adapter-construction time — never per request.
- * This eliminates the per-request `fn.length` branch and removes the need
- * for every adapter to duplicate this logic.
+ * The serializer contract is a single-argument synchronous function:
  *
- * @example
- * // In an adapter constructor:
- * this._serialize = makeSerialize(this.core.serializer);
+ *   ({ data, message, statusCode, isError, req }) => unknown
  *
- * // In the hot-path send():
- * const payload = this._serialize({ data, message, statusCode, isError, req });
+ * The legacy 5-argument positional form was deprecated through v5 and is
+ * removed in v5.0.0. The validation here is:
+ *
+ *   1. Reject obvious legacy signatures with `fn.length > 1` so users get a
+ *      diagnostic at startup, not a silent miscompile (positional args
+ *      would be undefined in the single-arg path).
+ *   2. Reject async serializers — a Promise return would JSON.stringify to
+ *      `{}` / `[object Promise]` on every response. Probe with a sentinel
+ *      input and bail if the result is thenable.
+ *
+ * Returns a passthrough wrapper so call sites can call `serialize(input)`
+ * directly without a runtime arity check on the hot path.
  */
 export function makeSerialize(
   fn: import('./types').SerializerFn,
 ): (input: import('./types').SerializerInput) => unknown {
-  const normalized: (input: import('./types').SerializerInput) => unknown =
-    fn.length <= 1
-      ? (input) =>
-          (fn as (i: import('./types').SerializerInput) => unknown)(input)
-      : (input) =>
-          (
-            fn as (
-              data: unknown,
-              message?: string,
-              statusCode?: number,
-              isError?: boolean,
-              req?: AxiomifyRequest,
-            ) => unknown
-          )(input.data, input.message, input.statusCode, input.isError, input.req);
-
-  if (fn.length > 1 && process.env['NODE_ENV'] !== 'production') {
-    console.warn(
-      '[Axiomify] SerializerFn: the 5-argument positional form ' +
-      '(data, message, statusCode, isError, req) is deprecated and will be ' +
-      'removed in v6. Migrate to the single-argument object form: ' +
-      '({ data, message, statusCode, isError, req }) => ...',
+  // The 5-arg positional form was supported in 4.x and warned through the
+  // rc cycle of 5.0. Removed in 5.0.0 stable — keeping it longer accreted
+  // the kind of permanent technical debt that bedevils long-lived
+  // frameworks (Express @1.x still pays this cost in 2026).
+  if (fn.length > 1) {
+    throw new Error(
+      '[Axiomify] SerializerFn must accept a single SerializerInput argument. ' +
+      'The 5-argument positional form (data, message, statusCode, isError, req) ' +
+      'was removed in v5.0.0. Migrate to:\n' +
+      '  ({ data, message, statusCode, isError, req }) => ...\n' +
+      'See CHANGELOG.md → 5.0.0 → Breaking changes.',
     );
   }
 
+  const normalized = (input: import('./types').SerializerInput) =>
+    (fn as (i: import('./types').SerializerInput) => unknown)(input);
+
   // Reject async serializers at adapter-construction time. A Promise return
-  // would be JSON.stringify'd as "{}" or "[object Promise]" on the hot path
+  // would be JSON.stringify'd as `{}` or `[object Promise]` on the hot path
   // — silent body corruption that's almost impossible to debug. Probe with
   // a sentinel input; if the result is thenable, fail fast and loudly.
   const probe = normalized({

@@ -44,7 +44,7 @@ describe('useSwagger — extended coverage', () => {
     app.route({
       method: 'GET', path: '/users',
       schema: { response: z.object({ id: z.string() }) },
-      meta: { tags: ['Users'] },
+      openapi: { tags: ['Users'] },
       handler: async (_r, res) => res.send({ id: '1' }),
     });
     useSwagger(app, { info: { title: 'API', version: '2.0.0' } });
@@ -85,7 +85,7 @@ describe('useSwagger — extended coverage', () => {
 
   it('custom prefix changes route paths', () => {
     const app = new Axiomify();
-    useSwagger(app, { info: { title: 'T', version: '1' }, routePrefix: '/api-docs' });
+    useSwagger(app, { info: { title: 'T', version: '1' }, prefix: '/api-docs' });
     const paths = app.registeredRoutes.map(r => r.path);
     expect(paths).toContain('/api-docs');
     expect(paths).toContain('/api-docs/openapi.json');
@@ -100,17 +100,17 @@ describe('useSwagger — extended coverage', () => {
 });
 
 describe('useSwagger — autoInferResponses + prefix edge cases', () => {
-  it('routePrefix with trailing slash is normalized', () => {
+  it('prefix with trailing slash is normalized', () => {
     const app = new Axiomify();
-    useSwagger(app, { info: { title: 'T', version: '1' }, routePrefix: '/api-docs/' });
+    useSwagger(app, { info: { title: 'T', version: '1' }, prefix: '/api-docs/' });
     const paths = app.registeredRoutes.map(r => r.path);
     expect(paths).toContain('/api-docs');
     expect(paths).toContain('/api-docs/openapi.json');
   });
 
-  it('routePrefix without leading slash gets one added', () => {
+  it('prefix without leading slash gets one added', () => {
     const app = new Axiomify();
-    useSwagger(app, { info: { title: 'T', version: '1' }, routePrefix: 'swagger' });
+    useSwagger(app, { info: { title: 'T', version: '1' }, prefix: 'swagger' });
     const paths = app.registeredRoutes.map(r => r.path);
     expect(paths).toContain('/swagger');
   });
@@ -142,9 +142,9 @@ describe('useSwagger — autoInferResponses + prefix edge cases', () => {
     // No throw = success — autoInferResponses ran without error
   });
 
-  it('routePrefix "/" serves docs at root', () => {
+  it('prefix "/" serves docs at root', () => {
     const app = new Axiomify();
-    useSwagger(app, { info: { title: 'T', version: '1' }, routePrefix: '/' });
+    useSwagger(app, { info: { title: 'T', version: '1' }, prefix: '/' });
     const paths = app.registeredRoutes.map(r => r.path);
     expect(paths).toContain('/');
     expect(paths).toContain('/openapi.json');
