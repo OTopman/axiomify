@@ -161,11 +161,11 @@ app.route({
   method: 'GET',
   path: '/live-feed',
   handler: async (req, res) => {
-    res.sseInit();
+    res.sseInit!();
     const interval = setInterval(() => {
-      res.sseSend({ time: Date.now() }, 'tick');
+      res.sseSend!({ time: Date.now() }, 'tick');
     }, 1000);
-    req.signal.addEventListener('abort', () => clearInterval(interval));
+    req.signal!.addEventListener('abort', () => clearInterval(interval));
   },
 });
 
