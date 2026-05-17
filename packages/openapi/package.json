@@ -1,21 +1,10 @@
 {
   "name": "@axiomify/openapi",
-  "version": "6.0.0-rc.2",
+  "version": "6.0.0-rc.3",
+  "description": "OpenAPI 3.0.3 generator + Swagger UI for Axiomify — Zod-v4-native via `z.toJSONSchema()`, 100% Operation Object coverage.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
-  "scripts": {
-    "build": "tsup"
-  },
-  "dependencies": {
-    "@axiomify/core": "*",
-    "zod-to-json-schema": "3.22.4"
-  },
+  "module": "./dist/index.mjs",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -23,7 +12,34 @@
       "require": "./dist/index.js"
     }
   },
-  "module": "./dist/index.mjs",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@axiomify/core": "*",
+    "zod-to-json-schema": "3.22.4"
+  },
+  "author": {
+    "name": "Topman",
+    "email": "okunlolatopman14@gmail.com",
+    "url": "https://github.com/OTopman"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/OTopman/axiomify/blob/main/docs/packages/openapi.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OTopman/axiomify.git",
+    "directory": "packages/openapi"
+  },
+  "bugs": {
+    "url": "https://github.com/OTopman/axiomify/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=18.0.0"
   }

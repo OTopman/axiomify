@@ -52,7 +52,13 @@ jobs:
         # to a verified SHA once it runs. See .github/dependabot.yml.
         uses: changesets/action@v1
         with:
-          publish: npx changeset publish
+          # Override the default `npx changeset publish` so we get ONE git
+          # tag per release instead of 16 (one per @axiomify/* package).
+          # The custom script publishes every workspace via
+          # `npm publish --workspaces` and then creates a single `v<ver>`
+          # tag from the root package.json version. See
+          # scripts/publish-workspace.mjs for the full rationale.
+          publish: node scripts/publish-workspace.mjs
           version: npx changeset version
           commit: "chore(release): version packages"
           title: "chore(release): version packages"

@@ -54,4 +54,4 @@ adapter.listenClustered({
 
 ## Documentation
 
-See [docs/packages/native.md](../../docs/packages/native.md).
+See [docs/packages/native.md](https://github.com/OTopman/axiomify/blob/main/docs/packages/native.md).

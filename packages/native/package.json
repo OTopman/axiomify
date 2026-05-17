@@ -1,8 +1,10 @@
 {
   "name": "@axiomify/native",
-  "version": "6.0.0-rc.2",
+  "version": "6.0.0-rc.3",
+  "description": "uWebSockets.js adapter for Axiomify — highest-throughput transport. HTTP, native WebSocket, SSE, graceful shutdown, SO_REUSEPORT clustering.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "module": "./dist/index.mjs",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -10,16 +12,9 @@
       "require": "./dist/index.js"
     }
   },
-  "module": "./dist/index.mjs",
-  "engines": {
-    "node": ">=18.0.0 <23.0.0"
-  },
   "files": [
     "dist"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "tsup"
   },
@@ -30,7 +25,9 @@
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.48.0"
   },
   "peerDependenciesMeta": {
-    "uWebSockets.js": { "optional": true }
+    "uWebSockets.js": {
+      "optional": true
+    }
   },
   "optionalDependencies": {
     "simdjson": "^0.9.2"
@@ -38,5 +35,26 @@
   "devDependencies": {
     "ws": "^8.18.0",
     "@types/ws": "^8.5.13"
+  },
+  "author": {
+    "name": "Topman",
+    "email": "okunlolatopman14@gmail.com",
+    "url": "https://github.com/OTopman"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/OTopman/axiomify/blob/main/docs/packages/native.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OTopman/axiomify.git",
+    "directory": "packages/native"
+  },
+  "bugs": {
+    "url": "https://github.com/OTopman/axiomify/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18.0.0 <23.0.0"
   }
 }

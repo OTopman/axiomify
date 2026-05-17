@@ -1,15 +1,20 @@
 {
   "name": "@axiomify/socket.io",
-  "version": "6.0.0-rc.2",
+  "version": "6.0.0-rc.3",
   "description": "Socket.IO bridge for @axiomify/native — attach Socket.IO to the same uWebSockets.js server that handles HTTP, so you only need one listener.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "module": "./dist/index.mjs",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
   "files": [
     "dist"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "tsup"
   },
@@ -25,17 +30,6 @@
       "optional": false
     }
   },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
-    }
-  },
-  "module": "./dist/index.mjs",
-  "engines": {
-    "node": ">=18.0.0 <23.0.0"
-  },
   "keywords": [
     "axiomify",
     "socket.io",
@@ -44,5 +38,25 @@
     "uwebsockets",
     "realtime"
   ],
-  "license": "MIT"
+  "author": {
+    "name": "Topman",
+    "email": "okunlolatopman14@gmail.com",
+    "url": "https://github.com/OTopman"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/OTopman/axiomify/blob/main/docs/packages/socket.io.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OTopman/axiomify.git",
+    "directory": "packages/socket.io"
+  },
+  "bugs": {
+    "url": "https://github.com/OTopman/axiomify/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18.0.0 <23.0.0"
+  }
 }

@@ -84,7 +84,7 @@ With it, they receive a proper `disconnect` frame.
 
 ## Full reference
 
-See [docs/packages/socket.io.md](../../docs/packages/socket.io.md) for the
+See [docs/packages/socket.io.md](https://github.com/OTopman/axiomify/blob/main/docs/packages/socket.io.md) for the
 complete API, production checklist, and a chat-with-auth example.
 
 ## Limitations
