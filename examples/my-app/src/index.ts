@@ -1,6 +1,5 @@
 import { createAuthPlugin } from '@axiomify/auth';
 import { Axiomify, z } from '@axiomify/core';
-import { FastifyAdapter } from '@axiomify/fastify';
 import { useGraphQL } from '@axiomify/graphql';
 import { useHelmet } from '@axiomify/helmet';
 import { useLogger } from '@axiomify/logger';
@@ -158,80 +157,30 @@ app.route({
     res.stream(fileStream, 'video/mp4');
   },
 });
-/* 
 app.route({
   method: 'GET',
   path: '/live-feed',
-  // sse: true,
   handler: async (req, res) => {
-    res.sseInit();
+    res.sseInit!();
     const interval = setInterval(() => {
-      res.sseSend({ time: Date.now() }, 'tick');
+      res.sseSend!({ time: Date.now() }, 'tick');
     }, 1000);
-    (req.raw as any).on('close', () => clearInterval(interval));
+    req.signal!.addEventListener('abort', () => clearInterval(interval));
   },
-}); */
+});
 
 useOpenAPI(app, {
-  routePrefix: '/docs',
+  prefix: '/docs',
   info: { title: 'Axiomify Test API', version: '1.0.0' },
 });
 
 if (require.main === module) {
-  const adapter = new FastifyAdapter(app /* { port: 3000 } */);
-  adapter.listen(3000, () => {
-    console.log('🚀 Axiomify engine online on port 3000');
-    console.log('GraphQL ready at http://localhost:3000/graphql');
-    console.log('Playground at   http://localhost:3000/graphql/playground');
-  });
-  /* const server = adapter.listenClustered({
-    onPrimary: (pids) => {
-      console.log(pids);
+  import('@axiomify/native').then(({ NativeAdapter }) => {
+    const adapter = new NativeAdapter(app, { port: 3000 });
+    adapter.listen(() => {
       console.log('🚀 Axiomify engine online on port 3000');
       console.log('GraphQL ready at http://localhost:3000/graphql');
       console.log('Playground at   http://localhost:3000/graphql/playground');
-    },
-    onWorkerReady() {
-      console.log('Worker ready');
-    },
-    onWorkerExit: (pid) => console.log(`${pid} exit`),
-  }); */
-
-  // Note: two arguments. `useWebSockets` returns void; the manager is
-  // attached to the app as `(app as any).ws`.
-  /* useWebSockets(app, {
-    server,
-    path: '/ws',
-    authenticate: async (_req) => ({ id: 'user-123' }),
-  });
-  const wsManager = (app as any).ws as WsManager;
-
-  wsManager.on(
-    'chat:message',
-    z.object({ room: z.string(), text: z.string() }),
-    (client, data) => {
-      wsManager.joinRoom(client, data.room);
-      wsManager.broadcastToRoom(data.room, 'chat:received', {
-        sender: (client.user as any).id,
-        text: data.text,
-      });
-    },
-  );
-
-  const shutdown = (signal: string) => {
-    console.log(`\n${signal} received. Closing Axiomify engine...`);
-    server.close(() => {
-      console.log('🤝 All active requests finished. Server closed.');
-      process.exit(0);
     });
-    setTimeout(() => {
-      console.error(
-        '⚠️ Could not close connections in time, forcing shut down',
-      );
-      process.exit(1);
-    }, 10000).unref();
-  };
-
-  process.once('SIGTERM', () => shutdown('SIGTERM'));
-  process.once('SIGINT', () => shutdown('SIGINT')); */
+  });
 }

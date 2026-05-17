@@ -115,7 +115,7 @@ const store = new RedisStore(redis as any);
 createRateLimitPlugin({
   store,
   max: 1000,
-  keyGenerator: (req) => req.state.authUser?.id ?? req.ip,
+  keyGenerator: (req) => req.state.user?.id ?? req.ip,
 });
 
 // Key by API key header

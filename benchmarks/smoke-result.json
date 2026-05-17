@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-05-16T12:15:06.439Z",
+  "node": "v20.19.2",
+  "platform": "darwin",
+  "arch": "x64",
+  "duration": 3,
+  "connections": 100,
+  "pipelining": 4,
+  "reqPerSec": 47621.34,
+  "latAvg": 7.91,
+  "latP99": 16,
+  "throughputMBs": "9.47",
+  "errors": 0,
+  "timeouts": 0,
+  "non2xx": 0
+}

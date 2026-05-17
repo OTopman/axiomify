@@ -7,7 +7,6 @@ import type {
   AppConfigurator,
   AppContext,
   AppModule,
-  AppPlugin,
   AxiomifyRequest,
   AxiomifyResponse,
   HookType,
@@ -18,9 +17,10 @@ import type {
   RouteSchema,
   SerializerFn,
   SerializerInput,
+  WsRouteDefinition,
 } from './types';
 
-export type { AppConfigurator, AppContext, AppModule, AppPlugin };
+export type { AppConfigurator, AppContext, AppModule };
 
 export interface AxiomifyOptions {
   timeout?: number;
@@ -62,7 +62,7 @@ export class Axiomify {
   private readonly _timeout: number;
   private readonly _telemetry?: AxiomifyOptions['telemetry'];
   private readonly _logger: AxiomifyLogger;
-  private readonly _services = new Map<string, unknown>();
+  private readonly _services = new Map<string | symbol, unknown>();
   private readonly _modules = new Set<string>();
   private _routesLocked = false;
   private _routesLockedReason?: string;
@@ -75,6 +75,10 @@ export class Axiomify {
 
   public get registeredRoutes(): readonly RouteDefinition[] {
     return this.registry.registeredRoutes;
+  }
+
+  public get registeredWsRoutes(): readonly WsRouteDefinition<any, any>[] {
+    return this.registry.registeredWsRoutes;
   }
 
   public get router() {
@@ -155,24 +159,32 @@ export class Axiomify {
    * Accepted forms:
    *   - AppConfigurator: (app, context) => void — preferred
    *   - AppModule: named object with register() + optional dependencies[]
-   *   - AppPlugin: (app) => void — @deprecated, use AppConfigurator
    */
-  public use(configurator: AppPlugin | AppConfigurator | AppModule): this {
+  public use(configurator: AppConfigurator | AppModule): this {
     const context: AppContext = {
-      provide: (token, value) => this._services.set(token, value),
-      // Double-cast through unknown: the Map stores `unknown` values but the
-      // AppContext interface exposes resolve<T>() so callers get type safety at
-      // the call site. The alternative (Map<string, T>) would require a generic
-      // Axiomify class which breaks the plugin registration API.
-      resolve: <T>(token: string) => this._services.get(token) as unknown as T,
+      provide: (token: any, value: any) => {
+        this._services.set(token, value);
+      },
+      resolve: (token: any) => {
+        const svc = this._services.get(token);
+        if (svc === undefined) {
+          throw new Error(
+            `[Axiomify] DI Error: Cannot resolve unregistered service "${String(
+              token,
+            )}".`,
+          );
+        }
+        return svc;
+      },
     };
 
     if (typeof configurator === 'function') {
-      // Both AppPlugin and AppConfigurator are called the same way.
-      // AppPlugin ignores the second argument; AppConfigurator uses it.
-      // The previous arity-check approach is removed — it misidentified
-      // intentional 1-arg arrow functions as the deprecated form.
-      (configurator as AppConfigurator)(this, context);
+      // AppConfigurator is the only accepted function shape. 1-arg
+      // configurators that ignore `context` still work fine — JS silently
+      // drops the extra positional. The legacy `AppPlugin` type alias
+      // (1-arg signature) was removed from the public API in 5.0.0; the
+      // runtime accepts both arities identically.
+      configurator(this, context);
       return this;
     }
 
@@ -273,10 +285,21 @@ export class Axiomify {
       const reason = this._routesLockedReason ? ` (${this._routesLockedReason})` : '';
       throw new Error(
         `Cannot register route ${definition.method} ${definition.path} after adapter binding${reason}. ` +
-          'Register all routes before creating an adapter.',
+        'Register all routes before creating an adapter.',
       );
     }
     this.registry.register(definition);
+    return this;
+  }
+
+  public ws<S extends RouteSchema, M = any>(definition: WsRouteDefinition<S, M>): this {
+    if (this._routesLocked) {
+      throw new Error(
+        `[Axiomify] Cannot register WS route "${definition.path}" after the server has started. ` +
+        (this._routesLockedReason ?? 'The routes array is locked.'),
+      );
+    }
+    this.registry.registerWs(definition);
     return this;
   }
 
@@ -301,7 +324,7 @@ export class Axiomify {
     if (token !== ADAPTER_LOCK_TOKEN) {
       throw new Error(
         '[Axiomify] lockRoutes() is reserved for adapter use. ' +
-          'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
+        'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
       );
     }
     this._routesLocked = true;
@@ -310,6 +333,18 @@ export class Axiomify {
   }
 
   public setSerializer(fn: SerializerFn): this {
+    // Serializer cannot be changed after an adapter has bound — adapters
+    // pre-build error-payload caches (404/413/500) from the current serializer
+    // at construction time. Allowing a swap after that produces inconsistent
+    // response envelopes between cached fallbacks and live responses.
+    if (this._routesLocked) {
+      const reason = this._routesLockedReason ? ` (${this._routesLockedReason})` : '';
+      throw new Error(
+        `[Axiomify] Cannot replace serializer after adapter binding${reason}. ` +
+        'Call setSerializer() before constructing the adapter — error payload ' +
+        'caches are sealed at that point.',
+      );
+    }
     // Normalize to the single-argument form once, so every subsequent call
     // to this.serializer goes through a direct (input) => fn(input) path
     // with no runtime arity check. makeSerialize is shared with adapters.
@@ -338,6 +373,13 @@ export class Axiomify {
     const groupProxy: RouteGroup = {
       route: <S extends RouteSchema>(def: RouteDefinition<S>) => {
         return this.route({
+          ...def,
+          path: joinRoutePath(prefix, def.path),
+          plugins: mergePlugins(inheritedPlugins, def.plugins),
+        });
+      },
+      ws: <S extends RouteSchema, M = any>(def: WsRouteDefinition<S, M>) => {
+        return this.ws<S, M>({
           ...def,
           path: joinRoutePath(prefix, def.path),
           plugins: mergePlugins(inheritedPlugins, def.plugins),
@@ -377,8 +419,14 @@ export class Axiomify {
         await Promise.all(
           Object.entries(checks).map(async ([name, fn]) => {
             try {
-              results[name] = await fn();
-              if (!results[name]) passed = false;
+              const result = await Promise.race([
+                fn(),
+                new Promise<boolean>((_, reject) =>
+                  setTimeout(() => reject(new Error('timeout')), 5000),
+                ),
+              ]);
+              results[name] = result;
+              if (!result) passed = false;
             } catch {
               results[name] = false;
               passed = false;
@@ -414,7 +462,7 @@ export class Axiomify {
     if (token !== ADAPTER_LOCK_TOKEN) {
       throw new Error(
         '[Axiomify] handleMatchedRoute() is reserved for adapter use. ' +
-          'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
+        'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
       );
     }
     return this.dispatcher.handleMatchedRoute(req, res, route, params);

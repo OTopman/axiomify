@@ -1,3 +1,14 @@
 {
-  "cSpell.words": ["Axiomify", "hsts", "Maskify", "pids"]
+  "cSpell.words": [
+    "Accum",
+    "autocannon",
+    "Axiomify",
+    "entrancy",
+    "hsts",
+    "Maskify",
+    "pids",
+    "REUSEPORT",
+    "simdjson",
+    "taskset"
+  ]
 }

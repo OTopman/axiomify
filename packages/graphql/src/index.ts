@@ -146,9 +146,16 @@ function buildPlaygroundHtml(graphqlPath: string): string {
       <span style="opacity:.5;font-weight:400;font-size:13px">${htmlPath}</span>
     </header>
     <div id="graphiql"></div>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/graphiql@3/graphiql.min.js"></script>
+    <!--
+      No SRI integrity attribute: pinning a hash requires fetching the asset
+      at build time and is bypassed if any pinned URL ever 404s. The CSP
+      below restricts script-src to unpkg.com / cdnjs.cloudflare.com, which
+      is the actual control surface. If you need stricter guarantees,
+      vendor the assets locally and host them yourself.
+    -->
+    <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/graphiql@3.8.3/graphiql.min.js"></script>
     <script>
       const fetcher = GraphiQL.createFetcher({ url: '${jsPath}' });
       ReactDOM.createRoot(document.getElementById('graphiql')).render(

@@ -11,27 +11,26 @@ It is organized in two layers:
 
 - [Getting Started](./getting-started.md)
 - [Core Concepts](./core-concepts.md)
-- [Adapters](./adapters.md)
 - [Plugins and Hooks](./plugins-and-hooks.md)
 - [Examples](./examples.md)
 - [Production Checklist](./production-checklist.md)
+- [Migration: v4 → v5](./migration-v4-to-v5.md)
 
 ## Package Docs
 
 - [Packages Index](./packages/README.md)
 - [@axiomify/auth](./packages/auth.md)
-- [@axiomify/cli](./packages/cli.md)
+- [@axiomify/cli](./packages/cli.md) — `init` / `dev` / `build` / `routes` / `openapi` / `check` / `doctor`
 - [@axiomify/core](./packages/core.md)
 - [@axiomify/cors](./packages/cors.md)
-- [@axiomify/express](./packages/express.md)
-- [@axiomify/fastify](./packages/fastify.md)
-- [@axiomify/hapi](./packages/hapi.md)
+- [@axiomify/fingerprint](./packages/fingerprint.md)
+- [@axiomify/graphql](./packages/graphql.md)
 - [@axiomify/helmet](./packages/helmet.md)
-- [@axiomify/http](./packages/http.md)
 - [@axiomify/logger](./packages/logger.md)
 - [@axiomify/metrics](./packages/metrics.md)
+- [@axiomify/native](./packages/native.md) — HTTP + WebSocket adapter (uWebSockets.js)
 - [@axiomify/openapi](./packages/openapi.md)
 - [@axiomify/rate-limit](./packages/rate-limit.md)
+- [@axiomify/security](./packages/security.md)
 - [@axiomify/static](./packages/static.md)
 - [@axiomify/upload](./packages/upload.md)
-- [@axiomify/ws](./packages/ws.md)

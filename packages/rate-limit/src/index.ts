@@ -60,6 +60,15 @@ export interface RedisClient {
 export class RedisStore {
   /** Whether the Lua script is already cached in Redis (EVALSHA usable). */
   private _scriptLoaded = false;
+  // Cache the client's argument-shape AFTER the first successful call.
+  // Probing every request (try object-form → catch → variadic) is a real
+  // hot-path cost: the throw-catch cycle in V8 deopts the surrounding
+  // function and the per-request method-shape probe was measurable in
+  // earlier profiling. `null` = unknown (probe), `'object'` = redis@4
+  // (`{ script, keys, arguments }`), `'variadic'` = ioredis
+  // (`script, numkeys, ...keys, ...args`).
+  private _evalStyle: 'object' | 'variadic' | null = null;
+  private _evalShaStyle: 'object' | 'variadic' | null = null;
 
   constructor(private readonly client: RedisClient) {}
 
@@ -99,18 +108,30 @@ export class RedisStore {
   }
 
   private async _eval(keys: string[], args: string[]): Promise<unknown> {
-    // ioredis API: eval(script, numkeys, key, ...args)
-    if (typeof (this.client as { eval?: unknown }).eval === 'function') {
-      const c = this.client as { eval: (...a: unknown[]) => Promise<unknown> };
-      // Try redis@4 object API first
-      try {
-        return await c.eval({ script: REDIS_SLIDING_WINDOW_SCRIPT, keys, arguments: args } as never);
-      } catch {
-        // Fall back to ioredis variadic API
-        return await c.eval(REDIS_SLIDING_WINDOW_SCRIPT, keys.length, ...keys, ...args);
-      }
+    if (typeof (this.client as { eval?: unknown }).eval !== 'function') {
+      throw new Error('[axiomify/rate-limit] RedisClient must implement eval()');
     }
-    throw new Error('[axiomify/rate-limit] RedisClient must implement eval()');
+    const c = this.client as { eval: (...a: unknown[]) => Promise<unknown> };
+
+    // Fast path: shape already known. No try/catch, no probe.
+    if (this._evalStyle === 'object') {
+      return c.eval({ script: REDIS_SLIDING_WINDOW_SCRIPT, keys, arguments: args } as never);
+    }
+    if (this._evalStyle === 'variadic') {
+      return c.eval(REDIS_SLIDING_WINDOW_SCRIPT, keys.length, ...keys, ...args);
+    }
+
+    // First call: probe both shapes ONCE and lock the result. Subsequent
+    // calls go through the fast path above with zero overhead.
+    try {
+      const result = await c.eval({ script: REDIS_SLIDING_WINDOW_SCRIPT, keys, arguments: args } as never);
+      this._evalStyle = 'object';
+      return result;
+    } catch {
+      const result = await c.eval(REDIS_SLIDING_WINDOW_SCRIPT, keys.length, ...keys, ...args);
+      this._evalStyle = 'variadic';
+      return result;
+    }
   }
 
   private async _evalSha(keys: string[], args: string[]): Promise<unknown> {
@@ -121,28 +142,38 @@ export class RedisStore {
       // No evalsha method — signal the caller to use EVAL instead.
       throw new Error('NOSCRIPT');
     }
+    const fn = (evalSha as (...a: unknown[]) => Promise<unknown>).bind(this.client);
 
-    // Try ioredis variadic style first: evalsha(sha, numkeys, ...keys, ...args)
+    // Fast path: shape already known.
+    if (this._evalShaStyle === 'variadic') {
+      return fn(SCRIPT_SHA, keys.length, ...keys, ...args);
+    }
+    if (this._evalShaStyle === 'object') {
+      return fn(SCRIPT_SHA, { keys, arguments: args });
+    }
+
+    // First call: try ioredis variadic style first (more common in production
+    // deployments). NOSCRIPT bubbles up to the caller — the EVAL path will
+    // upload the script and the next EVALSHA will succeed.
     try {
-      return await (evalSha as (...a: unknown[]) => Promise<unknown>).call(
-        this.client, SCRIPT_SHA, keys.length, ...keys, ...args
-      );
+      const result = await fn(SCRIPT_SHA, keys.length, ...keys, ...args);
+      this._evalShaStyle = 'variadic';
+      return result;
     } catch (firstErr: unknown) {
       const msg = String((firstErr as Error)?.message ?? firstErr);
-
-      // NOSCRIPT means the script isn't cached — propagate so the caller
-      // can fall back to EVAL. Do NOT try the second API style.
       if (msg.includes('NOSCRIPT')) throw firstErr;
 
-      // Any other error might be an API mismatch — try redis@4 object style.
+      // Variadic failed for a non-NOSCRIPT reason (API mismatch). Try the
+      // redis@4 object shape. If THAT also returns NOSCRIPT, propagate so
+      // the caller can EVAL.
       try {
-        return await (evalSha as (...a: unknown[]) => Promise<unknown>).call(
-          this.client, SCRIPT_SHA, { keys, arguments: args }
-        );
+        const result = await fn(SCRIPT_SHA, { keys, arguments: args });
+        this._evalShaStyle = 'object';
+        return result;
       } catch (secondErr: unknown) {
         const msg2 = String((secondErr as Error)?.message ?? secondErr);
         if (msg2.includes('NOSCRIPT')) throw secondErr;
-        // Both styles failed — throw the original error.
+        // Both styles failed — surface the original error (more diagnostic).
         throw firstErr;
       }
     }
@@ -249,15 +280,31 @@ export interface RateLimitOptions {
   memoryStoreMaxKeys?: number;
 }
 
-// Emitted once per process to avoid log flooding.
-let _emittedIpWarning = false;
-let _emittedStoreWarning = false;
+/**
+ * Per-plugin warning state. Module-level flags would suppress legitimate
+ * warnings the second time the plugin is constructed in the same process
+ * — bad ergonomics for tests, multi-tenant deployments, and any setup
+ * where two `createRateLimitPlugin()` calls exist in one Node.js process.
+ *
+ * Each call to `buildLimiter` creates a fresh WarningCtx so warnings fire
+ * once per plugin instance, not once per process.
+ */
+interface WarningCtx {
+  ipEmitted: boolean;
+  storeEmitted: boolean;
+}
 
-function createDefaultKeyGenerator(): (req: AxiomifyRequest) => string {
+function newWarningCtx(): WarningCtx {
+  return { ipEmitted: false, storeEmitted: false };
+}
+
+function createDefaultKeyGenerator(
+  warnings: WarningCtx,
+): (req: AxiomifyRequest) => string {
   return (req: AxiomifyRequest) => {
     if (!req.ip) {
-      if (!_emittedIpWarning) {
-        _emittedIpWarning = true;
+      if (!warnings.ipEmitted) {
+        warnings.ipEmitted = true;
         console.warn(
           '[axiomify/rate-limit] req.ip is falsy on an incoming request. ' +
             'These requests will share the "unknown" rate-limit bucket, which ' +
@@ -271,7 +318,7 @@ function createDefaultKeyGenerator(): (req: AxiomifyRequest) => string {
   };
 }
 
-function createStore(options: RateLimitOptions): RateLimitStore {
+function createStore(options: RateLimitOptions, warnings: WarningCtx): RateLimitStore {
   const provided = options.store;
   if (provided) return provided;
 
@@ -289,9 +336,9 @@ function createStore(options: RateLimitOptions): RateLimitStore {
   if (
     process.env.NODE_ENV === 'production' &&
     options.allowMemoryStoreInProduction &&
-    !_emittedStoreWarning
+    !warnings.storeEmitted
   ) {
-    _emittedStoreWarning = true;
+    warnings.storeEmitted = true;
     console.warn(
       '[axiomify/rate-limit] Using in-memory MemoryStore in production. ' +
         'MemoryStore is per-process: each Node.js worker or container instance ' +
@@ -307,9 +354,11 @@ function createStore(options: RateLimitOptions): RateLimitStore {
 function buildLimiter(options: RateLimitOptions = {}) {
   const windowMs = options.windowMs ?? 60_000;
   const max = options.max ?? options.maxRequests ?? 100;
-  const store = createStore(options);
+  // Per-plugin warning state — see WarningCtx docs above.
+  const warnings = newWarningCtx();
+  const store = createStore(options, warnings);
   const keyGenerator =
-    options.keyGenerator ?? options.keyExtractor ?? createDefaultKeyGenerator();
+    options.keyGenerator ?? options.keyExtractor ?? createDefaultKeyGenerator(warnings);
 
   return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
     // Wrap skip() in try/catch — a throwing skip silently bypasses rate limiting.
@@ -329,7 +378,17 @@ function buildLimiter(options: RateLimitOptions = {}) {
       key = req.ip ?? 'unknown';
     }
 
-    const { count, resetTime } = await store.increment(key, windowMs);
+    let count: number;
+    let resetTime: number;
+    try {
+      const res = await store.increment(key, windowMs);
+      count = res.count;
+      resetTime = res.resetTime;
+    } catch (err) {
+      // Store unavailable — fail closed with 503, not 429
+      res.status(503).send(null, 'Rate limit service unavailable');
+      return;
+    }
     const remaining = Math.max(0, max - count);
 
     res.header('X-RateLimit-Limit', String(max));

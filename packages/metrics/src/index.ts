@@ -11,8 +11,7 @@ export interface MetricsOptions {
   /**
    * Optional WebSocket manager integration. When provided, the metrics endpoint
    * includes `wsConnections` and `wsRooms` from `WsManager.getStats()`.
-   *
-   * Pass the result of `getWsManager(app)` from `@axiomify/ws`.
+   * integration.
    */
   wsManager?: {
     getStats(): { connectedClients: number; rooms: Record<string, number> };
@@ -64,6 +63,15 @@ function escapeLabelValue(value: string): string {
     .replace(/"/g, '\\"')
     .replace(/\n/g, '\\n');
 }
+
+const UNMATCHED_ROUTE_LABEL = '__unmatched__';
+const tokenMatches = (supplied: string | undefined, expected: string) => {
+  if (typeof supplied !== 'string') return false;
+  const a = Buffer.from(supplied);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+};
 
 export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
   const metricsPath = options.path ?? '/metrics';
@@ -209,11 +217,3 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
     },
   });
 }
-  const UNMATCHED_ROUTE_LABEL = '__unmatched__';
-  const tokenMatches = (supplied: string | undefined, expected: string) => {
-    if (typeof supplied !== 'string') return false;
-    const a = Buffer.from(supplied);
-    const b = Buffer.from(expected);
-    if (a.length !== b.length) return false;
-    return timingSafeEqual(a, b);
-  };

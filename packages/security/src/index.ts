@@ -2,9 +2,7 @@ import type { Axiomify, AxiomifyRequest } from '@axiomify/core';
 import {
   DEFAULT_BLOCKED_UA_PATTERNS,
   DEFAULT_NOSQL_PATTERNS,
-  DEFAULT_SQL_PATTERNS,
   detectNoSqlInjection,
-  detectSqlInjection,
   isSuspiciousUserAgent,
 } from './utils/detector';
 import { normalizeHpp, sanitizeInput } from './utils/sanitizer';
@@ -18,41 +16,42 @@ export interface SecurityOptions {
    * A client using chunked transfer encoding can omit Content-Length entirely
    * and stream an arbitrarily large body past this check.
    * Enforce actual body size limits at the HTTP server or adapter layer
-   * (e.g. Express `express.json({ limit })`, Fastify `bodyLimit`).
+   * (e.g., NativeAdapter `maxBodySize` option).
    */
   maxBodySize?: number;
   /**
-   * Enables heuristic SQL injection pattern matching.
-   * ⚠️  This is NOT a reliable security control — see detector.ts.
-   * Parameterized queries are the only real defense.
-   */
-  sqlInjectionProtection?: boolean;
-  /**
-   * Enables heuristic NoSQL injection pattern matching.
-   * ⚠️  This is NOT a reliable security control — see detector.ts.
-   * Schema validation (Zod) stripping unexpected keys is the real defense.
+   * Heuristic NoSQL operator pattern matching. Off by default.
+   *
+   * Catches the narrow Mongo-style injection where an attacker passes a
+   * JSON object containing `$ne`, `$gt`, `$where`, etc. as a field value
+   * that would otherwise be a primitive (`{"username": {"$ne": null}}`).
+   *
+   * The REAL defense is Zod schema validation that rejects unexpected
+   * object shapes before they reach the database driver. This option is a
+   * supplementary belt-and-braces signal — useful for legacy code without
+   * full schema coverage, harmful if you're already validating end-to-end.
+   *
+   * @default false
    */
   noSqlInjectionProtection?: boolean;
   prototypePollutionProtection?: boolean;
   nullByteProtection?: boolean;
   botProtection?: boolean;
   blockedUserAgentPatterns?: RegExp[];
-  sqlPatterns?: RegExp[];
   noSqlPatterns?: RegExp[];
   sanitizerMaxDepth?: number;
 }
 
 function patchRequestProperty(req: AxiomifyRequest, key: keyof AxiomifyRequest, newValue: unknown) {
-  // Direct assignment is faster than Object.defineProperty — defineProperty
-  // switches V8's hidden-class optimization off for the object, degrading all
-  // subsequent property accesses. req.body / req.query / req.params are
-  // already writable on every adapter's AxiomifyRequest implementation.
-  Object.defineProperty(req, key, {
-    value: newValue,
-    writable: true,
-    enumerable: true,
-    configurable: true,
-  });
+  // Direct assignment. Object.defineProperty would force V8 to drop the
+  // request's hidden class and re-derive the inline cache for every subsequent
+  // property access on the object — measurable per-request cost.
+  //
+  // body / query / params are declared writable on the AxiomifyRequest
+  // interface (only id / method / url / path / ip / headers are readonly),
+  // so a plain `req[key] = newValue` is type-safe and shape-stable across
+  // every adapter implementation.
+  (req as unknown as Record<string, unknown>)[key as string] = newValue;
 }
 
 export function useSecurity(
@@ -63,13 +62,13 @@ export function useSecurity(
     xssProtection = true,
     hppProtection = true,
     maxBodySize = 1024 * 1024,
-    sqlInjectionProtection = true,
-    noSqlInjectionProtection = true,
+    // NoSQL operator-key check defaults to OFF — supplementary defense for
+    // codebases without full Zod schema coverage; opt-in only.
+    noSqlInjectionProtection = false,
     prototypePollutionProtection = true,
     nullByteProtection = true,
     botProtection = true,
     blockedUserAgentPatterns = DEFAULT_BLOCKED_UA_PATTERNS,
-    sqlPatterns = DEFAULT_SQL_PATTERNS,
     noSqlPatterns = DEFAULT_NOSQL_PATTERNS,
     sanitizerMaxDepth = 64,
   } = options;
@@ -100,17 +99,8 @@ export function useSecurity(
       }
     }
 
-    // Heuristic injection detection — see detector.ts for bypass surface.
-    if (
-      sqlInjectionProtection &&
-      (detectSqlInjection(req.query, sqlPatterns) ||
-        detectSqlInjection(req.params, sqlPatterns) ||
-        detectSqlInjection(req.body, sqlPatterns))
-    ) {
-      res.status(403).send(null, 'Forbidden');
-      return;
-    }
-
+    // Narrow Mongo-style operator-key check, opt-in. See detector.ts
+    // and the option doc for why this is not a primary defense.
     if (
       noSqlInjectionProtection &&
       (detectNoSqlInjection(req.query, noSqlPatterns) ||

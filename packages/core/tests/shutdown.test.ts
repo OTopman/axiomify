@@ -110,6 +110,28 @@ describe('gracefulShutdown — onShutdown error path', () => {
     process.removeAllListeners('SIGINT');
   });
 
+  it('also responds to SIGINT', async () => {
+    const server = makeFakeServer();
+    gracefulShutdown(server as any);
+    process.emit('SIGINT');
+    await Promise.resolve();
+    expect(server.close).toHaveBeenCalled();
+  });
+
+  it('force-exits when graceful timeout is exceeded', async () => {
+    // Use fake timers so we can advance time without waiting.
+    vi.useFakeTimers();
+    const server = makeFakeServer();
+    gracefulShutdown(server as any, { timeoutMs: 5_000 });
+    process.emit('SIGTERM');
+    await Promise.resolve();
+    // Do NOT call triggerClose — let the force-exit timer fire.
+    vi.advanceTimersByTime(5_001);
+    expect(server.closeAllConnections).toHaveBeenCalled();
+    expect(localExitSpy).toHaveBeenCalledWith(1);
+    vi.useRealTimers();
+  });
+
   it('exits(1) when onShutdown callback throws', async () => {
     const server = makeFakeServer();
     gracefulShutdown(server as any, {

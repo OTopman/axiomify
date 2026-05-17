@@ -1,5 +1,5 @@
 import { Axiomify, z } from '@axiomify/core';
-import { ExpressAdapter } from '@axiomify/express';
+import { NativeAdapter } from '@axiomify/native';
 import { useOpenAPI } from '@axiomify/openapi';
 import { randomUUID } from 'crypto';
 
@@ -36,8 +36,8 @@ useOpenAPI(app, {
 });
 
 // 3. Start Server
-const adapter = new ExpressAdapter(app);
-adapter.listen(3000, () => {
-  console.log('🚀 API Engine running');
-  console.log('📚 Swagger UI available at http://localhost:3000/docs');
+const adapter = new NativeAdapter(app, { port: 3000 });
+adapter.listen((port) => {
+  console.log(`🚀 API Engine running on port ${port}`);
+  console.log(`📚 Swagger UI available at http://localhost:${port}/docs`);
 });

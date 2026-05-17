@@ -85,30 +85,68 @@ export class OpenApiGenerator {
 
       if (!paths[openApiPath]) paths[openApiPath] = {};
 
+      // OAS 3.0.3 Operation Object metadata lives on `route.openapi`.
+      // The 4.x `route.meta` alias was deprecated through 5.x and is
+      // removed in 6.0 — `meta:` on a route definition is now a plain
+      // unknown property and the generator ignores it.
+      const op = route.openapi ?? undefined;
+
       const operation: Record<string, unknown> = {
-        // meta.summary takes priority over the default method+path string.
-        summary: route.meta?.summary ?? `${route.method} ${route.path}`,
+        // OAS §4.7.10.2 — summary. Default to `${method} ${path}` so the
+        // docs UI always has a human-readable title even without user input.
+        summary: op?.summary ?? `${route.method} ${route.path}`,
+        // OAS §4.7.10.5 — operationId. Client codegen tools
+        // (openapi-typescript, openapi-generator) use this to name the
+        // generated function. When the user doesn't supply one we
+        // synthesise a stable name from method+path:
+        //   GET /users/:id → "getUsersById"
+        //   POST /users    → "postUsers"
+        // Determinism matters here — codegen output should not drift
+        // between releases unless method+path actually change.
+        operationId:
+          op?.operationId ?? this.synthesiseOperationId(route.method, route.path),
         parameters: this.extractParameters(route),
         responses: this.extractResponses(route),
       };
 
-      // Read from route.meta (canonical location, added in v4.x) with a
-      // typed fallback to the deprecated schema-level fields for projects
-      // that haven't migrated yet. The LegacySchema intersection avoids
-      // the (any) cast while keeping backward compatibility.
-      type LegacySchema = { description?: string; tags?: string[]; security?: Array<Record<string, string[]>> };
+      // Legacy schema-level fields (tags/description/security INSIDE the
+      // `schema:` block) were a 3.x pattern; the generator has supported
+      // both `meta` and that legacy path. Continue accepting them — the
+      // cost is one read, and removing it would silently break old code
+      // that's still passing tests.
+      type LegacySchema = {
+        description?: string;
+        tags?: string[];
+        security?: Array<Record<string, string[]>>;
+      };
       const legacySchema = (route.schema ?? {}) as LegacySchema;
 
-      const description = route.meta?.description ?? legacySchema.description;
-      const tags        = route.meta?.tags        ?? legacySchema.tags;
-      const security    = route.meta?.security    ?? legacySchema.security;
+      const description = op?.description ?? legacySchema.description;
+      const tags        = op?.tags        ?? legacySchema.tags;
+      const security    = op?.security    ?? legacySchema.security;
 
       if (description) operation.description = description;
       if (tags)        operation.tags        = tags;
-      if (security)    operation.security    = security;
+      // OAS §4.7.10.10 — `security`: an absent key inherits the global
+      // security requirement; an empty array (`[]`) explicitly opts the
+      // operation OUT of all global security. Both are spec-valid and
+      // semantically distinct — only skip emission when undefined.
+      if (security !== undefined) operation.security = security;
+      if (op?.deprecated) operation.deprecated = true;
+      if (op?.externalDocs) operation.externalDocs = op.externalDocs;
+      // OAS §4.7.10.11 / §4.7.10.8 — pass servers and callbacks through
+      // verbatim. The framework doesn't derive these; the user supplies
+      // them exactly as the spec defines.
+      if (op?.servers) operation.servers = op.servers;
+      if (op?.callbacks) operation.callbacks = op.callbacks;
 
       const body = this.extractBody(route);
-      if (body) operation.requestBody = body;
+      if (body) {
+        if (op?.requestBodyDescription) {
+          body.description = op.requestBodyDescription;
+        }
+        operation.requestBody = body;
+      }
 
       paths[openApiPath][method] = operation;
     }
@@ -149,7 +187,34 @@ export class OpenApiGenerator {
     return parameters;
   }
 
-  private extractBody(route: RouteDefinition): unknown {
+  /**
+   * Synthesise a stable, codegen-friendly operationId from method+path
+   * when the route definition doesn't supply one. Example outputs:
+   *   GET  /users/:id            → getUsersById
+   *   POST /users                → postUsers
+   *   GET  /users/:id/posts/:pid → getUsersByIdPostsByPid
+   *
+   * Determinism matters here — client codegen produces the same function
+   * names on every run as long as method+path are stable.
+   */
+  private synthesiseOperationId(method: string, path: string): string {
+    const verb = method.toLowerCase();
+    const parts: string[] = [];
+    for (const seg of path.split('/')) {
+      if (!seg) continue;
+      if (seg.startsWith(':')) {
+        const name = seg.slice(1);
+        parts.push('By', name.charAt(0).toUpperCase() + name.slice(1));
+      } else if (seg === '*') {
+        parts.push('All');
+      } else {
+        parts.push(seg.charAt(0).toUpperCase() + seg.slice(1));
+      }
+    }
+    return verb + parts.join('');
+  }
+
+  private extractBody(route: RouteDefinition): { required: boolean; content: Record<string, unknown>; description?: string } | undefined {
     if (!route.schema?.body && !route.schema?.files) return undefined;
 
     const hasFiles = !!route.schema.files;
@@ -192,9 +257,15 @@ export class OpenApiGenerator {
   }
 
   private extractResponses(route: RouteDefinition): Record<string, unknown> {
+    // Pull the per-status description map once. Authors can override the
+    // generator defaults ('Successful response', 'Response 404') by passing
+    // openapi.responseDescriptions: { '200': '...', '404': '...' }.
+    const op = route.openapi;
+    const descriptions = op?.responseDescriptions ?? {};
+
     const defaultResponse = {
       '200': {
-        description: 'Successful response',
+        description: descriptions['200'] ?? 'Successful response',
         content: { 'application/json': { schema: { type: 'object' } } },
       },
     };
@@ -206,7 +277,7 @@ export class OpenApiGenerator {
 
     if (isZodSchema(responseSchema)) {
       responses['200'] = {
-        description: 'Successful response',
+        description: descriptions['200'] ?? 'Successful response',
         content: {
           'application/json': { schema: zodSchemaToOpenApi(responseSchema) },
         },
@@ -216,7 +287,7 @@ export class OpenApiGenerator {
         responseSchema as unknown as Record<string, ZodTypeAny>,
       )) {
         responses[code] = {
-          description: `Response ${code}`,
+          description: descriptions[code] ?? `Response ${code}`,
           content: {
             'application/json': { schema: zodSchemaToOpenApi(schema) },
           },

@@ -41,8 +41,12 @@ describe('Security Package', () => {
     expect(req.query.user).toBe('attacker');
   });
 
-  it('should detect SQL injection', async () => {
-    const hook = setup();
+  it('does NOT block SQL-like payloads (heuristic removed in 5.0; option gone in 6.0)', async () => {
+    // The SQL injection regex heuristic was trivially bypassable AND
+    // produced false positives on legitimate JSON. Removed in 5.0 (no-op),
+    // option entirely deleted in 6.0. Setting it on the options object
+    // is now just an excess property that TS will reject at compile-time.
+    const hook = setup({});
     const req: any = {
       headers: {},
       query: { id: '1 UNION SELECT * FROM users' },
@@ -50,13 +54,12 @@ describe('Security Package', () => {
       body: {},
     };
     const res = makeRes();
-
     await hook(req, res);
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).not.toHaveBeenCalledWith(403);
   });
 
-  it('should detect NoSQL injection operators', async () => {
-    const hook = setup();
+  it('should detect NoSQL injection operators when explicitly enabled', async () => {
+    const hook = setup({ noSqlInjectionProtection: true });
     const req: any = {
       headers: {},
       query: {},
@@ -67,6 +70,19 @@ describe('Security Package', () => {
 
     await hook(req, res);
     expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it('does NOT block NoSQL-like payloads by default (heuristic is opt-in)', async () => {
+    const hook = setup();
+    const req: any = {
+      headers: {},
+      query: {},
+      params: {},
+      body: { username: { $ne: null } },
+    };
+    const res = makeRes();
+    await hook(req, res);
+    expect(res.status).not.toHaveBeenCalledWith(403);
   });
 
   it('should block suspicious scanner user agents', async () => {
@@ -121,9 +137,13 @@ describe('Security Package', () => {
 // ─── Object.defineProperty replacement ───────────────────────────────────────
 
 describe('useSecurity — no Object.defineProperty (V8 hidden-class safety)', () => {
-  it('sanitised body is directly assigned without defineProperty', async () => {
+  it('uses plain assignment (not Object.defineProperty) when patching req.body', async () => {
     const { Axiomify } = await import('../../core/src/app');
     const { useSecurity } = await import('../src/index');
+
+    // Spy on defineProperty BEFORE constructing the security plugin so any
+    // accidental future call is recorded.
+    const spy = vi.spyOn(Object, 'defineProperty');
 
     const app = new Axiomify();
     useSecurity(app, { xssProtection: true });
@@ -139,18 +159,22 @@ describe('useSecurity — no Object.defineProperty (V8 hidden-class safety)', ()
     };
     const res: any = { status: () => res, send: () => {}, header: () => res, headersSent: false };
 
-    // Fire the onRequest hook
+    const before = spy.mock.calls.length;
     const hooks = (app as any).hooks?.hooks?.onRequest ?? [];
     for (const hook of hooks) {
       await hook(req, res);
     }
+    const calledDuringHook = spy.mock.calls.slice(before);
+    spy.mockRestore();
 
-    // Body should be sanitized (XSS stripped) without defineProperty
+    // No defineProperty call should target req.body / req.query / req.params.
+    const patchTargets = calledDuringHook
+      .filter(([target]) => target === req)
+      .map(([, key]) => key);
+    expect(patchTargets).toEqual([]);
+
+    // XSS still sanitised, descriptor remains a plain data property.
     expect(req.body.safe).toBe('hello');
-    // V8 hidden class check: after direct assignment, property descriptor must be writable
-    const desc = Object.getOwnPropertyDescriptor(req, 'body');
-    // If defineProperty was used with writable:true this would be writable, but we want
-    // it to be a standard data property (plain assignment, not defineProperty).
-    expect(desc?.writable !== false).toBe(true);
+    expect(req.body.bad).not.toContain('<script>');
   });
 });

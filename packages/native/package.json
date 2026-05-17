@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/native",
-  "version": "4.0.0",
+  "version": "6.0.0-rc.1",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -12,7 +12,7 @@
   },
   "module": "./dist/index.mjs",
   "engines": {
-    "node": ">18.0.0 <=20.x.x"
+    "node": ">=18.0.0 <23.0.0"
   },
   "files": [
     "dist"
@@ -27,9 +27,16 @@
     "@axiomify/core": "*"
   },
   "peerDependencies": {
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.39.0"
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.48.0"
+  },
+  "peerDependenciesMeta": {
+    "uWebSockets.js": { "optional": true }
   },
   "optionalDependencies": {
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.39.0"
+    "simdjson": "^0.9.2"
+  },
+  "devDependencies": {
+    "ws": "^8.18.0",
+    "@types/ws": "^8.5.13"
   }
 }

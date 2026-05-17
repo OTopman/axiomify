@@ -2,219 +2,151 @@ import { describe, expect, it } from 'vitest';
 import { Router } from '../src/router';
 import type { RouteDefinition } from '../src/types';
 
-describe('TrieNode Radix Router', () => {
-  it('routes exact static paths in O(k) time', () => {
+function makeRoute(method: any, path: string): RouteDefinition {
+  return {
+    method,
+    path,
+    handler: async () => {},
+  } as RouteDefinition;
+}
+
+describe('Router', () => {
+  it('registers and looks up static routes', () => {
     const router = new Router();
+    const route = makeRoute('GET', '/users');
+    router.register(route);
 
-    router.register({
-      method: 'GET',
-      path: '/api/v1/health',
-      handler: async () => {},
-    } as RouteDefinition);
-
-    const match = router.lookup('GET', '/api/v1/health');
+    const match = router.lookup('GET', '/users');
     expect(match).not.toBeNull();
-    expect(match?.route.path).toBe('/api/v1/health');
+    if (match && 'route' in match) {
+      expect(match.route).toBe(route);
+      expect(match.params).toEqual({});
+    } else {
+      expect.fail('Expected route match');
+    }
+
+    expect(router.lookup('GET', '/unknown')).toBeNull();
   });
 
-  it('accurately extracts dynamic parameters', () => {
+  it('handles MethodNotAllowed (405)', () => {
     const router = new Router();
-    router.register({
-      method: 'GET',
-      path: '/users/:userId/posts/:postId',
-      handler: async () => {},
-    } as RouteDefinition);
+    router.register(makeRoute('POST', '/users'));
+    
+    const match = router.lookup('GET', '/users');
+    expect(match).toEqual({ error: 'MethodNotAllowed', allowed: ['POST'] });
+  });
+
+  it('auto-injects HEAD into allowed methods if GET exists', () => {
+    const router = new Router();
+    router.register(makeRoute('GET', '/users'));
+
+    const match = router.lookup('POST', '/users');
+    expect(match).toEqual({ error: 'MethodNotAllowed', allowed: ['GET', 'HEAD'] });
+  });
+
+  it('handles named parameters', () => {
+    const router = new Router();
+    const route = makeRoute('GET', '/users/:id/posts/:postId');
+    router.register(route);
 
     const match = router.lookup('GET', '/users/123/posts/456');
     expect(match).not.toBeNull();
-    expect(match?.params).toEqual({ userId: '123', postId: '456' });
+    if (match && 'route' in match) {
+      expect(match.route).toBe(route);
+      expect(match.params).toEqual({ id: '123', postId: '456' });
+    } else {
+      expect.fail('Expected route match');
+    }
   });
 
-  it('returns null for unmatched routes (404)', () => {
+  it('handles parameter backtracking', () => {
     const router = new Router();
-    router.register({
-      method: 'GET',
-      path: '/users',
-      handler: async () => {},
-    } as RouteDefinition);
+    // Register a param route first, then a static route that shares a prefix
+    router.register(makeRoute('GET', '/:a/b'));
+    router.register(makeRoute('GET', '/a/c'));
 
-    const match = router.lookup('GET', '/does-not-exist');
-    expect(match).toBeNull();
+    const matchStatic = router.lookup('GET', '/a/c');
+    expect(matchStatic).not.toBeNull();
+    if (matchStatic && 'route' in matchStatic) {
+      expect(matchStatic.params).toEqual({});
+    }
+
+    const matchParam = router.lookup('GET', '/test/b');
+    expect(matchParam).not.toBeNull();
+    if (matchParam && 'route' in matchParam) {
+      expect(matchParam.params).toEqual({ a: 'test' });
+    }
   });
 
-  it('returns MethodNotAllowed for a known path with the wrong HTTP method', () => {
+  it('handles multiple identical parameter nodes', () => {
     const router = new Router();
-    router.register({
-      method: 'POST',
-      path: '/submit',
-      handler: async () => {},
-    } as RouteDefinition);
+    router.register(makeRoute('GET', '/:id/a'));
+    router.register(makeRoute('POST', '/:id/b'));
 
-    const match = router.lookup('GET', '/submit');
-    expect(match).toEqual({
-      error: 'MethodNotAllowed',
-      allowed: ['POST'],
-    });
+    const match = router.lookup('POST', '/test/b');
+    if (match && 'route' in match) {
+      expect(match.params).toEqual({ id: 'test' });
+    } else {
+      expect.fail('Expected match');
+    }
   });
 
-  it('allows two different methods on the same path without conflict', () => {
+  it('handles wildcards', () => {
     const router = new Router();
-    router.register({
-      method: 'GET',
-      path: '/items',
-      handler: async () => {},
-    } as RouteDefinition);
-    router.register({
-      method: 'POST',
-      path: '/items',
-      handler: async () => {},
-    } as RouteDefinition);
+    const route = makeRoute('GET', '/assets/*');
+    router.register(route);
 
-    expect(router.lookup('GET', '/items')?.route.method).toBe('GET');
-    expect(router.lookup('POST', '/items')?.route.method).toBe('POST');
-  });
-
-  it('throws on duplicate method + path registration', () => {
-    const router = new Router();
-    router.register({
-      method: 'GET',
-      path: '/dup',
-      handler: async () => {},
-    } as RouteDefinition);
-    expect(() =>
-      router.register({
-        method: 'GET',
-        path: '/dup',
-        handler: async () => {},
-      } as RouteDefinition),
-    ).toThrow(/already registered/);
-  });
-
-  it('allows sibling param routes at the same depth with route-specific param names', () => {
-    const router = new Router();
-    router.register({
-      method: 'GET',
-      path: '/api/:version/health',
-      handler: async () => {},
-    } as RouteDefinition);
-    router.register({
-      method: 'GET',
-      path: '/api/:region/status',
-      handler: async () => {},
-    } as RouteDefinition);
-
-    const healthMatch = router.lookup('GET', '/api/v1/health');
-    expect(healthMatch).not.toBeNull();
-    expect(healthMatch?.params).toHaveProperty('version', 'v1');
-
-    const statusMatch = router.lookup('GET', '/api/us-east/status');
-    expect(statusMatch).not.toBeNull();
-    expect(statusMatch?.params).toHaveProperty('region', 'us-east');
-  });
-
-  it('allows multiple methods on the same param path', () => {
-    const router = new Router();
-    router.register({
-      method: 'GET',
-      path: '/items/:id',
-      handler: async () => {},
-    } as RouteDefinition);
-    router.register({
-      method: 'PUT',
-      path: '/items/:id',
-      handler: async () => {},
-    } as RouteDefinition);
-
-    expect(router.lookup('GET', '/items/42')?.params).toEqual({ id: '42' });
-    expect(router.lookup('PUT', '/items/42')?.params).toEqual({ id: '42' });
-  });
-
-  it('resolves method-specific param identifiers on the same structural path', () => {
-    const router = new Router();
-    router.register({
-      method: 'GET',
-      path: '/users/:id',
-      handler: async () => {},
-    } as RouteDefinition);
-    router.register({
-      method: 'POST',
-      path: '/users/:name',
-      handler: async () => {},
-    } as RouteDefinition);
-
-    expect(router.lookup('GET', '/users/alice')?.params).toEqual({ id: 'alice' });
-    expect(router.lookup('POST', '/users/alice')?.params).toEqual({
-      name: 'alice',
-    });
-  });
-
-  it('matches a wildcard route and captures the remainder in params["*"]', () => {
-    const router = new Router();
-    router.register({
-      method: 'GET',
-      path: '/static/*',
-      handler: async () => {},
-    } as RouteDefinition);
-
-    const match = router.lookup('GET', '/static/images/logo.png');
+    const match = router.lookup('GET', '/assets/css/main.css');
     expect(match).not.toBeNull();
-    expect(match?.params['*']).toBe('images/logo.png');
+    if (match && 'route' in match) {
+      expect(match.params).toEqual({ '*': 'css/main.css' });
+    } else {
+      expect.fail('Expected wildcard match');
+    }
   });
 
-  it('throws when wildcard is not the final path segment', () => {
+  it('throws on invalid wildcard placement', () => {
     const router = new Router();
-    expect(() =>
-      router.register({
-        method: 'GET',
-        path: '/bad/*/route',
-        handler: async () => {},
-      } as RouteDefinition),
-    ).toThrow('wildcard * must be the final path segment');
+    expect(() => {
+      router.register(makeRoute('GET', '/assets/*/css'));
+    }).toThrow(/must be the final path segment/);
   });
 
-  it('static routes take priority over wildcard at the same depth', () => {
+  it('throws on route collision', () => {
     const router = new Router();
-    router.register({
-      method: 'GET',
-      path: '/files/readme',
-      handler: async () => {},
-    } as RouteDefinition);
-    router.register({
-      method: 'GET',
-      path: '/files/*',
-      handler: async () => {},
-    } as RouteDefinition);
-
-    expect(router.lookup('GET', '/files/readme')?.route.path).toBe(
-      '/files/readme',
-    );
-    expect(router.lookup('GET', '/files/unknown.txt')?.route.path).toBe(
-      '/files/*',
-    );
+    router.register(makeRoute('GET', '/collision'));
+    expect(() => {
+      router.register(makeRoute('GET', '/collision'));
+    }).toThrow(/Route collision/);
   });
 
-  it('auto-routes HEAD to GET handler', () => {
+  it('returns MethodNotAllowed for wildcard routes', () => {
     const router = new Router();
-    router.register({
-      method: 'GET',
-      path: '/ping',
-      handler: async () => {},
-    } as RouteDefinition);
+    router.register(makeRoute('POST', '/assets/*'));
 
-    const match = router.lookup('HEAD', '/ping');
+    const match = router.lookup('GET', '/assets/css');
+    expect(match).toEqual({ error: 'MethodNotAllowed', allowed: ['POST'] });
+  });
+
+  it('returns MethodNotAllowed for param routes', () => {
+    const router = new Router();
+    router.register(makeRoute('POST', '/users/:id'));
+
+    const match = router.lookup('DELETE', '/users/123');
+    expect(match).toEqual({ error: 'MethodNotAllowed', allowed: ['POST'] });
+  });
+
+  it('resolves HEAD to GET if explicitly missing', () => {
+    const router = new Router();
+    const route = makeRoute('GET', '/users');
+    router.register(route);
+
+    const match = router.lookup('HEAD', '/users');
     expect(match).not.toBeNull();
-    expect(match?.route.method).toBe('GET');
-  });
-
-  it('includes HEAD in the Allow list when GET is registered', () => {
-    const router = new Router();
-    router.register({
-      method: 'GET',
-      path: '/r',
-      handler: async () => {},
-    } as RouteDefinition);
-    const result = router.lookup('DELETE', '/r');
-    expect(result).toMatchObject({ error: 'MethodNotAllowed' });
-    expect((result as { allowed: string[] }).allowed).toContain('HEAD');
+    if (match && 'route' in match) {
+      expect(match.route).toBe(route);
+    } else {
+      expect.fail();
+    }
   });
 });

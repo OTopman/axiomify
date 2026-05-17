@@ -9,16 +9,10 @@
  *    3. Fastify 5
  *    4. Hapi 21
  *
- *  WITH Axiomify adapter:
- *    5. @axiomify/http   (Node.js native HTTP)
- *    6. @axiomify/express
- *    7. @axiomify/fastify
- *    8. @axiomify/hapi
- *
  *  Axiomify Native:
- *    9.  GET /ping              (JSON response, no body)
- *    10. POST /echo             (JSON body parse + echo)
- *    11. GET /users/:id/posts/:postId  (two named params)
+ *    5.  GET /ping              (JSON response, no body)
+ *    6. POST /echo             (JSON body parse + echo)
+ *    7. GET /users/:id/posts/:postId  (two named params)
  *
  * Methodology
  * ───────────
@@ -82,58 +76,41 @@ const SERVERS = [
     method: 'GET',
   },
 
-  // ── WITH Axiomify adapters ────────────────────────────────────────────────
-  {
-    id: 'axiomify-http',
-    label: 'Axiomify + @axiomify/http',
-    file: 'axiomify-http.mjs',
-    port: 3110,
-    url: 'http://localhost:3110/ping',
-    method: 'GET',
-  },
-  {
-    id: 'axiomify-express',
-    label: 'Axiomify + @axiomify/express',
-    file: 'axiomify-express.mjs',
-    port: 3111,
-    url: 'http://localhost:3111/ping',
-    method: 'GET',
-  },
-  {
-    id: 'axiomify-fastify',
-    label: 'Axiomify + @axiomify/fastify',
-    file: 'axiomify-fastify.mjs',
-    port: 3112,
-    url: 'http://localhost:3112/ping',
-    method: 'GET',
-  },
-  {
-    id: 'axiomify-hapi',
-    label: 'Axiomify + @axiomify/hapi',
-    file: 'axiomify-hapi.mjs',
-    port: 3113,
-    url: 'http://localhost:3113/ping',
-    method: 'GET',
-  },
-
   // ── Axiomify Native (uWebSockets.js) ──────────────────────────────────────
   {
     id: 'axiomify-native-get',
-    label: 'Axiomify Native (uWS) GET /ping',
+    label: 'Native GET /ping (Baseline)',
     file: 'axiomify-native.mjs',
     port: 3120,
     url: 'http://localhost:3120/ping',
     method: 'GET',
   },
   {
-    id: 'axiomify-native-post',
-    label: 'Axiomify Native (uWS) POST /echo (JSON body)',
+    id: 'axiomify-native-post-heavy',
+    label: 'Native POST /echo (100KB JSON Parse)',
     file: 'axiomify-native.mjs',
     port: 3120,
     url: 'http://localhost:3120/echo',
     method: 'POST',
-    body: JSON.stringify({ key: 'benchmark-payload' }),
+    // Generate a 100KB payload array to force SIMD processing
+    body: JSON.stringify({
+      data: Array(5000).fill('Axiomify-Stress-Test-String'),
+    }),
     headers: { 'content-type': 'application/json' },
+  },
+  {
+    id: 'axiomify-native-query-heavy',
+    label: 'Native GET /search (Dense Query String)',
+    file: 'axiomify-native.mjs',
+    port: 3120,
+    // 50 query parameters to flood the fastParseQuery loop
+    url:
+      'http://localhost:3120/search?' +
+      Array(50)
+        .fill(0)
+        .map((_, i) => `filter_${i}=value_${i}&tags[]=a+b`)
+        .join('&'),
+    method: 'GET',
   },
   {
     id: 'axiomify-native-params',

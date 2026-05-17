@@ -15,12 +15,7 @@ const DEV_COMMAND_BY_PM: Record<InitAnswers['packageManager'], string> = {
 type InitAnswers = {
   projectName: string;
   description: string;
-  adapter:
-    | 'Native (uWS — Fastest, 50k+ req/s)'
-    | 'Fastify (High-throughput, recommended)'
-    | 'Express (Max ecosystem compatibility)'
-    | 'Hapi (Enterprise, plugin-first)'
-    | 'Node HTTP (Zero dependency)';
+  adapter: 'Native (uWS — Fastest, 50k+ req/s)';
   useEslint: boolean;
   installDeps: boolean;
   useGit: boolean;
@@ -46,19 +41,7 @@ export async function initProject(
 
   questions.push(
     {
-      type: 'select',
-      name: 'adapter',
-      message: 'Which HTTP adapter do you want to use?',
-      choices: [
-        'Native (uWS — Fastest, 50k+ req/s)',
-        'Fastify (High-throughput, recommended)',
-        'Express (Max ecosystem compatibility)',
-        'Hapi (Enterprise, plugin-first)',
-        'Node HTTP (Zero dependency)',
-      ],
-      initial: 0, // Native is the recommended default
-    },
-    {
+
       type: 'input',
       name: 'description',
       message: 'Project description',
@@ -141,32 +124,10 @@ export async function initProject(
 
   const AXIOMIFY_VERSION = `^${pkg.version}`;
 
-  let adapterPackage = '@axiomify/native';
-  let adapterImport = "import { NativeAdapter } from '@axiomify/native';";
-  let adapterInit =
+  const adapterPackage = '@axiomify/native';
+  const adapterImport = "import { NativeAdapter } from '@axiomify/native';";
+  const adapterInit =
     "const server = new NativeAdapter(app, { port: 3000 });\n  server.listen(() => console.log('  Axiomify Native on :3000'));";
-
-  if (answers.adapter.includes('Fastify')) {
-    adapterPackage = '@axiomify/fastify';
-    adapterImport = "import { FastifyAdapter } from '@axiomify/fastify';";
-    adapterInit =
-      "const server = new FastifyAdapter(app);\n  await server.listen(3000);\n  console.log('  Axiomify Fastify on :3000');";
-  } else if (answers.adapter.includes('Express')) {
-    adapterPackage = '@axiomify/express';
-    adapterImport = "import { ExpressAdapter } from '@axiomify/express';";
-    adapterInit =
-      "const server = new ExpressAdapter(app);\n  server.listen(3000, () => console.log('  Axiomify Express on :3000'));";
-  } else if (answers.adapter.includes('Hapi')) {
-    adapterPackage = '@axiomify/hapi';
-    adapterImport = "import { HapiAdapter } from '@axiomify/hapi';";
-    adapterInit =
-      "const server = new HapiAdapter(app);\n  await server.listen(3000);\n  console.log('  Axiomify Hapi on :3000');";
-  } else if (answers.adapter.includes('HTTP')) {
-    adapterPackage = '@axiomify/http';
-    adapterImport = "import { HttpAdapter } from '@axiomify/http';";
-    adapterInit =
-      "const server = new HttpAdapter(app);\n  server.listen(3000, () => console.log('  Axiomify HTTP on :3000'));";
-  }
 
   const pkgJson: Record<string, unknown> = {
     name: projectName,

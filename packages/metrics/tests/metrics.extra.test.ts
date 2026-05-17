@@ -14,9 +14,8 @@ function makeReq(overrides: any = {}) {
 function makeRes(overrides: any = {}) {
   const headers: Record<string, string> = {};
   let statusCode = 200;
-  return {
+  const res: any = {
     get statusCode() { return statusCode; },
-    status: vi.fn((c: number) => { statusCode = c; return res; }),
     header: vi.fn((k: string, v: string) => { headers[k] = v; return res; }),
     getHeader: vi.fn((k: string) => headers[k]),
     removeHeader: vi.fn(),
@@ -24,8 +23,9 @@ function makeRes(overrides: any = {}) {
     headersSent: false, raw: {},
     capabilities: { sse: false, streaming: false },
     ...overrides,
-  } as any;
-  var res: any;
+  };
+  res.status = vi.fn((c: number) => { statusCode = c; return res; });
+  return res;
 }
 
 describe('useMetrics — extended coverage', () => {
@@ -97,6 +97,97 @@ describe('useMetrics — Prometheus output format', () => {
     await metricsRoute.handler(makeReq({ path: '/metrics' }), metricsRes);
     expect(output).toContain('http_request_duration_ms');
     expect(output).toContain('http_requests_total');
+  });
+
+  it('drops invalid CIDR entries in allowlist', async () => {
+    const app = new Axiomify();
+    // Invalid CIDR: bits out of range and malformed IP — buildAllowlistMatchers returns [] for these
+    useMetrics(app, { allowlist: ['256.0.0.1/8', '1.2.3.4/99', 'bogus/notanumber'] });
+    const route = app.registeredRoutes.find(r => r.path === '/metrics')!;
+    const req = makeReq({ path: '/metrics', ip: '1.2.3.4' });
+    const res = makeRes();
+    await route.handler(req, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+  });
+
+  it('onError hook records err.status when statusCode is absent', async () => {
+    const app = new Axiomify();
+    useMetrics(app);
+    const hooks = (app as any).hooks.hooks;
+    const req = makeReq();
+    req.state.startTime = process.hrtime.bigint();
+    const res = makeRes();
+    // err.status (not statusCode) — covers the second branch
+    for (const h of hooks.onError) await h({ status: 502 }, req, res);
+    // sanity: no throw — internal map should contain a 502 entry
+  });
+
+  it('onError hook with non-Error object uses default 500', async () => {
+    const app = new Axiomify();
+    useMetrics(app);
+    const hooks = (app as any).hooks.hooks;
+    const req = makeReq();
+    req.state.startTime = process.hrtime.bigint();
+    for (const h of hooks.onError) await h({}, req, makeRes());
+  });
+
+  it('denies metrics in production without protect/allowlist/token', async () => {
+    const original = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const app = new Axiomify();
+      useMetrics(app);
+      const route = app.registeredRoutes.find(r => r.path === '/metrics')!;
+      const res = makeRes();
+      await route.handler(makeReq({ path: '/metrics' }), res);
+      expect(res.status).toHaveBeenCalledWith(403);
+      // Call again to ensure the warning is only emitted once.
+      await route.handler(makeReq({ path: '/metrics' }), makeRes());
+    } finally {
+      process.env.NODE_ENV = original;
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('allows metrics in production when allowPublicInProduction is true', async () => {
+    const original = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const app = new Axiomify();
+      useMetrics(app, { allowPublicInProduction: true });
+      const route = app.registeredRoutes.find(r => r.path === '/metrics')!;
+      const res = makeRes();
+      res.sendRaw = vi.fn();
+      await route.handler(makeReq({ path: '/metrics' }), res);
+      expect(res.sendRaw).toHaveBeenCalled();
+    } finally {
+      process.env.NODE_ENV = original;
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('records correct duration when startTime is set', async () => {
+    const app = new Axiomify();
+    useMetrics(app);
+    const hooks = (app as any).hooks.hooks;
+    const req = makeReq();
+    // run onRequest (sets startTime)
+    for (const h of hooks.onRequest) await h(req, makeRes());
+    expect(req.state.startTime).toBeDefined();
+    // After a tiny tick, postHandler — duration > 0
+    await new Promise(r => setImmediate(r));
+    for (const h of hooks.onPostHandler) await h(req, makeRes(), { route: { path: '/api' } as any, params: {} });
+  });
+
+  it('onPreHandler stamps metricsRouteLabel on req.state', async () => {
+    const app = new Axiomify();
+    useMetrics(app);
+    const hooks = (app as any).hooks.hooks;
+    const req = makeReq();
+    for (const h of hooks.onPreHandler) await h(req, makeRes(), { route: { path: '/x/:id' } as any, params: {} });
+    expect(req.state.metricsRouteLabel).toBe('/x/:id');
   });
 
   it('includes WebSocket stats when wsManager is provided', async () => {

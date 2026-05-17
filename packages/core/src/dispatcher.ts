@@ -9,20 +9,14 @@ export class RequestDispatcher {
     private readonly router: Router,
     private readonly hooks: HookManager,
     private readonly validator: ValidationCompiler,
-  ) {}
+  ) { }
 
   public async handle(req: AxiomifyRequest, res: AxiomifyResponse): Promise<void> {
     try {
-      // Sync fast-path: when no onRequest hooks are registered, .run() returns
-      // undefined and no microtask is queued. Eliminates a per-request Promise
-      // allocation in the common (no-hook) case.
       const onRequestRet = this.hooks.run('onRequest', req, res);
       if (onRequestRet) await onRequestRet;
       if (res.headersSent) return;
 
-      // Router writes params directly into req.params (caller-provided) — no
-      // intermediate object, no copy in the dispatcher. Saves one allocation
-      // and one for-in iteration per request on routes with params.
       const reqParams = req.params as Record<string, string>;
       const match = this.router.lookup(req.method, req.path, reqParams);
       if (!match) return res.status(404).send(null, 'Route not found');
@@ -35,13 +29,20 @@ export class RequestDispatcher {
     } catch (err) {
       await this.handleError(err, req, res);
     } finally {
-      const onCloseRet = this.hooks.runSafe('onClose', req, res);
-      if (onCloseRet) await onCloseRet;
+      if (res.isStreaming) {
+        res.onStreamClose = () => {
+          const onCloseRet = this.hooks.runSafe('onClose', req, res);
+          if (onCloseRet) onCloseRet.catch(() => { });
+        };
+      } else {
+        const onCloseRet = this.hooks.runSafe('onClose', req, res);
+        if (onCloseRet) await onCloseRet;
+      }
     }
   }
 
   /**
-   * Entry point for adapters that perform their own routing (uWS, Fastify, etc.)
+   * Entry point for adapters that perform their own routing (uWS)
    * and hand off a pre-resolved route + params to the dispatcher.
    *
    * @internal — adapter use only. Not part of the public Axiomify API.
@@ -60,8 +61,15 @@ export class RequestDispatcher {
     } catch (err) {
       await this.handleError(err, req, res);
     } finally {
-      const onCloseRet = this.hooks.runSafe('onClose', req, res);
-      if (onCloseRet) await onCloseRet;
+      if (res.isStreaming) {
+        res.onStreamClose = () => {
+          const onCloseRet = this.hooks.runSafe('onClose', req, res);
+          if (onCloseRet) onCloseRet.catch(() => { });
+        };
+      } else {
+        const onCloseRet = this.hooks.runSafe('onClose', req, res);
+        if (onCloseRet) await onCloseRet;
+      }
     }
   }
 
@@ -105,10 +113,10 @@ export class RequestDispatcher {
     // Unroll single-step pipeline: avoid loop + conditional overhead for the
     // common case of no plugins + no schema (just the handler).
     if (pipeline.length === 1) {
-      await pipeline[0](req, dispatchRes);
+      if (!req.signal?.aborted) await pipeline[0](req, dispatchRes);
     } else {
       for (let i = 0; i < pipeline.length; i++) {
-        if (dispatchRes.headersSent) break;
+        if (dispatchRes.headersSent || req.signal?.aborted) break;
         await pipeline[i](req, dispatchRes);
       }
     }
@@ -124,8 +132,8 @@ export class RequestDispatcher {
     const anyErr = err as Record<string, unknown>;
     const statusCode =
       typeof anyErr.statusCode === 'number' ? anyErr.statusCode
-      : typeof anyErr.status === 'number' ? anyErr.status
-      : 500;
+        : typeof anyErr.status === 'number' ? anyErr.status
+          : 500;
     const message = typeof anyErr.message === 'string' ? anyErr.message : 'Internal Server Error';
     const errorData =
       anyErr.issues ??
@@ -151,7 +159,7 @@ class ValidatingResponse implements AxiomifyResponse {
     private readonly validator: ValidationCompiler,
     private readonly method: string,
     private readonly routeId: string,
-  ) {}
+  ) { }
 
   status(code: number): this { this.inner.status(code); return this; }
   header(key: string, value: string): this { this.inner.header(key, value); return this; }
@@ -163,16 +171,13 @@ class ValidatingResponse implements AxiomifyResponse {
       this._sent = true;
       this.validator.validateResponse(this.routeId, data, this.inner.statusCode);
     }
-    if (this.method === 'HEAD') return this.inner.send(undefined, message);
-    this.inner.send(data, message);
+    this.inner.send(data, message); // NativeResponse handles HEAD suppression
   }
 
   sendRaw(payload: any, contentType?: string): void { this.inner.sendRaw(payload, contentType); }
 
-  /** @deprecated See AxiomifyResponse.error */
-  error(err: unknown): void { this.inner.error(err); }
-
   stream(readable: import('stream').Readable, contentType?: string): void {
+    this.inner.isStreaming = true;
     this.inner.stream(readable, contentType);
   }
 
@@ -182,4 +187,7 @@ class ValidatingResponse implements AxiomifyResponse {
   get statusCode(): number { return this.inner.statusCode; }
   get raw(): unknown { return this.inner.raw; }
   get headersSent(): boolean { return this.inner.headersSent; }
+  get isStreaming(): boolean | undefined { return this.inner.isStreaming; }
+  get onStreamClose(): (() => void) | null | undefined { return this.inner.onStreamClose; }
+  set onStreamClose(cb: (() => void) | null | undefined) { this.inner.onStreamClose = cb ?? null; }
 }
