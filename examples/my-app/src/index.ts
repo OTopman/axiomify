@@ -170,7 +170,7 @@ app.route({
 });
 
 useOpenAPI(app, {
-  routePrefix: '/docs',
+  prefix: '/docs',
   info: { title: 'Axiomify Test API', version: '1.0.0' },
 });
 
