@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/cli",
-  "version": "6.0.0-rc.1",
+  "version": "6.0.0-rc.2",
   "bin": {
     "axiomify": "./dist/index.js"
   },

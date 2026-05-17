@@ -1,11 +1,19 @@
 # Changelog
 
-## [Unreleased] — staged for `6.0.0-rc.1`
+## [Unreleased] — staged for `6.0.0-rc.2`
 
 This entry tracks the deprecation-removal pass that follows the 5.0
 work below. Every API marked `@deprecated` in 5.x is now gone. The 5.x
 audit work itself remains the feature baseline — this section just lists
 what was removed on top.
+
+> **Note on rc.1:** `@axiomify/auth@6.0.0-rc.1` was published to npm in
+> isolation before the rest of the workspace; subsequent packages failed
+> because npm versions are immutable. `rc.2` re-publishes the full
+> workspace at a coherent version. `auth@6.0.0-rc.1` is functionally
+> identical to the equivalent code in `rc.2` — but lockfile alignment
+> for consumers requires every package to share the same version, so
+> the bump is necessary even though the source didn't change.
 
 ### ⚠️ Breaking — every 5.x-deprecated API is removed
 
