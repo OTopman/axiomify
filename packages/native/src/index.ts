@@ -1,4 +1,5 @@
 import type {
+  AdapterLockToken,
   Axiomify,
   HttpMethod,
   SerializerInput,
@@ -15,16 +16,12 @@ import type {
 } from 'uWebSockets.js';
 import uWS from 'uWebSockets.js';
 
-import { parseBodyBuffer, readBody, getSimdParse } from './body';
-import {
-  buildErrorCache,
-  ErrorCache,
-  statusLine,
-} from './error-cache';
+import { getSimdParse, parseBodyBuffer, readBody } from './body';
+import { buildErrorCache, ErrorCache, statusLine } from './error-cache';
 import { collectHeaders } from './headers';
+import { fastParseQuery, safeDecodeURIComponent } from './query';
 import { NativeRequest } from './request';
 import { NativeResponse } from './response';
-import { fastParseQuery, safeDecodeURIComponent } from './query';
 
 // ---------------------------------------------------------------------------
 // Adapter-local helpers
@@ -399,45 +396,47 @@ export class NativeAdapter {
           route,
           params,
         );
-      })().catch((err: unknown) => {
-        // A .catch() is mandatory on all uWS async handlers. Without it, any
-        // unhandled rejection (handler bug, DB drop, timeout) reaches Node's
-        // 'unhandledRejection' event, which crashes the process in Node 15+.
-        // Instead we try to send a 500 — if the response is already committed
-        // (headersSent) we swallow silently, which is still safe.
-        if (!aborted && !axiomifyRes.headersSent) {
-          try {
-            // Do NOT use axiomifyRes.error(err) — that deprecated method always
-            // sends 500 and does not respect err.statusCode. Inline the same
-            // logic used by RequestDispatcher.handleError so HTTP error status
-            // codes thrown by handlers are preserved.
-            const anyErr = err as Record<string, unknown>;
-            const errStatus =
-              typeof anyErr.statusCode === 'number'
-                ? anyErr.statusCode
-                : typeof anyErr.status === 'number'
-                ? anyErr.status
-                : 500;
-            const errMsg =
-              typeof anyErr.message === 'string'
-                ? anyErr.message
-                : 'Internal Server Error';
-            axiomifyRes.status(errStatus).send(null, errMsg);
-          } catch {
-            // axiomifyRes.send() itself threw (e.g. already aborted between the
-            // check and the call) — nothing more we can do.
+      })()
+        .catch((err: unknown) => {
+          // A .catch() is mandatory on all uWS async handlers. Without it, any
+          // unhandled rejection (handler bug, DB drop, timeout) reaches Node's
+          // 'unhandledRejection' event, which crashes the process in Node 15+.
+          // Instead we try to send a 500 — if the response is already committed
+          // (headersSent) we swallow silently, which is still safe.
+          if (!aborted && !axiomifyRes.headersSent) {
+            try {
+              // Do NOT use axiomifyRes.error(err) — that deprecated method always
+              // sends 500 and does not respect err.statusCode. Inline the same
+              // logic used by RequestDispatcher.handleError so HTTP error status
+              // codes thrown by handlers are preserved.
+              const anyErr = err as Record<string, unknown>;
+              const errStatus =
+                typeof anyErr.statusCode === 'number'
+                  ? anyErr.statusCode
+                  : typeof anyErr.status === 'number'
+                  ? anyErr.status
+                  : 500;
+              const errMsg =
+                typeof anyErr.message === 'string'
+                  ? anyErr.message
+                  : 'Internal Server Error';
+              axiomifyRes.status(errStatus).send(null, errMsg);
+            } catch {
+              // axiomifyRes.send() itself threw (e.g. already aborted between the
+              // check and the call) — nothing more we can do.
+            }
           }
-        }
-      }).finally(() => {
-        // Decrement BEFORE notifying drain resolvers so a resolver that
-        // schedules `process.exit(0)` sees a consistent count.
-        adapter._inflight--;
-        if (adapter._inflight === 0 && adapter._drainResolvers.length > 0) {
-          const resolvers = adapter._drainResolvers;
-          adapter._drainResolvers = [];
-          for (const r of resolvers) r();
-        }
-      });
+        })
+        .finally(() => {
+          // Decrement BEFORE notifying drain resolvers so a resolver that
+          // schedules `process.exit(0)` sees a consistent count.
+          adapter._inflight--;
+          if (adapter._inflight === 0 && adapter._drainResolvers.length > 0) {
+            const resolvers = adapter._drainResolvers;
+            adapter._drainResolvers = [];
+            for (const r of resolvers) r();
+          }
+        });
     };
   }
 
@@ -531,11 +530,14 @@ export class NativeAdapter {
           // WS handshake headers MUST be single-valued per RFC 6455 §4.1.
           // If a client somehow sent multiples, take the first to match the
           // browser/proxy norm rather than silently dropping the handshake.
-          const firstStr = (h: string | string[] | undefined): string | undefined =>
-            Array.isArray(h) ? h[0] : h;
+          const firstStr = (
+            h: string | string[] | undefined,
+          ): string | undefined => (Array.isArray(h) ? h[0] : h);
           const secWebSocketKey = firstStr(headers['sec-websocket-key']) ?? '';
-          const secWebSocketProtocol = firstStr(headers['sec-websocket-protocol']) ?? '';
-          const secWebSocketExtensions = firstStr(headers['sec-websocket-extensions']) ?? '';
+          const secWebSocketProtocol =
+            firstStr(headers['sec-websocket-protocol']) ?? '';
+          const secWebSocketExtensions =
+            firstStr(headers['sec-websocket-extensions']) ?? '';
 
           const axiomifyReq = new NativeRequest(
             'GET',
@@ -669,7 +671,10 @@ export class NativeAdapter {
               ws.client.send(
                 isProduction
                   ? { error: 'Invalid message' }
-                  : { error: 'Invalid message', details: { body: { _root: (err as Error).message } } },
+                  : {
+                      error: 'Invalid message',
+                      details: { body: { _root: (err as Error).message } },
+                    },
               );
               return;
             }
@@ -678,7 +683,9 @@ export class NativeAdapter {
             // ValidationCompiler.execute() throws ValidationError on failure;
             // catch and surface to the client as a schema rejection.
             try {
-              validator.execute(routeId + ':message', { body: parsedData } as any);
+              validator.execute(routeId + ':message', {
+                body: parsedData,
+              } as any);
             } catch (err: unknown) {
               const isProduction = process.env.NODE_ENV === 'production';
               const details = (err as { errors?: unknown }).errors;
@@ -1014,6 +1021,58 @@ export class NativeAdapter {
   }
 
   /**
+   * Adapter-bridge entry point: hands the underlying `uWS.App` instance to
+   * a trusted plugin (e.g. `@axiomify/socket.io`) so it can attach its own
+   * routes/upgrades on the same uWS event loop. Authenticated via the
+   * shared `ADAPTER_LOCK_TOKEN` from `@axiomify/core/internal` — calling
+   * this from user code throws.
+   *
+   * Plugins that use this MUST call it BEFORE `adapter.listen()`, since
+   * uWS does not permit route registration on a listening socket.
+   *
+   * Hook a graceful-shutdown callback via {@link onShutdown} so the
+   * plugin's resources (e.g. open WebSocket connections) close cleanly
+   * when the adapter drains.
+   *
+   * @internal Plugin-author API. Not part of the public Axiomify surface.
+   */
+  public getRawServer(token: AdapterLockToken): TemplatedApp {
+    if (token !== ADAPTER_LOCK_TOKEN) {
+      throw new Error(
+        '[Axiomify/native] getRawServer() is reserved for adapter-bridge plugins. ' +
+          'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
+      );
+    }
+    return this._server;
+  }
+
+  /**
+   * Adapter-bridge entry point: register a callback that runs as part of
+   * `gracefulShutdown()`'s drain sequence, BEFORE the user-supplied
+   * `onShutdown`. Plugins use this to close their own resources (open
+   * WebSocket connections, hold-then-release queues, etc).
+   *
+   * Multiple registrations stack — every callback runs sequentially.
+   * Errors from individual callbacks are swallowed and logged, so one
+   * misbehaving plugin can't block another's cleanup.
+   *
+   * @internal Plugin-author API. See {@link getRawServer}.
+   */
+  private _bridgeShutdownCallbacks: Array<() => void | Promise<void>> = [];
+  public registerShutdownCallback(
+    token: AdapterLockToken,
+    cb: () => void | Promise<void>,
+  ): void {
+    if (token !== ADAPTER_LOCK_TOKEN) {
+      throw new Error(
+        '[Axiomify/native] registerShutdownCallback() is reserved for adapter-bridge plugins. ' +
+          'Import ADAPTER_LOCK_TOKEN from @axiomify/core.',
+      );
+    }
+    this._bridgeShutdownCallbacks.push(cb);
+  }
+
+  /**
    * Wires SIGINT/SIGTERM to a graceful drain sequence:
    *   1. Stop accepting new connections (close the uWS listen socket).
    *   2. Run the caller-supplied `onShutdown` hook (close DB pools, flush
@@ -1092,6 +1151,22 @@ export class NativeAdapter {
               'waited but the counter is non-zero (likely a long-lived stream).',
             { inflight: this._inflight },
           );
+        }
+        // Run bridge-plugin shutdown callbacks BEFORE the user-supplied
+        // onShutdown. Plugins (e.g. @axiomify/socket.io) close their own
+        // connections / drain their own queues here so the user's
+        // onShutdown can assume the plugin is quiescent. Errors are
+        // swallowed and logged — one misbehaving plugin must not block
+        // the rest, and the force-exit timer remains the upper bound.
+        for (const cb of this._bridgeShutdownCallbacks) {
+          try {
+            await cb();
+          } catch (err) {
+            this._logger.error(
+              '[Axiomify/native] Bridge-plugin shutdown callback threw',
+              { error: err },
+            );
+          }
         }
         if (this._onShutdown) await this._onShutdown();
         clearTimeout(forceExit);

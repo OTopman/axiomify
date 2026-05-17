@@ -32,5 +32,6 @@ It is organized in two layers:
 - [@axiomify/openapi](./packages/openapi.md)
 - [@axiomify/rate-limit](./packages/rate-limit.md)
 - [@axiomify/security](./packages/security.md)
+- [@axiomify/socket.io](./packages/socket.io.md) — Socket.IO 4.4+ bridge
 - [@axiomify/static](./packages/static.md)
 - [@axiomify/upload](./packages/upload.md)

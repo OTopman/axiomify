@@ -34,6 +34,43 @@ npx axiomify check     # exits 1 on remaining `meta:` usage, etc.
 (not a warning) — the field is unrecognised in 6.0, so silently
 shipping with it loses your OpenAPI docs surface entirely.
 
+### ✨ New: `@axiomify/socket.io`
+
+Native Socket.IO 4.4+ bridge — attaches to the same `uWebSockets.js`
+server that `@axiomify/native` already runs, so a single process serves
+HTTP, native WebSocket routes (`app.ws()`), AND Socket.IO. No proxy in
+front, no second Node listener, no port juggling.
+
+```ts
+import { attachSocketIO, adaptAxiomifyPlugin } from '@axiomify/socket.io';
+
+const io = await attachSocketIO(adapter, {
+  cors: { origin: 'https://app.example.com' },
+});
+
+// Reuse Axiomify auth / rate-limit / fingerprint plugins on socket
+// connection upgrades — no code duplication.
+io.use(adaptAxiomifyPlugin(requireAuth));
+io.on('connection', (socket) => {
+  socket.emit('welcome', { user: socket.data.user?.id });
+});
+```
+
+The bridge wires `io.close()` into `adapter.gracefulShutdown()` so
+long-lived clients get a proper `disconnect` frame on deploy instead of
+a TCP reset. Disable with `drainOnAdapterShutdown: false` if you want
+to manage Socket.IO's lifecycle yourself.
+
+This required a small adapter-internal API addition: `NativeAdapter`
+now exposes `getRawServer(token)` and `registerShutdownCallback(token, cb)`
+behind the existing `ADAPTER_LOCK_TOKEN` gate. Both are documented as
+plugin-bridge-only — calling them from user code throws. This is the
+same authentication pattern `lockRoutes()` and `handleMatchedRoute()`
+already use.
+
+See [docs/packages/socket.io.md](./docs/packages/socket.io.md) for the
+full reference + production checklist.
+
 ### Cleanup
 
 - The runtime no-op `sqlInjectionProtection: true` warning shim from
