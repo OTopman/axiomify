@@ -15,5 +15,6 @@ This index lists every Axiomify package alphabetically.
 - [@axiomify/openapi](./openapi.md)
 - [@axiomify/rate-limit](./rate-limit.md)
 - [@axiomify/security](./security.md)
+- [@axiomify/socket.io](./socket.io.md)
 - [@axiomify/static](./static.md)
 - [@axiomify/upload](./upload.md)

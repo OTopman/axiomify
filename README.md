@@ -47,6 +47,7 @@ Axiomify is an ultra high-performance Node.js framework built exclusively on `uW
 | [`@axiomify/upload`](packages/upload/) | RAM-safe multipart streaming via Busboy + auto cleanup on error |
 | [`@axiomify/static`](packages/static/) | Static file serving — 36 MIME types, ETag, SPA index fallback |
 | [`@axiomify/graphql`](packages/graphql/) | GraphQL endpoint + GraphiQL 3 + depth/alias limits |
+| [`@axiomify/socket.io`](packages/socket.io/) | Socket.IO 4.4+ bridge — attaches to the same uWS server as HTTP, so one process serves both |
 
 ### Observability
 
