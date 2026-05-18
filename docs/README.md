@@ -14,7 +14,6 @@ It is organized in two layers:
 - [Plugins and Hooks](./plugins-and-hooks.md)
 - [Examples](./examples.md)
 - [Production Checklist](./production-checklist.md)
-- [Migration: v4 → v5](./migration-v4-to-v5.md)
 
 ## Package Docs
 

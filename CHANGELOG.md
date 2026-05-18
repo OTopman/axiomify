@@ -109,11 +109,6 @@ npx axiomify migrate              # apply
 npx axiomify check                # validate; exit 1 surfaces what's left
 ```
 
-For the full guide, see [docs/migration-v4-to-v5.md](./docs/migration-v4-to-v5.md)
-— the migrate command applies the same renames that 4.x → 5.x users
-went through, with the additional rule that 6.0 also removes
-`route.meta`, `RouteMeta`, `routePrefix`, the SQL detector, and
-`res.error`.
 
 ---
 

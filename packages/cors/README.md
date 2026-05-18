@@ -1,5 +1,11 @@
 # @axiomify/cors
 
+
+[![npm version](https://img.shields.io/npm/v/@axiomify/@axiomify/cors.svg)](https://npmjs.com/package/@axiomify/@axiomify/cors)
+[![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg?token=QSI2WR3YWZ)](https://codecov.io/github/otopman/axiomify)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 Framework-agnostic CORS middleware for Axiomify with strict preflight handling and safe `Vary` header management.
 
 ## Install

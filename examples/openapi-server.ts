@@ -27,7 +27,7 @@ app.route({
 
 // 2. Inject the OpenAPI System
 useOpenAPI(app, {
-  routePrefix: '/docs',
+  prefix: '/docs',
   info: {
     title: 'Axiomify Production API',
     version: '1.0.0',

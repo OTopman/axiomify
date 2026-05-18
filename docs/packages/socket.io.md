@@ -216,4 +216,4 @@ One process. One port. HTTP + Socket.IO + native WebSocket routes (`app.ws()`) a
 - **Cannot attach to a listening adapter.** `attachSocketIO()` must run before `adapter.listen()`. uWS doesn't permit upgrade registration on a bound socket.
 - **One bridge per adapter.** Multiple Socket.IO servers on the same path would collide at the WebSocket upgrade step. For namespaces, use `io.of(name)` on the single attached server.
 - **No clustered transport adapter shipped here.** `@socket.io/redis-adapter` or `@socket.io/postgres-adapter` is what you want for multi-process / multi-host deployments.
-- **Node ≥ 23 has no uWS prebuilt.** Same constraint as `@axiomify/native` — see [docs/packages/native.md](./native.md).
+- **Node ≥ 23 has no uWS prebuilt.** Same constraint as `@axiomify/native` — see [docs/[./packages/native.md](./packages/native.md)](./native.md).

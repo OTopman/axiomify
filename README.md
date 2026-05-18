@@ -1,9 +1,9 @@
 # 🌌 Axiomify
 
 [![npm version](https://img.shields.io/npm/v/@axiomify/core.svg)](https://npmjs.com/package/@axiomify/core)
-[![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg?token=QSI2WR3YWZ)](https://codecov.io/github/otopman/axiomify)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[[![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg?token=QSI2WR3YWZ)](https://codecov.io/github/otopman/axiomify)](https://codecov.io/github/otopman/axiomify)
+[[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
+[[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)](https://opensource.org/licenses/MIT)
 
 **Schema-first. Uncompromising Performance. Production-ready.**
 
@@ -155,7 +155,7 @@ import { createAuthPlugin, createRefreshHandler, MemoryTokenStore } from '@axiom
 
 // `MemoryTokenStore` is per-process. For multi-process or multi-host
 // deployments, implement the `TokenStore` interface against Redis / DB /
-// your store of choice — see docs/packages/auth.md.
+// your store of choice — see [Auth Reference](./docs/packages/auth.md).
 const tokenStore = new MemoryTokenStore();
 
 const requireAuth = createAuthPlugin({
@@ -240,7 +240,7 @@ useOpenAPI(app, {
 // Swagger UI at /docs, spec at /docs/openapi.json
 ```
 
-Uses `z.toJSONSchema()` (Zod v4 built-in, emits JSON Schema 2020-12). No third-party schema bridge needed. Per-route docs live on `route.openapi` and mirror the [OAS 3.0.3 Operation Object](https://spec.openapis.org/oas/v3.0.3#operation-object) verbatim — see [docs/packages/openapi.md](docs/packages/openapi.md).
+Uses `z.toJSONSchema()` (Zod v4 built-in, emits JSON Schema 2020-12). No third-party schema bridge needed. Per-route docs live on `route.openapi` and mirror the [OAS 3.0.3 Operation Object](https://spec.openapis.org/oas/v3.0.3#operation-object) verbatim — see [docs/[./packages/openapi.md](./packages/openapi.md)](docs/packages/openapi.md).
 
 ---
 
@@ -325,7 +325,7 @@ In CI:
 - run: npx axiomify routes --json > routes.json                          # API surface snapshot
 ```
 
-Full reference: [docs/packages/cli.md](docs/packages/cli.md).
+Full reference: [docs/[./packages/cli.md](./packages/cli.md)](docs/packages/cli.md).
 
 ---
 

@@ -1,5 +1,11 @@
 # @axiomify/cli
 
+
+[![npm version](https://img.shields.io/npm/v/@axiomify/@axiomify/cli.svg)](https://npmjs.com/package/@axiomify/@axiomify/cli)
+[![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg?token=QSI2WR3YWZ)](https://codecov.io/github/otopman/axiomify)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 The official CLI for the Axiomify framework — scaffold projects, run the
 dev server, build production bundles, inspect routes, generate OpenAPI
 specs, and audit production readiness.
@@ -30,7 +36,7 @@ the same major as your `@axiomify/*` runtime packages.
 `[entry]` defaults to `src/index.ts` everywhere it's accepted.
 
 For the full reference (flags, exit codes, CI examples), see
-[`docs/packages/cli.md`](https://github.com/OTopman/axiomify/blob/main/docs/packages/cli.md).
+[`[./docs/packages/cli.md](./docs/packages/cli.md)`](https://github.com/OTopman/axiomify/blob/main/docs/packages/cli.md).
 
 ## `axiomify init`
 

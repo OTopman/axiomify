@@ -1,5 +1,11 @@
 # @axiomify/openapi
 
+
+[![npm version](https://img.shields.io/npm/v/@axiomify/@axiomify/openapi.svg)](https://npmjs.com/package/@axiomify/@axiomify/openapi)
+[![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg?token=QSI2WR3YWZ)](https://codecov.io/github/otopman/axiomify)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 Auto-generates OpenAPI 3.0 documentation from your Axiomify routes and Zod schemas. Supports Zod v4 natively via `z.toJSONSchema()`.
 
 ## Install
@@ -31,7 +37,7 @@ app.route({
 
 useOpenAPI(app, {
   info: { title: 'My API', version: '1.0.0' },
-  routePrefix: '/docs',          // UI at /docs, spec at /docs/openapi.json
+  prefix: '/docs' // ✅ Use `prefix` (v6.0+); `routePrefix` was removed in 6.0,          // UI at /docs, spec at /docs/openapi.json
   protect: (req) => req.headers['x-internal-token'] === process.env.DOCS_TOKEN,
 });
 ```
@@ -73,7 +79,7 @@ app.route({
   },
   handler: async (req, res) => {
     const user = await db.users.findById(req.params.id);
-    if (!user) return res.status(404).send(null, 'Not Found');
+    if (!user) return res.status(404).send({ message: 'Not Found' });
     res.send(user);
   },
 });

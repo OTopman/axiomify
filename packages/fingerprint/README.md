@@ -1,5 +1,11 @@
 # @axiomify/fingerprint
 
+
+[![npm version](https://img.shields.io/npm/v/@axiomify/@axiomify/fingerprint.svg)](https://npmjs.com/package/@axiomify/@axiomify/fingerprint)
+[![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg?token=QSI2WR3YWZ)](https://codecov.io/github/otopman/axiomify)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 Server-side request fingerprinting for Axiomify. Generates a deterministic hash per request from IP, headers, and path for bot detection, fraud prevention, and session anomaly detection.
 
 > **Note:** This is a server-side fingerprint for request correlation — not a replacement for client-side anti-fraud platforms like Fingerprint Pro. It operates entirely on HTTP headers and cannot access browser APIs.

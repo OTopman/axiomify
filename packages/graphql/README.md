@@ -1,5 +1,11 @@
 # @axiomify/graphql
 
+
+[![npm version](https://img.shields.io/npm/v/@axiomify/@axiomify/graphql.svg)](https://npmjs.com/package/@axiomify/@axiomify/graphql)
+[![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg?token=QSI2WR3YWZ)](https://codecov.io/github/otopman/axiomify)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 Drop-in GraphQL endpoint for Axiomify with a built-in GraphiQL playground, per-request context, and abuse-prevention controls.
 
 ## Install
