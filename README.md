@@ -1,10 +1,10 @@
 # 🌌 Axiomify
 
 [![npm version](https://img.shields.io/npm/v/@axiomify/core.svg)](https://npmjs.com/package/@axiomify/core)
-[[![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg?token=QSI2WR3YWZ)](https://codecov.io/github/otopman/axiomify)](https://codecov.io/github/otopman/axiomify)
+[[![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)](https://codecov.io/github/otopman/axiomify)
 [[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
 [[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)](https://opensource.org/licenses/MIT)
-
+ 
 **Schema-first. Uncompromising Performance. Production-ready.**
 
 Axiomify is an ultra high-performance Node.js framework built exclusively on `uWebSockets.js` that uses Zod schemas as a single source of truth for validation, TypeScript types, and OpenAPI documentation. It is engineered from the ground up for zero-overhead routing, strict security, and raw throughput.
