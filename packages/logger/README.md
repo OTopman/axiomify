@@ -13,9 +13,6 @@ Structured request/response logging for Axiomify with PII field masking and conf
 ```bash
 npm install @axiomify/logger
 ```
-
-> `maskify-ts` is no longer required as a peer dependency — masking is handled inline.
-
 ## Quick start
 
 ```typescript
