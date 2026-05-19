@@ -46,12 +46,7 @@ app.route({
     response: z.object({ id: z.string(), name: z.string() }),
     // or per-status: response: { 201: z.object(...), 400: z.object(...) }
   },
-  openapi: {        // OpenAPI 3.1.0 Operation Object metadata
-    tags: ['Users'],
-    summary: 'Create user',
-    description: 'Create a new user',
-    operationId: 'createUser',
-  },
+  // OpenAPI metadata lives in schema: alongside Zod fields
   plugins: [requireAuth, rateLimit],
   timeout: 5_000,   // per-route timeout override
   handler: async (req, res) => {

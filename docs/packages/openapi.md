@@ -34,22 +34,12 @@ Swagger UI is served at `/docs`. The raw JSON spec is at `/docs/openapi.json`.
 | `new OpenApiGenerator(app, options).generate()` | Generate raw spec as a plain object |
 | `defineSecuritySchemes(schemes)` | Type helper for security scheme definitions |
 
-## Route metadata — the `openapi` field
+## Route metadata — inside `schema`
 
-The `openapi` field on a route definition mirrors the
-[OpenAPI 3.1.0 Operation Object](https://spec.openapis.org/oas/v3.1.0#operation-object)
-**verbatim**. Every Operation Object property is supported. Authors who know
-the spec can paste fragments directly from swagger.io — no wrapper, no
-translation table, no Axiomify-specific shape to learn.
-
-The framework derives three Operation Object properties from your
-`schema:` block, so they're NOT supplied on `openapi`:
-
-- `parameters` ← derived from `schema.params` + `schema.query`
-- `requestBody` ← derived from `schema.body` + `schema.files`
-- `responses` ← derived from `schema.response`
-
-Everything else lives on `openapi`:
+Axiomify v6 uses a single `schema:` block for both runtime validation (Zod
+types) and OpenAPI 3.1.0 documentation metadata. The framework auto-derives
+`parameters`, `requestBody`, and `responses` from your Zod fields — every
+other Operation Object property goes directly in `schema:`:
 
 ```typescript
 app.route({
@@ -167,27 +157,34 @@ app.route({
 });
 ```
 
-### Migrating from `meta:` / `openapi:` (4.x / 5.x → 6.x)
+### Migrating from `meta:` (v5 → v6)
 
-In 4.x the field was `meta:`. In 5.x it became `openapi:`. In 6.1 the
-separate `openapi:` property is gone entirely — all metadata moves into
-`schema:` alongside Zod fields. Run `npx axiomify migrate` to apply
-renames automatically, then `npx axiomify check` to gate CI.
+In v5.0.0 (current production), route documentation metadata lives on a
+top-level `meta:` field. In v6 it moves into `schema:`:
 
 ```typescript
-// 4.x (removed in 6.0)
-meta: { tags: ['Users'], operationId: 'getUserById' }
+// v5.0.0
+app.route({
+  schema: { params: z.object({ id: z.string().uuid() }) },
+  meta:   { tags: ['Users'], summary: 'Get user by id' },
+  handler,
+});
 
-// 5.x (removed in 6.1)
-openapi: { tags: ['Users'], operationId: 'getUserById' }
-
-// 6.1+ — everything in schema:
-schema: {
-  body: CreateUserSchema,
-  tags: ['Users'],
-  operationId: 'getUserById',
-}
+// v6.0.0
+app.route({
+  schema: {
+    params:      z.object({ id: z.string().uuid() }),
+    tags:        ['Users'],
+    summary:     'Get user by id',
+    operationId: 'getUserById', // new in v6 — not in v5 RouteMeta
+  },
+  handler,
+});
 ```
+
+Run `npx axiomify migrate` to flag `meta:` fields for manual merge into
+`schema:`, then `npx axiomify check` to gate CI.
+
 
 ## Global security schemes
 

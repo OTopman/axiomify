@@ -1,115 +1,94 @@
 # Changelog
 
-## [Unreleased] — staged for `6.0.0-rc.3`
+## [6.0.0] — staged on `develop`, unreleased
 
-This entry tracks the deprecation-removal pass that follows the 5.0
-work below. Every API marked `@deprecated` in 5.x is now gone. The 5.x
-audit work itself remains the feature baseline — this section just lists
-what was removed on top.
+> **Upgrading from v5?** See [docs/migration-v5-to-v6.md](docs/migration-v5-to-v6.md)
+> and run `npx axiomify migrate` to apply renames automatically.
 
-> **Publish-cycle notes:**
-> - `rc.1`: `@axiomify/auth@6.0.0-rc.1` shipped to npm in isolation
->   before the rest of the workspace; sibling packages aborted on the
->   first 403. npm versions are immutable so the only path forward was
->   a bump.
-> - `rc.2`: bumped the workspace to align consumer lockfiles. Same
->   problem class — partial registry state from an interrupted publish
->   left some packages on rc.2 and required another bump.
-> - `rc.3`: adds the publish-ergonomic metadata every npm page needs
->   (`repository`, `homepage`, `bugs`, `license`, `author`,
->   per-package descriptions), and converts relative GitHub-style
->   markdown links in package READMEs to absolute URLs so they render
->   correctly on npmjs.com.
+### ⚠️ Breaking changes
 
-### ⚠️ Breaking — every 5.x-deprecated API is removed
+#### Adapters removed — `@axiomify/native` is the only adapter
 
-| Removed | Migration |
+| Removed | Replacement |
 |---|---|
-| `RouteMeta` type alias | Use `OpenApiOperation`. `import { OpenApiOperation } from '@axiomify/core';` |
-| `RouteDefinition.meta` field | Rename to `openapi`. Identical shape — paste your `meta: {...}` body under `openapi: {...}`. |
-| `useOpenAPI({ routePrefix })` option | Rename to `prefix`. |
-| `useSecurity({ sqlInjectionProtection, sqlPatterns })` options | Removed without replacement. Use parameterised queries at the DB layer — regex SQL detection was always a false-positive generator and trivially bypassable. |
-| `DEFAULT_SQL_PATTERNS` / `detectSqlInjection` exports from `@axiomify/security/utils/detector` | Removed. See above. |
-| `AxiomifyResponse.error(err)` method (and `NativeResponse.error`) | Use `res.status(500).send(null, msg)` directly — the helper was always a less-flexible alias. |
-| `ValidatingResponse.error` wrapper in the dispatcher | Removed — `error()` is no longer part of `AxiomifyResponse`. |
+| `@axiomify/express` | `@axiomify/native` |
+| `@axiomify/fastify` | `@axiomify/native` |
+| `@axiomify/hapi` | `@axiomify/native` |
+| `@axiomify/http` | `@axiomify/native` |
+| `@axiomify/ws` | `app.ws()` built into `@axiomify/native` |
 
-The `axiomify migrate` command applies the mechanical renames (`meta` →
-`openapi`, `RouteMeta` → `OpenApiOperation`, etc) automatically; the
-`res.error()` and `sqlInjectionProtection` removals require by-hand
-audit because they touch handler bodies and security posture.
+#### `route.meta` removed — metadata merged into `schema`
 
-After migration, run:
+v5's `meta: RouteMeta` field (4 fields: `tags`, `summary`, `description`, `security`)
+is removed. All metadata now lives in `schema:` alongside Zod validation fields.
+v6 expands coverage to the full OAS 3.1.0 Operation Object (11 fields total).
 
-```bash
-npx axiomify check     # exits 1 on remaining `meta:` usage, etc.
+```ts
+// v5.0.0
+app.route({ schema: { body: CreateUserSchema }, meta: { tags: ['Users'], summary: 'Create user' }, handler });
+
+// v6.0.0
+app.route({ schema: { body: CreateUserSchema, tags: ['Users'], summary: 'Create user', operationId: 'createUser' }, handler });
 ```
 
-`axiomify check` now treats `meta:` on a route definition as a hard FAIL
-(not a warning) — the field is unrecognised in 6.0, so silently
-shipping with it loses your OpenAPI docs surface entirely.
+#### `RouteMeta` type removed — use `RouteSchema` or drop the annotation
 
-### ✨ New: `@axiomify/socket.io`
+#### OpenAPI spec upgraded 3.0.3 → 3.1.0 (JSON Schema 2020-12)
 
-Native Socket.IO 4.4+ bridge — attaches to the same `uWebSockets.js`
-server that `@axiomify/native` already runs, so a single process serves
-HTTP, native WebSocket routes (`app.ws()`), AND Socket.IO. No proxy in
-front, no second Node listener, no port juggling.
+Optional fields use `type: ["string","null"]` instead of `nullable: true`.
+
+#### `useOpenAPI({ routePrefix })` removed — use `prefix:`
+
+#### `useSecurity({ sqlInjectionProtection })` removed — use parameterised queries
+
+Exports `DEFAULT_SQL_PATTERNS` and `detectSqlInjection` also removed.
+
+#### `AxiomifyResponse.error()` removed — use `res.status(code).send(null, msg)`
+
+#### `SerializerFn` 5-arg positional form now throws (warned in v5)
+
+#### `AppPlugin` type removed — use `AppConfigurator`
+
+#### `@axiomify/auth` — weak-secret check uses `Buffer.byteLength` (RFC 7518 §3.2)
+
+#### `@axiomify/logger` — `maskify-ts` removed; PII masking is now built-in
+
+---
+
+### ✨ New features
+
+#### `@axiomify/socket.io` — Socket.IO 4.x bridge on the same uWS server
 
 ```ts
 import { attachSocketIO, adaptAxiomifyPlugin } from '@axiomify/socket.io';
-
-const io = await attachSocketIO(adapter, {
-  cors: { origin: 'https://app.example.com' },
-});
-
-// Reuse Axiomify auth / rate-limit / fingerprint plugins on socket
-// connection upgrades — no code duplication.
+const io = await attachSocketIO(adapter, { cors: { origin: 'https://app.example.com' } });
 io.use(adaptAxiomifyPlugin(requireAuth));
-io.on('connection', (socket) => {
-  socket.emit('welcome', { user: socket.data.user?.id });
-});
+io.on('connection', (socket) => socket.emit('welcome', {}));
 ```
 
-The bridge wires `io.close()` into `adapter.gracefulShutdown()` so
-long-lived clients get a proper `disconnect` frame on deploy instead of
-a TCP reset. Disable with `drainOnAdapterShutdown: false` if you want
-to manage Socket.IO's lifecycle yourself.
+#### Native WebSocket routes — `app.ws()` built into `@axiomify/native`
 
-This required a small adapter-internal API addition: `NativeAdapter`
-now exposes `getRawServer(token)` and `registerShutdownCallback(token, cb)`
-behind the existing `ADAPTER_LOCK_TOKEN` gate. Both are documented as
-plugin-bridge-only — calling them from user code throws. This is the
-same authentication pattern `lockRoutes()` and `handleMatchedRoute()`
-already use.
+#### Full OAS 3.1.0 Operation Object in `schema` — 7 new fields vs v5
 
-See [docs/packages/socket.io.md](./docs/packages/socket.io.md) for the
-full reference + production checklist.
+`operationId`, `deprecated`, `externalDocs`, `servers`, `callbacks`,
+`requestBodyDescription`, `responseDescriptions`
 
-### Cleanup
+#### DI `resolve()` throws on unregistered tokens (was silent `undefined` in v5)
 
-- The runtime no-op `sqlInjectionProtection: true` warning shim from
-  5.0 is gone. Setting that option now produces a TypeScript compile
-  error (excess property) instead of a runtime warning.
-- The `useOpenAPI` runtime `routePrefix` deprecation warning is gone.
-- `route.meta` is no longer read by the OpenAPI generator — routes
-  carrying it produce no operation metadata.
+#### `@axiomify/native` — simdjson acceleration, SSE (`res.sse()`), multi-value query params
+
+---
 
 ### Tests
 
-- 524 passing
-- Coverage held at 97.46% lines / 98.50% functions
+524 passing across 50 files · Coverage: 97.46% lines / 98.50% functions
 
-### Upgrade path
+### Publish notes (rc.1 → rc.3)
 
-```bash
-# In a 5.x project:
-npx axiomify migrate --dry-run    # preview every rename
-npx axiomify migrate              # apply
-npx axiomify check                # validate; exit 1 surfaces what's left
-```
+rc.1–rc.3 were version alignment bumps from partial npm publish failures.
+rc.3 adds `repository`, `homepage`, `bugs`, `license`, `author`, per-package
+descriptions, and absolute URLs in package READMEs for npmjs.com rendering.
 
-
----
 
 ## [6.0.0-rc.*]
 

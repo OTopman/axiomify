@@ -18,7 +18,7 @@ For most apps, the migration is:
 
 1. Add `app.enableRequestId()` after construction if you relied on
    automatic `X-Request-Id`.
-2. Rename `meta:` → `openapi:` on route definitions (or leave alone —
+2. `meta:` is the correct v5 field — no rename needed in v5. In **v6** it moves into `schema:`. See [migration-v5-to-v6.md](migration-v5-to-v6.md).
    the alias is kept through 5.x).
 3. Change `useSwagger` imports to `useOpenAPI` if you somehow had the
    old name working (it was never actually shipped — docs were wrong).
@@ -104,25 +104,20 @@ const myPlugin: AppConfigurator = (app) => { /* ... */ };
 The 1-arg runtime shape still works identically. Only the named TypeScript
 type is gone.
 
-#### `route.meta` → `route.openapi`
+#### `route.meta` — stable in v5, removed in v6
 
-Renamed to match the OpenAPI 3.0.3 Operation Object terminology exactly,
-so authors can paste spec fragments directly. The old name is kept as a
-deprecated alias through 5.x and removed in 6.0:
+In v5 the `meta:` field (type `RouteMeta`) is the dedicated location for
+OpenAPI metadata (`tags`, `summary`, `description`, `security`).
 
 ```ts
-// v4 (still works in 5.x with a deprecation warning)
-app.route({ method: 'GET', path: '/u', meta: { tags: ['U'] }, handler });
-
-// v5+
-app.route({ method: 'GET', path: '/u', openapi: { tags: ['U'] }, handler });
+app.route({ method: 'GET', path: '/u', meta: { tags: ['U'], summary: 'Get user' }, handler });
 ```
 
-The type alias was also renamed: `RouteMeta` → `OpenApiOperation`.
-`RouteMeta` is a deprecated alias.
+In **v6**, `meta:` is removed and its fields move into `schema:` with
+full OAS 3.1.0 coverage. See [migration-v5-to-v6.md](migration-v5-to-v6.md).
 
-If you supply both `openapi:` and `meta:` on the same route, `openapi`
-wins — the generator does **not** merge them.
+The `RouteMeta` type is available through v5. It is removed in v6.
+
 
 #### `app.lockRoutes` requires a token
 
@@ -319,16 +314,17 @@ code without full schema coverage.
 
 #### `routePrefix` → `prefix`
 
-Standardised with `@axiomify/static`'s naming. Both work through 5.x;
-`routePrefix` warns + is removed in 6.0:
+In v5 both keys are accepted (`routePrefix` produces a runtime warning).
+In **v6** `routePrefix` is fully removed.
 
 ```ts
 // v4
 useOpenAPI(app, { info, routePrefix: '/docs' });
 
-// v5+
+// v5 — prefix preferred; routePrefix still works with a warning
 useOpenAPI(app, { info, prefix: '/docs' });
 ```
+
 
 #### `OpenApiGenerator` is now publicly exported
 

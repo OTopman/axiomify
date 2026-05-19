@@ -1,6 +1,25 @@
 import { defineConfig } from 'vitest/config';
+import path from 'path';
+
+// Resolve @axiomify/* package names to their TypeScript source so tests
+// run directly against src/ without requiring a prior `npm run build`.
+// Without this, packages that import '@axiomify/core' resolve to dist/
+// (the path listed in package.json exports) which doesn't exist in a
+// fresh clone and causes 21 test files to fail at import time.
+const packages = [
+  'auth', 'cli', 'core', 'cors', 'fingerprint', 'graphql', 'helmet',
+  'logger', 'metrics', 'native', 'openapi', 'rate-limit', 'security',
+  'socket.io', 'static', 'upload',
+];
+const alias = Object.fromEntries(
+  packages.map((pkg) => [
+    `@axiomify/${pkg}`,
+    path.resolve(__dirname, `packages/${pkg}/src/index.ts`),
+  ])
+);
 
 export default defineConfig({
+  resolve: { alias },
   test: {
     coverage: {
       provider: 'v8',
@@ -12,17 +31,13 @@ export default defineConfig({
         '**/*.config.ts',
         'benchmarks/**',
         'examples/**',
-        // ── CLI ───────────────────────────────────────────────────────────────
-        // Child-process spawning and file scaffolding — belongs in e2e, not unit.
+        // CLI: child-process spawning + file scaffolding — e2e only
         'packages/cli/src/**',
-        // @axiomify/native: uWS native bindings, C++ bridge, SO_REUSEPORT
-        //   cluster with taskset CPU pinning. Requires the uWS binary at runtime
-        //   and real sockets. Core dispatch logic is tested via native.test.ts.
+        // native: uWS bindings, C++ bridge, SO_REUSEPORT cluster — real sockets needed
         'packages/native/src/**',
-        // @axiomify/upload: multipart streaming via busboy, temp file I/O,
-        //   content-type sniffing require real multipart payloads over HTTP.
+        // upload: multipart streaming via busboy — real HTTP needed
         'packages/upload/src/**',
-        // ── Type-only / declarations ─────────────────────────────────────────
+        // Type-only declarations
         'packages/core/src/types.ts',
         'packages/native/src/uws.d.ts',
       ],
@@ -30,11 +45,9 @@ export default defineConfig({
         lines:      95,
         statements: 95,
         functions:  95,
-        // Branch coverage threshold is intentionally lower than line/stmt/fn
-        // coverage. The remaining uncovered branches are defensive fallbacks
-        // (Zod v3 → JSON Schema compat, ?? operators on hot paths, dead-on-
-        // single-module-API Kahn paths). Forcing them to 95% would require
-        // contrived tests that exist only to satisfy the metric.
+        // Branch threshold is lower: remaining uncovered branches are defensive
+        // fallbacks (Zod v3 compat, ?? on hot paths, dead Kahn paths). Forcing
+        // 95% would require contrived tests that exist only to satisfy the metric.
         branches:   85,
       },
       reporter: ['text', 'json', 'html'],
