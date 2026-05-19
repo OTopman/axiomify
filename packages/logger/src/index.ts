@@ -1,5 +1,28 @@
 import { Axiomify } from '@axiomify/core';
-import { Maskify } from 'maskify-ts';
+// ─── Inline PII masker ────────────────────────────────────────────────────────
+// Zero external dependencies. Walks objects/arrays recursively (depth-capped
+// at 32) and replaces any key whose lowercase name contains a sensitive field
+// name with '****'.
+
+const MASK = '****';
+
+function maskData(value: unknown, sensitiveKeys: string[], depth = 0): unknown {
+  if (depth > 32) return value;
+  if (Array.isArray(value))
+    return value.map((item) => maskData(item, sensitiveKeys, depth + 1));
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const lower = k.toLowerCase();
+      out[k] = sensitiveKeys.some((f) => lower.includes(f.toLowerCase()))
+        ? MASK
+        : maskData(v, sensitiveKeys, depth + 1);
+    }
+    return out;
+  }
+  return value;
+}
+
 import pc from 'picocolors';
 
 export interface LoggerOptions {
@@ -58,9 +81,7 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
     if (LEVEL_RANK[level] < LEVEL_RANK[logLevel]) return;
 
     const timestamp = new Date().toISOString();
-    const maskedMeta = Maskify.autoMask(meta, {
-      sensitiveKeys: sensitiveFields,
-    });
+    const maskedMeta = maskData(meta, sensitiveFields) as Record<string, unknown>;
 
     if (beautify) {
       const colorMap = {

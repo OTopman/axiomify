@@ -43,8 +43,7 @@ describe('useSwagger — extended coverage', () => {
     const app = new Axiomify();
     app.route({
       method: 'GET', path: '/users',
-      schema: { response: z.object({ id: z.string() }) },
-      openapi: { tags: ['Users'] },
+      schema: { response: z.object({ id: z.string() }), tags: ['Users'] },
       handler: async (_r, res) => res.send({ id: '1' }),
     });
     useSwagger(app, { info: { title: 'API', version: '2.0.0' } });

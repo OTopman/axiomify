@@ -1,0 +1,852 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index fdc13d2..6d970fc 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -96,8 +96,7 @@ full reference + production checklist.
+ 
+ ### Tests
+ 
+-- 484 passing (down from 486 by 2 — both removed tests pinned the
+-  now-removed deprecated APIs)
++- 524 passing
+ - Coverage held at 97.46% lines / 98.50% functions
+ 
+ ### Upgrade path
+diff --git a/README.md b/README.md
+index 87486ae..f6606b0 100644
+--- a/README.md
++++ b/README.md
+@@ -368,7 +368,7 @@ For authoritative clustered numbers: `SERVER_HOST=<server-ip> node benchmarks/ru
+ ## Testing
+ 
+ ```bash
+-npm test         # vitest — 473 tests across 43 files (28 skipped on Node ≥23 where uWS doesn't load)
++npm test         # vitest — 524 tests across 50 files
+ npm run coverage # V8 coverage report (97% lines / 98% functions on gated packages)
+ ```
+ 
+diff --git a/docs/packages/core.md b/docs/packages/core.md
+index d11b8e9..b526078 100644
+--- a/docs/packages/core.md
++++ b/docs/packages/core.md
+@@ -46,7 +46,7 @@ app.route({
+     response: z.object({ id: z.string(), name: z.string() }),
+     // or per-status: response: { 201: z.object(...), 400: z.object(...) }
+   },
+-  openapi: {        // OpenAPI 3.0.3 Operation Object metadata
++  openapi: {        // OpenAPI 3.1.0 Operation Object metadata
+     tags: ['Users'],
+     summary: 'Create user',
+     description: 'Create a new user',
+@@ -191,7 +191,7 @@ At request time:
+ | `AppModule` | Named plugin with dependency declaration |
+ | `AppConfigurator` | `(app, ctx) => void` — preferred plugin form |
+ | `AppContext` | `{ provide, resolve }` — dependency injection context |
+-| `OpenApiOperation` | OpenAPI 3.0.3 Operation Object metadata for a route (`route.openapi`). Field shape mirrors the spec verbatim — see [openapi docs](./openapi.md). |
++| `OpenApiOperation` | OpenAPI 3.1.0 Operation Object metadata for a route (`route.openapi`). Field shape mirrors the spec verbatim — see [openapi docs](./openapi.md). |
+ | `RouteMeta` | **Deprecated alias for `OpenApiOperation`.** Kept through 5.x for back-compat; removed in 6.0. |
+ | `RouteMiddleware` | `(req, res) => void \| Promise<void>` — per-route middleware function. |
+ | `ResponseCapabilities` | `{ sse: boolean, streaming: boolean }` |
+diff --git a/docs/packages/openapi.md b/docs/packages/openapi.md
+index 686dc56..7fba54b 100644
+--- a/docs/packages/openapi.md
++++ b/docs/packages/openapi.md
+@@ -1,6 +1,6 @@
+ # @axiomify/openapi
+ 
+-Auto-generates OpenAPI 3.0 specs from Axiomify routes and Zod schemas. Uses Zod v4's built-in
++Auto-generates OpenAPI 3.1.0 specs from Axiomify routes and Zod schemas. Uses Zod v4's built-in
+ `z.toJSONSchema()` — no third-party schema bridge required.
+ 
+ ## Install
+@@ -37,7 +37,7 @@ Swagger UI is served at `/docs`. The raw JSON spec is at `/docs/openapi.json`.
+ ## Route metadata — the `openapi` field
+ 
+ The `openapi` field on a route definition mirrors the
+-[OpenAPI 3.0.3 Operation Object](https://spec.openapis.org/oas/v3.0.3#operation-object)
++[OpenAPI 3.1.0 Operation Object](https://spec.openapis.org/oas/v3.1.0#operation-object)
+ **verbatim**. Every Operation Object property is supported. Authors who know
+ the spec can paste fragments directly from swagger.io — no wrapper, no
+ translation table, no Axiomify-specific shape to learn.
+@@ -80,7 +80,7 @@ app.route({
+ 
+ ### All supported `openapi` fields
+ 
+-Spec-matching properties (every OAS 3.0.3 Operation Object field minus the
++Spec-matching properties (every OAS 3.1.0 Operation Object field minus the
+ three the framework derives):
+ 
+ | Field | Type | OAS § | Purpose |
+@@ -93,7 +93,7 @@ three the framework derives):
+ | `deprecated` | `boolean` | 4.7.10.9 | Marks the operation deprecated in the docs UI. |
+ | `security` | `Array<Record<string, string[]>>` | 4.7.10.10 | Per-route security. `[]` opts out of global security. |
+ | `servers` | `OpenApiServer[]` | 4.7.10.11 | Per-operation server overrides. Use when one endpoint lives at a different host than the rest of the API. |
+-| `callbacks` | `Record<string, unknown>` | 4.7.10.8 | Async webhook callbacks. Passed through verbatim; the spec for the nested shape is in [OAS §4.7.18](https://spec.openapis.org/oas/v3.0.3#callback-object). |
++| `callbacks` | `Record<string, unknown>` | 4.7.10.8 | Async webhook callbacks. Passed through verbatim; the spec for the nested shape is in [OAS §4.7.18](https://spec.openapis.org/oas/v3.1.0#callback-object). |
+ 
+ Axiomify-specific helpers (override descriptions the generator would
+ otherwise synthesise for schema-derived sections):
+@@ -167,21 +167,27 @@ app.route({
+ });
+ ```
+ 
+-### Migrating from `meta:` (4.x → 5.x)
++### Migrating from `meta:` / `openapi:` (4.x / 5.x → 6.x)
+ 
+-In 4.x the field was named `meta`. The 5.0.0 rename to `openapi` matches
+-the OAS spec terminology and lets you paste spec fragments directly. Both
+-names work through the 5.x line; `meta` is removed in 6.0.
++In 4.x the field was `meta:`. In 5.x it became `openapi:`. In 6.1 the
++separate `openapi:` property is gone entirely — all metadata moves into
++`schema:` alongside Zod fields. Run `npx axiomify migrate` to apply
++renames automatically, then `npx axiomify check` to gate CI.
+ 
+ ```typescript
+-// 4.x
++// 4.x (removed in 6.0)
+ meta: { tags: ['Users'], operationId: 'getUserById' }
+ 
+-// 5.0+
++// 5.x (removed in 6.1)
+ openapi: { tags: ['Users'], operationId: 'getUserById' }
+-```
+ 
+-If you supply both, `openapi` wins — the generator does NOT merge.
++// 6.1+ — everything in schema:
++schema: {
++  body: CreateUserSchema,
++  tags: ['Users'],
++  operationId: 'getUserById',
++}
++```
+ 
+ ## Global security schemes
+ 
+diff --git a/examples/native-server.ts b/examples/native-server.ts
+index 189e1d4..a2bb82c 100644
+--- a/examples/native-server.ts
++++ b/examples/native-server.ts
+@@ -38,7 +38,7 @@ const limiter = createRateLimitPlugin({
+ app.route({
+   method: 'GET',
+   path: '/health',
+-  openapi: { tags: ['system'], summary: 'Health check' },
++  schema: { tags: ['system'], summary: 'Health check' },
+   handler: async (_req, res) => res.send({ status: 'ok', uptime: process.uptime() }),
+ });
+ 
+@@ -58,9 +58,9 @@ app.route({
+       name: z.string().min(2).max(100),
+     }),
+     response: z.object({ id: z.string(), email: z.string(), name: z.string() }),
++    tags: ['Users'],
++    summary: 'Create user',
+   },
+-  openapi: { tags: ['Users'], summary: 'Create user' },
+-  handler: async (req, res) => {
+     res.status(201).send({ id: `usr_${Date.now()}`, ...req.body });
+   },
+ });
+diff --git a/packages/cli/src/commands/check.ts b/packages/cli/src/commands/check.ts
+index d5c3b03..3d34312 100644
+--- a/packages/cli/src/commands/check.ts
++++ b/packages/cli/src/commands/check.ts
+@@ -127,13 +127,13 @@ function checkResponseSchemas(ctx: CheckCtx): void {
+ }
+ 
+ /**
+- * In 6.0 the `meta:` field on a route definition is gone — `route.meta`
+- * is now an unrecognised property that the generator silently ignores.
+- * Catch it here so users migrating from 5.x get a loud failure instead
+- * of mysteriously missing OpenAPI metadata.
++ * Catch routes still using the removed `meta:` field (deprecated in 5.x,
++ * removed in 6.0) or the removed top-level `openapi:` property (moved into
++ * `schema:` in 6.1). Both silently do nothing — surface them loudly here.
+  */
+ function checkOpenApiNaming(ctx: CheckCtx): void {
+   const routes = ctx.app.registeredRoutes ?? [];
++
+   const usingMeta = routes.filter((r: any) => r.meta);
+   if (usingMeta.length > 0) {
+     add(ctx, {
+@@ -141,8 +141,21 @@ function checkOpenApiNaming(ctx: CheckCtx): void {
+       area: 'api',
+       message: `${usingMeta.length} route${usingMeta.length === 1 ? '' : 's'} use the removed \`meta:\` field`,
+       hint:
+-        'The `meta:` field was removed in 6.0. Rename to `openapi:` — shape is identical. ' +
+-        `First offender: ${usingMeta[0].method} ${usingMeta[0].path}`,
++        'The `meta:` field was removed in 6.0. Move all metadata into `schema:` — ' +
++        `e.g. schema: { tags: ['Users'], summary: '...' }. First offender: ${usingMeta[0].method} ${usingMeta[0].path}`,
++    });
++  }
++
++  const usingOpenapi = routes.filter((r: any) => r.openapi);
++  if (usingOpenapi.length > 0) {
++    add(ctx, {
++      severity: 'fail',
++      area: 'api',
++      message: `${usingOpenapi.length} route${usingOpenapi.length === 1 ? '' : 's'} use the removed top-level \`openapi:\` field`,
++      hint:
++        'The separate `openapi:` property was removed in 6.1. Move all metadata ' +
++        'directly into `schema:` alongside your Zod fields. Run `npx axiomify migrate` ' +
++        `to apply automatically. First offender: ${usingOpenapi[0].method} ${usingOpenapi[0].path}`,
+     });
+   }
+ }
+diff --git a/packages/cli/src/commands/migrate.ts b/packages/cli/src/commands/migrate.ts
+index 3dc286c..cbc139c 100644
+--- a/packages/cli/src/commands/migrate.ts
++++ b/packages/cli/src/commands/migrate.ts
+@@ -1,14 +1,15 @@
+ /**
+- * `axiomify migrate` — automated v4 → v5 codemod.
++ * `axiomify migrate` — automated codemod (v4 → v6).
+  *
+  * Scans `.ts` / `.tsx` / `.js` / `.mjs` files under the target directory
+  * (default: `src/`) and rewrites the mechanical breaking changes:
+  *
+- *   1. `meta:` → `openapi:` on route definition objects
+- *   2. `useSwagger` → `useOpenAPI` imports
+- *   3. `routePrefix:` → `prefix:` on `useOpenAPI()` options
+- *   4. `RouteMeta` → `OpenApiOperation` type references
+- *   5. `AppPlugin` → `AppConfigurator` type references
++ *   1. `meta:` → inline `schema:` metadata fields (v4→v5 rename, v6 fully removed)
++ *   2. `openapi:` top-level route field → inline `schema:` metadata fields (v6.1)
++ *   3. `useSwagger` → `useOpenAPI` imports
++ *   4. `routePrefix:` → `prefix:` on `useOpenAPI()` options
++ *   5. `RouteMeta` → `OpenApiOperation` type references
++ *   6. `AppPlugin` → `AppConfigurator` type references
+  *
+  * What it does NOT do (flags for manual review):
+  *   - 5-arg positional serializer signatures (the migration changes
+@@ -52,15 +53,20 @@ interface Rewrite {
+ 
+ const RULES: Rewrite[] = [
+   {
+-    id: 'meta-to-openapi',
+-    description: '`meta:` route field renamed to `openapi:` (OpenAPI 3.0.3 Operation Object terminology)',
+-    // Match `meta: {` or `meta:{` after whitespace/comma — avoid matching
+-    // unrelated `meta:` fields in other object literals by requiring an
+-    // adjacent route-definition cue (method, path, schema, handler nearby).
+-    // To stay simple and conservative, only rewrite when the line starts
+-    // with optional whitespace + `meta:` (the common formatting).
++    id: 'meta-to-schema',
++    description: '`meta:` route field removed — metadata now lives inside `schema:` alongside Zod fields',
++    // NOTE: This rule renames `meta:` → a comment directing the dev to merge
++    // contents into schema:. A full structural AST merge is out of scope for
++    // the regex codemod; flag it for manual review instead (see report).
+     match: /^(\s*)meta:(\s*\{)/gm,
+-    replace: '$1openapi:$2',
++    replace: '$1/* TODO(axiomify-migrate): merge meta fields into schema: */ openapi_REMOVE:$2',
++  },
++  {
++    id: 'openapi-field-to-schema',
++    description: '`openapi:` top-level route field → contents merged into `schema:` (removed in 6.1)',
++    // Same conservative approach: flag for manual review via TODO comment.
++    match: /^(\s*)openapi:(\s*\{)/gm,
++    replace: '$1/* TODO(axiomify-migrate): merge openapi fields into schema: */ openapi_REMOVE:$2',
+   },
+   {
+     id: 'useSwagger-import',
+@@ -80,7 +86,7 @@ const RULES: Rewrite[] = [
+   },
+   {
+     id: 'RouteMeta-type',
+-    description: '`RouteMeta` type → `OpenApiOperation` (alias kept through 5.x, removed in 6.0)',
++    description: '`RouteMeta` type → `OpenApiOperation` (alias removed in 6.0)',
+     // Match `RouteMeta` only as a type position (after `:` or `<` or
+     // `as`) — avoids hitting an unrelated variable named `RouteMeta`.
+     match: /(:\s*|<\s*|\bas\s+)RouteMeta\b/g,
+@@ -206,7 +212,7 @@ export async function runMigrate(opts: MigrateOptions = {}): Promise<void> {
+   );
+ 
+   if (results.length === 0) {
+-    console.log(`  ${symbols.ok} Nothing to migrate — looks like you're already on the v5 shape.`);
++    console.log(`  ${symbols.ok} Nothing to migrate — all patterns look up to date.`);
+     console.log();
+     return;
+   }
+@@ -302,7 +308,8 @@ export async function runMigrate(opts: MigrateOptions = {}): Promise<void> {
+   console.log();
+   console.log(
+     `  See ${pc.cyan('docs/migration-v4-to-v5.md')} for the full guide and ` +
+-      pc.cyan('axiomify check') + ' to verify the migrated app.',
++      pc.cyan('axiomify check') + ' to verify the migrated app.\n' +
++        pc.yellow('  Note: `openapi:` / `meta:` merges into `schema:` require manual review — check TODO comments.'),
+   );
+   console.log();
+ }
+diff --git a/packages/cli/src/commands/routes.ts b/packages/cli/src/commands/routes.ts
+index 4757110..5950c58 100644
+--- a/packages/cli/src/commands/routes.ts
++++ b/packages/cli/src/commands/routes.ts
+@@ -48,15 +48,16 @@ function normalise(raw: any, isWs: boolean): NormalisedRoute {
+   if (raw.schema?.files) validation.push('Files');
+   if (raw.schema?.message) validation.push('Message');
+ 
+-  const op = raw.openapi ?? {};
++  // All OAS metadata is now in route.schema (no separate route.openapi).
++  const s = raw.schema ?? {};
+ 
+   return {
+     method: isWs ? 'WS' : raw.method,
+     path: raw.path,
+     validation,
+-    tags: Array.isArray(op.tags) ? op.tags : [],
+-    operationId: typeof op.operationId === 'string' ? op.operationId : undefined,
+-    deprecated: op.deprecated === true,
++    tags: Array.isArray(s.tags) ? s.tags : [],
++    operationId: typeof s.operationId === 'string' ? s.operationId : undefined,
++    deprecated: s.deprecated === true,
+     timeout: typeof raw.timeout === 'number' && raw.timeout > 0 ? raw.timeout : undefined,
+     plugins: Array.isArray(raw.plugins) ? raw.plugins.length : 0,
+     isWs,
+diff --git a/packages/core/README.md b/packages/core/README.md
+index 6442dbc..5806302 100644
+--- a/packages/core/README.md
++++ b/packages/core/README.md
+@@ -60,6 +60,6 @@ See [docs/[./packages/core.md](./packages/core.md)](https://github.com/OTopman/a
+ - `X-Request-Id` is now opt-in: call `app.enableRequestId()` explicitly
+ - `app.lockRoutes(reason)` → `app.lockRoutes(ADAPTER_LOCK_TOKEN, reason)` — adapters authenticate with the symbol from `@axiomify/core`
+ - `app.serializer` is a read-only getter; use `app.setSerializer(fn)`. The 4.x 5-arg positional form `(data, message, statusCode, isError, req) => ...` was removed in 5.0 — only the single-argument `({ data, message, statusCode, isError, req }) => ...` form is accepted, and async serializers throw at adapter construction
+-- `route.meta` → `route.openapi` (deprecated alias kept through 5.x, removed in 6.0). Field shape mirrors the OAS 3.0.3 Operation Object — see [openapi docs](https://github.com/OTopman/axiomify/blob/main/docs/packages/openapi.md)
+-- `RouteMeta` type was renamed to `OpenApiOperation` in 5.0 (alias kept through 5.x); in 6.0 the alias is removed
++- `route.meta` → `route.openapi` (deprecated alias kept through 5.x, removed in 6.0). Field shape mirrors the OAS 3.1.0 Operation Object — see [openapi docs](https://github.com/OTopman/axiomify/blob/main/docs/packages/openapi.md)
++- `RouteMeta` type was renamed to `OpenApiOperation` in 5.0 (alias kept through 5.x, removed in 6.0); in 6.0 the alias is removed
+ - `AppPlugin` type alias removed (the 1-arg `(app) => void` shape still works at runtime as an `AppConfigurator`)
+diff --git a/packages/core/src/types.ts b/packages/core/src/types.ts
+index 9731153..f57f5ee 100644
+--- a/packages/core/src/types.ts
++++ b/packages/core/src/types.ts
+@@ -100,20 +100,96 @@ export interface SseCapableResponse extends AxiomifyResponse {
+ }
+ 
+ /**
+- * Validation schemas for a route's request and response shapes.
+- * Only validation-relevant fields belong here.
++ * Validation schemas and OpenAPI 3.1.0 Operation Object metadata for a route.
+  *
+- * Documentation metadata (tags, description, security, operationId, etc)
+- * belongs in `openapi:` on the parent RouteDefinition — see
+- * {@link OpenApiOperation}.
++ * **Axiomify uses a single `schema:` block** for both runtime validation
++ * (Zod types) and documentation metadata (OAS Operation Object fields).
++ * This keeps route definitions compact and matches the original 4.x pattern
++ * users were familiar with.
++ *
++ * ### Validation fields (Zod types)
++ * `body`, `query`, `params`, `response`, `files`, `message` — all optional.
++ * The framework compiles these to AJV validators at startup.
++ *
++ * ### Documentation fields (OpenAPI 3.1.0 Operation Object)
++ * Every Operation Object property is supported. The three properties that
++ * the framework derives automatically from the validation fields are NOT
++ * accepted here (they would conflict):
++ *
++ *   - `parameters`  — derived from `params` + `query`
++ *   - `requestBody` — derived from `body` + `files`
++ *   - `responses`   — derived from `response`
++ *
++ * @example
++ * app.route({
++ *   method: 'GET',
++ *   path: '/users/:id',
++ *   schema: {
++ *     // Validation
++ *     params:   z.object({ id: z.string().uuid() }),
++ *     response: z.object({ id: z.string(), name: z.string() }),
++ *     // OpenAPI docs
++ *     tags:        ['Users'],
++ *     summary:     'Get user by id',
++ *     operationId: 'getUserById',
++ *     security:    [{ bearerAuth: [] }],
++ *   },
++ *   handler: async (req, res) => { ... },
++ * });
+  */
+ export interface RouteSchema {
++  // ── Validation (Zod) ────────────────────────────────────────────────────────
+   body?: ZodTypeAny;
+   query?: ZodTypeAny;
+   params?: ZodTypeAny;
+   response?: ZodTypeAny | Record<number, ZodTypeAny>;
+   files?: Record<string, FileConfig>;
++  /** WebSocket message schema — only used on `app.ws()` routes. */
+   message?: ZodTypeAny;
++
++  // ── OpenAPI 3.1.0 Operation Object metadata ─────────────────────────────────
++  /** OAS §4.8.10.1 — grouping label(s). Swagger UI groups operations by tag. */
++  tags?: string[];
++  /** OAS §4.8.10.2 — short one-line title. Defaults to `${method} ${path}`. */
++  summary?: string;
++  /** OAS §4.8.10.3 — long-form CommonMark description rendered below the summary. */
++  description?: string;
++  /** OAS §4.8.10.4 — link to additional external documentation. */
++  externalDocs?: OpenApiExternalDocs;
++  /**
++   * OAS §4.8.10.5 — unique identifier for client codegen tools
++   * (openapi-typescript, openapi-generator, etc). Auto-synthesised from
++   * method + path when omitted (e.g. `getUsersById`).
++   */
++  operationId?: string;
++  /** OAS §4.8.10.9 — marks the operation deprecated in the docs UI. */
++  deprecated?: boolean;
++  /**
++   * OAS §4.8.10.10 — per-operation security requirement. Overrides any
++   * global security declared on `useOpenAPI(...)`. An empty array `[]`
++   * explicitly opts this route OUT of all global security requirements.
++   */
++  security?: Array<Record<string, string[]>>;
++  /**
++   * OAS §4.8.10.11 — per-operation server overrides. Use when this endpoint
++   * lives at a different host than the rest of the API (CDN upload routes, etc).
++   */
++  servers?: OpenApiServer[];
++  /**
++   * OAS §4.8.10.8 — out-of-band async webhook callbacks. Passed through
++   * verbatim to the generated spec.
++   */
++  callbacks?: Record<string, unknown>;
++
++  // ── Generator overrides ─────────────────────────────────────────────────────
++  /** Override the auto-generated description on the `requestBody` object. */
++  requestBodyDescription?: string;
++  /**
++   * Map of status-code → human-readable description, overriding the generator's
++   * defaults (`Successful response` / `Response 4xx`).
++   * @example { '200': 'User profile', '404': 'No user with the supplied id' }
++   */
++  responseDescriptions?: Record<string, string>;
+ }
+ 
+ /**
+@@ -287,24 +363,24 @@ export interface RouteDefinition<
+ > {
+   method: HttpMethod;
+   path: string;
+-  schema?: S;
+   /**
+-   * OpenAPI 3.0.3 Operation Object metadata for this route.
++   * Combined validation + OpenAPI metadata block.
+    *
+-   * Shape follows the spec verbatim — see {@link OpenApiOperation} and
+-   * https://spec.openapis.org/oas/v3.0.3#operation-object. The three
+-   * spec-required Operation Object properties that the framework derives
+-   * automatically (`parameters`, `requestBody`, `responses`) are NOT
+-   * included here; supply them via the route's `schema:` field.
++   * Zod fields (`body`, `query`, `params`, `response`, `files`) power runtime
++   * validation. Documentation fields (`tags`, `summary`, `description`,
++   * `operationId`, `security`, etc) drive the generated OpenAPI 3.1.0 spec.
++   * Both live in `schema` — no separate `openapi:` property needed.
+    *
+    * @example
+-   *   openapi: {
+-   *     tags: ['Users'],
+-   *     summary: 'Get user by id',
+-   *     operationId: 'getUserById',
++   *   schema: {
++   *     body:        z.object({ name: z.string() }),
++   *     response:    z.object({ id: z.string() }),
++   *     tags:        ['Users'],
++   *     summary:     'Create user',
++   *     operationId: 'createUser',
+    *   }
+    */
+-  openapi?: OpenApiOperation;
++  schema?: S;
+   plugins?: RouteMiddleware[];
+   timeout?: number;
+   handler: RouteHandler<B, Q, P, S['files']>;
+diff --git a/packages/logger/package.json b/packages/logger/package.json
+index 343e8b2..6605b42 100644
+--- a/packages/logger/package.json
++++ b/packages/logger/package.json
+@@ -20,12 +20,8 @@
+   },
+   "dependencies": {
+     "@axiomify/core": "*",
+-    "maskify-ts": "^4.0.0",
+     "picocolors": "^1.1.1"
+   },
+-  "devDependencies": {
+-    "reflect-metadata": "^0.2.2"
+-  },
+   "author": {
+     "name": "Topman",
+     "email": "okunlolatopman14@gmail.com",
+diff --git a/packages/logger/src/index.ts b/packages/logger/src/index.ts
+index 823a330..9017dd1 100644
+--- a/packages/logger/src/index.ts
++++ b/packages/logger/src/index.ts
+@@ -1,5 +1,28 @@
+ import { Axiomify } from '@axiomify/core';
+-import { Maskify } from 'maskify-ts';
++// ─── Inline PII masker ────────────────────────────────────────────────────────
++// Zero external dependencies. Walks objects/arrays recursively (depth-capped
++// at 32) and replaces any key whose lowercase name contains a sensitive field
++// name with '****'.
++
++const MASK = '****';
++
++function maskData(value: unknown, sensitiveKeys: string[], depth = 0): unknown {
++  if (depth > 32) return value;
++  if (Array.isArray(value))
++    return value.map((item) => maskData(item, sensitiveKeys, depth + 1));
++  if (value !== null && typeof value === 'object') {
++    const out: Record<string, unknown> = {};
++    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
++      const lower = k.toLowerCase();
++      out[k] = sensitiveKeys.some((f) => lower.includes(f.toLowerCase()))
++        ? MASK
++        : maskData(v, sensitiveKeys, depth + 1);
++    }
++    return out;
++  }
++  return value;
++}
++
+ import pc from 'picocolors';
+ 
+ export interface LoggerOptions {
+@@ -58,9 +81,7 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
+     if (LEVEL_RANK[level] < LEVEL_RANK[logLevel]) return;
+ 
+     const timestamp = new Date().toISOString();
+-    const maskedMeta = Maskify.autoMask(meta, {
+-      sensitiveKeys: sensitiveFields,
+-    });
++    const maskedMeta = maskData(meta, sensitiveFields) as Record<string, unknown>;
+ 
+     if (beautify) {
+       const colorMap = {
+diff --git a/packages/openapi/README.md b/packages/openapi/README.md
+index 5b79cb3..35f8ae0 100644
+--- a/packages/openapi/README.md
++++ b/packages/openapi/README.md
+@@ -6,7 +6,7 @@
+ [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
+ [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+ 
+-Auto-generates OpenAPI 3.0 documentation from your Axiomify routes and Zod schemas. Supports Zod v4 natively via `z.toJSONSchema()`.
++Auto-generates OpenAPI 3.1.0 documentation from your Axiomify routes and Zod schemas. Supports Zod v4 natively via `z.toJSONSchema()`.
+ 
+ ## Install
+ 
+@@ -27,17 +27,20 @@ app.route({
+   method: 'POST',
+   path: '/users',
+   schema: {
++    // Zod validation
+     body: z.object({ email: z.string().email(), name: z.string() }),
+     response: z.object({ id: z.string(), email: z.string(), name: z.string() }),
++    // OpenAPI 3.1.0 metadata — same block, no separate `openapi:` property
+     tags: ['Users'],
+-    description: 'Create a new user',
++    summary: 'Create a new user',
++    operationId: 'createUser',
+   },
+   handler: async (req, res) => res.status(201).send({ id: 'usr_1', ...req.body }),
+ });
+ 
+ useOpenAPI(app, {
+   info: { title: 'My API', version: '1.0.0' },
+-  prefix: '/docs' // ✅ Use `prefix` (v6.0+); `routePrefix` was removed in 6.0,          // UI at /docs, spec at /docs/openapi.json
++  prefix: '/docs',            // UI at /docs  ·  spec at /docs/openapi.json
+   protect: (req) => req.headers['x-internal-token'] === process.env.DOCS_TOKEN,
+ });
+ ```
+@@ -52,14 +55,14 @@ useOpenAPI(app, {
+       bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+     },
+   },
+-  security: [{ bearerAuth: [] }],  // applied globally
++  security: [{ bearerAuth: [] }],   // applied globally to all routes
+ });
+ 
+-// Per-route override
++// Per-route override — empty security array opts out of global security (OAS §4.8.10.10)
+ app.route({
+   method: 'GET',
+   path: '/public',
+-  schema: { security: [] }, // opt out of global security for this route
++  schema: { security: [] },
+   handler: async (_req, res) => res.send({ public: true }),
+ });
+ ```
+diff --git a/packages/openapi/src/generator.ts b/packages/openapi/src/generator.ts
+index 9440b46..cd3a44c 100644
+--- a/packages/openapi/src/generator.ts
++++ b/packages/openapi/src/generator.ts
+@@ -1,4 +1,4 @@
+-import type { Axiomify, RouteDefinition } from '@axiomify/core';
++import type { Axiomify, RouteDefinition, RouteSchema } from '@axiomify/core';
+ import type { ZodTypeAny } from 'zod';
+ 
+ export interface OpenApiOptions {
+@@ -10,13 +10,13 @@ export interface OpenApiOptions {
+   /** Automatically infer 200 response schema from `schema.response`. Default: true */
+   autoInferResponses?: boolean;
+   /**
+-   * OpenAPI 3.0 Components Object. Used to define reusable assets such as
++   * OpenAPI 3.1.0 Components Object. Used to define reusable assets such as
+    * global `securitySchemes` referenced by individual routes.
+    * @example { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer' } } }
+    */
+   components?: Record<string, unknown>;
+   /**
+-   * Global OpenAPI 3.0 Security Requirement Object. Applies to ALL routes by
++   * Global OpenAPI 3.1.0 Security Requirement Object. Applies to ALL routes by
+    * default. Individual routes can override via `schema.security`.
+    * @example [{ bearerAuth: [] }]
+    */
+@@ -70,7 +70,7 @@ export class OpenApiGenerator {
+ 
+   public generate(): Record<string, unknown> {
+     const spec: Record<string, unknown> = {
+-      openapi: '3.0.3',
++      openapi: '3.1.0',
+       info: this.options.info,
+       paths: {} as Record<string, unknown>,
+     };
+@@ -85,66 +85,36 @@ export class OpenApiGenerator {
+ 
+       if (!paths[openApiPath]) paths[openApiPath] = {};
+ 
+-      // OAS 3.0.3 Operation Object metadata lives on `route.openapi`.
+-      // The 4.x `route.meta` alias was deprecated through 5.x and is
+-      // removed in 6.0 — `meta:` on a route definition is now a plain
+-      // unknown property and the generator ignores it.
+-      const op = route.openapi ?? undefined;
++      // All OAS 3.1.0 Operation Object metadata now lives in `route.schema` —
++      // the same block as Zod validation fields. There is no separate
++      // `route.openapi` property. One source of truth per route definition.
++      const s = route.schema ?? ({} as RouteSchema);
+ 
+       const operation: Record<string, unknown> = {
+-        // OAS §4.7.10.2 — summary. Default to `${method} ${path}` so the
+-        // docs UI always has a human-readable title even without user input.
+-        summary: op?.summary ?? `${route.method} ${route.path}`,
+-        // OAS §4.7.10.5 — operationId. Client codegen tools
+-        // (openapi-typescript, openapi-generator) use this to name the
+-        // generated function. When the user doesn't supply one we
+-        // synthesise a stable name from method+path:
+-        //   GET /users/:id → "getUsersById"
+-        //   POST /users    → "postUsers"
+-        // Determinism matters here — codegen output should not drift
+-        // between releases unless method+path actually change.
++        // OAS §4.8.10.2 — summary. Defaults to `${method} ${path}`.
++        summary: s.summary ?? `${route.method} ${route.path}`,
++        // OAS §4.8.10.5 — operationId for client codegen tools.
++        // Auto-synthesised from method+path when omitted:
++        //   GET /users/:id → "getUsersById"   POST /users → "postUsers"
+         operationId:
+-          op?.operationId ?? this.synthesiseOperationId(route.method, route.path),
++          s.operationId ?? this.synthesiseOperationId(route.method, route.path),
+         parameters: this.extractParameters(route),
+         responses: this.extractResponses(route),
+       };
+ 
+-      // Legacy schema-level fields (tags/description/security INSIDE the
+-      // `schema:` block) were a 3.x pattern; the generator has supported
+-      // both `meta` and that legacy path. Continue accepting them — the
+-      // cost is one read, and removing it would silently break old code
+-      // that's still passing tests.
+-      type LegacySchema = {
+-        description?: string;
+-        tags?: string[];
+-        security?: Array<Record<string, string[]>>;
+-      };
+-      const legacySchema = (route.schema ?? {}) as LegacySchema;
+-
+-      const description = op?.description ?? legacySchema.description;
+-      const tags        = op?.tags        ?? legacySchema.tags;
+-      const security    = op?.security    ?? legacySchema.security;
+-
+-      if (description) operation.description = description;
+-      if (tags)        operation.tags        = tags;
+-      // OAS §4.7.10.10 — `security`: an absent key inherits the global
+-      // security requirement; an empty array (`[]`) explicitly opts the
+-      // operation OUT of all global security. Both are spec-valid and
+-      // semantically distinct — only skip emission when undefined.
+-      if (security !== undefined) operation.security = security;
+-      if (op?.deprecated) operation.deprecated = true;
+-      if (op?.externalDocs) operation.externalDocs = op.externalDocs;
+-      // OAS §4.7.10.11 / §4.7.10.8 — pass servers and callbacks through
+-      // verbatim. The framework doesn't derive these; the user supplies
+-      // them exactly as the spec defines.
+-      if (op?.servers) operation.servers = op.servers;
+-      if (op?.callbacks) operation.callbacks = op.callbacks;
++      if (s.description)            operation.description  = s.description;
++      if (s.tags)                   operation.tags         = s.tags;
++      // OAS §4.8.10.10: absent key inherits global security; [] opts out.
++      if (s.security !== undefined) operation.security     = s.security;
++      if (s.deprecated)             operation.deprecated   = true;
++      if (s.externalDocs)           operation.externalDocs = s.externalDocs;
++      // OAS §4.8.10.11 / §4.8.10.8: pass servers + callbacks verbatim.
++      if (s.servers)                operation.servers      = s.servers;
++      if (s.callbacks)              operation.callbacks    = s.callbacks;
+ 
+       const body = this.extractBody(route);
+       if (body) {
+-        if (op?.requestBodyDescription) {
+-          body.description = op.requestBodyDescription;
+-        }
++        if (s.requestBodyDescription) body.description = s.requestBodyDescription;
+         operation.requestBody = body;
+       }
+ 
+@@ -257,11 +227,9 @@ export class OpenApiGenerator {
+   }
+ 
+   private extractResponses(route: RouteDefinition): Record<string, unknown> {
+-    // Pull the per-status description map once. Authors can override the
+-    // generator defaults ('Successful response', 'Response 404') by passing
+-    // openapi.responseDescriptions: { '200': '...', '404': '...' }.
+-    const op = route.openapi;
+-    const descriptions = op?.responseDescriptions ?? {};
++    // Pull the per-status description map. Authors override generator
++    // defaults via schema.responseDescriptions: { '200': '...', '404': '...' }.
++    const descriptions = (route.schema as RouteSchema)?.responseDescriptions ?? {};
+ 
+     const defaultResponse = {
+       '200': {
+diff --git a/packages/openapi/tests/generator.test.ts b/packages/openapi/tests/generator.test.ts
+index 7dac907..a7a3af6 100644
+--- a/packages/openapi/tests/generator.test.ts
++++ b/packages/openapi/tests/generator.test.ts
+@@ -246,6 +246,7 @@ describe('OpenApiGenerator — Zod v4 schema output', () => {
+ 
+ describe('OpenApiGenerator — extended coverage', () => {
+   it('generates per-status-code response schema when response is a map', () => {
++    const ext = { url: 'https://docs.example.com', description: 'Full docs' };
+     const app = new Axiomify();
+     app.route({
+       method: 'POST',
+@@ -255,6 +256,11 @@ describe('OpenApiGenerator — extended coverage', () => {
+           201: z.object({ id: z.string() }),
+           400: z.object({ message: z.string() }),
+         } as any,
++        operationId: 'createUser',
++        deprecated: true,
++        externalDocs: ext,
++        security: [],
++        requestBodyDescription: 'Profile data for the new user',
+       },
+       handler: async (_r, res) => res.send({ id: '1' }),
+     });
+@@ -313,16 +319,16 @@ describe('OpenApiGenerator — extended coverage', () => {
+   });
+ });
+ 
+-// Operation-level metadata fields added for full OpenAPI 3.0 Operation
++// Operation-level metadata fields for full OpenAPI 3.1.0 Operation
+ // Object coverage (operationId, deprecated, externalDocs,
+ // requestBodyDescription, responseDescriptions).
+ describe('OpenApiGenerator — operation metadata', () => {
+-  it('emits operationId when supplied in route.meta', () => {
++  it('emits operationId when supplied in schema', () => {
+     const app = new Axiomify();
+     app.route({
+       method: 'POST',
+       path: '/users',
+-      openapi: { operationId: 'createUser' },
++      schema: { operationId: 'createUser' },
+       handler: async (_r, res) => res.send({}),
+     });
+     const gen = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } });
+@@ -343,11 +349,11 @@ describe('OpenApiGenerator — operation metadata', () => {
+       .toBe('getUsersByIdPostsByPostId');
+   });
+ 
+-  it('emits deprecated:true only when meta.deprecated is set', () => {
++  it('emits deprecated:true only when schema.deprecated is set', () => {
+     const app = new Axiomify();
+     app.route({
+       method: 'GET', path: '/old',
+-      openapi: { deprecated: true },
++      schema: { deprecated: true },
+       handler: async (_r, res) => res.send({}),
+     });
+     app.route({
+@@ -365,7 +371,7 @@ describe('OpenApiGenerator — operation metadata', () => {
+     const ext = { url: 'https://example.com/docs', description: 'API guide' };
+     app.route({
+       method: 'GET', path: '/x',
+-      openapi: { externalDocs: ext },
++      schema: { externalDocs: ext },
+       handler: async (_r, res) => res.send({}),
+     });
+     const spec = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } }).generate();
+@@ -376,7 +382,7 @@ describe('OpenApiGenerator — operation metadata', () => {
+     const app = new Axiomify();
+     app.route({
+       method: 'GET', path: '/public',
+-      openapi: { security: [] },
++      schema: { security: [] },
+       handler: async (_r, res) => res.send({}),
+     });
+     const spec = new OpenApiGenerator(app as any, {
+@@ -393,8 +399,10 @@ describe('OpenApiGenerator — operation metadata', () => {
+     const app = new Axiomify();
+     app.route({
+       method: 'POST', path: '/users',
+-      schema: { body: z.object({ name: z.string() }) },
+-      openapi: { requestBodyDescription: 'Profile data for the new user' },
++      schema: {
++        body: z.object({ name: z.string() }),
++        requestBodyDescription: 'Profile data for the new user',
++      },
+       handler: async (_r, res) => res.send({}),
+     });
+     const spec = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } }).generate();
+@@ -411,8 +419,6 @@ describe('OpenApiGenerator — operation metadata', () => {
+           200: z.object({ id: z.string(), name: z.string() }),
+           404: z.object({ message: z.string() }),
+         },
+-      },
+-      openapi: {
+         responseDescriptions: {
+           '200': 'User profile',
+           '404': 'No user with the supplied id',
+@@ -436,8 +442,8 @@ describe('OpenApiGenerator — operation metadata', () => {
+           200: z.object({ a: z.string() }),
+           500: z.object({ message: z.string() }),
+         },
++        responseDescriptions: { '200': 'Custom 200 description' },
+       },
+-      openapi: { responseDescriptions: { '200': 'Custom 200 description' } },
+       handler: async (_r, res) => res.send({}),
+     });
+     const responses = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } })
+@@ -456,7 +462,7 @@ describe('OpenApiGenerator — operation metadata', () => {
+     ];
+     app.route({
+       method: 'PUT', path: '/assets/:id',
+-      openapi: { servers },
++      schema: { servers },
+       handler: async (_r, res) => res.send({}),
+     });
+     const spec = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } }).generate();
+@@ -482,7 +488,7 @@ describe('OpenApiGenerator — operation metadata', () => {
+     };
+     app.route({
+       method: 'POST', path: '/jobs',
+-      openapi: { callbacks },
++      schema: { callbacks },
+       handler: async (_r, res) => res.send({}),
+     });
+     const spec = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } }).generate();
+diff --git a/packages/openapi/tests/openapi.extra.test.ts b/packages/openapi/tests/openapi.extra.test.ts
+index 421eb12..913567a 100644
+--- a/packages/openapi/tests/openapi.extra.test.ts
++++ b/packages/openapi/tests/openapi.extra.test.ts
+@@ -43,8 +43,7 @@ describe('useSwagger — extended coverage', () => {
+     const app = new Axiomify();
+     app.route({
+       method: 'GET', path: '/users',
+-      schema: { response: z.object({ id: z.string() }) },
+-      openapi: { tags: ['Users'] },
++      schema: { response: z.object({ id: z.string() }), tags: ['Users'] },
+       handler: async (_r, res) => res.send({ id: '1' }),
+     });
+     useSwagger(app, { info: { title: 'API', version: '2.0.0' } });

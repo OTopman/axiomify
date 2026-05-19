@@ -38,7 +38,7 @@ const limiter = createRateLimitPlugin({
 app.route({
   method: 'GET',
   path: '/health',
-  openapi: { tags: ['system'], summary: 'Health check' },
+  schema: { tags: ['system'], summary: 'Health check' },
   handler: async (_req, res) => res.send({ status: 'ok', uptime: process.uptime() }),
 });
 
@@ -58,9 +58,9 @@ app.route({
       name: z.string().min(2).max(100),
     }),
     response: z.object({ id: z.string(), email: z.string(), name: z.string() }),
+    tags: ['Users'],
+    summary: 'Create user',
   },
-  openapi: { tags: ['Users'], summary: 'Create user' },
-  handler: async (req, res) => {
     res.status(201).send({ id: `usr_${Date.now()}`, ...req.body });
   },
 });

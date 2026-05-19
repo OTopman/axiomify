@@ -1,14 +1,15 @@
 /**
- * `axiomify migrate` — automated v4 → v5 codemod.
+ * `axiomify migrate` — automated codemod (v4 → v6).
  *
  * Scans `.ts` / `.tsx` / `.js` / `.mjs` files under the target directory
  * (default: `src/`) and rewrites the mechanical breaking changes:
  *
- *   1. `meta:` → `openapi:` on route definition objects
- *   2. `useSwagger` → `useOpenAPI` imports
- *   3. `routePrefix:` → `prefix:` on `useOpenAPI()` options
- *   4. `RouteMeta` → `OpenApiOperation` type references
- *   5. `AppPlugin` → `AppConfigurator` type references
+ *   1. `meta:` → inline `schema:` metadata fields (v4→v5 rename, v6 fully removed)
+ *   2. `openapi:` top-level route field → inline `schema:` metadata fields (v6.1)
+ *   3. `useSwagger` → `useOpenAPI` imports
+ *   4. `routePrefix:` → `prefix:` on `useOpenAPI()` options
+ *   5. `RouteMeta` → `OpenApiOperation` type references
+ *   6. `AppPlugin` → `AppConfigurator` type references
  *
  * What it does NOT do (flags for manual review):
  *   - 5-arg positional serializer signatures (the migration changes
@@ -52,15 +53,20 @@ interface Rewrite {
 
 const RULES: Rewrite[] = [
   {
-    id: 'meta-to-openapi',
-    description: '`meta:` route field renamed to `openapi:` (OpenAPI 3.0.3 Operation Object terminology)',
-    // Match `meta: {` or `meta:{` after whitespace/comma — avoid matching
-    // unrelated `meta:` fields in other object literals by requiring an
-    // adjacent route-definition cue (method, path, schema, handler nearby).
-    // To stay simple and conservative, only rewrite when the line starts
-    // with optional whitespace + `meta:` (the common formatting).
+    id: 'meta-to-schema',
+    description: '`meta:` route field removed — metadata now lives inside `schema:` alongside Zod fields',
+    // NOTE: This rule renames `meta:` → a comment directing the dev to merge
+    // contents into schema:. A full structural AST merge is out of scope for
+    // the regex codemod; flag it for manual review instead (see report).
     match: /^(\s*)meta:(\s*\{)/gm,
-    replace: '$1openapi:$2',
+    replace: '$1/* TODO(axiomify-migrate): merge meta fields into schema: */ openapi_REMOVE:$2',
+  },
+  {
+    id: 'openapi-field-to-schema',
+    description: '`openapi:` top-level route field → contents merged into `schema:` (removed in 6.1)',
+    // Same conservative approach: flag for manual review via TODO comment.
+    match: /^(\s*)openapi:(\s*\{)/gm,
+    replace: '$1/* TODO(axiomify-migrate): merge openapi fields into schema: */ openapi_REMOVE:$2',
   },
   {
     id: 'useSwagger-import',
@@ -80,7 +86,7 @@ const RULES: Rewrite[] = [
   },
   {
     id: 'RouteMeta-type',
-    description: '`RouteMeta` type → `OpenApiOperation` (alias kept through 5.x, removed in 6.0)',
+    description: '`RouteMeta` type → `OpenApiOperation` (alias removed in 6.0)',
     // Match `RouteMeta` only as a type position (after `:` or `<` or
     // `as`) — avoids hitting an unrelated variable named `RouteMeta`.
     match: /(:\s*|<\s*|\bas\s+)RouteMeta\b/g,
@@ -206,7 +212,7 @@ export async function runMigrate(opts: MigrateOptions = {}): Promise<void> {
   );
 
   if (results.length === 0) {
-    console.log(`  ${symbols.ok} Nothing to migrate — looks like you're already on the v5 shape.`);
+    console.log(`  ${symbols.ok} Nothing to migrate — all patterns look up to date.`);
     console.log();
     return;
   }
@@ -302,7 +308,8 @@ export async function runMigrate(opts: MigrateOptions = {}): Promise<void> {
   console.log();
   console.log(
     `  See ${pc.cyan('docs/migration-v4-to-v5.md')} for the full guide and ` +
-      pc.cyan('axiomify check') + ' to verify the migrated app.',
+      pc.cyan('axiomify check') + ' to verify the migrated app.\n' +
+        pc.yellow('  Note: `openapi:` / `meta:` merges into `schema:` require manual review — check TODO comments.'),
   );
   console.log();
 }

@@ -1,4 +1,4 @@
-import type { Axiomify, RouteDefinition } from '@axiomify/core';
+import type { Axiomify, RouteDefinition, RouteSchema } from '@axiomify/core';
 import type { ZodTypeAny } from 'zod';
 
 export interface OpenApiOptions {
@@ -10,13 +10,13 @@ export interface OpenApiOptions {
   /** Automatically infer 200 response schema from `schema.response`. Default: true */
   autoInferResponses?: boolean;
   /**
-   * OpenAPI 3.0 Components Object. Used to define reusable assets such as
+   * OpenAPI 3.1.0 Components Object. Used to define reusable assets such as
    * global `securitySchemes` referenced by individual routes.
    * @example { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer' } } }
    */
   components?: Record<string, unknown>;
   /**
-   * Global OpenAPI 3.0 Security Requirement Object. Applies to ALL routes by
+   * Global OpenAPI 3.1.0 Security Requirement Object. Applies to ALL routes by
    * default. Individual routes can override via `schema.security`.
    * @example [{ bearerAuth: [] }]
    */
@@ -70,7 +70,7 @@ export class OpenApiGenerator {
 
   public generate(): Record<string, unknown> {
     const spec: Record<string, unknown> = {
-      openapi: '3.0.3',
+      openapi: '3.1.0',
       info: this.options.info,
       paths: {} as Record<string, unknown>,
     };
@@ -85,66 +85,36 @@ export class OpenApiGenerator {
 
       if (!paths[openApiPath]) paths[openApiPath] = {};
 
-      // OAS 3.0.3 Operation Object metadata lives on `route.openapi`.
-      // The 4.x `route.meta` alias was deprecated through 5.x and is
-      // removed in 6.0 — `meta:` on a route definition is now a plain
-      // unknown property and the generator ignores it.
-      const op = route.openapi ?? undefined;
+      // All OAS 3.1.0 Operation Object metadata now lives in `route.schema` —
+      // the same block as Zod validation fields. There is no separate
+      // `route.openapi` property. One source of truth per route definition.
+      const s = route.schema ?? ({} as RouteSchema);
 
       const operation: Record<string, unknown> = {
-        // OAS §4.7.10.2 — summary. Default to `${method} ${path}` so the
-        // docs UI always has a human-readable title even without user input.
-        summary: op?.summary ?? `${route.method} ${route.path}`,
-        // OAS §4.7.10.5 — operationId. Client codegen tools
-        // (openapi-typescript, openapi-generator) use this to name the
-        // generated function. When the user doesn't supply one we
-        // synthesise a stable name from method+path:
-        //   GET /users/:id → "getUsersById"
-        //   POST /users    → "postUsers"
-        // Determinism matters here — codegen output should not drift
-        // between releases unless method+path actually change.
+        // OAS §4.8.10.2 — summary. Defaults to `${method} ${path}`.
+        summary: s.summary ?? `${route.method} ${route.path}`,
+        // OAS §4.8.10.5 — operationId for client codegen tools.
+        // Auto-synthesised from method+path when omitted:
+        //   GET /users/:id → "getUsersById"   POST /users → "postUsers"
         operationId:
-          op?.operationId ?? this.synthesiseOperationId(route.method, route.path),
+          s.operationId ?? this.synthesiseOperationId(route.method, route.path),
         parameters: this.extractParameters(route),
         responses: this.extractResponses(route),
       };
 
-      // Legacy schema-level fields (tags/description/security INSIDE the
-      // `schema:` block) were a 3.x pattern; the generator has supported
-      // both `meta` and that legacy path. Continue accepting them — the
-      // cost is one read, and removing it would silently break old code
-      // that's still passing tests.
-      type LegacySchema = {
-        description?: string;
-        tags?: string[];
-        security?: Array<Record<string, string[]>>;
-      };
-      const legacySchema = (route.schema ?? {}) as LegacySchema;
-
-      const description = op?.description ?? legacySchema.description;
-      const tags        = op?.tags        ?? legacySchema.tags;
-      const security    = op?.security    ?? legacySchema.security;
-
-      if (description) operation.description = description;
-      if (tags)        operation.tags        = tags;
-      // OAS §4.7.10.10 — `security`: an absent key inherits the global
-      // security requirement; an empty array (`[]`) explicitly opts the
-      // operation OUT of all global security. Both are spec-valid and
-      // semantically distinct — only skip emission when undefined.
-      if (security !== undefined) operation.security = security;
-      if (op?.deprecated) operation.deprecated = true;
-      if (op?.externalDocs) operation.externalDocs = op.externalDocs;
-      // OAS §4.7.10.11 / §4.7.10.8 — pass servers and callbacks through
-      // verbatim. The framework doesn't derive these; the user supplies
-      // them exactly as the spec defines.
-      if (op?.servers) operation.servers = op.servers;
-      if (op?.callbacks) operation.callbacks = op.callbacks;
+      if (s.description)            operation.description  = s.description;
+      if (s.tags)                   operation.tags         = s.tags;
+      // OAS §4.8.10.10: absent key inherits global security; [] opts out.
+      if (s.security !== undefined) operation.security     = s.security;
+      if (s.deprecated)             operation.deprecated   = true;
+      if (s.externalDocs)           operation.externalDocs = s.externalDocs;
+      // OAS §4.8.10.11 / §4.8.10.8: pass servers + callbacks verbatim.
+      if (s.servers)                operation.servers      = s.servers;
+      if (s.callbacks)              operation.callbacks    = s.callbacks;
 
       const body = this.extractBody(route);
       if (body) {
-        if (op?.requestBodyDescription) {
-          body.description = op.requestBodyDescription;
-        }
+        if (s.requestBodyDescription) body.description = s.requestBodyDescription;
         operation.requestBody = body;
       }
 
@@ -257,11 +227,9 @@ export class OpenApiGenerator {
   }
 
   private extractResponses(route: RouteDefinition): Record<string, unknown> {
-    // Pull the per-status description map once. Authors can override the
-    // generator defaults ('Successful response', 'Response 404') by passing
-    // openapi.responseDescriptions: { '200': '...', '404': '...' }.
-    const op = route.openapi;
-    const descriptions = op?.responseDescriptions ?? {};
+    // Pull the per-status description map. Authors override generator
+    // defaults via schema.responseDescriptions: { '200': '...', '404': '...' }.
+    const descriptions = (route.schema as RouteSchema)?.responseDescriptions ?? {};
 
     const defaultResponse = {
       '200': {

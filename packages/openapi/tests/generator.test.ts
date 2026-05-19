@@ -246,6 +246,7 @@ describe('OpenApiGenerator — Zod v4 schema output', () => {
 
 describe('OpenApiGenerator — extended coverage', () => {
   it('generates per-status-code response schema when response is a map', () => {
+    const ext = { url: 'https://docs.example.com', description: 'Full docs' };
     const app = new Axiomify();
     app.route({
       method: 'POST',
@@ -255,6 +256,11 @@ describe('OpenApiGenerator — extended coverage', () => {
           201: z.object({ id: z.string() }),
           400: z.object({ message: z.string() }),
         } as any,
+        operationId: 'createUser',
+        deprecated: true,
+        externalDocs: ext,
+        security: [],
+        requestBodyDescription: 'Profile data for the new user',
       },
       handler: async (_r, res) => res.send({ id: '1' }),
     });
@@ -313,16 +319,16 @@ describe('OpenApiGenerator — extended coverage', () => {
   });
 });
 
-// Operation-level metadata fields added for full OpenAPI 3.0 Operation
+// Operation-level metadata fields for full OpenAPI 3.1.0 Operation
 // Object coverage (operationId, deprecated, externalDocs,
 // requestBodyDescription, responseDescriptions).
 describe('OpenApiGenerator — operation metadata', () => {
-  it('emits operationId when supplied in route.meta', () => {
+  it('emits operationId when supplied in schema', () => {
     const app = new Axiomify();
     app.route({
       method: 'POST',
       path: '/users',
-      openapi: { operationId: 'createUser' },
+      schema: { operationId: 'createUser' },
       handler: async (_r, res) => res.send({}),
     });
     const gen = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } });
@@ -343,11 +349,11 @@ describe('OpenApiGenerator — operation metadata', () => {
       .toBe('getUsersByIdPostsByPostId');
   });
 
-  it('emits deprecated:true only when meta.deprecated is set', () => {
+  it('emits deprecated:true only when schema.deprecated is set', () => {
     const app = new Axiomify();
     app.route({
       method: 'GET', path: '/old',
-      openapi: { deprecated: true },
+      schema: { deprecated: true },
       handler: async (_r, res) => res.send({}),
     });
     app.route({
@@ -365,7 +371,7 @@ describe('OpenApiGenerator — operation metadata', () => {
     const ext = { url: 'https://example.com/docs', description: 'API guide' };
     app.route({
       method: 'GET', path: '/x',
-      openapi: { externalDocs: ext },
+      schema: { externalDocs: ext },
       handler: async (_r, res) => res.send({}),
     });
     const spec = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } }).generate();
@@ -376,7 +382,7 @@ describe('OpenApiGenerator — operation metadata', () => {
     const app = new Axiomify();
     app.route({
       method: 'GET', path: '/public',
-      openapi: { security: [] },
+      schema: { security: [] },
       handler: async (_r, res) => res.send({}),
     });
     const spec = new OpenApiGenerator(app as any, {
@@ -393,8 +399,10 @@ describe('OpenApiGenerator — operation metadata', () => {
     const app = new Axiomify();
     app.route({
       method: 'POST', path: '/users',
-      schema: { body: z.object({ name: z.string() }) },
-      openapi: { requestBodyDescription: 'Profile data for the new user' },
+      schema: {
+        body: z.object({ name: z.string() }),
+        requestBodyDescription: 'Profile data for the new user',
+      },
       handler: async (_r, res) => res.send({}),
     });
     const spec = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } }).generate();
@@ -411,8 +419,6 @@ describe('OpenApiGenerator — operation metadata', () => {
           200: z.object({ id: z.string(), name: z.string() }),
           404: z.object({ message: z.string() }),
         },
-      },
-      openapi: {
         responseDescriptions: {
           '200': 'User profile',
           '404': 'No user with the supplied id',
@@ -436,8 +442,8 @@ describe('OpenApiGenerator — operation metadata', () => {
           200: z.object({ a: z.string() }),
           500: z.object({ message: z.string() }),
         },
+        responseDescriptions: { '200': 'Custom 200 description' },
       },
-      openapi: { responseDescriptions: { '200': 'Custom 200 description' } },
       handler: async (_r, res) => res.send({}),
     });
     const responses = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } })
@@ -456,7 +462,7 @@ describe('OpenApiGenerator — operation metadata', () => {
     ];
     app.route({
       method: 'PUT', path: '/assets/:id',
-      openapi: { servers },
+      schema: { servers },
       handler: async (_r, res) => res.send({}),
     });
     const spec = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } }).generate();
@@ -482,7 +488,7 @@ describe('OpenApiGenerator — operation metadata', () => {
     };
     app.route({
       method: 'POST', path: '/jobs',
-      openapi: { callbacks },
+      schema: { callbacks },
       handler: async (_r, res) => res.send({}),
     });
     const spec = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } }).generate();

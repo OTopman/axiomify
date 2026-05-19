@@ -100,20 +100,96 @@ export interface SseCapableResponse extends AxiomifyResponse {
 }
 
 /**
- * Validation schemas for a route's request and response shapes.
- * Only validation-relevant fields belong here.
+ * Validation schemas and OpenAPI 3.1.0 Operation Object metadata for a route.
  *
- * Documentation metadata (tags, description, security, operationId, etc)
- * belongs in `openapi:` on the parent RouteDefinition — see
- * {@link OpenApiOperation}.
+ * **Axiomify uses a single `schema:` block** for both runtime validation
+ * (Zod types) and documentation metadata (OAS Operation Object fields).
+ * This keeps route definitions compact and matches the original 4.x pattern
+ * users were familiar with.
+ *
+ * ### Validation fields (Zod types)
+ * `body`, `query`, `params`, `response`, `files`, `message` — all optional.
+ * The framework compiles these to AJV validators at startup.
+ *
+ * ### Documentation fields (OpenAPI 3.1.0 Operation Object)
+ * Every Operation Object property is supported. The three properties that
+ * the framework derives automatically from the validation fields are NOT
+ * accepted here (they would conflict):
+ *
+ *   - `parameters`  — derived from `params` + `query`
+ *   - `requestBody` — derived from `body` + `files`
+ *   - `responses`   — derived from `response`
+ *
+ * @example
+ * app.route({
+ *   method: 'GET',
+ *   path: '/users/:id',
+ *   schema: {
+ *     // Validation
+ *     params:   z.object({ id: z.string().uuid() }),
+ *     response: z.object({ id: z.string(), name: z.string() }),
+ *     // OpenAPI docs
+ *     tags:        ['Users'],
+ *     summary:     'Get user by id',
+ *     operationId: 'getUserById',
+ *     security:    [{ bearerAuth: [] }],
+ *   },
+ *   handler: async (req, res) => { ... },
+ * });
  */
 export interface RouteSchema {
+  // ── Validation (Zod) ────────────────────────────────────────────────────────
   body?: ZodTypeAny;
   query?: ZodTypeAny;
   params?: ZodTypeAny;
   response?: ZodTypeAny | Record<number, ZodTypeAny>;
   files?: Record<string, FileConfig>;
+  /** WebSocket message schema — only used on `app.ws()` routes. */
   message?: ZodTypeAny;
+
+  // ── OpenAPI 3.1.0 Operation Object metadata ─────────────────────────────────
+  /** OAS §4.8.10.1 — grouping label(s). Swagger UI groups operations by tag. */
+  tags?: string[];
+  /** OAS §4.8.10.2 — short one-line title. Defaults to `${method} ${path}`. */
+  summary?: string;
+  /** OAS §4.8.10.3 — long-form CommonMark description rendered below the summary. */
+  description?: string;
+  /** OAS §4.8.10.4 — link to additional external documentation. */
+  externalDocs?: OpenApiExternalDocs;
+  /**
+   * OAS §4.8.10.5 — unique identifier for client codegen tools
+   * (openapi-typescript, openapi-generator, etc). Auto-synthesised from
+   * method + path when omitted (e.g. `getUsersById`).
+   */
+  operationId?: string;
+  /** OAS §4.8.10.9 — marks the operation deprecated in the docs UI. */
+  deprecated?: boolean;
+  /**
+   * OAS §4.8.10.10 — per-operation security requirement. Overrides any
+   * global security declared on `useOpenAPI(...)`. An empty array `[]`
+   * explicitly opts this route OUT of all global security requirements.
+   */
+  security?: Array<Record<string, string[]>>;
+  /**
+   * OAS §4.8.10.11 — per-operation server overrides. Use when this endpoint
+   * lives at a different host than the rest of the API (CDN upload routes, etc).
+   */
+  servers?: OpenApiServer[];
+  /**
+   * OAS §4.8.10.8 — out-of-band async webhook callbacks. Passed through
+   * verbatim to the generated spec.
+   */
+  callbacks?: Record<string, unknown>;
+
+  // ── Generator overrides ─────────────────────────────────────────────────────
+  /** Override the auto-generated description on the `requestBody` object. */
+  requestBodyDescription?: string;
+  /**
+   * Map of status-code → human-readable description, overriding the generator's
+   * defaults (`Successful response` / `Response 4xx`).
+   * @example { '200': 'User profile', '404': 'No user with the supplied id' }
+   */
+  responseDescriptions?: Record<string, string>;
 }
 
 /**
@@ -287,24 +363,24 @@ export interface RouteDefinition<
 > {
   method: HttpMethod;
   path: string;
-  schema?: S;
   /**
-   * OpenAPI 3.0.3 Operation Object metadata for this route.
+   * Combined validation + OpenAPI metadata block.
    *
-   * Shape follows the spec verbatim — see {@link OpenApiOperation} and
-   * https://spec.openapis.org/oas/v3.0.3#operation-object. The three
-   * spec-required Operation Object properties that the framework derives
-   * automatically (`parameters`, `requestBody`, `responses`) are NOT
-   * included here; supply them via the route's `schema:` field.
+   * Zod fields (`body`, `query`, `params`, `response`, `files`) power runtime
+   * validation. Documentation fields (`tags`, `summary`, `description`,
+   * `operationId`, `security`, etc) drive the generated OpenAPI 3.1.0 spec.
+   * Both live in `schema` — no separate `openapi:` property needed.
    *
    * @example
-   *   openapi: {
-   *     tags: ['Users'],
-   *     summary: 'Get user by id',
-   *     operationId: 'getUserById',
+   *   schema: {
+   *     body:        z.object({ name: z.string() }),
+   *     response:    z.object({ id: z.string() }),
+   *     tags:        ['Users'],
+   *     summary:     'Create user',
+   *     operationId: 'createUser',
    *   }
    */
-  openapi?: OpenApiOperation;
+  schema?: S;
   plugins?: RouteMiddleware[];
   timeout?: number;
   handler: RouteHandler<B, Q, P, S['files']>;
