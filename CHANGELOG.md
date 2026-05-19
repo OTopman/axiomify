@@ -111,7 +111,7 @@ npx axiomify check                # validate; exit 1 surfaces what's left
 
 ---
 
-## [5.0.0]
+## [6.0.0-rc.*]
 
 Audit-remediation release. Closes every §16 hard-blocker from the
 production review plus the should-fix items. See the section below
@@ -360,7 +360,7 @@ the route OUT of global security) is unambiguous in the source.
 
 ---
 
-## [5.0.0-feature-baseline] — 2026-05-07
+## [5.0.0] — 2026-05-07
 
 Pre-audit feature snapshot. The audit work above ([5.0.0]) refines and
 hardens what this entry introduced; both ship together as `5.0.0`.
