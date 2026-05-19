@@ -127,13 +127,13 @@ function checkResponseSchemas(ctx: CheckCtx): void {
 }
 
 /**
- * In 6.0 the `meta:` field on a route definition is gone — `route.meta`
- * is now an unrecognised property that the generator silently ignores.
- * Catch it here so users migrating from 5.x get a loud failure instead
- * of mysteriously missing OpenAPI metadata.
+ * Catch routes still using the removed `meta:` field (deprecated in 5.x,
+ * removed in 6.0) or the removed top-level `openapi:` property (moved into
+ * `schema:` in 6.1). Both silently do nothing — surface them loudly here.
  */
 function checkOpenApiNaming(ctx: CheckCtx): void {
   const routes = ctx.app.registeredRoutes ?? [];
+
   const usingMeta = routes.filter((r: any) => r.meta);
   if (usingMeta.length > 0) {
     add(ctx, {
@@ -141,8 +141,21 @@ function checkOpenApiNaming(ctx: CheckCtx): void {
       area: 'api',
       message: `${usingMeta.length} route${usingMeta.length === 1 ? '' : 's'} use the removed \`meta:\` field`,
       hint:
-        'The `meta:` field was removed in 6.0. Rename to `openapi:` — shape is identical. ' +
-        `First offender: ${usingMeta[0].method} ${usingMeta[0].path}`,
+        'The `meta:` field was removed in 6.0. Move all metadata into `schema:` — ' +
+        `e.g. schema: { tags: ['Users'], summary: '...' }. First offender: ${usingMeta[0].method} ${usingMeta[0].path}`,
+    });
+  }
+
+  const usingOpenapi = routes.filter((r: any) => r.openapi);
+  if (usingOpenapi.length > 0) {
+    add(ctx, {
+      severity: 'fail',
+      area: 'api',
+      message: `${usingOpenapi.length} route${usingOpenapi.length === 1 ? '' : 's'} use the removed top-level \`openapi:\` field`,
+      hint:
+        'The separate `openapi:` property was removed in 6.1. Move all metadata ' +
+        'directly into `schema:` alongside your Zod fields. Run `npx axiomify migrate` ' +
+        `to apply automatically. First offender: ${usingOpenapi[0].method} ${usingOpenapi[0].path}`,
     });
   }
 }

@@ -96,8 +96,7 @@ full reference + production checklist.
 
 ### Tests
 
-- 484 passing (down from 486 by 2 — both removed tests pinned the
-  now-removed deprecated APIs)
+- 524 passing
 - Coverage held at 97.46% lines / 98.50% functions
 
 ### Upgrade path

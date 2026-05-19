@@ -1,6 +1,6 @@
 # @axiomify/openapi
 
-Auto-generates OpenAPI 3.0 specs from Axiomify routes and Zod schemas. Uses Zod v4's built-in
+Auto-generates OpenAPI 3.1.0 specs from Axiomify routes and Zod schemas. Uses Zod v4's built-in
 `z.toJSONSchema()` — no third-party schema bridge required.
 
 ## Install
@@ -37,7 +37,7 @@ Swagger UI is served at `/docs`. The raw JSON spec is at `/docs/openapi.json`.
 ## Route metadata — the `openapi` field
 
 The `openapi` field on a route definition mirrors the
-[OpenAPI 3.0.3 Operation Object](https://spec.openapis.org/oas/v3.0.3#operation-object)
+[OpenAPI 3.1.0 Operation Object](https://spec.openapis.org/oas/v3.1.0#operation-object)
 **verbatim**. Every Operation Object property is supported. Authors who know
 the spec can paste fragments directly from swagger.io — no wrapper, no
 translation table, no Axiomify-specific shape to learn.
@@ -80,7 +80,7 @@ app.route({
 
 ### All supported `openapi` fields
 
-Spec-matching properties (every OAS 3.0.3 Operation Object field minus the
+Spec-matching properties (every OAS 3.1.0 Operation Object field minus the
 three the framework derives):
 
 | Field | Type | OAS § | Purpose |
@@ -93,7 +93,7 @@ three the framework derives):
 | `deprecated` | `boolean` | 4.7.10.9 | Marks the operation deprecated in the docs UI. |
 | `security` | `Array<Record<string, string[]>>` | 4.7.10.10 | Per-route security. `[]` opts out of global security. |
 | `servers` | `OpenApiServer[]` | 4.7.10.11 | Per-operation server overrides. Use when one endpoint lives at a different host than the rest of the API. |
-| `callbacks` | `Record<string, unknown>` | 4.7.10.8 | Async webhook callbacks. Passed through verbatim; the spec for the nested shape is in [OAS §4.7.18](https://spec.openapis.org/oas/v3.0.3#callback-object). |
+| `callbacks` | `Record<string, unknown>` | 4.7.10.8 | Async webhook callbacks. Passed through verbatim; the spec for the nested shape is in [OAS §4.7.18](https://spec.openapis.org/oas/v3.1.0#callback-object). |
 
 Axiomify-specific helpers (override descriptions the generator would
 otherwise synthesise for schema-derived sections):
@@ -167,21 +167,27 @@ app.route({
 });
 ```
 
-### Migrating from `meta:` (4.x → 5.x)
+### Migrating from `meta:` / `openapi:` (4.x / 5.x → 6.x)
 
-In 4.x the field was named `meta`. The 5.0.0 rename to `openapi` matches
-the OAS spec terminology and lets you paste spec fragments directly. Both
-names work through the 5.x line; `meta` is removed in 6.0.
+In 4.x the field was `meta:`. In 5.x it became `openapi:`. In 6.1 the
+separate `openapi:` property is gone entirely — all metadata moves into
+`schema:` alongside Zod fields. Run `npx axiomify migrate` to apply
+renames automatically, then `npx axiomify check` to gate CI.
 
 ```typescript
-// 4.x
+// 4.x (removed in 6.0)
 meta: { tags: ['Users'], operationId: 'getUserById' }
 
-// 5.0+
+// 5.x (removed in 6.1)
 openapi: { tags: ['Users'], operationId: 'getUserById' }
-```
 
-If you supply both, `openapi` wins — the generator does NOT merge.
+// 6.1+ — everything in schema:
+schema: {
+  body: CreateUserSchema,
+  tags: ['Users'],
+  operationId: 'getUserById',
+}
+```
 
 ## Global security schemes
 

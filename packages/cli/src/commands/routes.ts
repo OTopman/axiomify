@@ -48,15 +48,16 @@ function normalise(raw: any, isWs: boolean): NormalisedRoute {
   if (raw.schema?.files) validation.push('Files');
   if (raw.schema?.message) validation.push('Message');
 
-  const op = raw.openapi ?? {};
+  // All OAS metadata is now in route.schema (no separate route.openapi).
+  const s = raw.schema ?? {};
 
   return {
     method: isWs ? 'WS' : raw.method,
     path: raw.path,
     validation,
-    tags: Array.isArray(op.tags) ? op.tags : [],
-    operationId: typeof op.operationId === 'string' ? op.operationId : undefined,
-    deprecated: op.deprecated === true,
+    tags: Array.isArray(s.tags) ? s.tags : [],
+    operationId: typeof s.operationId === 'string' ? s.operationId : undefined,
+    deprecated: s.deprecated === true,
     timeout: typeof raw.timeout === 'number' && raw.timeout > 0 ? raw.timeout : undefined,
     plugins: Array.isArray(raw.plugins) ? raw.plugins.length : 0,
     isWs,

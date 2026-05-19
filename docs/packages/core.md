@@ -46,7 +46,7 @@ app.route({
     response: z.object({ id: z.string(), name: z.string() }),
     // or per-status: response: { 201: z.object(...), 400: z.object(...) }
   },
-  openapi: {        // OpenAPI 3.0.3 Operation Object metadata
+  openapi: {        // OpenAPI 3.1.0 Operation Object metadata
     tags: ['Users'],
     summary: 'Create user',
     description: 'Create a new user',
@@ -191,7 +191,7 @@ At request time:
 | `AppModule` | Named plugin with dependency declaration |
 | `AppConfigurator` | `(app, ctx) => void` — preferred plugin form |
 | `AppContext` | `{ provide, resolve }` — dependency injection context |
-| `OpenApiOperation` | OpenAPI 3.0.3 Operation Object metadata for a route (`route.openapi`). Field shape mirrors the spec verbatim — see [openapi docs](./openapi.md). |
+| `OpenApiOperation` | OpenAPI 3.1.0 Operation Object metadata for a route (`route.openapi`). Field shape mirrors the spec verbatim — see [openapi docs](./openapi.md). |
 | `RouteMeta` | **Deprecated alias for `OpenApiOperation`.** Kept through 5.x for back-compat; removed in 6.0. |
 | `RouteMiddleware` | `(req, res) => void \| Promise<void>` — per-route middleware function. |
 | `ResponseCapabilities` | `{ sse: boolean, streaming: boolean }` |

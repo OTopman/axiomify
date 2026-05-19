@@ -368,7 +368,7 @@ For authoritative clustered numbers: `SERVER_HOST=<server-ip> node benchmarks/ru
 ## Testing
 
 ```bash
-npm test         # vitest — 473 tests across 43 files (28 skipped on Node ≥23 where uWS doesn't load)
+npm test         # vitest — 524 tests across 50 files
 npm run coverage # V8 coverage report (97% lines / 98% functions on gated packages)
 ```
 
