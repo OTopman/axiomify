@@ -730,7 +730,7 @@ export class NativeAdapter {
     portOverride?: number,
   ): void {
     const port = portOverride ?? this._port;
-    this._server.listen(port, (token: unknown) => {
+    this._server.listen('0.0.0.0', port, (token: unknown) => {
       if (token) {
         this._listenSocket = token;
         this._installCrashGuard();
