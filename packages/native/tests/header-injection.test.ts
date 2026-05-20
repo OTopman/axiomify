@@ -18,7 +18,7 @@ vi.mock('uWebSockets.js', () => ({
       get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(),
       del: vi.fn(), options: vi.fn(), head: vi.fn(), any: vi.fn(),
       ws: vi.fn(),
-      listen: vi.fn((_p: number, cb: (t: unknown) => void) => cb({})),
+      listen: vi.fn((_host: string, _p: number, cb: (t: unknown) => void) => cb({})),
     }),
     SHARED_COMPRESSOR: 0,
     us_listen_socket_close: vi.fn(),

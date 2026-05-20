@@ -149,10 +149,9 @@ function generateRouteSource(
       : '',
     `      // response: z.object({ /* response shape */ }),`,
     `    },`,
-    `    openapi: {`,
+    `      // OpenAPI metadata (tags, summary, operationId etc.) lives in schema: too`,
     `      tags: ['${pathToFilename(routePath).split('-')[0] || 'general'}'],`,
     `      summary: '${method} ${routePath}',`,
-    `    },`,
     plugins.length > 0 ? `    plugins: [${plugins.join(', ')}],` : '',
     `    handler: async (${paramKeys.length > 0 || method !== 'GET' ? 'req' : '_req'}, res) => {`,
     method === 'POST'

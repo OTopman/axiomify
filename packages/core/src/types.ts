@@ -239,10 +239,10 @@ export interface OpenApiExternalDocs {
  * app.route({
  *   method: 'POST',
  *   path: '/users',
- *   schema: { body: CreateUserSchema },
- *   openapi: {
- *     tags: ['Users'],
- *     summary: 'Create user',
+ *   schema: {
+ *     body:        CreateUserSchema,
+ *     tags:        ['Users'],
+ *     summary:     'Create user',
  *     description: 'Creates a new user with the supplied profile',
  *     operationId: 'createUser',
  *   },

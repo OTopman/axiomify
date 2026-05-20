@@ -23,7 +23,7 @@ vi.mock('uWebSockets.js', () => {
     head: vi.fn().mockReturnThis(),
     any: vi.fn().mockReturnThis(),
     ws: vi.fn().mockReturnThis(),
-    listen: vi.fn((_port: number, cb: (token: unknown) => void) => cb({ fakeSocket: true })),
+    listen: vi.fn((_host: string, _port: number, cb: (token: unknown) => void) => cb({ fakeSocket: true })),
   });
   return {
     default: {
