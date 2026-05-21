@@ -46,7 +46,7 @@ The `axiomify init` command is now interactive:
 ## 4. Logger Update
 
 ### @axiomify/logger (Updated)
-- **Maskify-ts v4**: Upgraded to the latest version for better performance and masking.
+- **PII masking**: `maskify-ts` removed. Zero-dep inline `maskData()` function replaces it — recursive, depth-capped at 32, case-insensitive field name matching.
 - **Beautification**: Added colored, formatted console output for development.
 - **Request Details**: Logs method, path, status codes (with colors), and request duration.
 

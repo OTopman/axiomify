@@ -230,7 +230,7 @@ mechanical renames:
 | `meta-to-schema` | Flags `meta: { ... }` with a TODO comment for manual merge into `schema:` | `meta: {` → `openapi: {` on route definitions |
 | `useSwagger-import` | `useSwagger` → `useOpenAPI` |
 | `routePrefix-option` | `routePrefix:` → `prefix:` inside `useOpenAPI()` calls |
-| `RouteMeta-type` | `RouteMeta` type references → `RouteSchema` | `RouteMeta` type references → `RouteSchema` | `RouteMeta` type references → `OpenApiOperation` |
+| `RouteMeta-type` | `RouteMeta` type references → `RouteSchema` | `RouteMeta` type references → `RouteSchema` | `RouteMeta` type references → `RouteSchema` | `RouteMeta` type references → `OpenApiOperation` |
 | `AppPlugin-type` | `AppPlugin` type references → `AppConfigurator` |
 
 **What it does NOT do** (flagged in the post-run hint for manual review):

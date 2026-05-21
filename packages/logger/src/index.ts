@@ -1,10 +1,15 @@
 import { Axiomify } from '@axiomify/core';
-// ─── Inline PII masker ────────────────────────────────────────────────────────
-// Zero external dependencies. Walks objects/arrays recursively (depth-capped
-// at 32) and replaces any key whose lowercase name contains a sensitive field
-// name with '****'.
+import 'reflect-metadata';
+import { Maskify } from 'maskify-ts';
 
-const MASK = '****';
+// ─── maskify-ts PII masker ────────────────────────────────────────────────────
+// Uses Maskify.mask() for the actual character masking (production-grade,
+// GDPR/HIPAA compliant). The recursive object walk is ours — maskify-ts does
+// not expose a built-in key-pattern walker, so we drive traversal and delegate
+// each sensitive string value to Maskify.mask(v, 'generic', { visibleStart: 0 }).
+
+const MASK_OPTS = { visibleStart: 0, visibleEnd: 0 } as const;
+const MASK_FALLBACK = '****';
 
 function maskData(value: unknown, sensitiveKeys: string[], depth = 0): unknown {
   if (depth > 32) return value;
@@ -13,10 +18,16 @@ function maskData(value: unknown, sensitiveKeys: string[], depth = 0): unknown {
   if (value !== null && typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      const lower = k.toLowerCase();
-      out[k] = sensitiveKeys.some((f) => lower.includes(f.toLowerCase()))
-        ? MASK
-        : maskData(v, sensitiveKeys, depth + 1);
+      const isSensitive = sensitiveKeys.some((f) =>
+        k.toLowerCase().includes(f.toLowerCase()),
+      );
+      if (isSensitive) {
+        out[k] = typeof v === 'string'
+          ? Maskify.mask(v, 'generic', MASK_OPTS)
+          : MASK_FALLBACK;
+      } else {
+        out[k] = maskData(v, sensitiveKeys, depth + 1);
+      }
     }
     return out;
   }
