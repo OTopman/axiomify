@@ -32,7 +32,7 @@ All protections are enabled by default.
 | `prototypePollutionProtection` | `boolean` | `true` | Remove `__proto__`, `constructor`, `prototype` keys |
 | `nullByteProtection` | `boolean` | `true` | Remove null bytes (`\0`) from strings |
 | `botProtection` | `boolean` | `true` | Block known scanner/crawler User-Agent patterns |
-| `sqlInjectionProtection` | `boolean` | `true` | Heuristic SQL pattern detection |
+| ~~`sqlInjectionProtection`~~ | removed | — | **Removed in v6.0** — TypeScript excess-property error. Use parameterised queries. |
 | `noSqlInjectionProtection` | `boolean` | `true` | Heuristic NoSQL pattern detection |
 | `maxBodySize` | `number` | `1048576` | Reject requests where Content-Length exceeds this value |
 

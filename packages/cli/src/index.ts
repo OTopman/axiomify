@@ -138,7 +138,7 @@ scaffold
 
 program
   .command('migrate')
-  .description('v4 → v5 codemod: rename meta→openapi, useSwagger→useOpenAPI, etc')
+  .description('v5 → v6 codemod: merge meta: fields into schema:, fix routePrefix → prefix, etc')
   .option('--dry-run', 'Show the unified diff without writing', false)
   .option('--report-only', 'Print a migration report and exit; do not write', false)
   .option('--dir <dir>', 'Directory to scan recursively', 'src')

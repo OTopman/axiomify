@@ -385,16 +385,20 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list of breaking changes.
 
 Quick reference:
 
-| v4 | v5 |
+| v5.0.0 (production) | v6.0.0 |
 |---|---|
+| `meta: { tags, summary, description, security }` on routes | Fields moved directly into `schema:` — see [migration guide](docs/migration-v5-to-v6.md) |
+| `@axiomify/express`, `fastify`, `hapi`, `http`, `ws` adapters | Removed — use `@axiomify/native` only |
+| `RouteMeta` type | Removed — fields are part of `RouteSchema` |
+| `useOpenAPI({ routePrefix })` | `useOpenAPI({ prefix })` — `routePrefix` removed |
+| `useSecurity({ sqlInjectionProtection })` | Removed — use parameterised queries |
+| `res.error(err)` | `res.status(code).send(null, msg)` |
+| `SerializerFn(data, msg, code, isErr, req)` 5-arg form | Throws at adapter construction — use `SerializerFn({ data, msg, ... })` |
+| `AppPlugin` type alias | `AppConfigurator` |
+| **v4.x → v5.0.0** | |
 | `new Axiomify()` injects X-Request-Id automatically | Opt in with `app.enableRequestId()` |
-| `app.lockRoutes(reason)` (any caller could lock) | `app.lockRoutes(ADAPTER_LOCK_TOKEN, reason)` (token-gated for adapters) |
-| `meta: { tags, summary, ... }` on routes | `openapi: { tags, summary, ... }` — `meta` still works through 5.x, removed in 6.0 |
-| 5-arg `SerializerFn(data, msg, code, isErr, req)` | `SerializerFn(input)` only — the 5-arg form throws at construction time in 5.0 |
-| `AppPlugin` type alias | Removed; use `AppConfigurator`. Runtime accepts 1-arg fns identically |
-| `useSwagger` import | `useOpenAPI` (the function was never named `useSwagger` in shipped code; older docs were wrong) |
-| `routePrefix: '/docs'` on `useOpenAPI` | `prefix: '/docs'` (matches `@axiomify/static`); `routePrefix` warns + still works through 5.x |
-| Node.js cluster round-robin | SO_REUSEPORT (Linux kernel load-balancing); non-Linux requires `allowUserspaceProxy: true` opt-in |
+| `app.lockRoutes(reason)` | `app.lockRoutes(ADAPTER_LOCK_TOKEN, reason)` |
+| Node.js cluster round-robin | SO_REUSEPORT via `listenClustered()` |
 
 ---
 

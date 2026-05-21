@@ -20,7 +20,9 @@
   },
   "dependencies": {
     "@axiomify/core": "*",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "maskify-ts": "^4.0.0",
+    "reflect-metadata": "^0.2.0"
   },
   "author": {
     "name": "Topman",

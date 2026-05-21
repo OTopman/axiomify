@@ -9,7 +9,7 @@ pollution, and blocks scanner User-Agents.
 > case variation, URL encoding, CASE/WHEN, time-based blind) and produced
 > false positives on legitimate JSON containing the strings `union select`
 > / `or 1=1`. Parameterised queries at the DB layer are the only real
-> defence. Setting `sqlInjectionProtection: true` now logs a warning and
+> defence. `sqlInjectionProtection` is fully removed in v6.0 —
 > has no runtime effect.
 
 ## Install
@@ -54,7 +54,7 @@ useSecurity(app, {
 | `blockedUserAgentPatterns` | built-in | Override the default scanner UA regex list. |
 | `noSqlPatterns` | built-in | Override the NoSQL operator regex list. |
 | `sanitizerMaxDepth` | `64` | Maximum depth for recursive input sanitisation (prevents stack overflow attacks via deeply nested JSON). |
-| ~~`sqlInjectionProtection`~~ | `false` (no-op) | **Removed in 5.0.0.** Setting `true` now warns and has no effect. See banner above. |
+| ~~`sqlInjectionProtection`~~ | — | **Removed in v6.0.** TypeScript excess-property error at compile time. Use parameterised queries. |
 | ~~`sqlPatterns`~~ | — | **Removed in 5.0.0.** No longer used. |
 
 ## Important limitations

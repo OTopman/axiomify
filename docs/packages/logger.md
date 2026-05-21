@@ -5,7 +5,7 @@ Structured request and response logging.
 ## Install
 
 ```bash
-npm install @axiomify/logger maskify-ts
+npm install @axiomify/logger
 ```
 
 ## Export
@@ -37,4 +37,4 @@ useLogger(app, {
 - logs incoming requests in `onRequest`
 - logs outgoing responses + latency in `onPostHandler`
 - logs normalized errors in `onError`
-- masks sensitive fields using `maskify-ts`
+- masks sensitive fields using a built-in zero-dep recursive function
