@@ -1,39 +1,6 @@
 import { Axiomify } from '@axiomify/core';
-import 'reflect-metadata';
 import { Maskify } from 'maskify-ts';
-
-// ─── maskify-ts PII masker ────────────────────────────────────────────────────
-// Uses Maskify.mask() for the actual character masking (production-grade,
-// GDPR/HIPAA compliant). The recursive object walk is ours — maskify-ts does
-// not expose a built-in key-pattern walker, so we drive traversal and delegate
-// each sensitive string value to Maskify.mask(v, 'generic', { visibleStart: 0 }).
-
-const MASK_OPTS = { visibleStart: 0, visibleEnd: 0 } as const;
-const MASK_FALLBACK = '****';
-
-function maskData(value: unknown, sensitiveKeys: string[], depth = 0): unknown {
-  if (depth > 32) return value;
-  if (Array.isArray(value))
-    return value.map((item) => maskData(item, sensitiveKeys, depth + 1));
-  if (value !== null && typeof value === 'object') {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      const isSensitive = sensitiveKeys.some((f) =>
-        k.toLowerCase().includes(f.toLowerCase()),
-      );
-      if (isSensitive) {
-        out[k] = typeof v === 'string'
-          ? Maskify.mask(v, 'generic', MASK_OPTS)
-          : MASK_FALLBACK;
-      } else {
-        out[k] = maskData(v, sensitiveKeys, depth + 1);
-      }
-    }
-    return out;
-  }
-  return value;
-}
-
+import 'reflect-metadata';
 import pc from 'picocolors';
 
 export interface LoggerOptions {
@@ -92,7 +59,9 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
     if (LEVEL_RANK[level] < LEVEL_RANK[logLevel]) return;
 
     const timestamp = new Date().toISOString();
-    const maskedMeta = maskData(meta, sensitiveFields) as Record<string, unknown>;
+    const maskedMeta = Maskify.autoMask(meta, {
+      sensitiveKeys: sensitiveFields,
+    });
 
     if (beautify) {
       const colorMap = {
