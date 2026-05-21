@@ -125,6 +125,7 @@ app.route({
   path: '/ping',
   schema: {
     response: z.object({ message: z.string() }),
+    
   },
   handler: async (_req, res) => {
     res.status(200).send({ message: 'pong' });
