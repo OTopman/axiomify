@@ -153,6 +153,13 @@ function mapJsonSchemaScalar(type: string, format?: string): IRScalar {
  * Ingest an Axiomify app instance directly from its registered routes.
  * The `app` must have `.registeredRoutes` and optionally `.registeredWsRoutes`.
  */
+function sanitizeIdentifier(str: string): string {
+  const parts = str.split(/[^a-zA-Z0-9]+/).filter(Boolean);
+  if (parts.length === 0) return 'operation';
+  // First part lowercased, subsequent parts capitalized
+  return parts[0] + parts.slice(1).map(capitalize).join('');
+}
+
 export function ingestAxiomifyApp(
   app: {
     registeredRoutes: readonly any[];
@@ -171,7 +178,9 @@ export function ingestAxiomifyApp(
     const path: string = route.path ?? '/';
     const schema = route.schema ?? {};
 
-    let opId = schema.operationId ?? synthesiseOperationId(method, path);
+    let rawOpId = schema.operationId ?? synthesiseOperationId(method, path);
+    let opId = sanitizeIdentifier(rawOpId);
+    
     if (seenOps.has(opId)) {
       let i = 2;
       while (seenOps.has(`${opId}${i}`)) i++;
@@ -277,7 +286,8 @@ export function ingestAxiomifyApp(
   // WebSocket routes
   for (const wsRoute of app.registeredWsRoutes ?? []) {
     const path: string = wsRoute.path ?? '/';
-    const opId = `ws${capitalize(path.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_'))}`;
+    const rawOpId = `ws${capitalize(path.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_'))}`;
+    const opId = sanitizeIdentifier(rawOpId);
 
     endpoints.push({
       operationId: opId,
