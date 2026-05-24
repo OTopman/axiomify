@@ -35,11 +35,12 @@ export class TsTypeEmitter {
     switch (type.kind) {
       case 'object':
         emitter.block(`export interface ${type.id} {`, `}`, () => {
+          const formatProp = (name: string) => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : `'${name}'`;
           for (const field of type.fields) {
             if (field.description) this.emitDoc(emitter, field.description, field.deprecated);
             const q = field.required ? '' : '?';
             const ro = field.readOnly ? 'readonly ' : '';
-            emitter.line(`${ro}${field.name}${q}: ${this.renderTypeRef(field.type)};`);
+            emitter.line(`${ro}${formatProp(field.name)}${q}: ${this.renderTypeRef(field.type)};`);
           }
           if (type.additionalProperties) {
             const valType = typeof type.additionalProperties === 'boolean'
@@ -54,19 +55,20 @@ export class TsTypeEmitter {
         if (type.valueType === 'number') {
            // TypeScript enums with numeric values
            emitter.block(`export enum ${type.id} {`, `}`, () => {
+              const formatProp = (name: string) => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : `'${name}'`;
               for (const v of type.values) {
                  if (v.description) this.emitDoc(emitter, v.description, v.deprecated);
-                 emitter.line(`${v.name} = ${v.value},`);
+                 emitter.line(`${formatProp(v.name)} = ${v.value},`);
               }
            });
         } else {
            // For string enums, union of string literals is often preferred in TS
            // for better compatibility with JSON, but `enum` works too.
            emitter.block(`export enum ${type.id} {`, `}`, () => {
+              const formatProp = (name: string) => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : `'${name}'`;
               for (const v of type.values) {
                  if (v.description) this.emitDoc(emitter, v.description, v.deprecated);
-                 // If name isn't a valid identifier, we might need quotes, but let's assume it is for now
-                 emitter.line(`${v.name} = "${v.value}",`);
+                 emitter.line(`${formatProp(v.name)} = "${v.value}",`);
               }
            });
         }

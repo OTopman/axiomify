@@ -62,10 +62,14 @@ export class TsClientEmitter {
       
       let reqOpts = `method: '${method}', path: ${pathExpr}`;
       
+      const isValidTSIdentifier = (name: string) => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name);
+
       if (ep.queryParams.length > 0) {
         reqOpts += `, query: {`;
         for (const q of ep.queryParams) {
-           reqOpts += ` ${q.name}: request.${q.name},`;
+           const propStr = isValidTSIdentifier(q.name) ? q.name : `'${q.name}'`;
+           const accessStr = isValidTSIdentifier(q.name) ? `.${q.name}` : `['${q.name}']`;
+           reqOpts += ` ${propStr}: request${accessStr},`;
         }
         reqOpts += ` }`;
       }
@@ -80,10 +84,11 @@ export class TsClientEmitter {
 
   private buildRequestType(ep: IREndpoint): string | null {
     const props: string[] = [];
+    const formatProp = (name: string) => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : `'${name}'`;
     
-    for (const p of ep.pathParams) props.push(`${p.name}${p.required ? '' : '?'}: ${this.renderTypeRef(p.type)}`);
-    for (const p of ep.queryParams) props.push(`${p.name}${p.required ? '' : '?'}: ${this.renderTypeRef(p.type)}`);
-    for (const p of ep.headerParams) props.push(`${p.name}${p.required ? '' : '?'}: ${this.renderTypeRef(p.type)}`);
+    for (const p of ep.pathParams) props.push(`${formatProp(p.name)}${p.required ? '' : '?'}: ${this.renderTypeRef(p.type)}`);
+    for (const p of ep.queryParams) props.push(`${formatProp(p.name)}${p.required ? '' : '?'}: ${this.renderTypeRef(p.type)}`);
+    for (const p of ep.headerParams) props.push(`${formatProp(p.name)}${p.required ? '' : '?'}: ${this.renderTypeRef(p.type)}`);
     
     if (ep.requestBody) {
        props.push(`body${ep.requestBody.required ? '' : '?'}: ${this.renderTypeRef(ep.requestBody.type)}`);
