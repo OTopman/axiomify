@@ -41,6 +41,12 @@ npx axiomify openapi examples/my-app/src/index.ts -o /tmp/spec.json
 
 # Run the static production-readiness audit against an example.
 npx axiomify check examples/my-app/src/index.ts
+
+# Generate multi-language SDKs for the example application.
+npx axiomify sdk generate examples/my-app/src/index.ts -t typescript python go
+
+# Boot the development server and automatically regenerate SDKs on the fly.
+npx axiomify dev examples/my-app/src/index.ts --watch-sdk typescript python
 ```
 
 If you're building a new example, follow the same pattern — wrap `adapter.listen()` in `if (require.main === module) { ... }` so the CLI can introspect the module without starting the server.

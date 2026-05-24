@@ -26,6 +26,7 @@ same major version as the rest of your `@axiomify/*` packages — recommended.
 | `axiomify doctor` | Diagnose the host environment |
 | `axiomify scaffold route <method> <path>` | Generate a new route file under `src/routes/` |
 | `axiomify migrate` | v4 → v5 codemod (rename `meta`→`openapi`, `useSwagger`→`useOpenAPI`, etc.) |
+| `axiomify sdk <subcommand>` | Generate, validate, and diff multi-language type-safe SDKs |
 
 `[entry]` defaults to `src/index.ts` in every command that takes one.
 
@@ -51,12 +52,19 @@ sane defaults. Pass `-f, --force` to overwrite existing files.
 ```bash
 axiomify dev               # src/index.ts
 axiomify dev src/app.ts
+axiomify dev --watch-sdk typescript python # Start dev server with background SDK generation
 ```
 
 esbuild watch mode. Spawns the bundled file as a Node child process,
 restarting on every successful rebuild. SIGTERM is sent first (so the
 user's `gracefulShutdown` hooks can drain), with a SIGKILL fallback after
 3 seconds.
+
+### Flags
+
+| Flag | Description |
+|---|---|
+| `--watch-sdk <langs...>` | Continuously rebuild SDKs for the specified languages in the background upon successful application compilation. |
 
 ## `axiomify build`
 
@@ -270,6 +278,48 @@ Checks:
 - Port 3000 (or `$PORT`) free on `127.0.0.1`
 
 Exit code 0 when no fails, 1 otherwise.
+
+## `axiomify sdk`
+
+The `sdk` command suite powers the enterprise Type-Safe SDK Generation Platform. It transforms your backend schemas into fully-typed client SDKs across multiple languages.
+
+### `axiomify sdk generate`
+
+Generates ready-to-use SDKs using our `TypeGraph` AST compiler.
+
+```bash
+axiomify sdk generate openapi.json -t typescript       # generate a typescript SDK
+axiomify sdk generate schema.graphql -t python go      # multiple languages
+axiomify sdk generate src/index.ts -t swift            # parse directly from an Axiomify app
+```
+
+#### Flags
+
+| Flag | Description |
+|---|---|
+| `-t, --target <langs...>` | **(Required)** Target languages. Supported: `typescript`, `python`, `go`, `swift`, `kotlin`, `dart`. |
+| `-o, --output <dir>` | Output directory (default: `generated-sdks`) |
+| `-n, --name <name>` | Package name (e.g. `my-api-sdk`) |
+| `-v, --version <version>` | Package version (e.g. `1.0.0`) |
+| `--dry-run` | Print files to stdout instead of disk |
+
+*Note: The generated code relies on `@axiomify/sdk-runtime`, a zero-dependency HTTP runtime. See [SDK Runtime](./sdk-runtime.md) for details.*
+
+### `axiomify sdk diff`
+
+Compares two API schema states to flag breaking changes (e.g., removed endpoints, altered path signatures). This is invaluable in CI/CD pipelines to guarantee backwards compatibility for mobile or external API consumers.
+
+```bash
+axiomify sdk diff old-spec.json new-spec.json
+```
+
+### `axiomify sdk validate`
+
+Performs strict syntactic and semantic validations against your schema by passing it through the SDK `CompilerPipeline`. Ideal for CI sanity checks before pushing a schema registry.
+
+```bash
+axiomify sdk validate spec.json
+```
 
 ## Working with the CLI in CI
 
