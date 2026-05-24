@@ -45,8 +45,9 @@ export async function generateSdk(opts: GenerateOptions): Promise<boolean> {
       // Ingest Axiomify app directly
       console.log(`  ${symbols.bullet} Ingesting Axiomify app from ${pc.cyan(opts.input)}...`);
       const rootAbs = path.resolve(process.cwd(), opts.input);
-      const app = await loadApp(rootAbs);
+      const { app, cleanup } = await loadApp(rootAbs);
       ingestionResult = ingestAxiomifyApp(app, { title: opts.name, version: opts.version });
+      await cleanup();
     } else if (inputExt === '.json' || inputExt === '.yaml' || inputExt === '.yml') {
       // OpenAPI
       console.log(`  ${symbols.bullet} Ingesting OpenAPI spec from ${pc.cyan(opts.input)}...`);

@@ -158,7 +158,7 @@ export function ingestAxiomifyApp(
   const seenOps = new Set<string>();
   anonCounter = 0;
 
-  for (const route of app.registeredRoutes) {
+  for (const route of app.registeredRoutes || []) {
     const method: string = route.method ?? 'GET';
     const path: string = route.path ?? '/';
     const schema = route.schema ?? {};
