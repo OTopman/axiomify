@@ -66,10 +66,18 @@ function synthesiseOperationId(method: string, path: string): string {
   const parts: string[] = [];
   for (const seg of path.split('/')) {
     if (!seg) continue;
-    if (seg.startsWith(':')) {
-      parts.push('By', capitalize(seg.slice(1)));
-    } else if (seg === '*') { parts.push('All'); }
-    else { parts.push(capitalize(seg)); }
+    
+    // Convert path parameters to 'ByX' and wildcards to 'All'
+    let normalized = seg.replace(/^:/, 'By-').replace(/\*/g, 'All');
+    
+    // Strip non-alphanumeric characters and camelCase the remaining words
+    const cleanSeg = normalized
+      .split(/[^a-zA-Z0-9]+/)
+      .filter(Boolean)
+      .map(capitalize)
+      .join('');
+      
+    if (cleanSeg) parts.push(cleanSeg);
   }
   return verb + parts.join('');
 }
