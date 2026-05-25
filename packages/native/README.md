@@ -5,7 +5,6 @@
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![npm version](https://img.shields.io/npm/v/@axiomify/native.svg)](https://npmjs.com/package/@axiomify/native)
 
 uWebSockets.js adapter for Axiomify. Highest-throughput transport: 73,000–84,000 req/s single-process on an 8-core machine.
 
@@ -59,4 +58,4 @@ adapter.listenClustered({
 
 ## Documentation
 
-See [docs/[./packages/native.md](./packages/native.md)](https://github.com/OTopman/axiomify/blob/main/docs/packages/native.md).
+See [docs/packages/native.md](https://github.com/OTopman/axiomify/blob/main/docs/packages/native.md).
