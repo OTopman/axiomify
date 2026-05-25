@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/rate-limit",
-  "version": "6.0.0",
+  "version": "6.0.0-rc.3",
   "description": "Sliding-window rate limiting for Axiomify — Redis EVALSHA caching, full ioredis/redis@4 compatibility, MemoryStore for development.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

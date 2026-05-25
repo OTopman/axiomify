@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/logger",
-  "version": "6.0.0",
+  "version": "6.0.0-rc.3",
   "description": "Structured request/response logging for Axiomify with recursive PII masking.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

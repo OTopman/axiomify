@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/cors",
-  "version": "6.0.0",
+  "version": "6.0.0-rc.3",
   "description": "CORS plugin for Axiomify — strict preflight, Vary management, credentials-aware origin policy with startup validation.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
