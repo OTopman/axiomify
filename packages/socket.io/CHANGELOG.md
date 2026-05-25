@@ -1,5 +1,17 @@
 # @axiomify/express
 
+## 6.0.0
+
+### Major Changes
+
+- facf7b6: Release v6.0.0
+
+### Patch Changes
+
+- Updated dependencies [facf7b6]
+  - @axiomify/core@6.0.0
+  - @axiomify/native@6.0.0
+
 ## 5.0.0
 
 ### Major Changes
