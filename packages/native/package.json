@@ -22,7 +22,7 @@
     "@axiomify/core": "*"
   },
   "peerDependencies": {
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.48.0"
+    "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#v20.67.0"
   },
   "peerDependenciesMeta": {
     "uWebSockets.js": {

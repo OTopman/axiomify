@@ -59,6 +59,6 @@
   ],
   "dependencies": {
     "ajv": "^8.20.0",
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.67.0"
+    "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#v20.67.0"
   }
 }
