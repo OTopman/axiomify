@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/native",
-  "version": "6.0.0-rc.3",
+  "version": "6.0.0",
   "description": "uWebSockets.js adapter for Axiomify — highest-throughput transport. HTTP, native WebSocket, SSE, graceful shutdown, SO_REUSEPORT clustering.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -33,7 +33,7 @@
     "simdjson": "^0.9.2"
   },
   "devDependencies": {
-    "ws": "^8.18.0",
+    "ws": "^8.21.0",
     "@types/ws": "^8.5.13"
   },
   "author": {
