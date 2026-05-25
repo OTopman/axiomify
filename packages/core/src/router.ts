@@ -48,6 +48,8 @@ function makeParamAccum(capacity = 8): ParamAccum {
 
 export class Router {
   private root = new TrieNode();
+  // Allocate exactly ONCE per router instance
+  private readonly _sharedAccum = makeParamAccum(16);
 
   // ── Registration ────────────────────────────────────────────────────────────
 
@@ -68,7 +70,10 @@ export class Router {
         const key = seg.slice(1);
         let found: TrieNode | undefined;
         for (const entry of node.paramChildren) {
-          if (entry.key === key) { found = entry.node; break; }
+          if (entry.key === key) {
+            found = entry.node;
+            break;
+          }
         }
         if (!found) {
           found = new TrieNode();
@@ -85,7 +90,10 @@ export class Router {
         node = node.wildcardChild;
       } else {
         let child = node.children.get(seg);
-        if (!child) { child = new TrieNode(); node.children.set(seg, child); }
+        if (!child) {
+          child = new TrieNode();
+          node.children.set(seg, child);
+        }
         node = child;
       }
 
@@ -120,14 +128,26 @@ export class Router {
     path: string,
     paramsOut?: Record<string, string>,
   ): RouterLookupResult {
-    const accum = makeParamAccum();
     const out = paramsOut ?? {};
-    const match = this._lookupNode(this.root, path, path.startsWith('/') ? 1 : 0, method, accum, out);
+    this._sharedAccum.len = 0; // Reset length, reuse arrays
+    const match = this._lookupNode(
+      this.root,
+      path,
+      path.startsWith('/') ? 1 : 0,
+      method,
+      this._sharedAccum,
+      paramsOut ?? {},
+    );
     if (match) return match;
 
-    const allowed = this._collectAllowed(this.root, path, path.startsWith('/') ? 1 : 0);
+    const allowed = this._collectAllowed(
+      this.root,
+      path,
+      path.startsWith('/') ? 1 : 0,
+    );
     if (allowed.length > 0) {
-      if (allowed.includes('GET') && !allowed.includes('HEAD')) allowed.push('HEAD');
+      if (allowed.includes('GET') && !allowed.includes('HEAD'))
+        allowed.push('HEAD');
       return { error: 'MethodNotAllowed', allowed };
     }
     return null;
@@ -163,7 +183,14 @@ export class Router {
     // ── Static child (fastest path) ─────────────────────────────────────────
     const staticChild = node.children.get(seg);
     if (staticChild) {
-      const match = this._lookupNode(staticChild, path, nextPos, method, accum, out);
+      const match = this._lookupNode(
+        staticChild,
+        path,
+        nextPos,
+        method,
+        accum,
+        out,
+      );
       if (match) return match;
     }
 
@@ -173,7 +200,14 @@ export class Router {
       accum.keys[accum.len] = key;
       accum.vals[accum.len] = seg;
       accum.len = savedLen + 1;
-      const match = this._lookupNode(paramNode, path, nextPos, method, accum, out);
+      const match = this._lookupNode(
+        paramNode,
+        path,
+        nextPos,
+        method,
+        accum,
+        out,
+      );
       if (match) return match;
       accum.len = savedLen; // backtrack
     }
@@ -183,7 +217,14 @@ export class Router {
       accum.keys[accum.len] = '*';
       accum.vals[accum.len] = path.slice(pos);
       accum.len = savedLen + 1;
-      const match = this._lookupNode(node.wildcardChild, path, path.length + 1, method, accum, out);
+      const match = this._lookupNode(
+        node.wildcardChild,
+        path,
+        path.length + 1,
+        method,
+        accum,
+        out,
+      );
       if (match) return match;
       accum.len = savedLen;
     }
@@ -191,7 +232,11 @@ export class Router {
     return null;
   }
 
-  private _collectAllowed(node: TrieNode, path: string, pos: number): HttpMethod[] {
+  private _collectAllowed(
+    node: TrieNode,
+    path: string,
+    pos: number,
+  ): HttpMethod[] {
     if (pos > path.length) return Array.from(node.routes.keys());
 
     let end = path.indexOf('/', pos);
@@ -202,13 +247,20 @@ export class Router {
     const methods = new Set<HttpMethod>();
     const staticChild = node.children.get(seg);
     if (staticChild) {
-      for (const m of this._collectAllowed(staticChild, path, nextPos)) methods.add(m);
+      for (const m of this._collectAllowed(staticChild, path, nextPos))
+        methods.add(m);
     }
     for (const { node: paramNode } of node.paramChildren) {
-      for (const m of this._collectAllowed(paramNode, path, nextPos)) methods.add(m);
+      for (const m of this._collectAllowed(paramNode, path, nextPos))
+        methods.add(m);
     }
     if (node.wildcardChild) {
-      for (const m of this._collectAllowed(node.wildcardChild, path, path.length + 1)) methods.add(m);
+      for (const m of this._collectAllowed(
+        node.wildcardChild,
+        path,
+        path.length + 1,
+      ))
+        methods.add(m);
     }
     return Array.from(methods);
   }

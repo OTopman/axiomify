@@ -39,6 +39,15 @@ app.route({
   },
 });
 
+app.route({
+  method: 'GET',
+  path: '/search',
+  handler: async (req, res) => {
+    // Access the lazy-loaded query object to force the parser to run
+    res.send({ activeFilters: Object.keys(req.query).length });
+  },
+});
+
 const adapter = new NativeAdapter(app, { port, trustProxy: false });
 
 adapter.listen(() => {

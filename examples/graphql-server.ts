@@ -6,7 +6,7 @@
  */
 
 import { Axiomify, z } from '@axiomify/core';
-import { ExpressAdapter } from '@axiomify/express';
+import { NativeAdapter } from '@axiomify/native';
 import {
   GraphQLID,
   GraphQLList,
@@ -115,8 +115,8 @@ useGraphQL(app, {
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 
-const adapter = new ExpressAdapter(app);
-adapter.listen(3000, () => {
+const adapter = new NativeAdapter(app, { port: 3000 });
+adapter.listen((port) => {
   console.log('🚀 Server running on http://localhost:3000');
   console.log('');
   console.log('REST endpoints:');

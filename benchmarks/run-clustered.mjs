@@ -51,11 +51,8 @@ const MAX_SERVER_WORKERS = IS_REMOTE ? CPU_COUNT : Math.max(2, Math.floor(CPU_CO
 const WORKER_TIERS = [1, 2, 4, 6, 8].filter(n => n <= MAX_SERVER_WORKERS);
 if (!WORKER_TIERS.includes(MAX_SERVER_WORKERS)) WORKER_TIERS.push(MAX_SERVER_WORKERS);
 
-// ─── Adapter definitions ──────────────────────────────────────────────────────
 const ADAPTERS = [
   { key: 'native',   label: 'Native (uWS)',     file: 'axiomify-native-clustered.mjs',  basePort: 3200 },
-  { key: 'http',     label: 'HTTP adapter',     file: 'axiomify-http-clustered.mjs',    basePort: 3210 },
-  { key: 'fastify',  label: 'Fastify adapter',  file: 'axiomify-fastify-clustered.mjs', basePort: 3220 },
 ];
 
 // Build the full server matrix: every adapter × every worker tier

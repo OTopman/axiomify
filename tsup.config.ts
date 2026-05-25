@@ -19,6 +19,7 @@ export default defineConfig({
   // Exclude heavy peer dependencies from the final bundle
   external: [
     'express',
+    '@hapi/hapi',
     'fastify',
     'zod',
     'ts-morph',

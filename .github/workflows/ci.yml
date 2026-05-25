@@ -16,7 +16,7 @@ jobs:
       contents: read   # checkout
     strategy:
       matrix:
-        node-version: [18, 20]
+        node-version: [20, 22]
     steps:
       - name: Checkout Code
         # Pin to SHA instead of floating tag to prevent supply-chain attacks.
@@ -42,9 +42,6 @@ jobs:
         run: npm run build
 
       - name: Run Tests & Coverage
-        # @axiomify/native uses uWS.js which only ships binaries for Node 16/18/20.
-        # native.test.ts detects the Node major version and skips itself on Node 22+
-        # via describe.skipIf, so the suite still passes on all matrix targets.
         run: npm run coverage
 
       - name: Upload Coverage to Codecov
@@ -59,3 +56,115 @@ jobs:
           fail_ci_if_error: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  # Native adapter integration job — runs the REAL uWS-backed tests on the
+  # most common production target (Linux + Node 22 LTS). Without this, every
+  # `describe.skipIf(!uwsSupported)` block could silently skip across the
+  # entire CI matrix and we'd ship regressions in the HTTP layer with green
+  # checkmarks. The job fails if the native suite reports zero passing tests
+  # — i.e. if the uWS binary stopped loading or the suite was renamed.
+  # ---------------------------------------------------------------------------
+  native-integration:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run @axiomify/native test suite
+        run: npx vitest run packages/native --reporter=json --outputFile=native-results.json
+        # vitest exits non-zero on any test failure; --reporter=json gives us
+        # the structured output to verify execution happened.
+
+      - name: Assert native tests actually executed (not all skipped)
+        run: |
+          PASSED=$(node -e "console.log(require('./native-results.json').numPassedTests)")
+          SKIPPED=$(node -e "console.log(require('./native-results.json').numPendingTests || 0)")
+          echo "Native tests — passed: $PASSED, skipped: $SKIPPED"
+          if [ "$PASSED" -lt 10 ]; then
+            echo "::error::Native test suite passed only $PASSED tests. The uWS-backed integration tests are not running on Node 22 / Linux. This is the production target — the suite cannot silently skip here."
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Example app smoke test — fails CI if examples/my-app cannot install or
+  # typecheck. This is the first thing a new user runs (`npx axiomify init`
+  # generates a similar shape), so a broken example is a release blocker.
+  # ---------------------------------------------------------------------------
+  example-app:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install workspace (so example can resolve workspace:* deps)
+        run: npm ci
+
+      - name: Build workspace packages
+        run: npm run build
+
+      - name: Install example app
+        working-directory: examples/my-app
+        run: npm install --no-audit --no-fund
+
+      - name: Typecheck example app
+        working-directory: examples/my-app
+        run: npx tsc --noEmit
+
+  # ---------------------------------------------------------------------------
+  # Smoke benchmark — proves the benchmark harness still works and uploads
+  # the raw autocannon result as a CI artifact. Does NOT gate on absolute
+  # req/s numbers (cloud CI runners vary too much to make that meaningful)
+  # — but DOES fail on broken servers, non-2xx responses, and catastrophic
+  # regressions (< 1000 req/s on /ping is "something is on fire").
+  #
+  # See `benchmarks/smoke.mjs` for the implementation and `benchmarks/README.md`
+  # for the methodology of the full suite.
+  # ---------------------------------------------------------------------------
+  bench-smoke:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build workspace packages
+        run: npm run build
+
+      - name: Run smoke benchmark
+        run: node benchmarks/smoke.mjs
+
+      - name: Upload smoke-result.json
+        if: always()
+        # SHA pin: actions/upload-artifact@v4.4.0
+        uses: actions/upload-artifact@50769540e7f4bd5e21e526ee35c689e35e0d6874
+        with:
+          name: bench-smoke-result-${{ github.sha }}
+          path: benchmarks/smoke-result.json
+          if-no-files-found: warn
+          retention-days: 30

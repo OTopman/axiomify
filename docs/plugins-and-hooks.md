@@ -57,6 +57,8 @@ if (ret) await ret;  // only allocates a microtask when there are hooks
 
 Zero Promise allocation in the zero-hook fast path. Single-handler lists call the handler directly without a loop.
 
+Multi-handler lists are **snapshotted before iteration**, so a hook that calls `app.addHook(type, ...)` of its own type during execution does NOT mutate the in-progress iteration — added hooks take effect on the *next* request. This matches the convention used by Express / Fastify / Koa.
+
 ## Global hooks
 
 ```typescript
@@ -67,7 +69,8 @@ app.addHook('onRequest', async (req, res) => {
 
 app.addHook('onPreHandler', async (req, res, { route, params }) => {
   // Good for: rate limiting by route, per-route auth checks
-  // route.meta.tags is available here for tag-based auth
+  // route.openapi?.tags is available here for tag-based auth
+  // (route.meta still works as a deprecated alias through 5.x)
 });
 
 app.addHook('onPostHandler', async (req, res, { route, params }) => {
@@ -131,7 +134,7 @@ app.group('/api/private', { plugins: [requireAuth] }, (group) => {
 | Auth token extraction (store in `req.state`) | `onRequest` ✓ | |
 | Rate limit (global, all routes) | `onPreHandler` ✓ | |
 | Rate limit (specific routes) | | Plugin ✓ |
-| Role check (requires route `meta.tags`) | `onPreHandler` ✓ | |
+| Role check (reads `route.openapi?.tags` / `route.meta?.tags`) | `onPreHandler` ✓ | |
 | Auth enforcement (specific routes) | | Plugin ✓ |
 | Response logging | `onPostHandler` ✓ | |
 | Error alerting | `onError` ✓ | |
@@ -148,7 +151,6 @@ import { useLogger }    from '@axiomify/logger';
 import { useMetrics }   from '@axiomify/metrics';
 import { useOpenAPI }   from '@axiomify/openapi';
 import { useRateLimit } from '@axiomify/rate-limit';
-import { useWebSockets }from '@axiomify/ws';
 import { useSecurity }  from '@axiomify/security';
 import { useGraphQL }   from '@axiomify/graphql';
 

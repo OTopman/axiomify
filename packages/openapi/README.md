@@ -1,6 +1,12 @@
 # @axiomify/openapi
 
-Auto-generates OpenAPI 3.0 documentation from your Axiomify routes and Zod schemas. Supports Zod v4 natively via `z.toJSONSchema()`.
+
+[![npm version](https://img.shields.io/npm/v/@axiomify/openapi.svg)](https://npmjs.com/package/@axiomify/openapi)
+[![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
+Auto-generates OpenAPI 3.1.0 documentation from your Axiomify routes and Zod schemas. Supports Zod v4 natively via `z.toJSONSchema()`.
 
 ## Install
 
@@ -21,17 +27,20 @@ app.route({
   method: 'POST',
   path: '/users',
   schema: {
+    // Zod validation
     body: z.object({ email: z.string().email(), name: z.string() }),
     response: z.object({ id: z.string(), email: z.string(), name: z.string() }),
+    // OpenAPI 3.1.0 metadata — same block, no separate `openapi:` property
     tags: ['Users'],
-    description: 'Create a new user',
+    summary: 'Create a new user',
+    operationId: 'createUser',
   },
   handler: async (req, res) => res.status(201).send({ id: 'usr_1', ...req.body }),
 });
 
 useOpenAPI(app, {
   info: { title: 'My API', version: '1.0.0' },
-  routePrefix: '/docs',          // UI at /docs, spec at /docs/openapi.json
+  prefix: '/docs',            // UI at /docs  ·  spec at /docs/openapi.json
   protect: (req) => req.headers['x-internal-token'] === process.env.DOCS_TOKEN,
 });
 ```
@@ -46,14 +55,14 @@ useOpenAPI(app, {
       bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
     },
   },
-  security: [{ bearerAuth: [] }],  // applied globally
+  security: [{ bearerAuth: [] }],   // applied globally to all routes
 });
 
-// Per-route override
+// Per-route override — empty security array opts out of global security (OAS §4.8.10.10)
 app.route({
   method: 'GET',
   path: '/public',
-  schema: { security: [] }, // opt out of global security for this route
+  schema: { security: [] },
   handler: async (_req, res) => res.send({ public: true }),
 });
 ```
@@ -73,7 +82,7 @@ app.route({
   },
   handler: async (req, res) => {
     const user = await db.users.findById(req.params.id);
-    if (!user) return res.status(404).send(null, 'Not Found');
+    if (!user) return res.status(404).send({ message: 'Not Found' });
     res.send(user);
   },
 });

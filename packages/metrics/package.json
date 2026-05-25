@@ -1,14 +1,10 @@
 {
   "name": "@axiomify/metrics",
-  "version": "5.0.0",
+  "version": "6.0.0-rc.3",
+  "description": "Prometheus metrics for Axiomify — bounded label cardinality, WebSocket stats, route-level latency histograms.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "scripts": {
-    "build": "tsup"
-  },
-  "dependencies": {
-    "@axiomify/core": "*"
-  },
+  "module": "./dist/index.mjs",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -16,14 +12,34 @@
       "require": "./dist/index.js"
     }
   },
-  "module": "./dist/index.mjs",
-  "engines": {
-    "node": ">=18.0.0"
-  },
   "files": [
     "dist"
   ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@axiomify/core": "*"
+  },
+  "author": {
+    "name": "Topman",
+    "email": "okunlolatopman14@gmail.com",
+    "url": "https://github.com/OTopman"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/OTopman/axiomify/blob/main/docs/packages/metrics.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OTopman/axiomify.git",
+    "directory": "packages/metrics"
+  },
+  "bugs": {
+    "url": "https://github.com/OTopman/axiomify/issues"
+  },
   "publishConfig": {
     "access": "public"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

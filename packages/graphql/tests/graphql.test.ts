@@ -206,6 +206,112 @@ describeGQL('GraphQL execution paths', () => {
     expect(body.errors[0].message).toBe('resolver exploded');
   });
 
+  it('returns 400 for missing query field', async () => {
+    const app = new Axiomify();
+    useGraphQL(app, { schema: makeSchema() });
+    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const res = makeRes();
+    await route.handler(makeReq({}), res);
+    expect(res._code).toBe(400);
+    const body = JSON.parse(res._raw);
+    expect(body.errors[0].message).toMatch(/query/i);
+  });
+
+  it('returns 400 for syntactically invalid query (parse error)', async () => {
+    const app = new Axiomify();
+    useGraphQL(app, { schema: makeSchema() });
+    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const res = makeRes();
+    await route.handler(makeReq({ query: '{ this is not valid' }), res);
+    expect(res._code).toBe(400);
+    const body = JSON.parse(res._raw);
+    expect(body.errors).toBeDefined();
+  });
+
+  it('GET endpoint rejects mutation (405 Method Not Allowed)', async () => {
+    if (!gql) return;
+    const mutationSchema = new gql.GraphQLSchema({
+      query: new gql.GraphQLObjectType({
+        name: 'Query',
+        fields: { ping: { type: gql.GraphQLString, resolve: () => 'pong' } },
+      }),
+      mutation: new gql.GraphQLObjectType({
+        name: 'Mutation',
+        fields: { doIt: { type: gql.GraphQLString, resolve: () => 'done' } },
+      }),
+    });
+    const app = new Axiomify();
+    useGraphQL(app, { schema: mutationSchema, playground: false });
+    const getRoute = app.registeredRoutes.find(r => r.method === 'GET' && r.path === '/graphql')!;
+    const req = { ...makeReq(), method: 'GET', query: { query: 'mutation { doIt }' } };
+    const res = makeRes();
+    await getRoute.handler(req, res);
+    expect(res._code).toBe(405);
+    expect(res._headers?.Allow).toBe('POST');
+  });
+
+  it('rejects when measured depth exceeds maxDepth', async () => {
+    if (!gql) return;
+    // Build a schema with nested selection to actually exceed depth
+    const inner = new gql.GraphQLObjectType({
+      name: 'Inner',
+      fields: { val: { type: gql.GraphQLString, resolve: () => 'v' } },
+    });
+    const schema = new gql.GraphQLSchema({
+      query: new gql.GraphQLObjectType({
+        name: 'Query',
+        fields: {
+          nested: { type: inner, resolve: () => ({}) },
+        },
+      }),
+    });
+    const app = new Axiomify();
+    useGraphQL(app, { schema, maxDepth: 1 });
+    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const res = makeRes();
+    await route.handler(makeReq({ query: '{ nested { val } }' }), res);
+    expect(res._code).toBe(400);
+    const body = JSON.parse(res._raw);
+    expect(body.errors[0].message).toMatch(/depth/i);
+  });
+
+  it('serves GraphiQL playground HTML at /graphql/playground', async () => {
+    const app = new Axiomify();
+    useGraphQL(app, { schema: makeSchema(), playground: true });
+    const pgRoute = app.registeredRoutes.find(r => r.path === '/graphql/playground')!;
+    expect(pgRoute).toBeDefined();
+    const res = makeRes();
+    await pgRoute.handler(makeReq(), res);
+    expect(res._code).toBe(200);
+    expect(res._raw).toContain('graphiql');
+    expect(res._headers?.['Content-Security-Policy']).toContain('default-src');
+  });
+
+  it('respects custom playgroundPath', () => {
+    const app = new Axiomify();
+    useGraphQL(app, {
+      schema: makeSchema(),
+      playground: true,
+      playgroundPath: '/gql-ui',
+    });
+    expect(app.registeredRoutes.some(r => r.path === '/gql-ui')).toBe(true);
+  });
+
+  it('disableIntrospection rejects __schema queries', async () => {
+    const app = new Axiomify();
+    useGraphQL(app, { schema: makeSchema(), disableIntrospection: true });
+    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const res = makeRes();
+    await route.handler(makeReq({ query: '{ __schema { types { name } } }' }), res);
+    expect(res._code).toBe(400);
+  });
+
+  it('path without leading slash is normalized', () => {
+    const app = new Axiomify();
+    useGraphQL(app, { schema: makeSchema(), path: 'gql' });
+    expect(app.registeredRoutes.some(r => r.path === '/gql')).toBe(true);
+  });
+
   it('GET endpoint with variables executes correctly', async () => {
     if (!gql) return;
     const varSchema = new gql.GraphQLSchema({

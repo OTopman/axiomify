@@ -1,4 +1,6 @@
 import { Axiomify } from '@axiomify/core';
+import { Maskify } from 'maskify-ts';
+import 'reflect-metadata';
 import pc from 'picocolors';
 
 export interface LoggerOptions {
@@ -28,31 +30,6 @@ const LEVEL_RANK: Record<LogLevel, number> = {
   error: 3,
 };
 
-function fallbackMaskObject(
-  input: unknown,
-  sensitiveFields: Set<string>,
-): unknown {
-  if (Array.isArray(input)) {
-    return input.map((item) => fallbackMaskObject(item, sensitiveFields));
-  }
-
-  if (!input || typeof input !== 'object') return input;
-
-  return Object.entries(input).reduce<Record<string, any>>(
-    (acc, [key, value]) => {
-      const isSensitive = sensitiveFields.has(key.toLowerCase());
-      if (isSensitive && typeof value === 'string') {
-        const visibleEnd = value.slice(-2);
-        acc[key] = `${'*'.repeat(Math.max(3, value.length - 2))}${visibleEnd}`;
-        return acc;
-      }
-      acc[key] = fallbackMaskObject(value, sensitiveFields);
-      return acc;
-    },
-    {},
-  );
-}
-
 export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
   const sensitiveFields = options.sensitiveFields ?? [
     'password',
@@ -74,10 +51,6 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
 
   const isProd = process.env.NODE_ENV === 'production';
 
-  const sensitiveFieldSet = new Set(
-    sensitiveFields.map((field) => field.toLowerCase()),
-  );
-
   const emit = (
     level: LogLevel,
     message: string,
@@ -86,10 +59,9 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
     if (LEVEL_RANK[level] < LEVEL_RANK[logLevel]) return;
 
     const timestamp = new Date().toISOString();
-    const maskedMeta = fallbackMaskObject(
-      meta,
-      sensitiveFieldSet,
-    ) as Record<string, unknown>;
+    const maskedMeta = Maskify.autoMask(meta, {
+      sensitiveKeys: sensitiveFields,
+    });
 
     if (beautify) {
       const colorMap = {

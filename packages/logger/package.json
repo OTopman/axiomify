@@ -1,22 +1,10 @@
 {
   "name": "@axiomify/logger",
-  "version": "5.0.0",
+  "version": "6.0.0-rc.3",
+  "description": "Structured request/response logging for Axiomify with recursive PII masking.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": [
-    "dist"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
-  "scripts": {
-    "build": "tsup"
-  },
-  "dependencies": {
-    "@axiomify/core": "*",
-    "maskify-ts": "^4.0.0",
-    "picocolors": "^1.1.1"
-  },
+  "module": "./dist/index.mjs",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -24,8 +12,37 @@
       "require": "./dist/index.js"
     }
   },
-  "module": "./dist/index.mjs",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@axiomify/core": "*",
+    "picocolors": "^1.1.1",
+    "maskify-ts": "^4.0.0",
+    "reflect-metadata": "^0.2.0"
+  },
+  "author": {
+    "name": "Topman",
+    "email": "okunlolatopman14@gmail.com",
+    "url": "https://github.com/OTopman"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/OTopman/axiomify/blob/main/docs/packages/logger.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OTopman/axiomify.git",
+    "directory": "packages/logger"
+  },
+  "bugs": {
+    "url": "https://github.com/OTopman/axiomify/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }

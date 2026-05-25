@@ -297,12 +297,6 @@ export function useUpload(app: Axiomify): void {
             } catch (err) {
               file.resume();
               if (savePath) await unlink(savePath).catch(() => {});
-
-              const rawSocket =
-                (req.raw as any).socket || (req.raw as any).connection;
-              if (rawSocket && typeof rawSocket.destroy === 'function') {
-                rawSocket.destroy();
-              }
               safeReject(err);
             }
           })();

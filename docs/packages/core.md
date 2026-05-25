@@ -46,11 +46,7 @@ app.route({
     response: z.object({ id: z.string(), name: z.string() }),
     // or per-status: response: { 201: z.object(...), 400: z.object(...) }
   },
-  meta: {           // documentation metadata (OpenAPI tags, description)
-    tags: ['Users'],
-    description: 'Create a new user',
-    summary: 'Create user',
-  },
+  // OpenAPI metadata lives in schema: alongside Zod fields
   plugins: [requireAuth, rateLimit],
   timeout: 5_000,   // per-route timeout override
   handler: async (req, res) => {
@@ -125,7 +121,22 @@ app.setSerializer(({ data, message, statusCode, isError }) => ({
 }));
 ```
 
-Use `app.setSerializer()` — `app.serializer` is a read-only getter since v5. Direct assignment is no longer possible.
+Rules:
+
+- **Single-argument signature only.** The 4.x positional form
+  `(data, message, statusCode, isError, req) => ...` was removed in 5.0
+  and now throws at adapter construction time.
+- **Must be synchronous.** Async serializers throw at construction —
+  `JSON.stringify(Promise)` would produce `[object Promise]` and silently
+  corrupt every response body. Do async work in an `onPostHandler` hook
+  or in the route handler itself.
+- **Call before adapter construction.** Once a `NativeAdapter` is built,
+  the serializer is locked — the adapter pre-builds cached error envelopes
+  (404 / 405 / 413 / 500) from the configured serializer, and a late swap
+  would produce inconsistent shapes between cached fallbacks and live
+  responses. `setSerializer` throws after `lockRoutes`.
+- `app.serializer` is a read-only getter. Direct assignment was never
+  supported.
 
 ## Adapter protocol
 
@@ -153,10 +164,11 @@ At startup, for each route:
 3. `hasTransforms(schema)` → does this schema have `.transform()`, `.default()`, `.coerce`, `.refine()`, `.catch()`, `.pipe()`?
 
 At request time:
-- AJV validates structure
-- If invalid → AJV error map returned immediately (428× faster than Zod's error path)
-- If valid AND no transforms → input returned directly (Zod skipped)
+- AJV validates structure via the compiled function
+- If invalid → AJV error map returned immediately (AJV's compiled error path is significantly faster than Zod's `safeParse` error path; concrete numbers vary by schema complexity — run `benchmarks/stress.mjs` on your own hardware to measure)
+- If valid AND no transforms → input returned directly (Zod parse pass skipped)
 - If valid AND transforms present → `schema.parse()` applies them
+- If AJV is not installed → falls back to Zod `safeParse` for everything (correct, ~1.6× slower than the AJV path)
 
 ### Response validation
 
@@ -174,7 +186,8 @@ At request time:
 | `AppModule` | Named plugin with dependency declaration |
 | `AppConfigurator` | `(app, ctx) => void` — preferred plugin form |
 | `AppContext` | `{ provide, resolve }` — dependency injection context |
-| `RouteMeta` | Documentation metadata separate from validation |
-| `RouteMiddleware` | Replaces `RoutePlugin` / `PluginHandler` |
+| `OpenApiOperation` | OpenAPI 3.1.0 Operation Object metadata for a route (`route.openapi`). Field shape mirrors the spec verbatim — see [openapi docs](./openapi.md). |
+| `RouteMeta` | **Deprecated alias for `OpenApiOperation`.** Kept through 5.x for back-compat; removed in 6.0. |
+| `RouteMiddleware` | `(req, res) => void \| Promise<void>` — per-route middleware function. |
 | `ResponseCapabilities` | `{ sse: boolean, streaming: boolean }` |
 | `SseCapableResponse` | `AxiomifyResponse` with required `sseInit` / `sseSend` |

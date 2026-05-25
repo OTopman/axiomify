@@ -1,4 +1,4 @@
-import type { Axiomify, RouteDefinition } from '@axiomify/core';
+import type { Axiomify, RouteDefinition, RouteSchema } from '@axiomify/core';
 import type { ZodTypeAny } from 'zod';
 
 export interface OpenApiOptions {
@@ -10,13 +10,13 @@ export interface OpenApiOptions {
   /** Automatically infer 200 response schema from `schema.response`. Default: true */
   autoInferResponses?: boolean;
   /**
-   * OpenAPI 3.0 Components Object. Used to define reusable assets such as
+   * OpenAPI 3.1.0 Components Object. Used to define reusable assets such as
    * global `securitySchemes` referenced by individual routes.
    * @example { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer' } } }
    */
   components?: Record<string, unknown>;
   /**
-   * Global OpenAPI 3.0 Security Requirement Object. Applies to ALL routes by
+   * Global OpenAPI 3.1.0 Security Requirement Object. Applies to ALL routes by
    * default. Individual routes can override via `schema.security`.
    * @example [{ bearerAuth: [] }]
    */
@@ -70,7 +70,7 @@ export class OpenApiGenerator {
 
   public generate(): Record<string, unknown> {
     const spec: Record<string, unknown> = {
-      openapi: '3.0.3',
+      openapi: '3.1.0',
       info: this.options.info,
       paths: {} as Record<string, unknown>,
     };
@@ -85,30 +85,38 @@ export class OpenApiGenerator {
 
       if (!paths[openApiPath]) paths[openApiPath] = {};
 
+      // All OAS 3.1.0 Operation Object metadata now lives in `route.schema` —
+      // the same block as Zod validation fields. There is no separate
+      // `route.openapi` property. One source of truth per route definition.
+      const s = route.schema ?? ({} as RouteSchema);
+
       const operation: Record<string, unknown> = {
-        // meta.summary takes priority over the default method+path string.
-        summary: route.meta?.summary ?? `${route.method} ${route.path}`,
+        // OAS §4.8.10.2 — summary. Defaults to `${method} ${path}`.
+        summary: s.summary ?? `${route.method} ${route.path}`,
+        // OAS §4.8.10.5 — operationId for client codegen tools.
+        // Auto-synthesised from method+path when omitted:
+        //   GET /users/:id → "getUsersById"   POST /users → "postUsers"
+        operationId:
+          s.operationId ?? this.synthesiseOperationId(route.method, route.path),
         parameters: this.extractParameters(route),
         responses: this.extractResponses(route),
       };
 
-      // Read from route.meta (canonical location, added in v4.x) with a
-      // typed fallback to the deprecated schema-level fields for projects
-      // that haven't migrated yet. The LegacySchema intersection avoids
-      // the (any) cast while keeping backward compatibility.
-      type LegacySchema = { description?: string; tags?: string[]; security?: Array<Record<string, string[]>> };
-      const legacySchema = (route.schema ?? {}) as LegacySchema;
-
-      const description = route.meta?.description ?? legacySchema.description;
-      const tags        = route.meta?.tags        ?? legacySchema.tags;
-      const security    = route.meta?.security    ?? legacySchema.security;
-
-      if (description) operation.description = description;
-      if (tags)        operation.tags        = tags;
-      if (security)    operation.security    = security;
+      if (s.description)            operation.description  = s.description;
+      if (s.tags)                   operation.tags         = s.tags;
+      // OAS §4.8.10.10: absent key inherits global security; [] opts out.
+      if (s.security !== undefined) operation.security     = s.security;
+      if (s.deprecated)             operation.deprecated   = true;
+      if (s.externalDocs)           operation.externalDocs = s.externalDocs;
+      // OAS §4.8.10.11 / §4.8.10.8: pass servers + callbacks verbatim.
+      if (s.servers)                operation.servers      = s.servers;
+      if (s.callbacks)              operation.callbacks    = s.callbacks;
 
       const body = this.extractBody(route);
-      if (body) operation.requestBody = body;
+      if (body) {
+        if (s.requestBodyDescription) body.description = s.requestBodyDescription;
+        operation.requestBody = body;
+      }
 
       paths[openApiPath][method] = operation;
     }
@@ -149,7 +157,34 @@ export class OpenApiGenerator {
     return parameters;
   }
 
-  private extractBody(route: RouteDefinition): unknown {
+  /**
+   * Synthesise a stable, codegen-friendly operationId from method+path
+   * when the route definition doesn't supply one. Example outputs:
+   *   GET  /users/:id            → getUsersById
+   *   POST /users                → postUsers
+   *   GET  /users/:id/posts/:pid → getUsersByIdPostsByPid
+   *
+   * Determinism matters here — client codegen produces the same function
+   * names on every run as long as method+path are stable.
+   */
+  private synthesiseOperationId(method: string, path: string): string {
+    const verb = method.toLowerCase();
+    const parts: string[] = [];
+    for (const seg of path.split('/')) {
+      if (!seg) continue;
+      if (seg.startsWith(':')) {
+        const name = seg.slice(1);
+        parts.push('By', name.charAt(0).toUpperCase() + name.slice(1));
+      } else if (seg === '*') {
+        parts.push('All');
+      } else {
+        parts.push(seg.charAt(0).toUpperCase() + seg.slice(1));
+      }
+    }
+    return verb + parts.join('');
+  }
+
+  private extractBody(route: RouteDefinition): { required: boolean; content: Record<string, unknown>; description?: string } | undefined {
     if (!route.schema?.body && !route.schema?.files) return undefined;
 
     const hasFiles = !!route.schema.files;
@@ -192,9 +227,13 @@ export class OpenApiGenerator {
   }
 
   private extractResponses(route: RouteDefinition): Record<string, unknown> {
+    // Pull the per-status description map. Authors override generator
+    // defaults via schema.responseDescriptions: { '200': '...', '404': '...' }.
+    const descriptions = (route.schema as RouteSchema)?.responseDescriptions ?? {};
+
     const defaultResponse = {
       '200': {
-        description: 'Successful response',
+        description: descriptions['200'] ?? 'Successful response',
         content: { 'application/json': { schema: { type: 'object' } } },
       },
     };
@@ -206,7 +245,7 @@ export class OpenApiGenerator {
 
     if (isZodSchema(responseSchema)) {
       responses['200'] = {
-        description: 'Successful response',
+        description: descriptions['200'] ?? 'Successful response',
         content: {
           'application/json': { schema: zodSchemaToOpenApi(responseSchema) },
         },
@@ -216,7 +255,7 @@ export class OpenApiGenerator {
         responseSchema as unknown as Record<string, ZodTypeAny>,
       )) {
         responses[code] = {
-          description: `Response ${code}`,
+          description: descriptions[code] ?? `Response ${code}`,
           content: {
             'application/json': { schema: zodSchemaToOpenApi(schema) },
           },

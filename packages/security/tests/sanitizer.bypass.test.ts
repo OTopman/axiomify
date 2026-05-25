@@ -171,3 +171,29 @@ describe('sanitizeInput — object and array recursion', () => {
     expect(sanitizeInput(null)).toBeNull();
   });
 });
+
+describe('sanitizeInput — disabled protections', () => {
+  it('preserves null bytes when nullByteProtection is false', () => {
+    const result = sanitizeInput('a\0b', {
+      pathTraversalProtection: false,
+      commandInjectionProtection: false,
+      xssProtection: false,
+      prototypePollutionProtection: false,
+      nullByteProtection: false,
+      maxDepth: 64,
+    });
+    expect(result).toBe('a\0b');
+  });
+
+  it('preserves raw HTML when xssProtection is false', () => {
+    const result = sanitizeInput('<script>x</script>', {
+      pathTraversalProtection: false,
+      commandInjectionProtection: false,
+      xssProtection: false,
+      prototypePollutionProtection: false,
+      nullByteProtection: true,
+      maxDepth: 64,
+    });
+    expect(result).toBe('<script>x</script>');
+  });
+});

@@ -17,7 +17,7 @@ import {
   MemoryTokenStore,
 } from '@axiomify/auth';
 import { useCors } from '@axiomify/cors';
-import { FastifyAdapter } from '@axiomify/fastify';
+import { NativeAdapter } from '@axiomify/native';
 import { useFingerprint } from '@axiomify/fingerprint';
 import { useHelmet } from '@axiomify/helmet';
 import { createRateLimitPlugin, MemoryStore } from '@axiomify/rate-limit';
@@ -85,10 +85,10 @@ app.route({
   handler: async (_req, res) => res.send({ pong: true }),
 });
 
-const adapter = new FastifyAdapter(app, { workers: 4 });
+const adapter = new NativeAdapter(app, { port: 3000 });
 
-// Single process: await adapter.listen(3000);
-adapter.listenClustered(3000, {
+// Single process: await adapter.listen();
+adapter.listenClustered({
   onWorkerReady: () => console.log(`[${process.pid}] Secure server on :3000`),
-  onPrimary: (pids) => console.log('Workers:', pids),
+  onPrimary: (pids: number[]) => console.log('Workers:', pids),
 });

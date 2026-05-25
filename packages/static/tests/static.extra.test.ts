@@ -222,3 +222,137 @@ describe('serveStatic — index.html serving', () => {
     }
   });
 });
+
+describe('serveStatic — extra branches', () => {
+  it('prefix already starting with / is preserved as-is', () => {
+    
+    
+    const app = new Axiomify();
+    serveStatic(app, { prefix: '/already', root: '/tmp' });
+    expect(app.registeredRoutes.some((r: any) => r.path === '/already/*')).toBe(true);
+  });
+
+  it('returns 400 for malformed percent-encoded path', async () => {
+    
+    
+    const app = new Axiomify();
+    serveStatic(app, { prefix: '/x', root: '/tmp' });
+    const route = app.registeredRoutes.find((r: any) => r.path === '/x/*')!;
+    const headers: Record<string, string> = {};
+    let statusCode = 200;
+    const res: any = {
+      status: (c: number) => { statusCode = c; return res; },
+      header: (k: string, v: string) => { headers[k] = v; return res; },
+      send: () => {}, sendRaw: () => {}, stream: () => {},
+      getHeader: () => undefined, removeHeader: () => res,
+      headersSent: false, raw: {},
+      get statusCode() { return statusCode; },
+      capabilities: { sse: false, streaming: false },
+    };
+    const req: any = {
+      id: 'r', method: 'GET', url: '/x/%E0', path: '/x/%E0',
+      ip: '127.0.0.1', headers: {}, body: undefined,
+      query: {}, params: { '*': '%E0%A4' }, // invalid UTF-8 percent sequence
+      state: {}, raw: {}, stream: null,
+    };
+    await route.handler(req, res);
+    expect(statusCode).toBe(400);
+  });
+
+  it('returns 403 when path contains a null byte', async () => {
+    
+    
+    const app = new Axiomify();
+    serveStatic(app, { prefix: '/x', root: '/tmp' });
+    const route = app.registeredRoutes.find((r: any) => r.path === '/x/*')!;
+    const headers: Record<string, string> = {};
+    let statusCode = 200;
+    const res: any = {
+      status: (c: number) => { statusCode = c; return res; },
+      header: (k: string, v: string) => { headers[k] = v; return res; },
+      send: () => {}, sendRaw: () => {}, stream: () => {},
+      getHeader: () => undefined, removeHeader: () => res,
+      headersSent: false, raw: {},
+      get statusCode() { return statusCode; },
+      capabilities: { sse: false, streaming: false },
+    };
+    const req: any = {
+      id: 'r', method: 'GET', url: '/x/null', path: '/x/null',
+      ip: '127.0.0.1', headers: {}, body: undefined,
+      query: {}, params: { '*': 'evil\0.txt' },
+      state: {}, raw: {}, stream: null,
+    };
+    await route.handler(req, res);
+    expect(statusCode).toBe(403);
+  });
+
+  it('returns 403 when path is absolute (e.g. /etc/passwd)', async () => {
+    
+    
+    const app = new Axiomify();
+    serveStatic(app, { prefix: '/x', root: '/tmp' });
+    const route = app.registeredRoutes.find((r: any) => r.path === '/x/*')!;
+    let statusCode = 200;
+    const res: any = {
+      status: (c: number) => { statusCode = c; return res; },
+      header: () => res, send: () => {}, sendRaw: () => {}, stream: () => {},
+      getHeader: () => undefined, removeHeader: () => res,
+      headersSent: false, raw: {},
+      get statusCode() { return statusCode; },
+      capabilities: { sse: false, streaming: false },
+    };
+    const req: any = {
+      id: 'r', method: 'GET', url: '/x', path: '/x',
+      ip: '127.0.0.1', headers: {}, body: undefined,
+      query: {}, params: { '*': '/etc/passwd' },
+      state: {}, raw: {}, stream: null,
+    };
+    await route.handler(req, res);
+    expect(statusCode).toBe(403);
+  });
+
+  it('respects custom forceDownloadExtensions option', async () => {
+    const fs = require('fs') as typeof import('fs');
+    const path = require('path') as typeof import('path');
+    
+    
+    const tmpDir = `/tmp/axiomify-fd-${Date.now()}`;
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const filePath = path.join(tmpDir, 'doc.svg');
+    fs.writeFileSync(filePath, '<svg/>');
+    try {
+      const app = new Axiomify();
+      serveStatic(app, {
+        prefix: '/s', root: tmpDir,
+        forceDownloadExtensions: ['.SVG'], // uppercase to verify lowercase normalization
+      });
+      const route = app.registeredRoutes.find((r: any) => r.path === '/s/*')!;
+      const headers: Record<string, string> = {};
+      let statusCode = 200;
+      let streamCalled = false;
+      const res: any = {
+        status: (c: number) => { statusCode = c; return res; },
+        header: (k: string, v: string) => { headers[k] = v; return res; },
+        send: () => {}, sendRaw: () => {},
+        stream: (s: any) => { streamCalled = true; s.destroy(); },
+        getHeader: () => undefined, removeHeader: () => res,
+        headersSent: false, raw: {},
+        get statusCode() { return statusCode; },
+        capabilities: { sse: false, streaming: false },
+      };
+      const req: any = {
+        id: 'r', method: 'GET', url: '/s/doc.svg', path: '/s/doc.svg',
+        ip: '127.0.0.1', headers: {}, body: undefined,
+        query: {}, params: { '*': 'doc.svg' },
+        state: {}, raw: {}, stream: null,
+      };
+      await route.handler(req, res);
+      await new Promise(r => setTimeout(r, 20));
+      expect(streamCalled).toBe(true);
+      expect(headers['Content-Disposition']).toContain('attachment');
+      expect(headers['X-Content-Type-Options']).toBe('nosniff');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});

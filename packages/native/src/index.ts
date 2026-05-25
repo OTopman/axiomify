@@ -1,17 +1,13 @@
 import type {
+  AdapterLockToken,
   Axiomify,
-  AxiomifyRequest,
-  AxiomifyResponse,
   HttpMethod,
-  ResponseCapabilities,
-  SerializerFn,
   SerializerInput,
 } from '@axiomify/core';
 import { ADAPTER_LOCK_TOKEN, makeSerialize } from '@axiomify/core';
 import cluster from 'cluster';
 import { cpus } from 'node:os';
 import { availableParallelism } from 'os';
-import { Readable } from 'stream';
 import type {
   TemplatedApp,
   HttpRequest as UWSRequest,
@@ -19,107 +15,31 @@ import type {
   WebSocketBehavior,
 } from 'uWebSockets.js';
 import uWS from 'uWebSockets.js';
-import { assertNoNativeSseRoutes } from './sse-guard';
+
+import { getSimdParse, parseBodyBuffer, readBody } from './body';
+import { buildErrorCache, ErrorCache, statusLine } from './error-cache';
+import { collectHeaders } from './headers';
+import { fastParseQuery, safeDecodeURIComponent } from './query';
+import { NativeRequest } from './request';
+import { NativeResponse } from './response';
 
 // ---------------------------------------------------------------------------
-// Capabilities — native uWS adapter supports streaming but NOT SSE
-// ---------------------------------------------------------------------------
-
-const NATIVE_CAPABILITIES: ResponseCapabilities = {
-  sse: false,
-  streaming: true,
-};
-
-// ---------------------------------------------------------------------------
-// Status line cache
-// RFC 7231 + common extensions — pre-built strings avoid allocations per send.
-// ---------------------------------------------------------------------------
-
-const HTTP_STATUS_PHRASES: Record<number, string> = {
-  100: 'Continue',
-  101: 'Switching Protocols',
-  200: 'OK',
-  201: 'Created',
-  202: 'Accepted',
-  204: 'No Content',
-  206: 'Partial Content',
-  301: 'Moved Permanently',
-  302: 'Found',
-  304: 'Not Modified',
-  400: 'Bad Request',
-  401: 'Unauthorized',
-  403: 'Forbidden',
-  404: 'Not Found',
-  405: 'Method Not Allowed',
-  408: 'Request Timeout',
-  409: 'Conflict',
-  410: 'Gone',
-  413: 'Payload Too Large',
-  415: 'Unsupported Media Type',
-  422: 'Unprocessable Entity',
-  429: 'Too Many Requests',
-  500: 'Internal Server Error',
-  501: 'Not Implemented',
-  502: 'Bad Gateway',
-  503: 'Service Unavailable',
-  504: 'Gateway Timeout',
-};
-
-const STATUS_LINE_CACHE = new Map<number, string>();
-function statusLine(code: number): string {
-  let line = STATUS_LINE_CACHE.get(code);
-  if (!line) {
-    line = `${code} ${HTTP_STATUS_PHRASES[code] ?? 'Unknown'}`;
-    STATUS_LINE_CACHE.set(code, line);
-  }
-  return line;
-}
-
-// Pre-serialize the most common error payloads so 404/405/413 never allocate
-// JSON strings in the hot path. Refreshed once on adapter construction.
-interface CachedError {
-  statusLine: string;
-  body: string;
-}
-let CACHED_404: CachedError;
-let CACHED_405_BODY: string; // body only — Allow header differs per route
-let CACHED_413: CachedError;
-let CACHED_500: CachedError;
-
-function buildErrorCache(serializer: SerializerFn): void {
-  // Use the same arity-normalising helper so the ternary isn't repeated here.
-  const serialize = makeSerialize(serializer);
-  const make = (statusCode: number, message: string): CachedError => ({
-    statusLine: statusLine(statusCode),
-    body: JSON.stringify(
-      serialize({ data: null, message, statusCode, isError: true }),
-    ),
-  });
-  CACHED_404 = make(404, 'Route not found');
-  CACHED_405_BODY = JSON.stringify(
-    serialize({
-      data: null,
-      message: 'Method Not Allowed',
-      statusCode: 405,
-      isError: true,
-    }),
-  );
-  CACHED_413 = make(413, 'Payload Too Large');
-  CACHED_500 = make(500, 'Internal Server Error');
-}
-
-// ---------------------------------------------------------------------------
-// Path utilities
+// Adapter-local helpers
+//
+// Only utilities that are tightly coupled to the adapter's own request
+// dispatch live here. NativeRequest, NativeResponse, body parsing, headers,
+// query, status lines, and the error cache are all in sibling modules.
 // ---------------------------------------------------------------------------
 
 /**
  * Extracts parameter key names from an Axiomify path in order.
  *
- * /users/:id/posts/:postId → ['id', 'postId']
- * /static/*               → ['*']
+ *   /users/:id/posts/:postId → ['id', 'postId']
+ *   /static/*                → ['*']
  *
- * The returned array is used at runtime to map uWS getParameter(i) → name.
- * This runs once at startup — zero overhead per request.
+ * Used at registration time to build the index → name map that
+ * `req.getParameter(i)` results are bound to. Runs once per route on
+ * startup; zero per-request overhead.
  */
 function extractParamKeys(path: string): string[] {
   const keys: string[] = [];
@@ -131,426 +51,17 @@ function extractParamKeys(path: string): string[] {
 }
 
 /**
- * Maps an Axiomify HTTP method to the uWS TemplatedApp method name.
- * uWS uses `del` because `delete` is a reserved JS keyword.
+ * Reusable TextDecoder for IP address extraction. uWS returns remote
+ * addresses as an ArrayBuffer; this avoids the Buffer.from() → toString()
+ * allocation chain (saves ~0.079µs per request).
  */
-function uwsMethod(method: HttpMethod): keyof TemplatedApp {
-  return (
-    method === 'DELETE' ? 'del' : method.toLowerCase()
-  ) as keyof TemplatedApp;
-}
-
-// ---------------------------------------------------------------------------
-// Body reading — zero-copy within uWS constraints
-// ---------------------------------------------------------------------------
-
-/**
- * Reads the full request body from uWS. The ArrayBuffer chunks provided by
- * `res.onData` are reused by uWS after each callback returns, so we MUST copy
- * them immediately via `Buffer.from(ab)`.
- *
- * Returns null if the connection was aborted before the body was complete.
- *
- * @param res        The uWS response handle.
- * @param maxSize    Maximum body size in bytes; resolves `{ tooLarge: true }`
- *                   when exceeded.
- * @param onAborted  Called when the client disconnects mid-body.
- */
-function readBody(
-  res: UWSResponse,
-  maxSize: number,
-  onAborted: () => void,
-): Promise<{ raw: Buffer; tooLarge: boolean } | null> {
-  return new Promise((resolve) => {
-    const chunks: Buffer[] = [];
-    let totalSize = 0;
-    let settled = false;
-
-    res.onAborted(() => {
-      if (!settled) {
-        settled = true;
-        onAborted();
-        resolve(null);
-      }
-    });
-
-    res.onData((ab: ArrayBuffer, isLast: boolean) => {
-      if (settled) return;
-
-      // ArrayBuffer is ONLY valid during this callback — copy immediately.
-      const chunk = Buffer.from(ab);
-      totalSize += chunk.byteLength;
-
-      if (totalSize > maxSize) {
-        settled = true;
-        // Drain remaining data without processing.
-        resolve({ raw: Buffer.alloc(0), tooLarge: true });
-        return;
-      }
-
-      chunks.push(chunk);
-
-      if (isLast) {
-        settled = true;
-        if (chunks.length === 0) {
-          resolve(null);
-        } else if (chunks.length === 1) {
-          // Fast path — single chunk: no concat needed.
-          resolve({ raw: chunks[0], tooLarge: false });
-        } else {
-          resolve({ raw: Buffer.concat(chunks), tooLarge: false });
-        }
-      }
-    });
-  });
-}
-
-/**
- * Parse a raw Buffer into a request body based on Content-Type.
- * Returns `undefined` for unknown content types (raw Buffer accessible via req.body).
- */
-function parseBodyBuffer(raw: Buffer, contentType: string): unknown {
-  if (contentType.includes('application/json')) {
-    try {
-      return JSON.parse(raw.toString('utf8'));
-    } catch {
-      return undefined;
-    }
-  }
-  if (contentType.includes('application/x-www-form-urlencoded')) {
-    return Object.fromEntries(new URLSearchParams(raw.toString('utf8')));
-  }
-  // Return raw Buffer — @axiomify/upload or custom handlers consume it.
-  return raw;
-}
-
-// Process-local atomic counter for request IDs.
-// Faster than randomUUID() (0.049µs vs 0.137µs) and unique within the process lifetime.
-// When a gateway injects X-Request-Id, the counter is bypassed entirely.
-let _nativeReqCounter = 0;
-const _nativePidHex = process.pid.toString(36);
-
-// Reusable TextDecoder for IP address extraction.
-// uWS returns the remote address as an ArrayBuffer. TextDecoder avoids the
-// Buffer.from() → toString() allocation chain (saves ~0.079µs per request).
 const _ipDecoder = new TextDecoder('utf-8');
-
-type WorkerState = 'STARTING' | 'READY' | 'DRAINING';
-interface WorkerRecord {
-  process: cluster.Worker;
-  state: WorkerState;
-}
-
-// ---------------------------------------------------------------------------
-// NativeRequest — allocation-minimal AxiomifyRequest implementation
-// ---------------------------------------------------------------------------
-
-class NativeRequest implements AxiomifyRequest {
-  public method: HttpMethod;
-  public url: string;
-  public path: string;
-  public ip: string;
-  public headers: Record<string, string>;
-  public body: unknown;
-  public params: Record<string, string> = {};
-  public state: Record<string, unknown> = {};
-  public raw: { req: UWSRequest | null; res: UWSResponse | null } = {
-    req: null,
-    res: null,
-  };
-  public stream: Readable = new Readable({ read() {} });
-
-  private _queryStr: string;
-  private _parsedQuery?: Record<string, string | string[]>;
-  private _id?: string;
-  private _controller?: AbortController;
-  private _aborted = false;
-
-  constructor(
-    method: HttpMethod,
-    url: string,
-    ip: string,
-    headers: Record<string, string>,
-    queryStr: string,
-    body: unknown,
-  ) {
-    this.method = method;
-    this.url = url;
-    this.path = url; // uWS getUrl() returns path only (no query string)
-    this.ip = ip;
-    this.headers = headers;
-    this._queryStr = queryStr;
-    this.body = body;
-  }
-
-  get id(): string {
-    if (!this._id) {
-      this._id =
-        this.headers['x-request-id'] ??
-        `${_nativePidHex}-${(++_nativeReqCounter).toString(36)}`;
-    }
-    return this._id;
-  }
-
-  /**
-   * Lazy query parsing — only allocates URLSearchParams when actually accessed.
-   * Multi-value keys are preserved as string[] (e.g. ?tag=a&tag=b).
-   */
-  get query(): Record<string, string | string[]> {
-    if (!this._parsedQuery) {
-      this._parsedQuery = {};
-      if (this._queryStr) {
-        const sp = new URLSearchParams(this._queryStr);
-        for (const key of new Set(sp.keys())) {
-          const values = sp.getAll(key);
-          this._parsedQuery[key] = values.length === 1 ? values[0] : values;
-        }
-      }
-    }
-    return this._parsedQuery;
-  }
-
-  /**
-   * Lazy AbortSignal — AbortController is never created for requests that
-   * don't need cancellation support, saving ~1µs per request.
-   */
-  get signal(): AbortSignal {
-    if (!this._controller) {
-      this._controller = new AbortController();
-      if (this._aborted)
-        this._controller.abort(new Error('Client aborted request'));
-    }
-    return this._controller.signal;
-  }
-
-  /** Called by the adapter when uWS fires the onAborted event. */
-  onAbort(): void {
-    this._aborted = true;
-    this._controller?.abort(new Error('Client aborted request'));
-  }
-}
-
-// ---------------------------------------------------------------------------
-// NativeResponse — cork-everything, zero-allocation hot path
-// ---------------------------------------------------------------------------
-
-class NativeResponse implements AxiomifyResponse {
-  public statusCode = 200;
-  public headersSent = false;
-  public aborted = false;
-  public raw: UWSResponse;
-  public readonly capabilities: ResponseCapabilities = NATIVE_CAPABILITIES;
-
-  private readonly _app: Axiomify;
-  private readonly _req: NativeRequest;
-  private readonly _method: HttpMethod;
-  private readonly _serialize: (input: SerializerInput) => unknown;
-  // Use a plain object for small header counts; Map for large counts.
-  // In practice most responses have ≤10 headers — object wins on V8.
-  private _headers: Record<string, string> = {};
-  // Pre-allocated serializer input bag — mutated in place on every send()
-  // instead of allocating a new object per response. Safe because _serialize
-  // is always called synchronously within send(), with no re-entrancy risk.
-  private readonly _serializeInput: SerializerInput;
-
-  constructor(
-    res: UWSResponse,
-    app: Axiomify,
-    req: NativeRequest,
-    method: HttpMethod,
-    serialize: (input: SerializerInput) => unknown,
-  ) {
-    this.raw = res;
-    this._app = app;
-    this._req = req;
-    this._method = method;
-    this._serialize = serialize;
-    this._serializeInput = {
-      data: undefined,
-      message: undefined,
-      statusCode: 200,
-      isError: false,
-      req,
-    };
-  }
-
-  status(code: number): this {
-    this.statusCode = code;
-    return this;
-  }
-
-  header(key: string, value: string): this {
-    this._headers[key] = value;
-    return this;
-  }
-
-  getHeader(key: string): string | undefined {
-    return this._headers[key];
-  }
-
-  removeHeader(key: string): this {
-    delete this._headers[key];
-    return this;
-  }
-
-  send<T>(data: T, message?: string): void {
-    if (this.headersSent || this.aborted) return;
-    this.headersSent = true;
-
-    // Mutate the pre-allocated input bag rather than allocating a new object.
-    // _serialize is always synchronous within this call — no re-entrancy risk.
-    const inp = this._serializeInput;
-    inp.data = data;
-    inp.message = message;
-    inp.statusCode = this.statusCode;
-    inp.isError = this.statusCode >= 400;
-    const payload = this._serialize(inp);
-
-    // Store payload for ValidatingResponse introspection.
-    (this as unknown as Record<string, unknown>).payload = payload;
-    (this as unknown as Record<string, unknown>).responseMessage = message;
-
-    const body = JSON.stringify(payload);
-    const sl = statusLine(this.statusCode);
-    const headers = this._headers;
-
-    this.raw.cork(() => {
-      this.raw.writeStatus(sl);
-      this.raw.writeHeader('Content-Type', 'application/json');
-      for (const k in headers) {
-        this.raw.writeHeader(k, headers[k]);
-      }
-      // HEAD responses: send headers only, no body.
-      this.raw.end(this._method === 'HEAD' ? '' : body);
-    });
-  }
-
-  sendRaw(payload: unknown, contentType = 'text/plain'): void {
-    if (this.headersSent || this.aborted) return;
-    this.headersSent = true;
-
-    const body =
-      typeof payload === 'string'
-        ? payload
-        : Buffer.isBuffer(payload)
-        ? payload
-        : String(payload);
-    const sl = statusLine(this.statusCode);
-    const headers = this._headers;
-
-    this.raw.cork(() => {
-      this.raw.writeStatus(sl);
-      this.raw.writeHeader('Content-Type', contentType);
-      for (const k in headers) {
-        this.raw.writeHeader(k, headers[k]);
-      }
-      this.raw.end(body as string);
-    });
-  }
-
-  error(err: unknown): void {
-    if (this.headersSent || this.aborted) return;
-    this.headersSent = true;
-
-    const headers = this._headers;
-    this.raw.cork(() => {
-      this.raw.writeStatus(CACHED_500.statusLine);
-      this.raw.writeHeader('Content-Type', 'application/json');
-      for (const k in headers) {
-        this.raw.writeHeader(k, headers[k]);
-      }
-      this.raw.end(CACHED_500.body);
-    });
-  }
-
-  stream(
-    readable: import('stream').Readable,
-    contentType = 'application/octet-stream',
-  ): void {
-    if (this.headersSent || this.aborted) return;
-    this.headersSent = true;
-
-    const sl = statusLine(this.statusCode);
-    const headers = this._headers;
-
-    this.raw.cork(() => {
-      this.raw.writeStatus(sl);
-      this.raw.writeHeader('Content-Type', contentType);
-      this.raw.writeHeader('Transfer-Encoding', 'chunked');
-      for (const k in headers) {
-        this.raw.writeHeader(k, headers[k]);
-      }
-    });
-
-    const pending: Uint8Array[] = [];
-    let flushing = false;
-    const res = this.raw;
-    const self = this;
-
-    const flush = (): boolean => {
-      if (self.aborted) return true;
-      while (pending.length > 0) {
-        const chunk = pending[0];
-        const ok = res.write(
-          chunk.buffer.slice(
-            chunk.byteOffset,
-            chunk.byteOffset + chunk.byteLength,
-          ) as ArrayBuffer,
-        );
-        if (!ok) {
-          readable.pause();
-          if (!flushing) {
-            flushing = true;
-            res.onWritable(() => {
-              flushing = false;
-              const drained = flush();
-              if (drained) readable.resume();
-              return drained;
-            });
-          }
-          return false;
-        }
-        pending.shift();
-      }
-      return true;
-    };
-
-    readable.on('data', (chunk: Buffer | string) => {
-      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      pending.push(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength));
-      flush();
-    });
-
-    readable.on('end', () => {
-      if (self.aborted) return;
-      if (flush()) res.end();
-      else {
-        res.onWritable(() => {
-          if (flush()) {
-            res.end();
-            return true;
-          }
-          return false;
-        });
-      }
-    });
-
-    readable.on('error', () => {
-      if (!self.aborted) res.end();
-    });
-  }
-
-  // sseInit / sseSend are intentionally absent — NativeResponse.capabilities.sse
-  // is false, so callers that check before casting will never reach these.
-  // The assertNoNativeSseRoutes() guard at adapter construction provides an
-  // early, readable error for handlers that reference SSE methods.
-}
 
 // ---------------------------------------------------------------------------
 // WebSocket types
 // ---------------------------------------------------------------------------
 
-type WsUserData = { url: string; headers: Record<string, string> };
+type WsUserData = { url: string; headers: Record<string, string | string[]> };
 
 export interface NativeWsOptions {
   /** WebSocket endpoint path. @default '/ws' */
@@ -597,6 +108,28 @@ export interface NativeAdapterOptions {
    * Only used by `listenClustered()` — `listen()` is always single-process.
    */
   workers?: number;
+  /**
+   * Opt-in to the userspace L4 TCP proxy used by `listenClustered()` on
+   * non-Linux platforms (macOS, Windows). uWS's `SO_REUSEPORT` clustering is
+   * Linux-only; on other platforms the primary process must proxy traffic to
+   * worker processes in userspace, which adds two event-loop hops per byte
+   * and roughly negates the perf benefit of using uWS in the first place.
+   *
+   * `listenClustered()` will THROW on non-Linux unless this flag is `true`.
+   * Set it explicitly only if you understand the tradeoff. On Linux this
+   * flag is ignored.
+   *
+   * @default false
+   */
+  allowUserspaceProxy?: boolean;
+  /**
+   * Optional structured logger for adapter-level warnings (userspace proxy
+   * activation, worker respawn, etc.). Falls back to `console` when omitted.
+   */
+  logger?: {
+    warn(message: string, meta?: Record<string, unknown>): void;
+    error(message: string, meta?: Record<string, unknown>): void;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -610,9 +143,20 @@ export class NativeAdapter {
   private readonly _maxBodySize: number;
   private readonly _trustProxy: boolean;
   private readonly _workers: number;
+  private readonly _allowUserspaceProxy: boolean;
+  private readonly _logger: NonNullable<NativeAdapterOptions['logger']>;
   /** Serializer arity cached at construction time — not re-checked per request. */
   private readonly _serialize: (input: SerializerInput) => unknown;
   private _listenSocket: unknown = null;
+  private _onShutdown?: () => void | Promise<void>;
+  // Tracks the count of requests that have entered the async pipeline and
+  // not yet completed. gracefulShutdown() waits on this to hit zero before
+  // running the user's onShutdown. Without it, `process.exit(0)` would kill
+  // requests mid-response — classic source of double-charge bugs in fintech
+  // (DB write happens, client never sees the 200, client retries).
+  private _inflight = 0;
+  private _drainResolvers: (() => void)[] = [];
+  private readonly _errorCache: ErrorCache;
 
   constructor(app: Axiomify, options: NativeAdapterOptions = {}) {
     this._app = app;
@@ -621,10 +165,17 @@ export class NativeAdapter {
     this._maxBodySize = options.maxBodySize ?? 1_048_576;
     this._trustProxy = options.trustProxy ?? false;
     this._workers = options.workers ?? availableParallelism();
+    this._allowUserspaceProxy = options.allowUserspaceProxy ?? false;
+    this._logger = options.logger ?? {
+      warn: (msg, meta) => console.warn(msg, meta ?? ''),
+      error: (msg, meta) => console.error(msg, meta ?? ''),
+    };
     this._serialize = makeSerialize(this._app.serializer);
 
-    assertNoNativeSseRoutes(this._app.registeredRoutes);
-    buildErrorCache(this._app.serializer);
+    // Per-adapter error envelope cache. setSerializer is locked by core
+    // once routes are locked (see core/src/app.ts), so the serializer here
+    // matches what live responses will use.
+    this._errorCache = buildErrorCache(this._app.serializer);
 
     this._server = uWS.App();
 
@@ -635,6 +186,7 @@ export class NativeAdapter {
 
     // Register all Axiomify routes directly with uWS's C++ router.
     // uWS resolves method+path in native code — no JavaScript routing overhead.
+    this._registerWsRoutes();
     this._registerRoutes();
 
     // 404 / 405 catch-all. Must be registered LAST — uWS matches routes in
@@ -647,15 +199,24 @@ export class NativeAdapter {
   // -------------------------------------------------------------------------
 
   private _registerRoutes(): void {
-    const registeredGetPaths = new Set<string>();
+    // Aggregate registered methods per path so we can register per-path
+    // catch-alls for the unregistered methods. Without this, a request to
+    // POST /resource where only GET is registered falls through to the
+    // global any('/*') fallback and returns 404 — wrong per RFC 9110 §15.5.6
+    // (must be 405 with Allow: <methods>). Some gateways/caches treat 404 as
+    // cacheable and 405 as not, so the spec compliance matters operationally.
+    const pathMethods = new Map<string, Set<HttpMethod>>();
 
     for (const route of this._app.registeredRoutes) {
       const paramKeys = extractParamKeys(route.path);
       const handler = this._makeHandler(route, paramKeys);
       const method = route.method;
 
+      const set = pathMethods.get(route.path) ?? new Set<HttpMethod>();
+      set.add(method);
+      pathMethods.set(route.path, set);
+
       if (method === 'GET') {
-        registeredGetPaths.add(route.path);
         this._server.get(route.path, handler);
 
         // uWS does not auto-generate HEAD for GET. Register it explicitly
@@ -666,6 +227,7 @@ export class NativeAdapter {
         if (!hasExplicitHead) {
           const headHandler = this._makeHandler(route, paramKeys);
           this._server.head(route.path, headHandler);
+          set.add('HEAD');
         }
       } else if (method === 'DELETE') {
         this._server.del(route.path, handler);
@@ -681,28 +243,53 @@ export class NativeAdapter {
         this._server.post(route.path, handler);
       }
     }
+
+    // Register a per-path `any` AFTER all method handlers, scoped to the
+    // exact path. uWS matches in registration order, so the specific
+    // method handlers above take precedence; only an unregistered method
+    // for a registered path lands here, producing the correct 405.
+    const cached405Body = this._errorCache.cached405Body;
+    for (const [path, methods] of pathMethods) {
+      // Auto-register OPTIONS to allow `onRequest` hooks (e.g. CORS) to intercept.
+      // If not intercepted, returns 204 with Allow header per RFC 9110 §9.3.7.
+      if (!methods.has('OPTIONS')) {
+        const paramKeys = extractParamKeys(path);
+        const allowMethods = Array.from(methods).sort().join(', ');
+        
+        const optionsRoute = {
+          method: 'OPTIONS',
+          path,
+          handler: (_req: unknown, res: any) => {
+            res.header('Allow', allowMethods);
+            res.status(204).send(null);
+          },
+        } as any;
+        
+        this._server.options(path, this._makeHandler(optionsRoute, paramKeys));
+        methods.add('OPTIONS');
+      }
+
+      const allow = Array.from(methods).sort().join(', ');
+      this._server.any(path, (res: UWSResponse, _req: UWSRequest) => {
+        res.onAborted(() => {});
+        res.cork(() => {
+          res.writeStatus(statusLine(405));
+          res.writeHeader('Allow', allow);
+          res.writeHeader('Content-Type', 'application/json');
+          res.end(cached405Body);
+        });
+      });
+    }
   }
 
   private _registerFallback(): void {
-    this._server.any('/*', (res: UWSResponse, req: UWSRequest) => {
-      // Register onAborted immediately before any async work.
+    const cached404 = this._errorCache.cached404;
+    this._server.any('/*', (res: UWSResponse, _req: UWSRequest) => {
       res.onAborted(() => {});
-
-      const path = req.getUrl();
-      const method = req.getMethod().toUpperCase() as HttpMethod;
-      const match = this._app.router.lookup(method, path);
-
       res.cork(() => {
-        if (match && 'error' in match) {
-          res.writeStatus(statusLine(405));
-          res.writeHeader('Content-Type', 'application/json');
-          res.writeHeader('Allow', match.allowed.join(', '));
-          res.end(CACHED_405_BODY);
-        } else {
-          res.writeStatus(CACHED_404.statusLine);
-          res.writeHeader('Content-Type', 'application/json');
-          res.end(CACHED_404.body);
-        }
+        res.writeStatus(cached404.statusLine);
+        res.writeHeader('Content-Type', 'application/json');
+        res.end(cached404.body);
       });
     });
   }
@@ -715,10 +302,13 @@ export class NativeAdapter {
     route: (typeof this._app.registeredRoutes)[number],
     paramKeys: readonly string[],
   ) {
+    const adapter = this; // captured for inflight tracking
     const app = this._app;
     const maxBodySize = this._maxBodySize;
     const trustProxy = this._trustProxy;
     const serialize = this._serialize; // captured once per route, not per request
+    const errorCache = this._errorCache; // captured per-route, scoped to this adapter
+    const cached413 = errorCache.cached413;
     const method = route.method;
     const needsBody =
       method === 'POST' ||
@@ -735,31 +325,24 @@ export class NativeAdapter {
       let aborted = false;
 
       // Extract path params by index — O(k) where k = number of params.
-      const params: Record<string, string> = {};
+      const params: Record<string, string> = Object.create(null);
       for (let i = 0; i < paramKeys.length; i++) {
         const val = req.getParameter(i);
         if (val !== '') params[paramKeys[i]] = val;
       }
 
-      // Collect all request headers in one pass.
-      const headers: Record<string, string> = {};
-      req.forEach((k: string, v: string) => {
-        headers[k] = v;
-      });
+      // Collect all request headers in one pass. Multi-value headers
+      // (RFC 9110 §5.3) are preserved as arrays.
+      const headers = collectHeaders(req);
 
       const url = req.getUrl();
       const queryStr = req.getQuery();
-      const contentType = headers['content-type'] ?? '';
+      const ctRaw = headers['content-type'];
+      const contentType = (Array.isArray(ctRaw) ? ctRaw[0] : ctRaw) ?? '';
       const ip = trustProxy
         ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
           _ipDecoder.decode(res.getRemoteAddressAsText())
         : _ipDecoder.decode(res.getRemoteAddressAsText());
-
-      // Register abort handler BEFORE any async work.
-      res.onAborted(() => {
-        aborted = true;
-        axiomifyReq.onAbort();
-      });
 
       // Construct request and response objects.
       const axiomifyReq = new NativeRequest(
@@ -777,9 +360,18 @@ export class NativeAdapter {
         axiomifyReq,
         method,
         serialize,
+        errorCache,
       );
 
+      // Register abort handler BEFORE any async work.
+      res.onAborted(() => {
+        aborted = true;
+        axiomifyReq.onAbort();
+        axiomifyRes.aborted = true;
+      });
+
       // --- ASYNC SECTION ---
+      adapter._inflight++;
       (async () => {
         // Body reading for methods that carry a request body.
         if (needsBody) {
@@ -797,9 +389,9 @@ export class NativeAdapter {
             if (!aborted) {
               axiomifyRes.aborted = false; // reset to allow send
               res.cork(() => {
-                res.writeStatus(CACHED_413.statusLine);
+                res.writeStatus(cached413.statusLine);
                 res.writeHeader('Content-Type', 'application/json');
-                res.end(CACHED_413.body);
+                res.end(cached413.body);
               });
             }
             return;
@@ -816,38 +408,68 @@ export class NativeAdapter {
         if (aborted) return;
         axiomifyRes.aborted = aborted;
 
-        await app.handleMatchedRoute(ADAPTER_LOCK_TOKEN, axiomifyReq, axiomifyRes, route, params);
-      })().catch((err: unknown) => {
-        // A .catch() is mandatory on all uWS async handlers. Without it, any
-        // unhandled rejection (handler bug, DB drop, timeout) reaches Node's
-        // 'unhandledRejection' event, which crashes the process in Node 15+.
-        // Instead we try to send a 500 — if the response is already committed
-        // (headersSent) we swallow silently, which is still safe.
-        if (!aborted && !axiomifyRes.headersSent) {
-          try {
-            // Do NOT use axiomifyRes.error(err) — that deprecated method always
-            // sends 500 and does not respect err.statusCode. Inline the same
-            // logic used by RequestDispatcher.handleError so HTTP error status
-            // codes thrown by handlers are preserved.
-            const anyErr = err as Record<string, unknown>;
-            const errStatus =
-              typeof anyErr.statusCode === 'number'
-                ? anyErr.statusCode
-                : typeof anyErr.status === 'number'
-                ? anyErr.status
-                : 500;
-            const errMsg =
-              typeof anyErr.message === 'string'
-                ? anyErr.message
-                : 'Internal Server Error';
-            axiomifyRes.status(errStatus).send(null, errMsg);
-          } catch {
-            // axiomifyRes.send() itself threw (e.g. already aborted between the
-            // check and the call) — nothing more we can do.
+        await app.handleMatchedRoute(
+          ADAPTER_LOCK_TOKEN,
+          axiomifyReq,
+          axiomifyRes,
+          route,
+          params,
+        );
+      })()
+        .catch((err: unknown) => {
+          // A .catch() is mandatory on all uWS async handlers. Without it, any
+          // unhandled rejection (handler bug, DB drop, timeout) reaches Node's
+          // 'unhandledRejection' event, which crashes the process in Node 15+.
+          // Instead we try to send a 500 — if the response is already committed
+          // (headersSent) we swallow silently, which is still safe.
+          if (!aborted && !axiomifyRes.headersSent) {
+            try {
+              // Do NOT use axiomifyRes.error(err) — that deprecated method always
+              // sends 500 and does not respect err.statusCode. Inline the same
+              // logic used by RequestDispatcher.handleError so HTTP error status
+              // codes thrown by handlers are preserved.
+              const anyErr = err as Record<string, unknown>;
+              const errStatus =
+                typeof anyErr.statusCode === 'number'
+                  ? anyErr.statusCode
+                  : typeof anyErr.status === 'number'
+                  ? anyErr.status
+                  : 500;
+              const errMsg =
+                typeof anyErr.message === 'string'
+                  ? anyErr.message
+                  : 'Internal Server Error';
+              axiomifyRes.status(errStatus).send(null, errMsg);
+            } catch {
+              // axiomifyRes.send() itself threw (e.g. already aborted between the
+              // check and the call) — nothing more we can do.
+            }
           }
-        }
-      });
+        })
+        .finally(() => {
+          // Decrement BEFORE notifying drain resolvers so a resolver that
+          // schedules `process.exit(0)` sees a consistent count.
+          adapter._inflight--;
+          if (adapter._inflight === 0 && adapter._drainResolvers.length > 0) {
+            const resolvers = adapter._drainResolvers;
+            adapter._drainResolvers = [];
+            for (const r of resolvers) r();
+          }
+        });
     };
+  }
+
+  /**
+   * Returns a Promise that resolves when there are no in-flight requests.
+   * If the adapter is already idle, resolves synchronously on the next tick.
+   * Used by `gracefulShutdown()`; not part of the public stable API.
+   * @internal
+   */
+  private _waitForDrain(): Promise<void> {
+    if (this._inflight === 0) return Promise.resolve();
+    return new Promise((resolve) => {
+      this._drainResolvers.push(resolve);
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -859,7 +481,7 @@ export class NativeAdapter {
 
     const behavior: WebSocketBehavior<WsUserData> = {
       compression: opts.compression ?? uWS.SHARED_COMPRESSOR,
-      maxPayloadLength: opts.maxPayloadLength ?? 16 * 1024 * 1024,
+      maxPayloadLength: opts.maxPayloadLength ?? 256 * 1024,
       idleTimeout: opts.idleTimeout ?? 120,
 
       upgrade: (res: UWSResponse, req: UWSRequest, context: unknown) => {
@@ -870,10 +492,7 @@ export class NativeAdapter {
           'sec-websocket-extensions',
         );
 
-        const headers: Record<string, string> = {};
-        req.forEach((k: string, v: string) => {
-          headers[k] = v;
-        });
+        const headers = collectHeaders(req);
 
         res.onAborted(() => {});
 
@@ -896,6 +515,226 @@ export class NativeAdapter {
     this._server.ws<WsUserData>(wsPath, behavior);
   }
 
+  private _registerWsRoutes(): void {
+    const validator = this._app.validator;
+    const trustProxy = this._trustProxy;
+
+    for (const route of this._app.registeredWsRoutes) {
+      const paramKeys = extractParamKeys(route.path);
+      const routeId = `WS:${route.path}`;
+
+      const behavior: WebSocketBehavior<any> = {
+        compression: uWS.SHARED_COMPRESSOR,
+        maxPayloadLength: 256 * 1024,
+        idleTimeout: 120,
+
+        upgrade: (res: UWSResponse, req: UWSRequest, context: unknown) => {
+          let aborted = false;
+
+          const params: Record<string, string> = Object.create(null);
+          for (let i = 0; i < paramKeys.length; i++) {
+            const val = req.getParameter(i);
+            if (val !== '') params[paramKeys[i]] = val;
+          }
+
+          const headers = collectHeaders(req);
+
+          const url = req.getUrl();
+          const queryStr = req.getQuery();
+          const ip = trustProxy
+            ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
+              _ipDecoder.decode(res.getRemoteAddressAsText())
+            : _ipDecoder.decode(res.getRemoteAddressAsText());
+
+          // WS handshake headers MUST be single-valued per RFC 6455 §4.1.
+          // If a client somehow sent multiples, take the first to match the
+          // browser/proxy norm rather than silently dropping the handshake.
+          const firstStr = (
+            h: string | string[] | undefined,
+          ): string | undefined => (Array.isArray(h) ? h[0] : h);
+          const secWebSocketKey = firstStr(headers['sec-websocket-key']) ?? '';
+          const secWebSocketProtocol =
+            firstStr(headers['sec-websocket-protocol']) ?? '';
+          const secWebSocketExtensions =
+            firstStr(headers['sec-websocket-extensions']) ?? '';
+
+          const axiomifyReq = new NativeRequest(
+            'GET',
+            url,
+            ip,
+            headers,
+            queryStr,
+            undefined,
+          );
+          axiomifyReq.params = params;
+          const axiomifyRes = new NativeResponse(
+            res,
+            this._app,
+            axiomifyReq,
+            'GET',
+            this._serialize,
+            this._errorCache,
+          );
+
+          res.onAborted(() => {
+            aborted = true;
+            axiomifyReq.onAbort();
+            axiomifyRes.aborted = true;
+          });
+
+          (async () => {
+            // Run onRequest hooks (security, CORS, request-ID, etc.)
+            const onRequestRet = this._app.hooks.run(
+              'onRequest',
+              axiomifyReq,
+              axiomifyRes,
+            );
+            if (onRequestRet) await onRequestRet;
+            if (axiomifyRes.headersSent || aborted) return;
+
+            // Run onPreHandler hooks (rate-limit, auth plugins, etc.)
+            const onPreHandlerRet = this._app.hooks.run(
+              'onPreHandler',
+              axiomifyReq,
+              axiomifyRes,
+              { route: route as any, params },
+            );
+            if (onPreHandlerRet) await onPreHandlerRet;
+            if (axiomifyRes.headersSent || aborted) return;
+
+            // Route-level plugins
+            if (route.plugins) {
+              for (const plugin of route.plugins) {
+                if (axiomifyRes.headersSent || aborted) break;
+                const ret = plugin(axiomifyReq, axiomifyRes);
+                if (ret instanceof Promise) await ret;
+              }
+            }
+            if (axiomifyRes.headersSent || aborted) return;
+
+            res.upgrade(
+              { state: axiomifyReq.state, req: axiomifyReq },
+              secWebSocketKey,
+              secWebSocketProtocol,
+              secWebSocketExtensions,
+              context,
+            );
+          })().catch((err: unknown) => {
+            if (!aborted && !axiomifyRes.headersSent) {
+              const e = err as Record<string, unknown>;
+              axiomifyRes
+                .status(typeof e.statusCode === 'number' ? e.statusCode : 500)
+                .send(
+                  null,
+                  typeof e.message === 'string'
+                    ? e.message
+                    : 'Internal Server Error',
+                );
+            }
+          });
+        },
+
+        open: (ws: any) => {
+          const client = {
+            state: ws.state,
+            send: (message: any, isBinary?: boolean) => {
+              const data =
+                typeof message === 'string' || Buffer.isBuffer(message)
+                  ? message
+                  : JSON.stringify(message);
+              ws.send(data, isBinary);
+            },
+            close: () => ws.close(),
+            subscribe: (topic: string) => ws.subscribe(topic),
+            unsubscribe: (topic: string) => ws.unsubscribe(topic),
+            publish: (topic: string, message: any, isBinary?: boolean) => {
+              const data =
+                typeof message === 'string' || Buffer.isBuffer(message)
+                  ? message
+                  : JSON.stringify(message);
+              ws.publish(topic, data, isBinary);
+            },
+          };
+          ws.client = client;
+          if (route.open) {
+            route.open(client, ws.req);
+          }
+        },
+
+        message: (ws: any, message: ArrayBuffer, isBinary: boolean) => {
+          if (!route.message) return;
+
+          // Binary payloads bypass JSON parsing and schema validation —
+          // the handler receives a Buffer. uWS reuses the ArrayBuffer after
+          // this callback, so the copy MUST happen before the handler runs.
+          if (isBinary) {
+            route.message(ws.client, Buffer.from(message.slice(0)));
+            return;
+          }
+
+          // Text payloads: defensive deep copy first (uWS recycles the
+          // ArrayBuffer), then optional simdjson + Zod schema validation.
+          const safeBuffer = Buffer.from(message.slice(0));
+          let parsedData: unknown = safeBuffer;
+
+          if (route.schema?.message) {
+            const asStr = safeBuffer.toString('utf8');
+
+            // Parse JSON. A parse failure here is treated the same as a
+            // schema violation — the message never reaches the handler.
+            try {
+              const simd = getSimdParse();
+              parsedData = simd !== null ? simd(asStr) : JSON.parse(asStr);
+            } catch (err: unknown) {
+              const isProduction = process.env.NODE_ENV === 'production';
+              ws.client.send(
+                isProduction
+                  ? { error: 'Invalid message' }
+                  : {
+                      error: 'Invalid message',
+                      details: { body: { _root: (err as Error).message } },
+                    },
+              );
+              return;
+            }
+
+            // Run the compiled validator registered at app.ws() time.
+            // ValidationCompiler.execute() throws ValidationError on failure;
+            // catch and surface to the client as a schema rejection.
+            try {
+              validator.execute(routeId + ':message', {
+                body: parsedData,
+              } as any);
+            } catch (err: unknown) {
+              const isProduction = process.env.NODE_ENV === 'production';
+              const details = (err as { errors?: unknown }).errors;
+              ws.client.send(
+                isProduction
+                  ? { error: 'Invalid message' }
+                  : { error: 'Invalid message', details },
+              );
+              return;
+            }
+          }
+
+          route.message(ws.client, parsedData);
+        },
+
+        close: (ws: any, code: number, message: ArrayBuffer) => {
+          if (route.close) {
+            route.close(ws.client, code, Buffer.from(message).toString('utf8'));
+          }
+        },
+
+        drain: (ws: any) => {
+          if (route.drain) route.drain(ws.client);
+        },
+      };
+
+      this._server.ws<any>(route.path, behavior);
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Lifecycle
   // -------------------------------------------------------------------------
@@ -905,15 +744,16 @@ export class NativeAdapter {
    * Use `listenClustered()` to saturate multiple CPU cores.
    */
   public listen(
-    callback?: () => void,
+    callback?: (port: number) => void,
     onError?: (err: Error) => void,
     portOverride?: number,
   ): void {
     const port = portOverride ?? this._port;
-    this._server.listen(port, (token: unknown) => {
+    this._server.listen('0.0.0.0', port, (token: unknown) => {
       if (token) {
         this._listenSocket = token;
-        callback?.();
+        this._installCrashGuard();
+        callback?.((uWS as any).us_socket_local_port(token));
       } else {
         const err = new Error(
           `[Axiomify/native] Port ${this._port} is occupied.`,
@@ -927,6 +767,48 @@ export class NativeAdapter {
         }
       }
     });
+  }
+
+  /**
+   * Installs process-level crash guards that close the uWS listen socket
+   * on any fatal exit path (uncaught exception, unhandled rejection, SIGINT,
+   * SIGTERM). Without this, a crash leaves the port in TIME_WAIT and the
+   * process cannot restart on the same port immediately.
+   *
+   * Guards are installed exactly once per adapter instance and are idempotent
+   * — calling `close()` multiple times is safe.
+   *
+   * The signal handlers installed here are stored on the instance so
+   * `gracefulShutdown()` can detach them and take ownership of SIGINT/SIGTERM,
+   * regardless of which method the caller invokes first.
+   */
+  private _crashGuardInstalled = false;
+  private _crashSignalHandlers: {
+    sig: 'SIGINT' | 'SIGTERM';
+    fn: () => void;
+  }[] = [];
+  private _installCrashGuard(): void {
+    if (this._crashGuardInstalled) return;
+    this._crashGuardInstalled = true;
+
+    const cleanup = () => this.close();
+
+    // 'exit' is the last chance — runs synchronously, no async allowed.
+    process.once('exit', cleanup);
+
+    // If gracefulShutdown() already claimed signal ownership, stop here —
+    // the 'exit' guard above still runs if anything else kills the process.
+    if (this._onShutdown !== undefined) return;
+
+    // Interactive stop (Ctrl+C) and orchestrator signals.
+    for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+      const fn = () => {
+        cleanup();
+        process.exit(0);
+      };
+      this._crashSignalHandlers.push({ sig, fn });
+      process.once(sig, fn);
+    }
   }
 
   /**
@@ -956,6 +838,22 @@ export class NativeAdapter {
   ): void {
     const gracefulTimeoutMs = opts.gracefulTimeoutMs ?? 10_000;
     const isLinux = process.platform === 'linux';
+
+    // ── Platform gate ───────────────────────────────────────────────────
+    // uWS's SO_REUSEPORT clustering only works on Linux. On macOS/Windows we
+    // would fall back to a userspace L4 proxy that defeats the perf rationale
+    // of using uWS in the first place. Require an explicit opt-in so users
+    // discover the tradeoff at boot, not in production under load.
+    if (!isLinux && !this._allowUserspaceProxy) {
+      throw new Error(
+        `[Axiomify/native] listenClustered() requires Linux for SO_REUSEPORT-based ` +
+          `clustering. Current platform: ${process.platform}. On non-Linux platforms ` +
+          `Axiomify falls back to a userspace TCP proxy that adds two event-loop hops ` +
+          `per byte and largely negates uWS's performance advantage. ` +
+          `Either deploy on Linux, use listen() for single-process operation, or set ` +
+          `allowUserspaceProxy: true on NativeAdapter options to acknowledge this.`,
+      );
+    }
 
     // ── Worker Process ───────────────────────────────────────────────────
     if (!cluster.isPrimary) {
@@ -1000,11 +898,24 @@ export class NativeAdapter {
     let isShuttingDown = false;
     let initialBootComplete = false;
     let l4Proxy: import('node:net').Server | null = null;
-    const nativeCrashTimes: number[] = [];
 
     // L4 TCP Proxy (macOS / Windows Only)
-    // Pipes incoming connections to workers using round-robin.
+    // Reached only when allowUserspaceProxy=true on a non-Linux platform.
+    // The platform gate at the top of this method has already enforced opt-in;
+    // here we emit a startup warning so the degradation is visible in logs.
     if (!isLinux) {
+      this._logger.warn(
+        `[Axiomify/native] Userspace L4 TCP proxy is active on port ${this._port} ` +
+          `(platform: ${process.platform}). Each request now traverses Node.js twice ` +
+          `(primary → worker) — expect a significant throughput reduction vs Linux ` +
+          `SO_REUSEPORT clustering. This path is intended for development only.`,
+        {
+          platform: process.platform,
+          port: this._port,
+          workers: targetWorkers,
+        },
+      );
+
       let rrIndex = 0;
       const net = require('node:net');
       l4Proxy = net.createServer((client: import('node:net').Socket) => {
@@ -1024,11 +935,7 @@ export class NativeAdapter {
         backend.on('error', () => client.destroy());
       });
 
-      l4Proxy?.listen(this._port, () => {
-        console.log(
-          `[Axiomify] Development L4 Proxy listening on ${this._port} (macOS/Win)`,
-        );
-      });
+      l4Proxy?.listen(this._port);
     }
 
     const spawnWorker = (idx: number, respawnDelayMs = 0) => {
@@ -1072,24 +979,8 @@ export class NativeAdapter {
 
         if (isShuttingDown || wasDraining) return;
 
-        // Crash circuit breaker — abort if workers keep crashing on startup.
-        // This prevents a misconfigured worker (bad env, failed migration)
-        // from pinning a CPU in a tight respawn loop indefinitely.
-        const CRASH_THRESHOLD = 5;
-        const CRASH_WINDOW_MS = 30_000;
-        const now = Date.now();
-        nativeCrashTimes.push(now);
-        while (nativeCrashTimes.length && nativeCrashTimes[0] < now - CRASH_WINDOW_MS) {
-          nativeCrashTimes.shift();
-        }
-        if (nativeCrashTimes.length >= CRASH_THRESHOLD) {
-          console.error(
-            `[Axiomify/native] ${nativeCrashTimes.length} workers crashed within ` +
-            `${CRASH_WINDOW_MS}ms. Aborting primary to prevent runaway respawn loop.`,
-          );
-          process.exit(1);
-        }
-
+        // Let external orchestrators (Kubernetes/systemd) manage crash loops instead of
+        // suiciding the primary process. Backoff helps prevent CPU pinning.
         const nextDelay = Math.min((respawnDelayMs || 50) * 2, 5_000);
         setTimeout(() => spawnWorker(idx, nextDelay), nextDelay);
       });
@@ -1147,6 +1038,180 @@ export class NativeAdapter {
       this._listenSocket = null;
     }
   }
+
+  /**
+   * Adapter-bridge entry point: hands the underlying `uWS.App` instance to
+   * a trusted plugin (e.g. `@axiomify/socket.io`) so it can attach its own
+   * routes/upgrades on the same uWS event loop. Authenticated via the
+   * shared `ADAPTER_LOCK_TOKEN` from `@axiomify/core/internal` — calling
+   * this from user code throws.
+   *
+   * Plugins that use this MUST call it BEFORE `adapter.listen()`, since
+   * uWS does not permit route registration on a listening socket.
+   *
+   * Hook a graceful-shutdown callback via {@link onShutdown} so the
+   * plugin's resources (e.g. open WebSocket connections) close cleanly
+   * when the adapter drains.
+   *
+   * @internal Plugin-author API. Not part of the public Axiomify surface.
+   */
+  public getRawServer(token: AdapterLockToken): TemplatedApp {
+    if (token !== ADAPTER_LOCK_TOKEN) {
+      throw new Error(
+        '[Axiomify/native] getRawServer() is reserved for adapter-bridge plugins. ' +
+          'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
+      );
+    }
+    return this._server;
+  }
+
+  /**
+   * Adapter-bridge entry point: register a callback that runs as part of
+   * `gracefulShutdown()`'s drain sequence, BEFORE the user-supplied
+   * `onShutdown`. Plugins use this to close their own resources (open
+   * WebSocket connections, hold-then-release queues, etc).
+   *
+   * Multiple registrations stack — every callback runs sequentially.
+   * Errors from individual callbacks are swallowed and logged, so one
+   * misbehaving plugin can't block another's cleanup.
+   *
+   * @internal Plugin-author API. See {@link getRawServer}.
+   */
+  private _bridgeShutdownCallbacks: Array<() => void | Promise<void>> = [];
+  public registerShutdownCallback(
+    token: AdapterLockToken,
+    cb: () => void | Promise<void>,
+  ): void {
+    if (token !== ADAPTER_LOCK_TOKEN) {
+      throw new Error(
+        '[Axiomify/native] registerShutdownCallback() is reserved for adapter-bridge plugins. ' +
+          'Import ADAPTER_LOCK_TOKEN from @axiomify/core.',
+      );
+    }
+    this._bridgeShutdownCallbacks.push(cb);
+  }
+
+  /**
+   * Wires SIGINT/SIGTERM to a graceful drain sequence:
+   *   1. Stop accepting new connections (close the uWS listen socket).
+   *   2. Run the caller-supplied `onShutdown` hook (close DB pools, flush
+   *      logger buffers, etc.). It is awaited.
+   *   3. `process.exit(0)`.
+   * If `onShutdown` throws, exits with code 1.
+   * If step 2 doesn't complete within `timeoutMs`, force-exits with code 1.
+   *
+   * This is the unified shutdown entry point for NativeAdapter. Do NOT call
+   * `gracefulShutdown()` from `@axiomify/core` on a NativeAdapter — that
+   * helper takes a Node.js `http.Server` and will not understand uWS's
+   * listen socket. Use this method instead.
+   *
+   * @example
+   * const adapter = new NativeAdapter(app);
+   * adapter.listen();
+   * adapter.gracefulShutdown({
+   *   onShutdown: async () => { await db.close(); },
+   *   timeoutMs: 15_000,
+   * });
+   */
+  public gracefulShutdown(
+    options: {
+      onShutdown?: () => void | Promise<void>;
+      timeoutMs?: number;
+    } = {},
+  ): void {
+    const timeoutMs = options.timeoutMs ?? 10_000;
+    this._onShutdown = options.onShutdown ?? (() => {});
+
+    // Detach any signal handlers installed by _installCrashGuard so they
+    // don't race the drain sequence below. This makes gracefulShutdown()
+    // safe to call either before or after listen().
+    for (const { sig, fn } of this._crashSignalHandlers) {
+      process.removeListener(sig, fn);
+    }
+    this._crashSignalHandlers = [];
+
+    let draining = false;
+    const drain = async () => {
+      if (draining) return;
+      draining = true;
+
+      // Force-exit safety net. Unref'd so it never keeps the loop alive
+      // on its own. Cleared on clean exit.
+      const forceExit = setTimeout(() => {
+        this._logger.error(
+          '[Axiomify/native] Graceful shutdown timeout exceeded. Forcing exit.',
+          { timeoutMs },
+        );
+        process.exit(1);
+      }, timeoutMs);
+      forceExit.unref();
+
+      // Stop accepting new connections IMMEDIATELY. uWS's
+      // us_listen_socket_close() makes the socket reject SYN packets while
+      // already-accepted connections keep serving. This is the fast half of
+      // the drain — the slow half is waiting for in-flight requests below.
+      this.close();
+
+      try {
+        // Wait for the in-flight counter to hit zero before running the
+        // caller's onShutdown. Without this, a POST /charge that's writing
+        // to the DB at SIGTERM time would have its connection killed by
+        // process.exit() — the DB write happens, the response never reaches
+        // the client, the client retries, you double-charge.
+        //
+        // The forceExit timer above is the upper bound: if drain takes
+        // longer than timeoutMs we exit 1 regardless. This mirrors
+        // Kubernetes' terminationGracePeriodSeconds — the orchestrator
+        // assumes draining can take a finite amount of time but not forever.
+        await this._waitForDrain();
+        if (this._inflight > 0) {
+          this._logger.warn(
+            '[Axiomify/native] Draining with in-flight requests; ' +
+              'waited but the counter is non-zero (likely a long-lived stream).',
+            { inflight: this._inflight },
+          );
+        }
+        // Run bridge-plugin shutdown callbacks BEFORE the user-supplied
+        // onShutdown. Plugins (e.g. @axiomify/socket.io) close their own
+        // connections / drain their own queues here so the user's
+        // onShutdown can assume the plugin is quiescent. Errors are
+        // swallowed and logged — one misbehaving plugin must not block
+        // the rest, and the force-exit timer remains the upper bound.
+        for (const cb of this._bridgeShutdownCallbacks) {
+          try {
+            await cb();
+          } catch (err) {
+            this._logger.error(
+              '[Axiomify/native] Bridge-plugin shutdown callback threw',
+              { error: err },
+            );
+          }
+        }
+        if (this._onShutdown) await this._onShutdown();
+        clearTimeout(forceExit);
+        process.exit(0);
+      } catch (err) {
+        clearTimeout(forceExit);
+        this._logger.error('[Axiomify/native] onShutdown threw', {
+          error: err,
+        });
+        process.exit(1);
+      }
+    };
+
+    process.once('SIGTERM', () => void drain());
+    process.once('SIGINT', () => void drain());
+  }
 }
 
 export { adaptMiddleware } from './bridge';
+
+/**
+ * Internal helpers exposed for unit testing only.
+ * Not part of the public API — do not import from application code.
+ * @internal
+ */
+export const __internal = {
+  fastParseQuery,
+  safeDecodeURIComponent,
+};

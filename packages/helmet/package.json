@@ -1,10 +1,10 @@
 {
   "name": "@axiomify/helmet",
-  "version": "5.0.0",
+  "version": "6.0.0-rc.3",
   "description": "Security headers plugin for Axiomify",
   "main": "./dist/index.js",
-  "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
+  "module": "./dist/index.mjs",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -12,20 +12,35 @@
       "require": "./dist/index.js"
     }
   },
-  "engines": {
-    "node": ">=18.0.0"
-  },
   "files": [
     "dist"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "tsup",
     "test": "vitest run"
   },
   "dependencies": {
     "@axiomify/core": "*"
+  },
+  "author": {
+    "name": "Topman",
+    "email": "okunlolatopman14@gmail.com",
+    "url": "https://github.com/OTopman"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/OTopman/axiomify/blob/main/docs/packages/helmet.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OTopman/axiomify.git",
+    "directory": "packages/helmet"
+  },
+  "bugs": {
+    "url": "https://github.com/OTopman/axiomify/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

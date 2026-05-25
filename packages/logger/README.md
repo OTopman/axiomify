@@ -1,5 +1,11 @@
 # @axiomify/logger
 
+
+[![npm version](https://img.shields.io/npm/v/@axiomify/logger.svg)](https://npmjs.com/package/@axiomify/logger)
+[![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 Structured request/response logging for Axiomify with PII field masking and configurable log levels.
 
 ## Install
@@ -7,9 +13,6 @@ Structured request/response logging for Axiomify with PII field masking and conf
 ```bash
 npm install @axiomify/logger
 ```
-
-> `maskify-ts` is no longer required as a peer dependency — masking is handled inline.
-
 ## Quick start
 
 ```typescript

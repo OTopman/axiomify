@@ -1,8 +1,20 @@
 {
   "name": "@axiomify/auth",
-  "version": "5.0.0",
+  "version": "6.0.0-rc.3",
+  "description": "JWT authentication + refresh-token rotation with token revocation via `TokenStore` for Axiomify.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "module": "./dist/index.mjs",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup"
   },
@@ -13,21 +25,25 @@
   "devDependencies": {
     "@types/jsonwebtoken": "9.0.6"
   },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
-    }
+  "author": {
+    "name": "Topman",
+    "email": "okunlolatopman14@gmail.com",
+    "url": "https://github.com/OTopman"
   },
-  "module": "./dist/index.mjs",
-  "engines": {
-    "node": ">=18.0.0"
+  "license": "MIT",
+  "homepage": "https://github.com/OTopman/axiomify/blob/main/docs/packages/auth.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OTopman/axiomify.git",
+    "directory": "packages/auth"
   },
-  "files": [
-    "dist"
-  ],
+  "bugs": {
+    "url": "https://github.com/OTopman/axiomify/issues"
+  },
   "publishConfig": {
     "access": "public"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

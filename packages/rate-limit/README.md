@@ -1,5 +1,11 @@
 # @axiomify/rate-limit
 
+
+[![npm version](https://img.shields.io/npm/v/@axiomify/rate-limit.svg)](https://npmjs.com/package/@axiomify/rate-limit)
+[![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 Sliding-window rate limiting for Axiomify. Supports in-memory (dev) and Redis (production).
 
 ## Install

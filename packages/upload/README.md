@@ -1,5 +1,11 @@
 # @axiomify/upload
 
+
+[![npm version](https://img.shields.io/npm/v/@axiomify/upload.svg)](https://npmjs.com/package/@axiomify/upload)
+[![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 RAM-safe, stream-based multipart file upload for Axiomify. Files stream directly to disk via Busboy — no buffering in memory.
 
 ## Install
@@ -107,16 +113,6 @@ handler: async (req, res) => {
   res.send({ count: files.length, paths: files.map(f => f.path) });
 },
 ```
-
-## Adapter compatibility
-
-Works with all Axiomify adapters:
-- **`@axiomify/http`** — raw stream passed through directly
-- **`@axiomify/express`** — adapter passes the raw Node.js `IncomingMessage` stream
-- **`@axiomify/fastify`** — the Fastify adapter registers a `multipart/form-data` content-type parser that passes the raw stream through; upload handles it normally
-- **`@axiomify/hapi`** — Hapi adapter configures `parse: false, output: 'stream'` for all routes
-- **`@axiomify/native`** — the uWS stream is passed to Busboy as a Node.js `Readable`
-
 ## Graceful shutdown
 
 Files in progress when the server shuts down may be partially written. Call `adapter.close()` with a timeout to drain in-flight requests before exit:

@@ -93,6 +93,24 @@ describe('RouteRegistry — extended coverage', () => {
     expect(spanEnd).toHaveBeenCalled();
   });
 
+  it('registerWs: tracks ws route and compiles message schema', async () => {
+    const { z } = await import('zod');
+    const app = new Axiomify();
+    app.ws({
+      path: '/chat',
+      schema: { message: z.object({ text: z.string() }) },
+      handler: async () => {},
+    } as any);
+    expect(app.registeredWsRoutes).toHaveLength(1);
+    expect(app.registeredWsRoutes[0].path).toBe('/chat');
+  });
+
+  it('registerWs without schema also works', () => {
+    const app = new Axiomify();
+    app.ws({ path: '/p', handler: async () => {} } as any);
+    expect(app.registeredWsRoutes).toHaveLength(1);
+  });
+
   it('telemetry span.end() called even when handler throws', async () => {
     const spanEnd = vi.fn();
     const startSpan = vi.fn(() => ({ end: spanEnd }));

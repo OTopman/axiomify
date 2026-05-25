@@ -1,0 +1,27 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": ".",
+    "skipLibCheck": true,
+    "paths": {
+      "@axiomify/core": ["../packages/core/dist/index.d.ts"],
+      "@axiomify/native": ["../packages/native/dist/index.d.ts"],
+      "@axiomify/openapi": ["../packages/openapi/dist/index.d.ts"],
+      "@axiomify/helmet": ["../packages/helmet/dist/index.d.ts"],
+      "@axiomify/logger": ["../packages/logger/dist/index.d.ts"],
+      "@axiomify/cors": ["../packages/cors/dist/index.d.ts"],
+      "@axiomify/security": ["../packages/security/dist/index.d.ts"],
+      "@axiomify/rate-limit": ["../packages/rate-limit/dist/index.d.ts"],
+      "@axiomify/fingerprint": ["../packages/fingerprint/dist/index.d.ts"],
+      "@axiomify/auth": ["../packages/auth/dist/index.d.ts"],
+      "@axiomify/graphql": ["../packages/graphql/dist/index.d.ts"],
+      "@axiomify/static": ["../packages/static/dist/index.d.ts"],
+      "@axiomify/upload": ["../packages/upload/dist/index.d.ts"],
+      "@axiomify/metrics": ["../packages/metrics/dist/index.d.ts"],
+      "@axiomify/sanitizer": ["../packages/sanitizer/dist/index.d.ts"]
+    }
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["my-app"]
+}

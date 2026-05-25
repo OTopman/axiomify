@@ -2,11 +2,13 @@ import { compiledStates } from './compiled';
 import { defaultLogger, type AxiomifyLogger } from './internal';
 import type { HookManager } from './lifecycle';
 import { Router } from './router';
+
 import type {
   AxiomifyRequest,
   AxiomifyResponse,
   RouteDefinition,
   RouteSchema,
+  WsRouteDefinition,
 } from './types';
 import { ValidationCompiler } from './validation';
 
@@ -33,6 +35,7 @@ export class RouteRegistry {
   public readonly router = new Router();
   public readonly validator: ValidationCompiler;
   private readonly routes: RouteDefinition[] = [];
+  private readonly wsRoutes: WsRouteDefinition<any, any>[] = [];
 
   constructor(
     private readonly hooks: HookManager,
@@ -43,6 +46,10 @@ export class RouteRegistry {
 
   public get registeredRoutes(): readonly RouteDefinition[] {
     return this.routes;
+  }
+
+  public get registeredWsRoutes(): readonly WsRouteDefinition<any, any>[] {
+    return this.wsRoutes;
   }
 
   public register<S extends RouteSchema>(definition: RouteDefinition<S>): void {
@@ -68,23 +75,20 @@ export class RouteRegistry {
 
     if (effectiveTimeout > 0 || hasTelemetry) {
       // Full path: supports timeout and/or tracing.
-      const timeoutError = createTimeoutError();
       const telemetry = this.options.telemetry;
       pipeline.push(async (req, res) => {
+        const timeoutError = createTimeoutError();
+        const timeoutSignal = AbortSignal.timeout(effectiveTimeout);
         let span: { end(): void } | undefined;
         if (telemetry) {
           span = telemetry.startSpan('http.request', { method: req.method, path: definition.path });
         }
         try {
-          if (effectiveTimeout > 0) {
-            const timeoutSignal = AbortSignal.timeout(effectiveTimeout);
-            await Promise.race([
-              definition.handler(req as never, res),
-              rejectOnAbort(timeoutSignal, timeoutError),
-            ]);
-          } else {
-            await definition.handler(req as never, res);
-          }
+          await Promise.race([
+            definition.handler(req as never, res),
+            rejectOnAbort(timeoutSignal, timeoutError),
+          ]);
+
         } finally {
           span?.end();
         }
@@ -103,5 +107,26 @@ export class RouteRegistry {
 
     this.router.register(definition as RouteDefinition);
     this.routes.push(definition as RouteDefinition);
+  }
+
+  public registerWs<S extends RouteSchema, M = any>(definition: WsRouteDefinition<S, M>): void {
+    const routeId = `WS:${definition.path}`;
+    if (definition.schema?.message) {
+      // The ValidationCompiler is a request-shape validator (body / query /
+      // params / response). WS messages don't fit that shape directly, so
+      // we project the message schema into the `body` slot and reuse the
+      // same compiled-AJV pipeline. The shape below is a valid RouteSchema
+      // structurally — explicit object construction (not a spread + cast)
+      // so TypeScript can verify it without a cast escape hatch.
+      const messageSchema: RouteSchema = {
+        body: definition.schema.message,
+        query: definition.schema.query,
+        params: definition.schema.params,
+        response: definition.schema.response,
+        files: definition.schema.files,
+      };
+      this.validator.compile(routeId + ':message', messageSchema);
+    }
+    this.wsRoutes.push(definition);
   }
 }

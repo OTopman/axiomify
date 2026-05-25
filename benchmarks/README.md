@@ -12,21 +12,14 @@
 | **Axiomify Native — GET /users/:id/posts/:postId** | **83,947** | **11 ms** | **20 ms** | **16.89 MB/s** |
 | **Axiomify Native — GET /ping** | **73,511** | **13 ms** | **26 ms** | **13.95 MB/s** |
 | **Axiomify Native — POST /echo (JSON body)** | **54,720** | **18 ms** | **30 ms** | **11.12 MB/s** |
-| Axiomify + `@axiomify/http` | 32,841 | 30 ms | 91 ms | 7.77 MB/s |
-| Axiomify + `@axiomify/fastify` | 31,334 | 31 ms | 58 ms | 7.32 MB/s |
-| Express 4 (bare) | 9,682 | 102 ms | 191 ms | 2.55 MB/s |
-| Axiomify + `@axiomify/hapi` | 9,875 | 79 ms | 511 ms | 2.74 MB/s |
-| Axiomify + `@axiomify/express` | 7,337 | 135 ms | 247 ms | 2.16 MB/s |
 
-The ~25% overhead of Axiomify adapters vs their bare counterparts is the fixed dispatcher cost: hook iteration, compiled-state WeakMap lookup, async pipeline. It is identical across all adapters.
+Axiomify Native achieves exceptional performance by utilizing `uWebSockets.js` C++ runtime for network I/O, entirely skipping Node.js's internal HTTP abstractions.
 
 ### Clustered (co-located loadgen — 4w regresses due to autocannon starvation)
 
-| Adapter | 1w | 2w | 4w | 2w scaling |
+| Server | 1w | 2w | 4w | 2w scaling |
 |---|---:|---:|---:|---:|
 | Native (uWS) | 85,000 | 91,300 | 90,600† | 107% |
-| `@axiomify/http` | 35,800 | 57,200 | 50,400† | **160%** |
-| `@axiomify/fastify` | 21,300 | 35,200 | 26,600† | **165%** |
 
 † 4w regresses because autocannon is co-located and loses CPU cores to the extra server workers. This is loadgen starvation, not a server regression.
 
@@ -46,7 +39,6 @@ This produces the 4-worker regression above. The **2-worker numbers are the most
 
 ```bash
 # Server machine
-WORKERS=6 node benchmarks/servers/axiomify-http-clustered.mjs 3000
 WORKERS=6 node benchmarks/servers/axiomify-native-clustered.mjs 3001
 
 # Loadgen machine (separate host)
@@ -63,7 +55,11 @@ After `listenClustered()` starts:
 lsof -i :3000
 ```
 
-You should see N separate processes each owning a `LISTEN` socket. If only one process (the primary) appears, SO_REUSEPORT is not active — check that your Node.js version is ≥ 16.9 for `reusePort: true`.
+You should see N separate processes each owning a `LISTEN` socket on the same port. If only one process (the primary) appears, SO_REUSEPORT is not active. Verify:
+
+- You're on Linux (macOS / Windows fall back to a userspace L4 proxy — see `allowUserspaceProxy` in [docs/packages/native.md](../docs/packages/native.md#clustering-on-macos--windows)).
+- Your kernel supports `SO_REUSEPORT` (Linux ≥ 3.9 — present on every supported distribution).
+- The `listenClustered()` call is being made from the primary process; the adapter fans out to workers internally.
 
 ## Running the benchmarks
 
@@ -71,7 +67,7 @@ You should see N separate processes each owning a `LISTEN` socket. If only one p
 # Full single-process suite (11 configurations)
 node benchmarks/run-all.mjs
 
-# Clustered suite (1w, 2w, 4w across native/http/fastify)
+# Clustered suite (1w, 2w, 4w native)
 node benchmarks/run-clustered.mjs
 
 # With remote loadgen (accurate clustered numbers)
@@ -81,6 +77,39 @@ SERVER_HOST=<server-ip> node benchmarks/run-clustered.mjs
 # benchmarks/results.json          (single-process)
 # benchmarks/results-clustered.json (clustered)
 ```
+
+## Quick checks vs full runs
+
+This directory has three benchmark entry points with different cost/precision tradeoffs:
+
+| Script | Duration | Asserts | Use case |
+|---|---|---|---|
+| `smoke.mjs` | ~5 s | server didn't crash, ≥1k req/s | Every PR. CI-friendly. Skips cleanly on hosts without uWS. |
+| `stress.mjs` | ~90 s (30 s × 3 scenarios) | p99 budgets, optional baseline diff | Pre-release sanity check on dedicated hardware. |
+| `run-all.mjs` | ~3-5 min | none (writes raw results) | Cross-framework comparison (Axiomify vs Fastify vs Hapi vs bare Node). |
+
+### Stress (`stress.mjs`) — perf-budget regression detection
+
+```bash
+# Default 30s per scenario
+node benchmarks/stress.mjs
+
+# Custom load
+node benchmarks/stress.mjs --duration 60 --connections 200 --pipelining 16
+
+# Diff against a previous run's report — fails (exit 2) if any scenario
+# regressed by more than 15% in req/s or p99 latency.
+node benchmarks/stress.mjs --baseline benchmarks/stress-baseline.json
+```
+
+Output: `benchmarks/stress-result.json`. Exit codes:
+- `0` — all scenarios within budget (and within baseline if provided)
+- `1` — harness/server broke (non-2xx responses, boot failure)
+- `2` — budget or baseline violation
+
+The default budgets in `stress.mjs` are intentionally generous (30k req/s floor, 50-60ms p99). Tighten them on your own hardware by committing a `stress-baseline.json` and passing `--baseline`.
+
+**Do not run this on cloud CI runners.** Shared cores + virtualised NICs make the variance too high to gate on. Use `smoke.mjs` in CI; reserve `stress.mjs` for a quiet box you control.
 
 ## Worker count recommendations
 

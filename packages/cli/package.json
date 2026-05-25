@@ -1,14 +1,20 @@
 {
   "name": "@axiomify/cli",
-  "version": "5.0.0",
-  "bin": {
-    "axiomify": "./dist/index.js"
+  "version": "6.0.0-rc.3",
+  "description": "Official CLI for Axiomify — scaffold, dev, build, route inspection, OpenAPI generation, production-readiness checks, host diagnostics, codemod migrations.",
+  "module": "./dist/index.mjs",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
   },
   "files": [
     "dist"
   ],
-  "publishConfig": {
-    "access": "public"
+  "bin": {
+    "axiomify": "./dist/index.js"
   },
   "scripts": {
     "build": "tsup"
@@ -21,15 +27,25 @@
     "execa": "^8.0.1",
     "picocolors": "^1.1.1"
   },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
-    }
+  "author": {
+    "name": "Topman",
+    "email": "okunlolatopman14@gmail.com",
+    "url": "https://github.com/OTopman"
   },
-  "module": "./dist/index.mjs",
+  "license": "MIT",
+  "homepage": "https://github.com/OTopman/axiomify/blob/main/docs/packages/cli.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OTopman/axiomify.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/OTopman/axiomify/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }

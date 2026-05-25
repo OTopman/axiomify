@@ -1,18 +1,23 @@
 # Production Checklist
 
-## Adapter selection
+> **Tip:** before going through this list manually, run the static auditor — it covers most of the routine items automatically and exits 1 on real defects, so you can wire it into CI:
+>
+> ```bash
+> npx axiomify check    # static readiness audit
+> npx axiomify doctor   # host environment diagnostic
+> ```
+>
+> The remaining items below are things only you can verify (network topology, real secrets, SLO budgets).
 
-| Adapter | When to use | Single-core | 2-worker |
-|---|---|---:|---:|
-| `@axiomify/native` | Maximum throughput | 73–84k req/s | ~91k† |
-| `@axiomify/http` | Minimal footprint, edge/serverless | 32.8k | 57.2k |
-| `@axiomify/fastify` | Fastify plugin ecosystem | 31.3k | 35.2k |
-| `@axiomify/express` | Legacy middleware | 7.3k | — |
-| `@axiomify/hapi` | Hapi ecosystem | 9.9k | — |
+## Native Performance
 
-*8-core, co-located loadgen. † Native is autocannon-limited co-located. Dedicated loadgen gives higher numbers.*
+Axiomify uses a highly optimized C++ Native HTTP server powered by uWebSockets.js.
 
-## Multi-core deployment
+- **Single Core:** Expect ~73-84k req/s for a "Hello World"
+- **Multi-Core (Linux):** Scales near-linearly utilizing `SO_REUSEPORT`. Expect ~200k+ req/s on a 4-core machine.
+*Numbers vary heavily based on load-generator limits. Run load generator on a separate network machine for accurate multi-core numbers.*
+
+## Multi-core deployment (Linux)
 
 ```typescript
 // Use availableParallelism() — respects container CPU limits
@@ -25,8 +30,11 @@ adapter.listenClustered({
 });
 ```
 
+`listenClustered()` uses `SO_REUSEPORT` and is **Linux-only by default**. On macOS / Windows it throws unless you pass `allowUserspaceProxy: true` to the `NativeAdapter` constructor — the non-Linux path falls back to a userspace L4 proxy that defeats uWS's perf rationale and is intended for development only.
+
 ## Clustering checklist
 
+- [ ] **Deploy on Linux.** macOS/Windows clustering requires `allowUserspaceProxy: true` and is dev-only
 - [ ] `workers` set explicitly — do not rely on defaults in containers
 - [ ] `workers` ≤ `os.availableParallelism()` — oversubscription degrades throughput
 - [ ] `gracefulTimeoutMs` ≥ your p99 latency × 2
@@ -37,13 +45,15 @@ adapter.listenClustered({
 ## Security
 
 - [ ] `app.enableRequestId()` called (opt-in since v5)
-- [ ] `@axiomify/helmet` applied on every adapter
-- [ ] `@axiomify/cors` — explicit `origin` list, never `'*'` in production
-- [ ] `@axiomify/rate-limit` with `RedisStore` on all public routes
-- [ ] JWT secret ≥ 32 chars, from env var only
-- [ ] `bodyLimitBytes` set at adapter level
-- [ ] `trustProxy` only when behind a known proxy
-- [ ] `sanitize: true` in adapter options for prototype pollution protection
+- [ ] `@axiomify/helmet` registered for CSP / HSTS / COOP / CORP / framing headers
+- [ ] `@axiomify/cors` — explicit `origin` list, never `'*'` in production; `credentials: true` + `'*'` throws at startup
+- [ ] `@axiomify/rate-limit` with `RedisStore` on all public routes (multi-process / multi-host deployments require Redis, not MemoryStore)
+- [ ] JWT secret ≥ **32 bytes (256 bits)** per RFC 7518 §3.2 — the framework throws in production on weaker secrets. Generate one via `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`
+- [ ] JWT algorithms pinned via `createAuthPlugin({ algorithms: ['HS256'] })` — `'none'` is always rejected
+- [ ] `trustProxy: true` ONLY when running behind a proxy you control (otherwise clients can forge `X-Forwarded-For`)
+- [ ] `maxBodySize` set on `NativeAdapter` — enforced on the actual byte stream, not just `Content-Length`
+- [ ] User-controlled values are never passed directly to `res.header(name, value)` without first stripping CR/LF (the framework throws on CRLF/NUL in 5.0, but defensive sanitisation upstream is still recommended)
+- [ ] Response streams (`res.stream`, `res.sseSend`) are aware of the per-response backpressure caps (8 MiB stream, 1 MiB SSE) — slow consumers get their connections closed, not OOM the process
 
 ## Logging
 
@@ -70,11 +80,12 @@ adapter.listenClustered({
 - [ ] `RedisStore` (not `MemoryStore`) in multi-process or multi-container deployments
 - [ ] Key generator uses authenticated user ID for protected routes
 
-## WebSockets
+## Graceful shutdown
 
-- [ ] `maxConnections` set explicitly (default: 10,000)
-- [ ] `authenticate` callback configured
-- [ ] `ws.close()` called on SIGTERM before `adapter.close()`
+- [ ] `adapter.gracefulShutdown({ onShutdown, timeoutMs })` wired up — this is the unified entry point for both HTTP and WebSocket drain
+- [ ] `onShutdown` closes DB pools, flushes logger buffers, releases any external resources
+- [ ] `timeoutMs` greater than your slowest expected drain (e.g. p99 latency × 2)
+- [ ] **Do NOT** call `gracefulShutdown()` from `@axiomify/core` against a NativeAdapter — that helper is for `http.Server`, not uWS. Use `adapter.gracefulShutdown()` instead
 
 ## Observability
 

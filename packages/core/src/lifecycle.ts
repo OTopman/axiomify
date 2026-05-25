@@ -67,15 +67,24 @@ export class HookManager {
     const list = this.hooks[type];
     if (list.length === 0) return; // sync fast-path — no Promise created
     if (list.length === 1) return (list[0] as (...a: unknown[]) => Promise<void> | void)(...(args as unknown[]));
-    return this._executeSequential(list as ((...a: unknown[]) => unknown)[], args as unknown[]);
+    // Snapshot before iteration. A hook that calls app.addHook(type, ...) on
+    // its own type would otherwise grow the array mid-loop and the new hook
+    // would run for the current request — surprising, undocumented, and
+    // makes "register hooks at startup" the only safe pattern. The slice
+    // keeps "added during request affects next request" — the convention
+    // matched by Express, Fastify, Koa.
+    return this._executeSequential(
+      (list as ((...a: unknown[]) => unknown)[]).slice(),
+      args as unknown[],
+    );
   }
 
   private async _executeSequential(
-    list: ((...args: unknown[]) => unknown)[],
+    snapshot: ((...args: unknown[]) => unknown)[],
     args: unknown[],
   ): Promise<void> {
-    for (let i = 0; i < list.length; i++) {
-      await list[i](...args);
+    for (let i = 0; i < snapshot.length; i++) {
+      await snapshot[i](...args);
     }
   }
 
@@ -93,15 +102,20 @@ export class HookManager {
   ): Promise<void> | void {
     const list = this.hooks[type];
     if (list.length === 0) return; // sync fast-path
-    return this._executeSafeSequential(type, list as ((...a: unknown[]) => unknown)[], args as unknown[]);
+    // Snapshot, same rationale as `run` above.
+    return this._executeSafeSequential(
+      type,
+      (list as ((...a: unknown[]) => unknown)[]).slice(),
+      args as unknown[],
+    );
   }
 
   private async _executeSafeSequential(
     type: HookType,
-    list: ((...args: unknown[]) => unknown)[],
+    snapshot: ((...args: unknown[]) => unknown)[],
     args: unknown[],
   ): Promise<void> {
-    for (const fn of list) {
+    for (const fn of snapshot) {
       try {
         await fn(...args);
       } catch (e) {
