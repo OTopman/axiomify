@@ -138,7 +138,7 @@ function validateSecret(secret: string, context: string): void {
   }
 }
 function tokenOptions(options: Pick<AuthOptions, 'issuer' | 'audience'>): Pick<SignOptions & VerifyOptions, 'issuer' | 'audience'> {
-  return { ...(options.issuer ? { issuer: options.issuer } : {}), ...(options.audience ? { audience: options.audience } : {}) };
+  return { ...(options.issuer ? { issuer: options.issuer } : {}), ...(options.audience ? { audience: options.audience } : {}) } as Pick<SignOptions & VerifyOptions, 'issuer' | 'audience'>;
 }
 
 async function verifyAsync(token: string, secret: string, options: VerifyOptions): Promise<JwtPayload> {
