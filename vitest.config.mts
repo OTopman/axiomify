@@ -9,7 +9,7 @@ import path from 'path';
 const packages = [
   'auth', 'cli', 'core', 'cors', 'fingerprint', 'graphql', 'helmet',
   'logger', 'metrics', 'native', 'openapi', 'rate-limit', 'security',
-  'socket.io', 'static', 'upload', 'sdk-runtime',
+  'socket.io', 'static', 'upload', 'sdk-runtime', 'ws',
 ];
 const alias = Object.fromEntries(
   packages.map((pkg) => [
@@ -35,6 +35,8 @@ export default defineConfig({
         'packages/cli/src/**',
         // native: uWS bindings, C++ bridge, SO_REUSEPORT cluster — real sockets needed
         'packages/native/src/**',
+        // ws: room manager built on native uWS topics — real sockets needed
+        'packages/ws/src/**',
         // upload: multipart streaming via busboy — real HTTP needed
         'packages/upload/src/**',
         // Type-only declarations

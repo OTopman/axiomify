@@ -1,0 +1,66 @@
+{
+  "name": "@axiomify/ws",
+  "version": "6.0.0",
+  "description": "Native pub/sub room utility for @axiomify/native — O(1) broadcast, presence tracking, and typed rooms powered by uWebSockets.js topics. Not a wrapper for the ws npm package.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "module": "./dist/index.mjs",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@axiomify/core": "*",
+    "@axiomify/native": "*"
+  },
+  "peerDependencies": {
+    "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#v20.67.0"
+  },
+  "peerDependenciesMeta": {
+    "uWebSockets.js": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "axiomify",
+    "websocket",
+    "pubsub",
+    "rooms",
+    "realtime",
+    "uwebsockets",
+    "native-adapter",
+    "broadcast",
+    "presence",
+    "topics"
+  ],
+  "author": {
+    "name": "Topman",
+    "email": "okunlolatopman14@gmail.com",
+    "url": "https://github.com/OTopman"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/OTopman/axiomify/blob/main/docs/packages/ws.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OTopman/axiomify.git",
+    "directory": "packages/ws"
+  },
+  "bugs": {
+    "url": "https://github.com/OTopman/axiomify/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20.0.0 <23.0.0"
+  }
+}

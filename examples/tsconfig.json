@@ -7,6 +7,7 @@
     "paths": {
       "@axiomify/core": ["../packages/core/dist/index.d.ts"],
       "@axiomify/native": ["../packages/native/dist/index.d.ts"],
+      "@axiomify/ws": ["../packages/ws/dist/index.d.ts"],
       "@axiomify/openapi": ["../packages/openapi/dist/index.d.ts"],
       "@axiomify/helmet": ["../packages/helmet/dist/index.d.ts"],
       "@axiomify/logger": ["../packages/logger/dist/index.d.ts"],
