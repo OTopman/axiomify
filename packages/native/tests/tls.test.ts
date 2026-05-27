@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import path from 'path';
 import fs from 'fs';
 import { execSync } from 'child_process';
+import https from 'https';
 
 let uwsSupported = false;
 try {
@@ -9,6 +10,35 @@ try {
   uwsSupported = true;
 } catch {
   uwsSupported = false;
+}
+
+/**
+ * Helper: HTTPS GET request trusting the custom CA
+ */
+function fetchHttps(url: string, ca: Buffer): Promise<{ status: number; json: () => Promise<any> }> {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      url,
+      {
+        method: 'GET',
+        ca,
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (chunk) => {
+          body += chunk;
+        });
+        res.on('end', () => {
+          resolve({
+            status: res.statusCode || 0,
+            json: async () => JSON.parse(body),
+          });
+        });
+      }
+    );
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 describe.skipIf(!uwsSupported)('NativeAdapter TLS/HTTPS', () => {
@@ -28,9 +58,6 @@ describe.skipIf(!uwsSupported)('NativeAdapter TLS/HTTPS', () => {
         `-sha256 -days 365 -nodes -subj "/CN=localhost"`,
       { stdio: 'ignore' }
     );
-
-    // Disable TLS verification for self-signed cert in tests
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
     const { Axiomify } = await import('@axiomify/core');
     const { NativeAdapter } = await import('../src/index');
@@ -60,7 +87,6 @@ describe.skipIf(!uwsSupported)('NativeAdapter TLS/HTTPS', () => {
     if (adapter) {
       adapter.close();
     }
-    delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
 
     // Clean up dynamically generated cert/key files
     try {
@@ -71,7 +97,8 @@ describe.skipIf(!uwsSupported)('NativeAdapter TLS/HTTPS', () => {
   });
 
   it('serves secure requests over HTTPS using SSLApp', async () => {
-    const res = await fetch(`https://localhost:${PORT}/secure-ping`);
+    const ca = fs.readFileSync(certPath);
+    const res = await fetchHttps(`https://localhost:${PORT}/secure-ping`, ca);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.data.secure).toBe(true);
