@@ -21,6 +21,15 @@
   "dependencies": {
     "@axiomify/core": "*"
   },
+  "keywords": [
+    "axiomify",
+    "rate-limit",
+    "rate-limiter",
+    "sliding-window",
+    "redis",
+    "middleware",
+    "security"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",

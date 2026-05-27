@@ -22,6 +22,15 @@
     "@axiomify/core": "*",
     "zod-to-json-schema": "3.25.2"
   },
+  "keywords": [
+    "axiomify",
+    "openapi",
+    "swagger-ui",
+    "api-docs",
+    "zod",
+    "json-schema",
+    "documentation"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",

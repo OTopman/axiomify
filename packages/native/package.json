@@ -36,6 +36,17 @@
     "ws": "^8.21.0",
     "@types/ws": "^8.5.13"
   },
+  "keywords": [
+    "axiomify",
+    "uwebsockets",
+    "uws",
+    "http-server",
+    "websocket",
+    "sse",
+    "native-adapter",
+    "high-performance",
+    "nodejs"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",

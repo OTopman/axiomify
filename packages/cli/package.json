@@ -27,6 +27,17 @@
     "execa": "^8.0.1",
     "picocolors": "^1.1.1"
   },
+  "keywords": [
+    "axiomify",
+    "cli",
+    "scaffold",
+    "dev-server",
+    "build-tool",
+    "route-inspection",
+    "openapi",
+    "production-checks",
+    "codemod"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",

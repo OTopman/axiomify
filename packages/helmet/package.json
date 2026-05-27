@@ -22,6 +22,15 @@
   "dependencies": {
     "@axiomify/core": "*"
   },
+  "keywords": [
+    "axiomify",
+    "helmet",
+    "security-headers",
+    "csp",
+    "hsts",
+    "http-security",
+    "middleware"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",

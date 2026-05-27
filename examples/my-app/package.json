@@ -23,5 +23,16 @@
   "devDependencies": {
     "typescript": "^6.0.2",
     "@types/node": "^20.0.0"
-  }
+  },
+  "keywords": [
+    "axiomify",
+    "example",
+    "starter",
+    "typescript",
+    "graphql",
+    "openapi",
+    "authentication",
+    "static-files",
+    "file-upload"
+  ]
 }

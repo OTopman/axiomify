@@ -21,6 +21,15 @@
   "dependencies": {
     "@axiomify/core": "*"
   },
+  "keywords": [
+    "axiomify",
+    "fingerprinting",
+    "request-fingerprint",
+    "bot-detection",
+    "fraud-prevention",
+    "session-security",
+    "http-headers"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",

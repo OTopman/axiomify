@@ -33,9 +33,11 @@
   "keywords": [
     "axiomify",
     "socket.io",
+    "socket.io-bridge",
     "socketio",
     "websocket",
     "uwebsockets",
+    "native-adapter",
     "realtime"
   ],
   "author": {

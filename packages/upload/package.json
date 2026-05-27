@@ -25,6 +25,15 @@
   "devDependencies": {
     "@types/busboy": "1.5.4"
   },
+  "keywords": [
+    "axiomify",
+    "file-upload",
+    "multipart",
+    "busboy",
+    "streaming",
+    "upload",
+    "middleware"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",

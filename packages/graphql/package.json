@@ -25,6 +25,16 @@
   "peerDependencies": {
     "graphql": "^16.0.0"
   },
+  "keywords": [
+    "axiomify",
+    "graphql",
+    "graphiql",
+    "schema-first",
+    "playground",
+    "api",
+    "middleware",
+    "validation"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",
