@@ -7,6 +7,7 @@
     "paths": {
       "@axiomify/core": ["../packages/core/dist/index.d.ts"],
       "@axiomify/native": ["../packages/native/dist/index.d.ts"],
+      "@axiomify/ws": ["../packages/ws/dist/index.d.ts"],
       "@axiomify/openapi": ["../packages/openapi/dist/index.d.ts"],
       "@axiomify/helmet": ["../packages/helmet/dist/index.d.ts"],
       "@axiomify/logger": ["../packages/logger/dist/index.d.ts"],
@@ -19,7 +20,8 @@
       "@axiomify/static": ["../packages/static/dist/index.d.ts"],
       "@axiomify/upload": ["../packages/upload/dist/index.d.ts"],
       "@axiomify/metrics": ["../packages/metrics/dist/index.d.ts"],
-      "@axiomify/sanitizer": ["../packages/sanitizer/dist/index.d.ts"]
+      "@axiomify/sanitizer": ["../packages/sanitizer/dist/index.d.ts"],
+      "@axiomify/sdk-runtime": ["../packages/sdk-runtime/dist/index.d.ts"]
     }
   },
   "include": ["./**/*.ts"],

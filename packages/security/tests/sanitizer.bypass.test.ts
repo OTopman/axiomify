@@ -42,6 +42,13 @@ describe('sanitizeXss — single-pass bypass regression (CWE-80)', () => {
     expect(xss(payload)).not.toMatch(/<script/i);
   });
 
+  it('removes script tag with spaces or attributes in end tag (CWE-80 / js/bad-tag-filter)', () => {
+    expect(xss('<script>alert(1)</script >')).not.toContain('alert(1)');
+    expect(xss('<script>alert(1)</script foo="bar">')).not.toContain('alert(1)');
+    expect(xss('<script>alert(1)</script/nested>')).not.toContain('alert(1)');
+    expect(xss('<scrip<script>is removed</script >t>alert(1)</script foo="bar">')).not.toContain('alert(1)');
+  });
+
   // ── javascript: bypass ───────────────────────────────────────────────────
   it('removes a plain javascript: URI', () => {
     expect(xss('javascript:alert(1)')).not.toMatch(/javascript:/i);
@@ -175,8 +182,6 @@ describe('sanitizeInput — object and array recursion', () => {
 describe('sanitizeInput — disabled protections', () => {
   it('preserves null bytes when nullByteProtection is false', () => {
     const result = sanitizeInput('a\0b', {
-      pathTraversalProtection: false,
-      commandInjectionProtection: false,
       xssProtection: false,
       prototypePollutionProtection: false,
       nullByteProtection: false,
@@ -187,8 +192,6 @@ describe('sanitizeInput — disabled protections', () => {
 
   it('preserves raw HTML when xssProtection is false', () => {
     const result = sanitizeInput('<script>x</script>', {
-      pathTraversalProtection: false,
-      commandInjectionProtection: false,
       xssProtection: false,
       prototypePollutionProtection: false,
       nullByteProtection: true,

@@ -355,4 +355,58 @@ describe('serveStatic — extra branches', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('escapes filename special characters (double quotes and backslashes) in Content-Disposition', async () => {
+    const fs = require('fs') as typeof import('fs');
+    const path = require('path') as typeof import('path');
+    
+    const tmpDir = `/tmp/axiomify-escape-${Date.now()}`;
+    fs.mkdirSync(tmpDir, { recursive: true });
+    
+    const rawFileName = 'doc"\\test.svg';
+    const rawFilePath = path.join(tmpDir, rawFileName);
+    fs.writeFileSync(rawFilePath, '<svg/>');
+    
+    const realpathSpy = vi.spyOn(fs.promises, 'realpath').mockImplementation(async (p) => {
+      if (typeof p === 'string' && p.endsWith('doc.svg')) {
+        return rawFilePath;
+      }
+      return p;
+    });
+    
+    try {
+      const app = new Axiomify();
+      serveStatic(app, {
+        prefix: '/s', root: tmpDir,
+        forceDownloadExtensions: ['.svg'],
+      });
+      const route = app.registeredRoutes.find((r: any) => r.path === '/s/*')!;
+      const headers: Record<string, string> = {};
+      let statusCode = 200;
+      let streamCalled = false;
+      const res: any = {
+        status: (c: number) => { statusCode = c; return res; },
+        header: (k: string, v: string) => { headers[k] = v; return res; },
+        send: () => {}, sendRaw: () => {},
+        stream: (s: any) => { streamCalled = true; s.destroy(); },
+        getHeader: () => undefined, removeHeader: () => res,
+        headersSent: false, raw: {},
+        get statusCode() { return statusCode; },
+        capabilities: { sse: false, streaming: false },
+      };
+      const req: any = {
+        id: 'r', method: 'GET', url: '/s/doc.svg', path: '/s/doc.svg',
+        ip: '127.0.0.1', headers: {}, body: undefined,
+        query: {}, params: { '*': 'doc.svg' },
+        state: {}, raw: {}, stream: null,
+      };
+      await route.handler(req, res);
+      await new Promise(r => setTimeout(r, 20));
+      expect(streamCalled).toBe(true);
+      expect(headers['Content-Disposition']).toBe('attachment; filename="doc\\"\\\\test.svg"');
+    } finally {
+      realpathSpy.mockRestore();
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });

@@ -78,9 +78,24 @@ export interface NativeWsOptions {
 // Adapter options
 // ---------------------------------------------------------------------------
 
+export interface NativeAdapterTlsOptions {
+  /** Path to the PEM private key file. */
+  keyFile: string;
+  /** Path to the PEM certificate file. */
+  certFile: string;
+  /** Optional passphrase for the private key file. */
+  passphrase?: string;
+  /** Optional path to DH parameters file. */
+  dhParamsFile?: string;
+  /** Optional flag to prefer low memory usage in SSL/TLS. */
+  preferLowMemoryUsage?: boolean;
+}
+
 export interface NativeAdapterOptions {
   /** Listening port. @default 3000 */
   port?: number;
+  /** Optional SSL/TLS configuration to run as an HTTPS server. */
+  tls?: NativeAdapterTlsOptions;
   /**
    * Maximum request body size in bytes. Requests exceeding this are
    * immediately rejected with 413. @default 1 MiB
@@ -177,7 +192,17 @@ export class NativeAdapter {
     // matches what live responses will use.
     this._errorCache = buildErrorCache(this._app.serializer);
 
-    this._server = uWS.App();
+    if (options.tls) {
+      this._server = uWS.SSLApp({
+        key_file_name: options.tls.keyFile,
+        cert_file_name: options.tls.certFile,
+        passphrase: options.tls.passphrase,
+        dh_params_file_name: options.tls.dhParamsFile,
+        ssl_prefer_low_memory_usage: options.tls.preferLowMemoryUsage,
+      });
+    } else {
+      this._server = uWS.App();
+    }
 
     // WebSocket support (optional)
     if (options.ws !== false && options.ws !== undefined) {
