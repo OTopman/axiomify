@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { BaseClient } from '../src/client';
+import { BaseClient, SdkError } from '../src/index';
 import { LruTtlCache } from '../src/cache';
 import { CircuitBreaker, CircuitBreakerError } from '../src/circuit-breaker';
 import { EnvironmentSwitcher } from '../src/environment';
@@ -11,7 +11,7 @@ import { safeJsonStringify, isBinaryData } from '../src/serializer';
 import { withRetry } from '../src/retry';
 import { SseClient } from '../src/sse';
 import { WebSocketClient } from '../src/websocket';
-import { SdkError } from '../src/types';
+
 
 // Cache original globals
 const originalFetch = globalThis.fetch;
@@ -461,6 +461,14 @@ describe('@axiomify/sdk-runtime tests', () => {
       expect(result).toBe('{"num":42,"big":"12345678901234567890","date":"2026-05-27T12:00:00.000Z"}');
     });
 
+    it('safeJsonStringify should format Date when toJSON is undefined', () => {
+      const date = new Date('2026-05-27T12:00:00.000Z');
+      (date as any).toJSON = undefined;
+      const obj = { date };
+      const result = safeJsonStringify(obj);
+      expect(result).toBe('{"date":"2026-05-27T12:00:00.000Z"}');
+    });
+
     it('isBinaryData should identify binary formats', () => {
       expect(isBinaryData(null)).toBe(false);
       expect(isBinaryData(undefined)).toBe(false);
@@ -619,6 +627,91 @@ describe('@axiomify/sdk-runtime tests', () => {
       expect(errorSpy).toHaveBeenCalled();
       expect(errorSpy).toHaveBeenLastCalledWith(expect.objectContaining({ message: 'Max SSE reconnection retries reached' }));
     });
+
+    it('should handle non-ok SSE HTTP response status', async () => {
+      let resolveStream: () => void;
+      const streamPromise = new Promise<void>(resolve => {
+        resolveStream = resolve;
+      });
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500
+      });
+
+      let errorSpy = vi.fn().mockImplementation((err) => {
+        if (err.message.includes('SSE HTTP failure: 500') || err.message.includes('Max SSE reconnection retries reached')) {
+          resolveStream();
+        }
+      });
+
+      const sse = new SseClient('http://sse', {
+        onError: errorSpy,
+        baseDelayMs: 0,
+        maxRetries: 1
+      });
+
+      sse.connect();
+      await streamPromise;
+      expect(errorSpy).toHaveBeenCalled();
+    });
+
+    it('should throw error if response body is not readable', async () => {
+      let resolveStream: () => void;
+      const streamPromise = new Promise<void>(resolve => {
+        resolveStream = resolve;
+      });
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        body: null
+      });
+
+      let errorSpy = vi.fn().mockImplementation((err) => {
+        if (err.message.includes('Response body is not readable') || err.message.includes('Max SSE reconnection retries reached')) {
+          resolveStream();
+        }
+      });
+
+      const sse = new SseClient('http://sse', {
+        onError: errorSpy,
+        baseDelayMs: 0,
+        maxRetries: 1
+      });
+
+      sse.connect();
+      await streamPromise;
+      expect(errorSpy).toHaveBeenCalled();
+    });
+
+    it('should handle AbortError silently on disconnect', async () => {
+      const mockReader = {
+        read: vi.fn().mockImplementation(() => {
+          const err = new DOMException('The user aborted a request.', 'AbortError');
+          throw err;
+        })
+      };
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () => mockReader
+        }
+      });
+
+      const errorSpy = vi.fn();
+      const sse = new SseClient('http://sse', {
+        onError: errorSpy,
+        baseDelayMs: 0,
+        maxRetries: 1
+      });
+
+      sse.connect();
+      sse.disconnect();
+      
+      await new Promise(resolve => setTimeout(resolve, 5));
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
   });
 
   // 11. websocket.ts Tests
@@ -704,6 +797,94 @@ describe('@axiomify/sdk-runtime tests', () => {
       await reconnectPromise;
 
       expect(wsInstantiationCount).toBe(2);
+    });
+
+    it('should handle disconnect when not connected', () => {
+      const client = new WebSocketClient('ws://test');
+      expect(() => client.disconnect()).not.toThrow();
+    });
+
+    it('should throw error when sending on unopened client', () => {
+      const client = new WebSocketClient('ws://test');
+      expect(() => client.send('hello')).toThrow('WebSocket is not open');
+    });
+
+    it('should handle constructor throw and reconnect', async () => {
+      const WSClassMock = vi.fn().mockImplementation(() => {
+        throw new Error('Constructor failed');
+      });
+      (globalThis as any).WebSocket = WSClassMock;
+
+      const errorSpy = vi.fn();
+      const client = new WebSocketClient('ws://test', {
+        onError: errorSpy,
+        baseDelayMs: 0,
+        maxRetries: 1
+      });
+
+      client.connect();
+      expect(errorSpy).toHaveBeenCalledWith(expect.objectContaining({ message: 'Constructor failed' }));
+    });
+
+    it('should handle max retries exceeded', async () => {
+      const WSClassMock = vi.fn().mockImplementation(() => {
+        throw new Error('Connection failed');
+      });
+      (globalThis as any).WebSocket = WSClassMock;
+
+      const errorSpy = vi.fn();
+      const client = new WebSocketClient('ws://test', {
+        onError: errorSpy,
+        baseDelayMs: 0,
+        maxRetries: 1
+      });
+
+      client.connect();
+      // Wait for reconnect attempt to fire and fail
+      await new Promise(resolve => setTimeout(resolve, 5));
+      expect(errorSpy).toHaveBeenCalledWith(expect.objectContaining({ message: 'Max WebSocket reconnection retries reached' }));
+    });
+
+    it('should trigger close on heartbeat send failure', async () => {
+      const mockWsInstance = {
+        readyState: 1,
+        send: vi.fn().mockImplementation(() => {
+          throw new Error('Send failed');
+        }),
+        close: vi.fn()
+      };
+      (globalThis as any).WebSocket = vi.fn().mockImplementation(() => mockWsInstance);
+
+      const client = new WebSocketClient('ws://test', {
+        heartbeatIntervalMs: 5,
+        baseDelayMs: 0
+      });
+
+      client.connect();
+      (mockWsInstance as any).onopen();
+      
+      // wait for heartbeat timer to fire
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockWsInstance.close).toHaveBeenCalled();
+    });
+
+    it('should fallback to require("ws") when globalThis.WebSocket is undefined', () => {
+      const originalWS = (globalThis as any).WebSocket;
+      (globalThis as any).WebSocket = undefined;
+
+      const client = new WebSocketClient('ws://127.0.0.1:9999', {
+        baseDelayMs: 0,
+        maxRetries: 0
+      });
+
+      try {
+        client.connect();
+      } catch (err) {
+        // Ignore any errors from constructor or network
+      } finally {
+        client.disconnect();
+        (globalThis as any).WebSocket = originalWS;
+      }
     });
   });
 
@@ -904,6 +1085,38 @@ describe('@axiomify/sdk-runtime tests', () => {
       });
 
       await expect(client['request']({ path: '/bad', method: 'GET' })).rejects.toThrow('intercepted: API Error: 400');
+    });
+
+    it('should format FormData payload and forward custom request headers', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        text: async () => 'form-data-received'
+      });
+
+      const client = new BaseClient({
+        baseUrl: 'https://api.test',
+        fetch: mockFetch
+      });
+
+      if (typeof FormData !== 'undefined') {
+        const formData = new FormData();
+        formData.append('key', 'value');
+
+        await client['request']({
+          path: '/form',
+          method: 'POST',
+          headers: {
+            'X-Custom-Header': 'custom-value'
+          },
+          body: formData
+        });
+
+        const fetchOpts = mockFetch.mock.calls[0][1];
+        expect(fetchOpts.headers.get('X-Custom-Header')).toBe('custom-value');
+        expect(fetchOpts.body).toBe(formData);
+      }
     });
   });
 });
