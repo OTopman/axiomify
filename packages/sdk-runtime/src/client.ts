@@ -158,7 +158,6 @@ export class BaseClient {
             await this.config.telemetry.onError(err);
           }
 
-          if (err instanceof SdkError) throw err;
           return await this.interceptors.runErrorInterceptors(err);
         } finally {
           if (timeoutId) clearTimeout(timeoutId);

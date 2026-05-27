@@ -9,7 +9,7 @@ import path from 'path';
 const packages = [
   'auth', 'cli', 'core', 'cors', 'fingerprint', 'graphql', 'helmet',
   'logger', 'metrics', 'native', 'openapi', 'rate-limit', 'security',
-  'socket.io', 'static', 'upload',
+  'socket.io', 'static', 'upload', 'sdk-runtime',
 ];
 const alias = Object.fromEntries(
   packages.map((pkg) => [
