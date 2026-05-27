@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/graphql",
-  "version": "6.0.0-rc.3",
+  "version": "6.0.0",
   "description": "GraphQL plugin for Axiomify — schema-first, zero-boilerplate GraphQL endpoint with built-in GraphiQL playground.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -25,6 +25,16 @@
   "peerDependencies": {
     "graphql": "^16.0.0"
   },
+  "keywords": [
+    "axiomify",
+    "graphql",
+    "graphiql",
+    "schema-first",
+    "playground",
+    "api",
+    "middleware",
+    "validation"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",
@@ -44,6 +54,6 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }

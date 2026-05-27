@@ -36,7 +36,7 @@ the same major as your `@axiomify/*` runtime packages.
 `[entry]` defaults to `src/index.ts` everywhere it's accepted.
 
 For the full reference (flags, exit codes, CI examples), see
-[`[./docs/packages/cli.md](./docs/packages/cli.md)`](https://github.com/OTopman/axiomify/blob/main/docs/packages/cli.md).
+[`./docs/packages/cli.md`](https://github.com/OTopman/axiomify/blob/main/docs/packages/cli.md).
 
 ## `axiomify init`
 

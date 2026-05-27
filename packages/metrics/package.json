@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/metrics",
-  "version": "6.0.0-rc.3",
+  "version": "6.0.0",
   "description": "Prometheus metrics for Axiomify — bounded label cardinality, WebSocket stats, route-level latency histograms.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -21,6 +21,15 @@
   "dependencies": {
     "@axiomify/core": "*"
   },
+  "keywords": [
+    "axiomify",
+    "metrics",
+    "prometheus",
+    "observability",
+    "latency",
+    "histograms",
+    "websocket-metrics"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",
@@ -40,6 +49,6 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }

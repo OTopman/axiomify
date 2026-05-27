@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/security",
-  "version": "6.0.0-rc.3",
+  "version": "6.0.0",
   "description": "Request-level defence in depth for Axiomify — XSS sanitisation, HPP normalisation, prototype-pollution + null-byte filtering, bot UA detection.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -21,6 +21,16 @@
   "dependencies": {
     "@axiomify/core": "*"
   },
+  "keywords": [
+    "axiomify",
+    "security",
+    "xss",
+    "hpp",
+    "prototype-pollution",
+    "null-byte",
+    "bot-detection",
+    "sanitization"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",
@@ -40,6 +50,6 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }

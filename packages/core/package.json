@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/core",
-  "version": "6.0.0-rc.3",
+  "version": "6.0.0",
   "description": "Axiomify framework core — router, AJV-compiled Zod validation, hook manager, dispatcher, module system. The foundation @axiomify/* packages build on.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -24,6 +24,18 @@
   "devDependencies": {
     "zod": "^4.0.0"
   },
+  "keywords": [
+    "axiomify",
+    "framework",
+    "web-framework",
+    "router",
+    "radix-router",
+    "zod",
+    "validation",
+    "ajv",
+    "plugin-system",
+    "typescript"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",
@@ -43,6 +55,6 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=18.0.0 <23.0.0"
+    "node": ">=20.0.0 <23.0.0"
   }
 }

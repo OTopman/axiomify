@@ -2,9 +2,9 @@
   "name": "axiomify-workspace",
   "description": "Zero-compromise Node.js framework with Radix routing, Zod-native validation, and a modular plugin ecosystem for building high-performance, type-safe APIs.",
   "private": true,
-  "version": "6.0.0-rc.3",
+  "version": "6.0.0",
   "engines": {
-    "node": ">=18.0.0 <23.0.0"
+    "node": ">=20.0.0 <23.0.0"
   },
   "workspaces": [
     "packages/*",
@@ -60,6 +60,6 @@
   ],
   "dependencies": {
     "ajv": "^8.20.0",
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.48.0"
+    "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#v20.67.0"
   }
 }

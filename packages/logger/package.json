@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/logger",
-  "version": "6.0.0-rc.3",
+  "version": "6.0.0",
   "description": "Structured request/response logging for Axiomify with recursive PII masking.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -24,6 +24,15 @@
     "maskify-ts": "^4.0.0",
     "reflect-metadata": "^0.2.0"
   },
+  "keywords": [
+    "axiomify",
+    "logging",
+    "structured-logging",
+    "request-logging",
+    "response-logging",
+    "pii-masking",
+    "observability"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",
@@ -43,6 +52,6 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }

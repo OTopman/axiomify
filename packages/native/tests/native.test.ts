@@ -184,8 +184,8 @@ describe.skipIf(!uwsSupported)('NativeAdapter (uWebSockets.js)', () => {
     expect(res.status).toBe(405);
     const allow = res.headers.get('allow');
     expect(allow).not.toBeNull();
-    // GET is registered explicitly; HEAD is auto-registered alongside GET.
-    expect(allow!.split(',').map((s) => s.trim()).sort()).toEqual(['GET', 'HEAD']);
+    // GET is registered explicitly; HEAD and OPTIONS are auto-registered alongside GET.
+    expect(allow!.split(',').map((s) => s.trim()).sort()).toEqual(['GET', 'HEAD', 'OPTIONS']);
   });
 
   // -------------------------------------------------------------------------

@@ -250,6 +250,25 @@ export class NativeAdapter {
     // for a registered path lands here, producing the correct 405.
     const cached405Body = this._errorCache.cached405Body;
     for (const [path, methods] of pathMethods) {
+      // Auto-register OPTIONS to allow `onRequest` hooks (e.g. CORS) to intercept.
+      // If not intercepted, returns 204 with Allow header per RFC 9110 §9.3.7.
+      if (!methods.has('OPTIONS')) {
+        const paramKeys = extractParamKeys(path);
+        const allowMethods = Array.from(methods).sort().join(', ');
+        
+        const optionsRoute = {
+          method: 'OPTIONS',
+          path,
+          handler: (_req: unknown, res: any) => {
+            res.header('Allow', allowMethods);
+            res.status(204).send(null);
+          },
+        } as any;
+        
+        this._server.options(path, this._makeHandler(optionsRoute, paramKeys));
+        methods.add('OPTIONS');
+      }
+
       const allow = Array.from(methods).sort().join(', ');
       this._server.any(path, (res: UWSResponse, _req: UWSRequest) => {
         res.onAborted(() => {});

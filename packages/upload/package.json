@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/upload",
-  "version": "6.0.0-rc.3",
+  "version": "6.0.0",
   "description": "RAM-safe multipart upload handler for Axiomify via Busboy — streaming, content-type validation, auto-cleanup on error.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -25,6 +25,15 @@
   "devDependencies": {
     "@types/busboy": "1.5.4"
   },
+  "keywords": [
+    "axiomify",
+    "file-upload",
+    "multipart",
+    "busboy",
+    "streaming",
+    "upload",
+    "middleware"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",
@@ -44,6 +53,6 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }

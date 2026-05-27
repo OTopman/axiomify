@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/native",
-  "version": "6.0.0-rc.3",
+  "version": "6.0.0",
   "description": "uWebSockets.js adapter for Axiomify — highest-throughput transport. HTTP, native WebSocket, SSE, graceful shutdown, SO_REUSEPORT clustering.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -22,7 +22,7 @@
     "@axiomify/core": "*"
   },
   "peerDependencies": {
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.48.0"
+    "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#v20.67.0"
   },
   "peerDependenciesMeta": {
     "uWebSockets.js": {
@@ -33,9 +33,20 @@
     "simdjson": "^0.9.2"
   },
   "devDependencies": {
-    "ws": "^8.18.0",
+    "ws": "^8.21.0",
     "@types/ws": "^8.5.13"
   },
+  "keywords": [
+    "axiomify",
+    "uwebsockets",
+    "uws",
+    "http-server",
+    "websocket",
+    "sse",
+    "native-adapter",
+    "high-performance",
+    "nodejs"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",
@@ -55,6 +66,6 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=18.0.0 <23.0.0"
+    "node": ">=20.0.0 <23.0.0"
   }
 }
