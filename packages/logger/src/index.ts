@@ -5,7 +5,7 @@ import pc from 'picocolors';
 
 export interface LoggerOptions {
   sensitiveFields?: string[];
-  level?: 'debug' | 'info' | 'warn' | 'error';
+  level?: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
   beautify?: boolean;
   /**
    * Include request headers in the log entry.
@@ -24,10 +24,12 @@ export interface LoggerOptions {
 type LogLevel = NonNullable<LoggerOptions['level']>;
 
 const LEVEL_RANK: Record<LogLevel, number> = {
-  debug: 0,
-  info: 1,
-  warn: 2,
-  error: 3,
+  trace: 0,
+  debug: 1,
+  info: 2,
+  warn: 3,
+  error: 4,
+  fatal: 5,
 };
 
 export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
@@ -65,10 +67,12 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
 
     if (beautify) {
       const colorMap = {
+        trace: pc.gray,
         debug: pc.gray,
         info: pc.cyan,
         warn: pc.yellow,
         error: pc.red,
+        fatal: (str: string) => pc.bold(pc.red(str)),
       } as const;
       const color = colorMap[level];
       const summary = `${pc.gray(timestamp)} ${color(
