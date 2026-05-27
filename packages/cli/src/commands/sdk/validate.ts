@@ -1,8 +1,8 @@
 import { Command } from 'commander';
 import { readFileSync } from 'fs';
-import { ingestOpenApi, ingestGraphQL } from '../../sdk/ingest';
-import { CompilerPipeline } from '../../sdk/compiler/pipeline';
 import pc from 'picocolors';
+import { CompilerPipeline } from '../../sdk/compiler/pipeline';
+import { ingestGraphQL, ingestOpenApi } from '../../sdk/ingest';
 
 export function registerSdkValidateCommand(program: Command) {
   program
@@ -28,7 +28,7 @@ export function registerSdkValidateCommand(program: Command) {
 
         console.log(pc.dim('  • Compiling IR schema...'));
         const pipeline = new CompilerPipeline();
-        ir = pipeline.compile(ir.schema).schema;
+        ir = (await pipeline.compile(ir.schema)).schema;
 
         console.log(pc.green(`  ✓ Schema is valid!`));
         console.log(pc.dim(`      Endpoints: ${ir.endpoints.length}`));

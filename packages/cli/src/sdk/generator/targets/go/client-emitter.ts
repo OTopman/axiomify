@@ -1,8 +1,9 @@
 /**
  * Go Client Emitter.
- * Emits a net/http client struct with methods.
+ * Emits a net/http client struct with context-aware methods, functional options,
+ * and path parameter interpolation.
  */
-import type { IRSchema, IREndpoint, IRTypeRef } from '../../ir/types';
+import type { IRSchema, IREndpoint, IRTypeRef } from '../../../ir/types';
 import { Emitter } from '../../emitter';
 
 export class GoClientEmitter {
@@ -20,18 +21,38 @@ export class GoClientEmitter {
     emitter.line(`\t"fmt"`);
     emitter.line(`\t"net/http"`);
     emitter.line(`\t"net/url"`);
+    emitter.line(`\t"strings"`);
     emitter.line(`)`);
     emitter.line();
 
     emitter.block(`type Client struct {`, `}`, () => {
-      emitter.line(`BaseURL string`);
+      emitter.line(`BaseURL    string`);
       emitter.line(`HTTPClient *http.Client`);
-      emitter.line(`Token string`);
+      emitter.line(`Token      string`);
+    });
+    emitter.line();
+
+    emitter.line(`type ClientOption func(*Client)`);
+    emitter.line();
+
+    emitter.block(`func WithHTTPClient(hc *http.Client) ClientOption {`, `}`, () => {
+      emitter.block(`return func(c *Client) {`, `}`, () => {
+        emitter.line(`c.HTTPClient = hc`);
+      });
+    });
+    emitter.line();
+
+    emitter.block(`func WithToken(token string) ClientOption {`, `}`, () => {
+      emitter.block(`return func(c *Client) {`, `}`, () => {
+        emitter.line(`c.Token = token`);
+      });
     });
     emitter.line();
     
-    emitter.block(`func NewClient(baseURL string) *Client {`, `}`, () => {
-      emitter.line(`return &Client{BaseURL: baseURL, HTTPClient: &http.Client{}}`);
+    emitter.block(`func NewClient(baseURL string, opts ...ClientOption) *Client {`, `}`, () => {
+      emitter.line(`c := &Client{BaseURL: baseURL, HTTPClient: &http.Client{}}`);
+      emitter.line(`for _, opt := range opts { opt(c) }`);
+      emitter.line(`return c`);
     });
     emitter.line();
 
@@ -46,8 +67,6 @@ export class GoClientEmitter {
 
   private emitMethod(emitter: Emitter, ep: IREndpoint): void {
     const methodName = ep.operationId.charAt(0).toUpperCase() + ep.operationId.slice(1);
-    
-    // We'll bundle params into a Request struct if there are any
     const reqStructName = `${methodName}Request`;
     const hasParams = ep.pathParams.length > 0 || ep.queryParams.length > 0 || ep.requestBody;
     
@@ -72,8 +91,25 @@ export class GoClientEmitter {
     emitter.block(`func (c *Client) ${methodName}(ctx context.Context${hasParams ? ', ' + args : ''}) (*${retType}, error) {`, `}`, () => {
       const method = ep.method?.toUpperCase() || 'GET';
       const pathTemplate = ep.path || '/';
-      // In Go, we'd use fmt.Sprintf for path params. Simplification here:
-      emitter.line(`reqURL := c.BaseURL + "${pathTemplate}"`); // TODO: inject path params
+      
+      // Interpolate path parameters
+      emitter.line(`reqURL := c.BaseURL + "${pathTemplate}"`);
+      for (const p of ep.pathParams) {
+        emitter.line(`reqURL = strings.ReplaceAll(reqURL, "{${p.name}}", fmt.Sprintf("%v", req.${this.capitalize(p.name)}))`);
+      }
+      
+      if (ep.queryParams.length > 0) {
+        emitter.line(`u, err := url.Parse(reqURL)`);
+        emitter.line(`if err != nil { return nil, err }`);
+        emitter.line(`q := u.Query()`);
+        for (const q of ep.queryParams) {
+          // Format query params based on types
+          const capName = this.capitalize(q.name);
+          emitter.line(`q.Set("${q.name}", fmt.Sprintf("%v", req.${capName}))`);
+        }
+        emitter.line(`u.RawQuery = q.Encode()`);
+        emitter.line(`reqURL = u.String()`);
+      }
       
       if (ep.requestBody) {
          emitter.line(`bodyBytes, err := json.Marshal(req.Body)`);

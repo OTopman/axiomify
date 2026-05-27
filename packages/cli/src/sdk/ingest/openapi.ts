@@ -7,28 +7,28 @@
  * schemes, and per-status-code response types.
  */
 import type {
-  IRSchema,
-  IRType,
-  IRObjectType,
   IRArrayType,
-  IREnumType,
-  IRUnionType,
-  IRIntersectionType,
-  IRScalarType,
-  IRField,
-  IRTypeRef,
+  IRConstraints,
+  IRContentType,
+  IRDiagnostic,
   IREndpoint,
+  IREnumType,
+  IRField,
+  IRHttpMethod,
+  IRIntersectionType,
+  IRObjectType,
   IRParameter,
   IRRequestBody,
   IRResponse,
+  IRScalar,
+  IRScalarType,
+  IRSchema,
   IRSecurityRequirement,
   IRSecurityScheme,
   IRServer,
-  IRHttpMethod,
-  IRContentType,
-  IRDiagnostic,
-  IRScalar,
-  IRConstraints,
+  IRType,
+  IRTypeRef,
+  IRUnionType,
 } from '../ir/types';
 
 // ─── OpenAPI JSON shapes (minimal, spec-aligned) ─────────────────────────────
@@ -363,6 +363,8 @@ export function ingestOpenApi(
 
       const responses: Record<string, IRResponse> = {};
       let successResponse: string | undefined;
+      let streamingContract: any = undefined;
+
       for (const [sc, resp] of Object.entries(op.responses ?? {})) {
         const irR: IRResponse = { statusCode: sc, description: resp.description ?? `Response ${sc}` };
         if (resp.content) {
@@ -370,6 +372,14 @@ export function ingestOpenApi(
           if (ct && mt?.schema) {
             irR.contentType = ct as IRContentType;
             irR.type = schemaToTypeRef(resolveRef(mt.schema), `${opId}Response${sc}`);
+
+            if (ct === 'text/event-stream') {
+              streamingContract = {
+                transport: 'sse',
+                itemType: irR.type,
+                reconnect: { enabled: true, maxRetries: 5, baseDelayMs: 1000 },
+              };
+            }
           }
         }
         if (resp.headers) {
@@ -397,6 +407,7 @@ export function ingestOpenApi(
         method: method.toUpperCase() as IRHttpMethod, path,
         pathParams, queryParams, headerParams, requestBody,
         responses, successResponse, security,
+        streaming: streamingContract,
       });
     }
   }
@@ -422,6 +433,7 @@ export function ingestOpenApi(
         sourceFormat: 'openapi', sourceVersion: oa.openapi,
       },
       types, endpoints, securitySchemes, servers, globalSecurity,
+      events: [], reactiveContracts: [],
     },
     diagnostics,
   };

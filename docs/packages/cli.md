@@ -305,12 +305,13 @@ axiomify sdk generate src/index.ts -t swift            # parse directly from an 
 
 *Note: The generated code relies on `@axiomify/sdk-runtime`, a zero-dependency HTTP runtime. See [SDK Runtime](./sdk-runtime.md) for details.*
 
-### `axiomify sdk diff`
+### `axiomify sdk build`
 
-Compares two API schema states to flag breaking changes (e.g., removed endpoints, altered path signatures). This is invaluable in CI/CD pipelines to guarantee backwards compatibility for mobile or external API consumers.
+Builds, validates, and checks API schema compile target readiness. It parses your OpenAPI or GraphQL schema and runs it through the compiler pipeline to ensure it can be translated into target SDK languages without any intermediate representation errors.
 
 ```bash
-axiomify sdk diff old-spec.json new-spec.json
+axiomify sdk build openapi.json
+axiomify sdk build schema.graphql
 ```
 
 ### `axiomify sdk validate`
@@ -319,6 +320,74 @@ Performs strict syntactic and semantic validations against your schema by passin
 
 ```bash
 axiomify sdk validate spec.json
+```
+
+### `axiomify sdk diff`
+
+Compares two API schema states to flag breaking changes (e.g., removed endpoints, altered path signatures). This is invaluable in CI/CD pipelines to guarantee backwards compatibility for mobile or external API consumers.
+
+```bash
+axiomify sdk diff old-spec.json new-spec.json
+```
+
+### `axiomify sdk migrate`
+
+Generates client migration steps and guides between two API schemas. It compares the two schemas, analyzes the differences, and outputs a step-by-step developer migration checklist of actions (e.g., REMOVE or MODIFY) required on the client side.
+
+```bash
+axiomify sdk migrate old-spec.json new-spec.json
+# Or output as JSON for custom tool integrations:
+axiomify sdk migrate old-spec.json new-spec.json --json
+```
+
+### `axiomify sdk watch`
+
+Starts a file watcher on the input schema file and automatically triggers the SDK compiler and generators whenever the schema file changes.
+
+```bash
+axiomify sdk watch openapi.json -t typescript python -o ./sdks
+```
+
+### `axiomify sdk doctor`
+
+Verifies and diagnoses the host system for availability of target toolchains required to compile and build target SDK packages. It checks for:
+- Node.js (TypeScript/JavaScript)
+- Python 3 (Python)
+- Go compiler (Go)
+- Dart SDK (Dart)
+- Java JDK / Gradle (Kotlin)
+- Swift / Xcode command line tools (Swift)
+
+```bash
+axiomify sdk doctor
+```
+
+### `axiomify sdk benchmark`
+
+Benchmarks the performance of the SDK schema compiler and target generators using a synthesized large API schema with 50 endpoints and 100 object types. Prints compiler and generator throughput metrics (endpoints/sec and files/sec).
+
+```bash
+axiomify sdk benchmark
+```
+
+### `axiomify sdk publish`
+
+Simulates or executes publishing generated SDK packages to their respective package registries (NPM, PyPI, Go Git repositories, Gradle, CocoaPods, and Dart Pub). Runs in dry-run mode by default.
+
+```bash
+axiomify sdk publish
+# To perform real publishing and override registry:
+axiomify sdk publish --no-dry-run --registry https://my-private-registry.com
+```
+
+### `axiomify sdk upgrade`
+
+Checks and upgrades the local target tools and runtime dependency `@axiomify/sdk-runtime` to the latest version.
+
+```bash
+axiomify sdk upgrade
+# Or preview without making changes:
+axiomify sdk upgrade --dry-run
 ```
 
 ## Working with the CLI in CI

@@ -7,19 +7,20 @@
 import fs from 'fs/promises';
 import path from 'path';
 import pc from 'picocolors';
-import { symbols } from '../../utils/format';
-import { loadApp } from '../../utils/load-app';
-import { ingestAxiomifyApp, ingestOpenApi, ingestGraphQL } from '../../sdk/ingest';
 import { CompilerPipeline } from '../../sdk/compiler/pipeline';
 import { GeneratorRegistry } from '../../sdk/generator';
+import { ingestAxiomifyApp, ingestGraphQL, ingestOpenApi } from '../../sdk/ingest';
+import { symbols } from '../../utils/format';
+import { loadApp } from '../../utils/load-app';
 
 // Import built-in generators so they register themselves
-import '../../sdk/generator/targets/typescript';
-import '../../sdk/generator/targets/python';
-import '../../sdk/generator/targets/go';
-import '../../sdk/generator/targets/swift';
-import '../../sdk/generator/targets/kotlin';
 import '../../sdk/generator/targets/dart';
+import '../../sdk/generator/targets/go';
+import '../../sdk/generator/targets/javascript';
+import '../../sdk/generator/targets/kotlin';
+import '../../sdk/generator/targets/python';
+import '../../sdk/generator/targets/swift';
+import '../../sdk/generator/targets/typescript';
 
 export interface GenerateOptions {
   input: string;
@@ -57,7 +58,7 @@ export async function generateSdk(opts: GenerateOptions): Promise<boolean> {
       if (inputExt === '.json') {
         parsed = JSON.parse(raw);
       } else {
-        const yaml = await import('yaml');
+        const yaml = require('yaml');
         parsed = yaml.parse(raw);
       }
       ingestionResult = ingestOpenApi(parsed, { title: opts.name, version: opts.version });
@@ -91,7 +92,7 @@ export async function generateSdk(opts: GenerateOptions): Promise<boolean> {
   // 2. Compilation
   console.log(`  ${symbols.bullet} Compiling IR schema...`);
   const compiler = new CompilerPipeline();
-  const compilation = compiler.compile(ingestionResult.schema);
+  const compilation = await compiler.compile(ingestionResult.schema);
 
   if (compilation.hasErrors) {
      for (const d of compilation.diagnostics) {

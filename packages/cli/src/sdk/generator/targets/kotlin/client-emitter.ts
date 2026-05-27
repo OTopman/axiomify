@@ -1,8 +1,8 @@
 /**
  * Kotlin Client Emitter.
- * Emits suspending OkHttp client methods.
+ * Emits suspending Retrofit interface and ApiClient wrapper.
  */
-import type { IRSchema, IREndpoint, IRTypeRef } from '../../ir/types';
+import type { IRSchema, IREndpoint, IRTypeRef } from '../../../ir/types';
 import { Emitter } from '../../emitter';
 
 export class KotlinClientEmitter {
@@ -13,47 +13,75 @@ export class KotlinClientEmitter {
 
     emitter.line(`package ${this.pkgName}`);
     emitter.line();
-    // In a real generator we'd import OkHttp, Gson/Jackson, and kotlinx.coroutines.
-    // Simplifying for this MVP.
-    emitter.line(`import java.net.URL`);
+    emitter.line(`import okhttp3.OkHttpClient`);
+    emitter.line(`import retrofit2.Retrofit`);
+    emitter.line(`import retrofit2.converter.kotlinx.serialization.asConverterFactory`);
+    emitter.line(`import retrofit2.http.*`);
+    emitter.line(`import kotlinx.serialization.json.Json`);
+    emitter.line(`import okhttp3.MediaType.Companion.toMediaType`);
     emitter.line();
 
-    emitter.block(`class ${this.className}(private val baseUrl: String, private val token: String? = null) {`, `}`, () => {
-      emitter.line(`// HTTP client implementation omitted for brevity`);
-      
+    // Emitting the Retrofit API Interface
+    emitter.block(`interface ApiService {`, `}`, () => {
       for (const ep of this.schema.endpoints) {
         if (ep.transport !== 'rest') continue;
+        this.emitRetrofitMethod(emitter, ep);
         emitter.line();
-        this.emitMethod(emitter, ep);
       }
+    });
+    emitter.line();
+
+    // Emitting the ApiClient wrapper
+    emitter.block(`class ${this.className}(private val baseUrl: String, private val token: String? = null) {`, `}`, () => {
+      emitter.block(`private val client = OkHttpClient.Builder().apply {`, `}.build()`, () => {
+        emitter.block(`if (token != null) {`, `}`, () => {
+          emitter.block(`addInterceptor { chain ->`, `}`, () => {
+            emitter.line(`val request = chain.request().newBuilder()`);
+            emitter.line(`    .header("Authorization", "Bearer \$token")`);
+            emitter.line(`    .build()`);
+            emitter.line(`chain.proceed(request)`);
+          });
+        });
+      });
+      emitter.line();
+      
+      emitter.block(`private val retrofit = Retrofit.Builder()`, `.build()`, () => {
+        emitter.line(`.baseUrl(baseUrl)`);
+        emitter.line(`.client(client)`);
+        emitter.line(`.addConverterFactory(Json.asConverterFactory("application/json".toMediaType()))`);
+      });
+      emitter.line();
+
+      emitter.line(`val api: ApiService = retrofit.create(ApiService::class.java)`);
     });
 
     return emitter.toString();
   }
 
-  private emitMethod(emitter: Emitter, ep: IREndpoint): void {
-    const methodName = ep.operationId.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
+  private emitRetrofitMethod(emitter: Emitter, ep: IREndpoint): void {
+    const method = ep.method?.toUpperCase() || 'GET';
+    const pathTemplate = ep.path || '/';
+    // Path parameter replacements for Retrofit: {id} -> {id}
+    const pathExpr = pathTemplate.replace(/\{([^}]+)\}/g, '{$1}');
+
+    emitter.line(`@${method}("${pathExpr}")`);
     
+    const methodName = this.toCamelCase(ep.operationId);
     let args = [];
-    for (const p of ep.pathParams) args.push(`${p.name}: ${this.renderTypeRef(p.type)}`);
-    for (const p of ep.queryParams) args.push(`${p.name}: ${this.renderTypeRef(p.type)}? = null`);
-    if (ep.requestBody) args.push(`body: ${this.renderTypeRef(ep.requestBody.type)}`);
+    for (const p of ep.pathParams) {
+      args.push(`@Path("${p.name}") ${this.toCamelCase(p.name)}: ${this.renderTypeRef(p.type)}`);
+    }
+    for (const p of ep.queryParams) {
+      const defaultValue = p.required ? '' : '? = null';
+      args.push(`@Query("${p.name}") ${this.toCamelCase(p.name)}: ${this.renderTypeRef(p.type)}${defaultValue}`);
+    }
+    if (ep.requestBody) {
+      args.push(`@Body body: ${this.renderTypeRef(ep.requestBody.type)}`);
+    }
 
     const retType = this.buildResponseType(ep);
     
-    emitter.block(`suspend fun ${methodName}(${args.join(', ')}): ${retType} {`, `}`, () => {
-      const method = ep.method?.toUpperCase() || 'GET';
-      const pathTemplate = ep.path || '/';
-      const pathExpr = pathTemplate.replace(/\{([^}]+)\}/g, '$$$1');
-      
-      emitter.line(`val url = "$baseUrl${pathExpr}"`);
-      emitter.line(`// TODO: build URL with query params`);
-      emitter.line(`// TODO: execute request and parse JSON`);
-      
-      if (retType !== 'Unit') {
-         emitter.line(`throw NotImplementedError("SDK Generator is in MVP phase")`);
-      }
-    });
+    emitter.line(`suspend fun ${methodName}(${args.join(', ')}): ${retType}`);
   }
 
   private buildResponseType(ep: IREndpoint): string {
@@ -76,5 +104,10 @@ export class KotlinClientEmitter {
     }
     if (ref.isArray) t = `List<${t}>`;
     return t;
+  }
+
+  private toCamelCase(str: string): string {
+    return str.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
+              .replace(/^[A-Z]/, (c) => c.toLowerCase());
   }
 }

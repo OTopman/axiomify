@@ -1,8 +1,8 @@
 /**
  * Language-agnostic Intermediate Representation (IR) for API schemas.
  *
- * Every ingestion engine (OpenAPI, GraphQL, Axiomify-app) normalizes its
- * source into this IR. Language-specific generators consume the IR to emit
+ * Every ingestion engine (OpenAPI, GraphQL, Axiomify-app, AsyncAPI) normalizes
+ * its source into this IR. Language-specific generators consume the IR to emit
  * idiomatic code. The IR is designed to be:
  *
  *   - Complete: captures all information needed for code generation
@@ -10,6 +10,7 @@
  *   - Graph-friendly: types reference each other by ID for cycle handling
  *   - Diffable: deterministic structure enables schema comparison
  *   - Extensible: metadata bags allow plugins to annotate nodes
+ *   - Contract-aware: event, streaming, auth, pagination, federation metadata
  */
 
 // ─── Primitives ────────────────────────────────────────────────────────────────
@@ -32,7 +33,14 @@ export type IRScalar =
   | 'bigint';
 
 /** Transport protocol for an endpoint. */
-export type IRTransport = 'rest' | 'graphql' | 'websocket' | 'sse' | 'grpc';
+export type IRTransport =
+  | 'rest'
+  | 'graphql'
+  | 'websocket'
+  | 'sse'
+  | 'grpc'
+  | 'socket.io'
+  | 'event';
 
 /** HTTP methods. */
 export type IRHttpMethod =
@@ -73,6 +81,8 @@ export interface IRBaseType {
   deprecationReason?: string;
   /** Arbitrary plugin metadata keyed by plugin name. */
   metadata?: Record<string, unknown>;
+  /** Schema lineage — tracks origin for diffing and incremental compilation. */
+  lineage?: IRTypeLineage;
 }
 
 /** Object type — maps to interfaces/structs/classes. */
@@ -155,6 +165,24 @@ export interface IRLiteralType extends IRBaseType {
   value: string | number | boolean | null;
 }
 
+/** Generic/parameterized type — e.g. PaginatedResponse<T>. */
+export interface IRGenericType extends IRBaseType {
+  kind: 'generic';
+  /** Base type that is parameterized. */
+  baseType: IRTypeRef;
+  /** Type parameters with optional constraints. */
+  typeParameters: IRTypeParameter[];
+}
+
+/** A type parameter declaration. */
+export interface IRTypeParameter {
+  name: string;
+  /** Constraint on the type parameter (e.g. extends SomeType). */
+  constraint?: IRTypeRef;
+  /** Default type if not specified. */
+  defaultType?: IRTypeRef;
+}
+
 /** All possible IR type node kinds. */
 export type IRType =
   | IRObjectType
@@ -165,7 +193,8 @@ export type IRType =
   | IRScalarType
   | IRMapType
   | IRTupleType
-  | IRLiteralType;
+  | IRLiteralType
+  | IRGenericType;
 
 // ─── Type References ──────────────────────────────────────────────────────────
 
@@ -181,6 +210,8 @@ export interface IRTypeRef {
   isArray?: boolean;
   /** Default value for optional fields. */
   defaultValue?: unknown;
+  /** Generic type arguments (e.g. PaginatedResponse<User>). */
+  typeArguments?: IRTypeRef[];
 }
 
 // ─── Fields ───────────────────────────────────────────────────────────────────
@@ -244,6 +275,12 @@ export interface IREndpoint {
 
   // Security
   security: IRSecurityRequirement[];
+
+  // Pagination
+  pagination?: IRPaginationMetadata;
+
+  // Streaming
+  streaming?: IRStreamingContract;
 
   metadata?: Record<string, unknown>;
 }
@@ -309,6 +346,167 @@ export interface IRServer {
   }>;
 }
 
+// ─── Pagination ───────────────────────────────────────────────────────────────
+
+/** Pagination pattern metadata attached to endpoints that support pagination. */
+export interface IRPaginationMetadata {
+  /** Pagination strategy. */
+  style: 'cursor' | 'offset' | 'page' | 'keyset';
+  /** Name of the query parameter for page size / limit. */
+  pageSizeParam?: string;
+  /** Name of the cursor / offset / page query parameter. */
+  cursorParam?: string;
+  /** JSON path to the next cursor in the response body. */
+  nextCursorPath?: string;
+  /** JSON path to the items array in the response body. */
+  itemsPath?: string;
+  /** JSON path to the total count in the response body. */
+  totalCountPath?: string;
+  /** JSON path to the hasMore boolean in the response body. */
+  hasMorePath?: string;
+  /** Default page size. */
+  defaultPageSize?: number;
+  /** Maximum page size. */
+  maxPageSize?: number;
+}
+
+// ─── Event Contracts ──────────────────────────────────────────────────────────
+
+/** An event contract — for event-driven APIs (AsyncAPI, WebSocket, Socket.IO). */
+export interface IREventContract {
+  /** Unique event / channel name (e.g. "user.created"). */
+  name: string;
+  /** Human-readable description. */
+  description?: string;
+  /** Transport binding. */
+  transport: 'websocket' | 'socket.io' | 'sse' | 'event';
+  /** Channel / topic / room name pattern. */
+  channel?: string;
+  /** Direction from the SDK's perspective. */
+  direction: 'inbound' | 'outbound' | 'bidirectional';
+  /** Payload type for the event. */
+  payload?: IRTypeRef;
+  /** Acknowledgement/reply payload (for request/reply patterns). */
+  ackPayload?: IRTypeRef;
+  /** Whether the event requires acknowledgement. */
+  requiresAck?: boolean;
+  /** Headers or metadata attached to the event. */
+  headers?: IRParameter[];
+  /** Tags for grouping. */
+  tags: string[];
+  /** Security requirements for subscribing/publishing. */
+  security: IRSecurityRequirement[];
+  metadata?: Record<string, unknown>;
+}
+
+// ─── Streaming Contracts ──────────────────────────────────────────────────────
+
+/** Streaming contract metadata — for SSE, chunked transfer, WebSocket streams. */
+export interface IRStreamingContract {
+  /** Stream transport mechanism. */
+  transport: 'sse' | 'websocket' | 'chunked';
+  /** Type of each streamed item. */
+  itemType?: IRTypeRef;
+  /** Heartbeat interval in milliseconds. */
+  heartbeatMs?: number;
+  /** Reconnection strategy. */
+  reconnect?: {
+    /** Whether auto-reconnect is enabled. */
+    enabled: boolean;
+    /** Max retry attempts. */
+    maxRetries?: number;
+    /** Base delay between retries in milliseconds. */
+    baseDelayMs?: number;
+  };
+  /** Backpressure handling mode. */
+  backpressure?: 'buffer' | 'drop' | 'latest';
+  /** Event type names for SSE (maps event name → payload type). */
+  eventTypes?: Record<string, IRTypeRef>;
+}
+
+// ─── Auth Contracts ───────────────────────────────────────────────────────────
+
+/** Auth contract — describes how authentication flows work for the SDK. */
+export interface IRAuthContract {
+  /** Primary auth scheme name. */
+  primaryScheme: string;
+  /** Token injection point. */
+  tokenInjection: {
+    location: 'header' | 'query' | 'cookie';
+    parameterName: string;
+    prefix?: string;
+  };
+  /** Refresh token configuration. */
+  refresh?: {
+    endpoint: string;
+    method: IRHttpMethod;
+    tokenPath: string;
+    expiresInPath?: string;
+  };
+  /** Available scopes for the API. */
+  scopes?: Record<string, string>;
+}
+
+// ─── Reactive Contracts ───────────────────────────────────────────────────────
+
+/** Reactive contract — for live queries, GraphQL subscriptions, presence. */
+export interface IRReactiveContract {
+  /** Channel or subscription name. */
+  channel: string;
+  /** Type of reactive update. */
+  type: 'subscription' | 'live-query' | 'presence';
+  /** Payload type for updates. */
+  updateType?: IRTypeRef;
+  /** Filter parameters for the subscription. */
+  filters?: IRParameter[];
+  /** Whether the subscription supports replay/catch-up. */
+  supportsReplay?: boolean;
+}
+
+// ─── Federation Metadata ──────────────────────────────────────────────────────
+
+/** Federation metadata — for federated/distributed schemas. */
+export interface IRFederationMetadata {
+  /** Service that owns this type or endpoint. */
+  serviceName: string;
+  /** Service boundary (types that cross service boundaries). */
+  isShared?: boolean;
+  /** Key fields for entity resolution across services. */
+  keyFields?: string[];
+  /** Whether this type is an entity root. */
+  isEntity?: boolean;
+  /** External fields resolved from other services. */
+  externalFields?: string[];
+}
+
+// ─── Tenant Metadata ──────────────────────────────────────────────────────────
+
+/** Multi-tenant metadata for tenant-aware SDK generation. */
+export interface IRTenantMetadata {
+  /** How tenant context is propagated. */
+  propagation: 'header' | 'path' | 'query' | 'subdomain';
+  /** Header / path parameter / query key name. */
+  parameterName: string;
+  /** Whether the tenant ID is required on every request. */
+  required: boolean;
+  /** Tenant-specific scopes or permissions. */
+  scopes?: string[];
+}
+
+// ─── Schema Lineage ───────────────────────────────────────────────────────────
+
+/** Tracks a type's origin across schema versions for diffing and lineage. */
+export interface IRTypeLineage {
+  /** SHA-256 hash of the type's canonical form. */
+  fingerprint: string;
+  /** Source file or spec section that produced this type. */
+  sourceLocation?: string;
+  /** Timestamp of last compilation (ISO-8601). */
+  lastCompiled?: string;
+  /** Parent schema ID if this type was derived. */
+  parentSchemaId?: string;
+}
+
 // ─── Top-level Schema ──────────────────────────────────────────────────────
 
 /**
@@ -323,6 +521,20 @@ export interface IRSchema {
   securitySchemes: Map<string, IRSecurityScheme>;
   servers: IRServer[];
   globalSecurity: IRSecurityRequirement[];
+  /** Event contracts for event-driven APIs. */
+  events: IREventContract[];
+  /** Auth contract describing token/refresh flows. */
+  authContract?: IRAuthContract;
+  /** Reactive contracts for subscriptions/live queries. */
+  reactiveContracts: IRReactiveContract[];
+  /** Pagination defaults for the API. */
+  defaultPagination?: IRPaginationMetadata;
+  /** Federation metadata for distributed schemas. */
+  federation?: IRFederationMetadata;
+  /** Multi-tenant configuration. */
+  tenant?: IRTenantMetadata;
+  /** Schema-level fingerprint for caching. */
+  fingerprint?: string;
   metadata?: Record<string, unknown>;
 }
 

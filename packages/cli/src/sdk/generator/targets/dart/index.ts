@@ -14,7 +14,22 @@ export class DartGenerator extends Generator {
     const clientEmitter = new DartClientEmitter(this.schema, 'ApiClient');
     this.addFile('lib/client.dart', clientEmitter.emitAll());
 
-    this.addFile('pubspec.yaml', `name: ${this.options.packageName}\nversion: ${this.options.version || '1.0.0'}\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\n\ndependencies:\n  http: ^1.1.0\n`);
+    this.addFile('pubspec.yaml', `name: ${this.options.packageName}
+version: ${this.options.version || '1.0.0'}
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  dio: ^5.3.0
+  freezed_annotation: ^2.4.1
+  riverpod: ^2.4.0
+  json_annotation: ^4.8.1
+
+dev_dependencies:
+  build_runner: ^2.4.6
+  freezed: ^2.4.5
+  json_serializable: ^6.7.1
+`);
 
     return this.files;
   }

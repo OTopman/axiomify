@@ -112,3 +112,175 @@ const client = new MyGeneratedSDK({
   }
 });
 ```
+
+## Circuit Breaker
+
+To prevent cascading failures in high-volume microservices or distributed systems, the SDK client wraps all outgoing requests in a circuit breaker. By default, it operates with standard thresholds, but you can configure the behavior to suit your system:
+
+```ts
+const client = new MyGeneratedSDK({
+  baseUrl: 'https://api.example.com/v1',
+  circuitBreakerConfig: {
+    failureThreshold: 5,        // Number of failures before tripping the circuit
+    cooldownPeriodMs: 10000,     // Time to wait (in ms) before attempting probe requests in HALF_OPEN state
+    halfOpenMaxProbeRequests: 3  // Max probe requests allowed in HALF_OPEN to check system health
+  }
+});
+```
+
+If the breaker trips, the client throws a `CircuitBreakerError` directly, shielding downstream dependencies until the cooldown period expires.
+
+## LRU TTL Caching
+
+The runtime provides an in-memory Least Recently Used (LRU) cache with Time-To-Live (TTL) expiration. If enabled, it automatically caches incoming `GET` responses and returns them for matching paths and query configurations:
+
+```ts
+const client = new MyGeneratedSDK({
+  baseUrl: 'https://api.example.com/v1',
+  enableCache: true,
+  cacheTtlMs: 60000 // Cache GET responses for 60 seconds
+});
+```
+
+Additionally, the runtime performs **Request Deduplication** for identical in-flight `GET` requests, resolving multiple concurrent requests to the same endpoint with a single network round-trip.
+
+## Telemetry Hooks
+
+Provide hooks to intercept and log request metadata, responses, or failures for auditing and APM integration:
+
+```ts
+const client = new MyGeneratedSDK({
+  baseUrl: 'https://api.example.com/v1',
+  telemetry: {
+    onBeforeRequest: (req) => {
+      console.log(`Sending ${req.method} request to ${req.path}`);
+    },
+    onAfterResponse: (res) => {
+      console.log(`Received status ${res.status} from ${res.request.path}`);
+    },
+    onError: (err) => {
+      console.error(`Request failed: ${err.message}`);
+    }
+  }
+});
+```
+
+## Server-Sent Events (SSE) Client
+
+The client runtime provides a dedicated `SseClient` to consume Server-Sent Events. It implements automatic reconnection logic with exponential backoff:
+
+```ts
+import { SseClient } from '@axiomify/sdk-runtime';
+
+const sse = new SseClient('https://api.example.com/v1/live-feed', {
+  headers: {
+    Authorization: 'Bearer token123'
+  },
+  maxRetries: 5,
+  baseDelayMs: 1000,
+  onOpen: () => console.log('SSE connection opened'),
+  onMessage: (event, data) => console.log(`Received event: ${event}`, data),
+  onError: (err) => console.error('SSE Error:', err)
+});
+
+// Start listening
+sse.connect();
+
+// Stop listening
+sse.disconnect();
+```
+
+## WebSocket Client
+
+For full-duplex communication, use the `WebSocketClient` class. It manages standard browser/node WebSockets with customizable ping-pong heartbeats and auto-reconnection:
+
+```ts
+import { WebSocketClient } from '@axiomify/sdk-runtime';
+
+const ws = new WebSocketClient('wss://api.example.com/v1/chat', {
+  heartbeatIntervalMs: 30000, // Send ping every 30 seconds
+  maxRetries: 10,
+  onOpen: () => {
+    console.log('WS connection active');
+    ws.send(JSON.stringify({ event: 'join', channel: 'general' }));
+  },
+  onMessage: (data) => console.log('WS Message:', data),
+  onClose: () => console.log('WS closed')
+});
+
+ws.connect();
+```
+
+## Paginators
+
+The `Paginator` handles cursor-based paginated endpoints seamlessly:
+
+```ts
+import { Paginator } from '@axiomify/sdk-runtime';
+
+const paginator = new Paginator<User, { cursor?: string }>({
+  fetchPage: async (params) => {
+    const response = await client.listUsers(params.cursor);
+    return {
+      items: response.users,
+      nextCursor: response.nextCursor,
+      hasMore: !!response.nextCursor
+    };
+  },
+  initialParams: {},
+  cursorParamName: 'cursor'
+});
+
+// Fetch pages sequentially
+if (paginator.hasNext()) {
+  const users = await paginator.nextPage();
+  console.log('Fetched users:', users);
+}
+```
+
+## Client Offline Queuing
+
+For mobile or edge clients, the `OfflineQueue` caches requests during offline periods and flushes them automatically when the connection returns:
+
+```ts
+import { OfflineQueue } from '@axiomify/sdk-runtime';
+
+const offlineQueue = new OfflineQueue();
+
+// In offline state, queue operations
+offlineQueue.enqueue({
+  path: '/users',
+  method: 'POST',
+  body: { name: 'Jane Doe', email: 'jane@example.com' }
+});
+
+// Flush automatically on navigator/window online event
+// or call manually with a custom processor:
+await offlineQueue.flush(async (queuedRequest) => {
+  await client.request({
+    path: queuedRequest.path,
+    method: queuedRequest.method as any,
+    body: queuedRequest.body
+  });
+});
+```
+
+## Environment Switcher
+
+Manage target environments programmatically using the `EnvironmentSwitcher`:
+
+```ts
+import { EnvironmentSwitcher } from '@axiomify/sdk-runtime';
+
+const environments = {
+  production: 'https://api.example.com/v1',
+  staging: 'https://api-staging.example.com/v1',
+  development: 'http://localhost:3000'
+};
+
+const switcher = new EnvironmentSwitcher(environments, 'development');
+console.log(switcher.getUrl()); // http://localhost:3000
+
+switcher.setEnvironment('production');
+console.log(switcher.getUrl()); // https://api.example.com/v1
+```

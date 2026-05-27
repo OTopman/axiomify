@@ -3,8 +3,8 @@
  *
  * Emits TypeScript interfaces, type aliases, and enums from IR nodes.
  */
-import type { IRSchema, IRType, IRTypeRef } from '../../ir/types';
-import { TypeGraph } from '../../ir/type-graph';
+import type { IRSchema, IRType, IRTypeRef } from '../../../ir/types';
+import { TypeGraph } from '../../../ir/type-graph';
 import { Emitter } from '../../emitter';
 
 export class TsTypeEmitter {

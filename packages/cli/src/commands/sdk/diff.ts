@@ -33,7 +33,7 @@ export function registerSdkDiffCommand(program: Command) {
         } else {
            throw new Error(`Unsupported extension for ${oldFile}`);
         }
-        oldIr = new CompilerPipeline().compile(oldIr.schema).schema;
+        oldIr = (await new CompilerPipeline().compile(oldIr.schema)).schema;
 
         console.log(pc.dim(`  • Loading ${newFile}...`));
         const newExt = newFile.split('.').pop()?.toLowerCase() || '';
@@ -47,7 +47,7 @@ export function registerSdkDiffCommand(program: Command) {
         } else {
            throw new Error(`Unsupported extension for ${newFile}`);
         }
-        newIr = new CompilerPipeline().compile(newIr.schema).schema;
+        newIr = (await new CompilerPipeline().compile(newIr.schema)).schema;
 
         console.log(pc.dim('  • Computing diff...\n'));
 

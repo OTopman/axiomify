@@ -1,9 +1,9 @@
 /**
  * Go Type Emitter.
- * Emits Go structs with JSON tags.
+ * Emits Go structs with JSON tags, and custom Marshal/Unmarshal for unions.
  */
-import type { IRSchema, IRType, IRTypeRef } from '../../ir/types';
-import { TypeGraph } from '../../ir/type-graph';
+import type { IRSchema, IRType, IRTypeRef } from '../../../ir/types';
+import { TypeGraph } from '../../../ir/type-graph';
 import { Emitter } from '../../emitter';
 
 export class GoTypeEmitter {
@@ -14,6 +14,11 @@ export class GoTypeEmitter {
     const sortedIds = this.graph.topologicalSort();
 
     emitter.line(`package ${this.pkgName}`);
+    emitter.line();
+    emitter.line(`import (`);
+    emitter.line(`\t"encoding/json"`);
+    emitter.line(`\t"errors"`);
+    emitter.line(`)`);
     emitter.line();
 
     for (const id of sortedIds) {
@@ -56,6 +61,36 @@ export class GoTypeEmitter {
         });
         break;
 
+      case 'union':
+        // Custom union struct in Go
+        emitter.block(`type ${type.id} struct {`, `}`, () => {
+          emitter.line(`Value interface{}`);
+        });
+        emitter.line();
+        // Custom MarshalJSON
+        emitter.block(`func (u ${type.id}) MarshalJSON() ([]byte, error) {`, `}`, () => {
+          emitter.line(`return json.Marshal(u.Value)`);
+        });
+        emitter.line();
+        // Custom UnmarshalJSON
+        emitter.block(`func (u *${type.id}) UnmarshalJSON(data []byte) error {`, `}`, () => {
+          for (let i = 0; i < type.members.length; i++) {
+            const member = type.members[i];
+            const memberType = this.renderTypeRef(member);
+            emitter.line(`var val${i} ${memberType}`);
+            emitter.block(`if err := json.Unmarshal(data, &val${i}); err == nil {`, `}`, () => {
+              emitter.line(`u.Value = val${i}`);
+              emitter.line(`return nil`);
+            });
+          }
+          emitter.line(`return errors.New("cannot unmarshal into any union member of ${type.id}")`);
+        });
+        break;
+
+      case 'intersection':
+        emitter.line(`type ${type.id} map[string]interface{}`);
+        break;
+
       case 'array':
         emitter.line(`type ${type.id} []${this.renderTypeRef(type.items)}`);
         break;
@@ -65,8 +100,6 @@ export class GoTypeEmitter {
         break;
         
       default:
-        // Union, intersection, etc require custom unmarshalers in Go
-        emitter.line(`// TODO: Complex type ${type.id} of kind ${type.kind}`);
         emitter.line(`type ${type.id} interface{}`);
         break;
     }

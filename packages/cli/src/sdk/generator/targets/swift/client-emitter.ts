@@ -1,8 +1,8 @@
 /**
  * Swift Client Emitter.
- * Emits URLSession async/await methods.
+ * Emits URLSession async/await methods in idiomatic camelCase.
  */
-import type { IRSchema, IREndpoint, IRTypeRef } from '../../ir/types';
+import type { IRSchema, IREndpoint, IRTypeRef } from '../../../ir/types';
 import { Emitter } from '../../emitter';
 
 export class SwiftClientEmitter {
@@ -37,28 +37,40 @@ export class SwiftClientEmitter {
   }
 
   private emitMethod(emitter: Emitter, ep: IREndpoint): void {
-    const methodName = ep.operationId.replace(/([A-Z])/g, '_$1').toLowerCase();
+    const methodName = this.toCamelCase(ep.operationId);
     
     let args = [];
-    for (const p of ep.pathParams) args.push(`${p.name}: ${this.renderTypeRef(p.type)}`);
-    for (const p of ep.queryParams) args.push(`${p.name}: ${this.renderTypeRef(p.type)}? = nil`);
-    if (ep.requestBody) args.push(`body: ${this.renderTypeRef(ep.requestBody.type)}`);
+    for (const p of ep.pathParams) {
+      args.push(`${this.toCamelCase(p.name)}: ${this.renderTypeRef(p.type)}`);
+    }
+    for (const p of ep.queryParams) {
+      args.push(`${this.toCamelCase(p.name)}: ${this.renderTypeRef(p.type)}? = nil`);
+    }
+    if (ep.requestBody) {
+      args.push(`body: ${this.renderTypeRef(ep.requestBody.type)}`);
+    }
 
     const retType = this.buildResponseType(ep);
     
     emitter.block(`public func ${methodName}(${args.join(', ')}) async throws -> ${retType} {`, `}`, () => {
       const method = ep.method?.toUpperCase() || 'GET';
       const pathTemplate = ep.path || '/';
-      const pathExpr = pathTemplate.replace(/\{([^}]+)\}/g, '\\($1)');
+      
+      // Path parameter replacement: e.g. {userId} -> \(userId)
+      let pathExpr = pathTemplate;
+      for (const p of ep.pathParams) {
+        pathExpr = pathExpr.replace(`{${p.name}}`, `\\(${this.toCamelCase(p.name)})`);
+      }
       
       emitter.line(`var components = URLComponents(url: baseURL.appendingPathComponent("${pathExpr}"), resolvingAgainstBaseURL: true)!`);
       
       if (ep.queryParams.length > 0) {
         emitter.line(`var queryItems: [URLQueryItem] = []`);
         for (const q of ep.queryParams) {
-           emitter.block(`if let val = ${q.name} {`, `}`, () => {
-              emitter.line(`queryItems.append(URLQueryItem(name: "${q.name}", value: String(describing: val)))`);
-           });
+          const camelName = this.toCamelCase(q.name);
+          emitter.block(`if let val = ${camelName} {`, `}`, () => {
+            emitter.line(`queryItems.append(URLQueryItem(name: "${q.name}", value: String(describing: val)))`);
+          });
         }
         emitter.line(`components.queryItems = queryItems.isEmpty ? nil : queryItems`);
       }
@@ -76,12 +88,12 @@ export class SwiftClientEmitter {
       }
 
       emitter.line(`let (data, response) = try await session.data(for: request)`);
-      emitter.block(`guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {`, `}`, () => {
-        emitter.line(`throw URLError(.badServerResponse)`);
+      emitter.block('guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {', '}', () => {
+        emitter.line('throw URLError(.badServerResponse)');
       });
       
       if (retType !== 'Void') {
-         emitter.line(`return try JSONDecoder().decode(${retType}.self, from: data)`);
+        emitter.line(`return try JSONDecoder().decode(${retType}.self, from: data)`);
       }
     });
   }
@@ -105,5 +117,10 @@ export class SwiftClientEmitter {
     }
     if (ref.isArray) t = `[${t}]`;
     return t;
+  }
+
+  private toCamelCase(str: string): string {
+    return str.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
+              .replace(/^[A-Z]/, (c) => c.toLowerCase());
   }
 }

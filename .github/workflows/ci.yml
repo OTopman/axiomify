@@ -121,10 +121,6 @@ jobs:
       - name: Build workspace packages
         run: npm run build
 
-      - name: Install example app
-        working-directory: examples/my-app
-        run: npm install --no-audit --no-fund
-
       - name: Typecheck example app
         working-directory: examples/my-app
         run: npx tsc --noEmit

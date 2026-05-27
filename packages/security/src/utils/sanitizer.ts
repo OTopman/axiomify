@@ -49,7 +49,7 @@ function sanitizeXss(value: string): string {
   //   Input:  <scrip<script>is removed</script>t>alert(1)</script>
   //   Pass 1: <script>alert(1)</script>   ← still dangerous
   //   Pass 2: alert(1)                    ← safe
-  s = replaceUntilStable(s, /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  s = replaceUntilStable(s, /<script\b[^<]*(?:(?!<\/script\s*[^>]*>)<[^<]*)*<\/script\s*[^>]*>/gi, '');
 
   // javascript: URI scheme — loop guards against:
   //   jajavascript:vascript: → javascript: (after one pass) → '' (after two)

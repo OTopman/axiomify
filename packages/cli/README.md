@@ -32,6 +32,7 @@ the same major as your `@axiomify/*` runtime packages.
 | `axiomify openapi [entry]` | Generate the OpenAPI 3.0.3 spec |
 | `axiomify check [entry]` | Static production-readiness audit |
 | `axiomify doctor` | Diagnose the host environment |
+| `axiomify sdk <subcommand>` | Manage, generate, build, validate, and diff SDKs |
 
 `[entry]` defaults to `src/index.ts` everywhere it's accepted.
 
@@ -144,6 +145,30 @@ alignment, uWS bindings load successfully, recent build artefact, port
 Run on a fresh clone or new CI runner before chasing test failures that
 turn out to be Node-version mismatches.
 
+## `axiomify sdk`
+
+Subcommands for compiling type-safe client SDKs from specs:
+
+```bash
+# Generate SDKs for TS, Python, and Go:
+axiomify sdk generate spec.json --target typescript python go -o ./sdks
+
+# Deep structural diff for breaking changes:
+axiomify sdk diff old-spec.json new-spec.json
+
+# Get client migration guidance:
+axiomify sdk migrate old-spec.json new-spec.json
+
+# Run generation hot-reloads on file change:
+axiomify sdk watch spec.json --target typescript python
+
+# Run local toolchain diagnostics:
+axiomify sdk doctor
+
+# Run compiler and emitter throughput benchmarks:
+axiomify sdk benchmark
+```
+
 ## CI example
 
 ```yaml
@@ -152,6 +177,8 @@ turn out to be Node-version mismatches.
 - run: npx axiomify build
 - run: npx axiomify openapi -o ./openapi.json --spec-version "$GITHUB_SHA"
 - run: npx axiomify routes --json > routes.json   # surface snapshot
+- run: npx axiomify sdk validate ./openapi.json   # schema verification
+- run: npx axiomify sdk diff old-spec.json ./openapi.json # check breaking changes
 ```
 
 Diff `routes.json` between commits to detect accidental API changes

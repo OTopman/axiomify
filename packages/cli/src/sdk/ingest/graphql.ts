@@ -9,18 +9,18 @@
  * it so users without GraphQL schemas don't need it installed.
  */
 import type {
+  IRDiagnostic,
+  IREndpoint,
+  IREnumType,
+  IRField,
+  IRGraphQLOperation,
+  IRObjectType,
+  IRScalar,
+  IRScalarType,
   IRSchema,
   IRType,
-  IRObjectType,
-  IREnumType,
-  IRUnionType,
-  IRScalarType,
-  IRField,
   IRTypeRef,
-  IREndpoint,
-  IRDiagnostic,
-  IRScalar,
-  IRGraphQLOperation,
+  IRUnionType,
 } from '../ir/types';
 
 export interface GraphQLIngestOptions {
@@ -67,6 +67,7 @@ export async function ingestGraphQL(
         info: { title: options.title ?? 'GraphQL API', version: options.version ?? '1.0.0',
           sourceFormat: 'graphql' },
         types, endpoints, securitySchemes: new Map(), servers: [], globalSecurity: [],
+        events: [], reactiveContracts: [],
       },
       diagnostics,
     };
@@ -131,7 +132,7 @@ export async function ingestGraphQL(
         values: gqlType.getValues().map((v) => ({
           name: v.name, value: v.value as string,
           description: v.description ?? undefined,
-          deprecated: v.isDeprecated,
+          deprecated: (v as any).isDeprecated,
         })),
         description: gqlType.description ?? undefined,
       };
@@ -210,6 +211,7 @@ export async function ingestGraphQL(
       },
       types, endpoints, securitySchemes: new Map(),
       servers: [], globalSecurity: [],
+      events: [], reactiveContracts: [],
     },
     diagnostics,
   };

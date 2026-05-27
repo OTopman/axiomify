@@ -169,8 +169,22 @@ sdk
 
 import { registerSdkDiffCommand } from './commands/sdk/diff';
 import { registerSdkValidateCommand } from './commands/sdk/validate';
+import { registerSdkBuildCommand } from './commands/sdk/build';
+import { registerSdkPublishCommand } from './commands/sdk/publish';
+import { registerSdkDoctorCommand } from './commands/sdk/doctor';
+import { registerSdkBenchmarkCommand } from './commands/sdk/benchmark';
+import { registerSdkWatchCommand } from './commands/sdk/watch';
+import { registerSdkMigrateCommand } from './commands/sdk/migrate';
+import { registerSdkUpgradeCommand } from './commands/sdk/upgrade';
 
 registerSdkDiffCommand(sdk);
 registerSdkValidateCommand(sdk);
+registerSdkBuildCommand(sdk);
+registerSdkPublishCommand(sdk);
+registerSdkDoctorCommand(sdk);
+registerSdkBenchmarkCommand(sdk);
+registerSdkWatchCommand(sdk);
+registerSdkMigrateCommand(sdk);
+registerSdkUpgradeCommand(sdk);
 
 program.parse(process.argv);

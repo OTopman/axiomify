@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { CompilerPipeline } from '../../src/sdk/compiler/pipeline';
-import { IRSchema, TypeGraph } from '../../src/sdk/ir/types';
+import { IRSchema } from '../../src/sdk/ir/types';
 
 describe('CompilerPipeline', () => {
-  it('should normalize and optimize a raw IRSchema', () => {
+  it('should normalize and optimize a raw IRSchema', async () => {
     // 1. Arrange
     const rawSchema: IRSchema = {
       info: { title: 'Test API', version: '1.0.0' },
@@ -54,7 +54,7 @@ describe('CompilerPipeline', () => {
     const pipeline = new CompilerPipeline();
 
     // 2. Act
-    const result = pipeline.compile(rawSchema);
+    const result = await pipeline.compile(rawSchema);
 
     // 3. Assert
     expect(result.hasErrors).toBe(false);
@@ -72,7 +72,7 @@ describe('CompilerPipeline', () => {
     expect(compiledSchema.types.has('UnusedType')).toBe(false);
   });
 
-  it('should generate diagnostics for invalid schemas', () => {
+  it('should generate diagnostics for invalid schemas', async () => {
     const rawSchema: IRSchema = {
       info: { title: 'Test API', version: '1.0.0' },
       types: new Map(),
@@ -93,7 +93,7 @@ describe('CompilerPipeline', () => {
     };
 
     const pipeline = new CompilerPipeline();
-    const result = pipeline.compile(rawSchema);
+    const result = await pipeline.compile(rawSchema);
 
     expect(result.hasErrors).toBe(true);
     expect(result.diagnostics.length).toBeGreaterThan(0);

@@ -1,10 +1,10 @@
 /**
  * Python Type Emitter.
- * Emits TypedDicts, Enums, and Pydantic-like dataclasses.
+ * Emits Pydantic v2 models and standard python enums.
  */
-import type { IRSchema, IRType, IRTypeRef } from '../../ir/types';
-import { TypeGraph } from '../../ir/type-graph';
 import { Emitter } from '../../emitter';
+import { TypeGraph } from '../../../ir/type-graph';
+import type { IRSchema, IRType, IRTypeRef } from '../../../ir/types';
 
 export class PythonTypeEmitter {
   constructor(private schema: IRSchema, private graph: TypeGraph) {}
@@ -16,6 +16,7 @@ export class PythonTypeEmitter {
     emitter.line(`from typing import List, Dict, Optional, Any, Union`);
     emitter.line(`from enum import Enum`);
     emitter.line(`from datetime import datetime`);
+    emitter.line(`from pydantic import BaseModel, Field, ConfigDict`);
     emitter.line();
 
     for (const id of sortedIds) {
@@ -32,37 +33,50 @@ export class PythonTypeEmitter {
   private emitType(emitter: Emitter, type: IRType): void {
     switch (type.kind) {
       case 'object':
-        emitter.block(`class ${type.id}:`, ``, () => {
+        emitter.block(`class ${type.id}(BaseModel):`, ``, () => {
           if (type.description) this.emitDoc(emitter, type.description);
+          
+          emitter.line(`model_config = ConfigDict(populate_by_name=True, protected_namespaces=())`);
+          emitter.line();
+
           if (type.fields.length === 0) {
-             emitter.line('pass');
-             return;
+            emitter.line('pass');
+            return;
           }
-          emitter.block(`def __init__(self, **kwargs):`, ``, () => {
-             for (const field of type.fields) {
-                const pyType = this.renderTypeRef(field.type);
-                const defaultVal = field.required ? '' : ' = None';
-                emitter.line(`self.${field.name}: ${pyType} = kwargs.get('${field.name}'${defaultVal.length ? '' : ''})`);
-             }
-             if (type.additionalProperties) {
-                emitter.line(`self.additional_properties = kwargs`);
-             }
-          });
+
+          for (const field of type.fields) {
+            const pyType = this.renderTypeRef(field.type);
+            const alias = field.name !== this.toSnakeCase(field.name) ? `, alias="${field.name}"` : '';
+            const desc = field.description ? `, description="${field.description.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : '';
+            
+            if (field.required) {
+              emitter.line(`${this.toSnakeCase(field.name)}: ${pyType} = Field(...${alias}${desc})`);
+            } else {
+              emitter.line(`${this.toSnakeCase(field.name)}: Optional[${pyType}] = Field(default=None${alias}${desc})`);
+            }
+          }
         });
         break;
 
       case 'enum':
-        emitter.block(`class ${type.id}(Enum):`, ``, () => {
+        const base = type.valueType === 'number' ? 'int' : 'str';
+        emitter.block(`class ${type.id}(${base}, Enum):`, ``, () => {
           if (type.description) this.emitDoc(emitter, type.description);
           for (const v of type.values) {
-             const val = typeof v.value === 'string' ? `"${v.value}"` : v.value;
-             emitter.line(`${v.name} = ${val}`);
+            const pyVal = typeof v.value === 'string' ? `"${v.value}"` : v.value;
+            emitter.line(`${this.toEnumKey(v.name)} = ${pyVal}`);
           }
         });
         break;
 
       case 'union':
-        emitter.line(`${type.id} = Union[${type.members.map(m => this.renderTypeRef(m)).join(', ')}]`);
+        emitter.line(`${type.id} = Union[${type.members.map((m: any) => this.renderTypeRef(m)).join(', ')}]`);
+        break;
+
+      case 'intersection':
+        // Python doesn't have native intersection; we represent as Union or merge in preprocessing.
+        // For type safety, we define it as a Union of its members or Any.
+        emitter.line(`${type.id} = Any`);
         break;
         
       case 'array':
@@ -71,6 +85,19 @@ export class PythonTypeEmitter {
 
       case 'scalar':
         emitter.line(`${type.id} = ${this.renderScalar(type.scalar)}`);
+        break;
+
+      case 'map':
+        emitter.line(`${type.id} = Dict[str, ${this.renderTypeRef(type.valueType)}]`);
+        break;
+
+      case 'tuple':
+        emitter.line(`${type.id} = tuple[${type.elements.map((e: any) => this.renderTypeRef(e)).join(', ')}]`);
+        break;
+
+      case 'literal':
+        const literalVal = typeof type.value === 'string' ? `"${type.value}"` : type.value;
+        emitter.line(`${type.id} = Any # Literal: ${literalVal}`);
         break;
     }
   }
@@ -98,6 +125,14 @@ export class PythonTypeEmitter {
       case 'string':
       default: return 'str';
     }
+  }
+
+  private toSnakeCase(str: string): string {
+    return str.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
+  }
+
+  private toEnumKey(str: string): string {
+    return this.toSnakeCase(str).toUpperCase().replace(/[^A-Z0-9_]/g, '_');
   }
 
   private emitDoc(emitter: Emitter, text: string): void {

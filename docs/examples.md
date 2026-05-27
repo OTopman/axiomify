@@ -12,6 +12,7 @@ All examples are aligned with the 5.0 API surface.
 | `examples/graphql-server.ts` | GraphQL endpoint via `useGraphQL` with depth + alias limits |
 | `examples/secure-server.ts` | Logger PII masking + security plugin payload examples |
 | `examples/my-app/src/index.ts` | Fuller app: auth, uploads, OpenAPI, SSE, file streaming, WebSockets |
+| `examples/sdk-client-demo.ts` | SDK consumption client: retries, circuit breaker, caching, paginators, offline queue, SSE & WebSockets |
 
 ## Notes
 
@@ -27,6 +28,7 @@ Use the examples as patterns, not as a single unified starter:
 - Start from `native-zod-server.ts` if you want the smallest mental model.
 - Start from `openapi-server.ts` if you're building an API with first-class docs.
 - Start from `my-app` if you want a full feature tour with auth, WebSockets, uploads, and SSE.
+- Start from `sdk-client-demo.ts` if you want to see how to instantiate and configure a generated SDK client with advanced features (circuit breaker, retries, caching, paginators, offline queue, streaming).
 
 ## Exploring an example via the CLI
 

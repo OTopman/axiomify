@@ -3,7 +3,7 @@
  *
  * Generates the main HTTP client class with typed methods for every endpoint.
  */
-import type { IRSchema, IREndpoint, IRTypeRef } from '../../ir/types';
+import type { IRSchema, IREndpoint, IRTypeRef } from '../../../ir/types';
 import { Emitter } from '../../emitter';
 
 export class TsClientEmitter {

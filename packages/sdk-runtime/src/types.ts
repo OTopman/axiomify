@@ -3,6 +3,7 @@
  */
 import type { AuthProvider } from './auth';
 import type { RetryConfig } from './retry';
+import type { CircuitBreakerConfig } from './circuit-breaker';
 
 export interface ClientConfig {
   /** The base URL of the API. */
@@ -12,6 +13,14 @@ export interface ClientConfig {
   fetch?: typeof fetch;
   authProvider?: AuthProvider;
   retryConfig?: Partial<RetryConfig>;
+  circuitBreakerConfig?: Partial<CircuitBreakerConfig>;
+  enableCache?: boolean;
+  cacheTtlMs?: number;
+  telemetry?: {
+    onBeforeRequest?: (req: ClientRequest) => void | Promise<void>;
+    onAfterResponse?: (res: ClientResponse) => void | Promise<void>;
+    onError?: (err: any) => void | Promise<void>;
+  };
 }
 
 export interface ClientRequest {
@@ -43,3 +52,11 @@ export class SdkError extends Error {
 export * from './auth';
 export * from './interceptors';
 export * from './retry';
+export * from './circuit-breaker';
+export * from './cache';
+export * from './sse';
+export * from './websocket';
+export * from './pagination';
+export * from './serializer';
+export * from './offline';
+export * from './environment';

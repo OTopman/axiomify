@@ -9,21 +9,21 @@
  * Reuses the Zod→JSON Schema pattern from `@axiomify/openapi`.
  */
 import type {
-  IRSchema,
-  IRType,
-  IRObjectType,
   IRArrayType,
-  IREnumType,
-  IRScalarType,
-  IRField,
-  IRTypeRef,
+  IRDiagnostic,
   IREndpoint,
+  IREnumType,
+  IRField,
+  IRHttpMethod,
+  IRObjectType,
   IRParameter,
   IRRequestBody,
   IRResponse,
-  IRDiagnostic,
-  IRHttpMethod,
   IRScalar,
+  IRScalarType,
+  IRSchema,
+  IRType,
+  IRTypeRef,
 } from '../ir/types';
 
 export interface AxiomifyAppIngestOptions {
@@ -310,6 +310,7 @@ export function ingestAxiomifyApp(
       },
       types, endpoints, securitySchemes: new Map(),
       servers: [], globalSecurity: [],
+      events: [], reactiveContracts: [],
     },
     diagnostics,
   };
