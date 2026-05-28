@@ -21,6 +21,15 @@
   "dependencies": {
     "@axiomify/core": "*"
   },
+  "keywords": [
+    "axiomify",
+    "cors",
+    "middleware",
+    "preflight",
+    "origin-policy",
+    "vary-header",
+    "security"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",

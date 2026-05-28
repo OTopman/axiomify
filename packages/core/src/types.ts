@@ -402,6 +402,9 @@ export interface WsRouteDefinition<
   path: string;
   schema?: S;
   plugins?: RouteMiddleware[];
+  compression?: number;
+  maxPayloadLength?: number;
+  idleTimeout?: number;
   open?: (client: WsClient<RequestState>, req: AxiomifyRequest) => void;
   message?: (client: WsClient<RequestState>, data: M) => void;
   close?: (client: WsClient<RequestState>, code: number, reason: string) => void;

@@ -21,6 +21,15 @@
   "dependencies": {
     "@axiomify/core": "*"
   },
+  "keywords": [
+    "axiomify",
+    "static-files",
+    "static-server",
+    "etag",
+    "mime-types",
+    "spa-fallback",
+    "cache-control"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",

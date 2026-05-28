@@ -21,6 +21,15 @@
   "dependencies": {
     "@axiomify/core": "*"
   },
+  "keywords": [
+    "axiomify",
+    "metrics",
+    "prometheus",
+    "observability",
+    "latency",
+    "histograms",
+    "websocket-metrics"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",

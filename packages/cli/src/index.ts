@@ -10,6 +10,7 @@ import { runMigrate } from './commands/migrate';
 import { emitOpenApi } from './commands/openapi';
 import { inspectRoutes, RoutesOptions } from './commands/routes';
 import { scaffoldRoute } from './commands/scaffold';
+import { generateSdk } from './commands/sdk/generate';
 
 const program = new Command();
 
@@ -19,6 +20,8 @@ program
   // Read version from package.json so `axiomify --version` always matches the
   // published package rather than a stale hardcoded string.
   .version(pkg.version);
+
+// ... existing commands ...
 
 program
   .command('init')
@@ -33,7 +36,8 @@ program
   .command('dev')
   .description('Start the development server with hot-reload')
   .argument('[entry]', 'Entry file', 'src/index.ts')
-  .action(devServer);
+  .option('--watch-sdk <langs...>', 'Target languages to automatically regenerate SDKs on changes')
+  .action((entry: string, options: any) => devServer(entry, options));
 
 program
   .command('build')
@@ -145,5 +149,42 @@ program
   .action((options: { dryRun?: boolean; reportOnly?: boolean; dir?: string }) =>
     runMigrate(options),
   );
+
+// `sdk` is a parent command for the Type-Safe SDK Generation Platform
+const sdk = program
+  .command('sdk')
+  .description('Manage, generate, and diff type-safe SDKs');
+
+sdk
+  .command('generate')
+  .description('Generate type-safe SDKs from an Axiomify app, OpenAPI spec, or GraphQL schema')
+  .argument('<input>', 'Input file (e.g. src/index.ts, spec.json, schema.graphql)')
+  .requiredOption('-t, --target <langs...>', 'Target languages (e.g. typescript python)')
+  .option('-o, --output <dir>', 'Output directory', 'generated-sdks')
+  .option('-n, --name <name>', 'Package name (e.g. my-api-sdk)')
+  .option('-v, --version <version>', 'Package version (e.g. 1.0.0)')
+  .option('--no-runtime', 'Do not include runtime dependencies (generate pure types)')
+  .option('--dry-run', 'Print generated files instead of writing them to disk')
+  .action(async (input: string, options: any) => { await generateSdk({ input, ...options }); });
+
+import { registerSdkDiffCommand } from './commands/sdk/diff';
+import { registerSdkValidateCommand } from './commands/sdk/validate';
+import { registerSdkBuildCommand } from './commands/sdk/build';
+import { registerSdkPublishCommand } from './commands/sdk/publish';
+import { registerSdkDoctorCommand } from './commands/sdk/doctor';
+import { registerSdkBenchmarkCommand } from './commands/sdk/benchmark';
+import { registerSdkWatchCommand } from './commands/sdk/watch';
+import { registerSdkMigrateCommand } from './commands/sdk/migrate';
+import { registerSdkUpgradeCommand } from './commands/sdk/upgrade';
+
+registerSdkDiffCommand(sdk);
+registerSdkValidateCommand(sdk);
+registerSdkBuildCommand(sdk);
+registerSdkPublishCommand(sdk);
+registerSdkDoctorCommand(sdk);
+registerSdkBenchmarkCommand(sdk);
+registerSdkWatchCommand(sdk);
+registerSdkMigrateCommand(sdk);
+registerSdkUpgradeCommand(sdk);
 
 program.parse(process.argv);

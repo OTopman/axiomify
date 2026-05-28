@@ -60,4 +60,11 @@ describe('sanitizeInput', () => {
     expect(sanitizeInput({})).toEqual({});
     expect(sanitizeInput([])).toEqual([]);
   });
+
+  it('preserves native object types like Date and Buffer without corrupting them', () => {
+    const d = new Date();
+    const b = Buffer.from('hello');
+    expect(sanitizeInput(d)).toBe(d);
+    expect(sanitizeInput(b)).toBe(b);
+  });
 });

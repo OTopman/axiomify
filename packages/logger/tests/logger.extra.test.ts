@@ -103,4 +103,20 @@ describe('useLogger — extended coverage', () => {
       runHooks(app, 'onPostHandler', req, makeRes(), { route: {} as any, params: {} }),
     ).resolves.toBeUndefined();
   });
+
+  it('filters out info logs when level is set to fatal', async () => {
+    const app = new Axiomify();
+    useLogger(app, { level: 'fatal', beautify: false });
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await runHooks(app, 'onRequest', makeReq(), makeRes());
+    expect(writeSpy).not.toHaveBeenCalled();
+  });
+
+  it('outputs info logs when level is set to trace', async () => {
+    const app = new Axiomify();
+    useLogger(app, { level: 'trace', beautify: false });
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await runHooks(app, 'onRequest', makeReq(), makeRes());
+    expect(writeSpy).toHaveBeenCalled();
+  });
 });

@@ -5,7 +5,6 @@
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![npm version](https://img.shields.io/npm/v/@axiomify/socket.io.svg)](https://npmjs.com/package/@axiomify/socket.io)
 
 Socket.IO 4.4+ bridge for `@axiomify/native`. One uWS listener serves
 your HTTP routes, native WebSocket routes, and Socket.IO — no second
@@ -91,7 +90,7 @@ With it, they receive a proper `disconnect` frame.
 
 ## Full reference
 
-See [docs/[./packages/socket.io.md](./packages/socket.io.md)](https://github.com/OTopman/axiomify/blob/main/docs/packages/socket.io.md) for the
+See [docs/packages/socket.io.md](https://github.com/OTopman/axiomify/blob/main/docs/packages/socket.io.md) for the
 complete API, production checklist, and a chat-with-auth example.
 
 ## Limitations

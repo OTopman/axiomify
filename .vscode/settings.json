@@ -10,5 +10,6 @@
     "REUSEPORT",
     "simdjson",
     "taskset"
-  ]
+  ],
+  "typescript.tsdk": "node_modules/typescript/lib"
 }

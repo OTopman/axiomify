@@ -21,6 +21,16 @@
   "dependencies": {
     "@axiomify/core": "*"
   },
+  "keywords": [
+    "axiomify",
+    "security",
+    "xss",
+    "hpp",
+    "prototype-pollution",
+    "null-byte",
+    "bot-detection",
+    "sanitization"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",

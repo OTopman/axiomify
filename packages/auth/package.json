@@ -25,6 +25,16 @@
   "devDependencies": {
     "@types/jsonwebtoken": "9.0.10"
   },
+  "keywords": [
+    "axiomify",
+    "authentication",
+    "jwt",
+    "refresh-token",
+    "token-rotation",
+    "token-revocation",
+    "middleware",
+    "security"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",

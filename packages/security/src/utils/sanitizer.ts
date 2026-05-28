@@ -49,7 +49,7 @@ function sanitizeXss(value: string): string {
   //   Input:  <scrip<script>is removed</script>t>alert(1)</script>
   //   Pass 1: <script>alert(1)</script>   ← still dangerous
   //   Pass 2: alert(1)                    ← safe
-  s = replaceUntilStable(s, /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  s = replaceUntilStable(s, /<script\b[^<]*(?:(?!<\/script\s*[^>]*>)<[^<]*)*<\/script\s*[^>]*>/gi, '');
 
   // javascript: URI scheme — loop guards against:
   //   jajavascript:vascript: → javascript: (after one pass) → '' (after two)
@@ -72,6 +72,13 @@ function sanitizeXss(value: string): string {
   s = replaceUntilStable(s, /<\s*\/?\s*svg\b[^>]*>/gi, '');
 
   return s;
+}
+
+function isPlainObject(val: unknown): boolean {
+  if (typeof val !== 'object' || val === null) return false;
+  const proto = Object.getPrototypeOf(val);
+  if (proto === null) return true;
+  return proto.constructor === Object;
 }
 
 export function sanitizeInput(
@@ -101,6 +108,7 @@ export function sanitizeInput(
   }
 
   if (input && typeof input === 'object') {
+    if (!isPlainObject(input)) return input;
     const sanitized: Record<string, unknown> = Object.create(null);
     for (const [key, value] of Object.entries(input)) {
       if (options.prototypePollutionProtection && PROTOTYPE_KEYS.has(key))

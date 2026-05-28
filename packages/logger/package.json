@@ -24,6 +24,15 @@
     "maskify-ts": "^4.0.0",
     "reflect-metadata": "^0.2.0"
   },
+  "keywords": [
+    "axiomify",
+    "logging",
+    "structured-logging",
+    "request-logging",
+    "response-logging",
+    "pii-masking",
+    "observability"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",

@@ -169,9 +169,10 @@ export async function inspectRoutes(
     const rows = filtered.map((r) => {
       const method = colourMethod(r.method);
 
+      const highlightedPath = r.path.replace(/:[a-zA-Z0-9_]+/g, (match) => pc.yellow(match));
       const path = r.deprecated
-        ? pc.strikethrough(r.path) + ' ' + badge.deprecated()
-        : r.path;
+        ? pc.strikethrough(highlightedPath) + ' ' + badge.deprecated()
+        : highlightedPath;
 
       const validation =
         r.validation.length > 0

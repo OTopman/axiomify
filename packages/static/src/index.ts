@@ -180,7 +180,7 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
           const filename = path.basename(realPath);
           res.header(
             'Content-Disposition',
-            `attachment; filename="${filename.replace(/"/g, '\\"')}"`,
+            `attachment; filename="${filename.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`,
           );
           res.header('X-Content-Type-Options', 'nosniff');
         }

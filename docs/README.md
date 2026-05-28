@@ -30,7 +30,9 @@ It is organized in two layers:
 - [@axiomify/native](./packages/native.md) — HTTP + WebSocket adapter (uWebSockets.js)
 - [@axiomify/openapi](./packages/openapi.md)
 - [@axiomify/rate-limit](./packages/rate-limit.md)
+- [@axiomify/sdk-runtime](./packages/sdk-runtime.md) — fetch-based networking client runtime
 - [@axiomify/security](./packages/security.md)
 - [@axiomify/socket.io](./packages/socket.io.md) — Socket.IO 4.4+ bridge
 - [@axiomify/static](./packages/static.md)
 - [@axiomify/upload](./packages/upload.md)
+- [@axiomify/ws](./packages/ws.md) — native pub/sub rooms wrapper

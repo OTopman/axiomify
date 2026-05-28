@@ -45,7 +45,8 @@ export interface TokenStore {
 }
 
 export class MemoryTokenStore implements TokenStore {
-  private tokens = new Map<string, NodeJS.Timeout>();
+  private tokens = new Map<string, number>(); // jti -> expiresAt
+  private pruneTimer: NodeJS.Timeout;
 
   constructor() {
     if (process.env.NODE_ENV === 'production') {
@@ -56,32 +57,37 @@ export class MemoryTokenStore implements TokenStore {
         'Use a distributed store (e.g. Redis) for production.',
       );
     }
+    this.pruneTimer = setInterval(() => this.prune(), 60_000);
+    this.pruneTimer.unref?.();
+  }
+
+  private prune() {
+    const now = Date.now();
+    for (const [jti, expiresAt] of this.tokens.entries()) {
+      if (expiresAt <= now) this.tokens.delete(jti);
+    }
   }
 
   async save(jti: string, ttlSeconds: number): Promise<void> {
-    await this.revoke(jti);
-
-    // Node.js setTimeout max delay is 2,147,483,647ms (~24.9 days). Multiplying
-    // a 30-day TTL (2,592,000s) by 1000 overflows signed 32-bit int, causing
-    // the timer to fire immediately and delete the token the instant it is saved.
-    // We cap the delay at the Node maximum. For production, use Redis which
-    // handles arbitrary TTLs natively via PEXPIRE.
-    const MAX_TIMEOUT_MS = 2_147_483_647;
-    const delayMs = Math.min(ttlSeconds * 1000, MAX_TIMEOUT_MS);
-
-    const timer = setTimeout(() => this.tokens.delete(jti), delayMs);
-    timer.unref?.();
-    this.tokens.set(jti, timer);
+    this.tokens.set(jti, Date.now() + ttlSeconds * 1000);
   }
 
   async exists(jti: string): Promise<boolean> {
-    return this.tokens.has(jti);
+    const expiresAt = this.tokens.get(jti);
+    if (!expiresAt) return false;
+    if (expiresAt <= Date.now()) {
+      this.tokens.delete(jti);
+      return false;
+    }
+    return true;
   }
 
   async revoke(jti: string): Promise<void> {
-    const timer = this.tokens.get(jti);
-    if (timer) clearTimeout(timer);
     this.tokens.delete(jti);
+  }
+
+  close(): void {
+    clearInterval(this.pruneTimer);
   }
 }
 

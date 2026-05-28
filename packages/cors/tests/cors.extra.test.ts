@@ -185,13 +185,13 @@ describe('useCors — setVary and edge case origins', () => {
     );
   });
 
-  it('origin: true resolves to "*"', async () => {
+  it('origin: true dynamically reflects request origin', async () => {
     const app = new Axiomify();
     useCors(app, { origin: true });
     const req = makeReq({ headers: { origin: 'https://any.com' } });
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
-    expect(res.headers['Access-Control-Allow-Origin']).toBe('*');
+    expect(res.headers['Access-Control-Allow-Origin']).toBe('https://any.com');
   });
 
   it('origin: false sets no ACAO header', async () => {
@@ -201,6 +201,16 @@ describe('useCors — setVary and edge case origins', () => {
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
     expect(res.headers['Access-Control-Allow-Origin']).toBeUndefined();
+  });
+
+  it('origin: true combined with credentials: true sets dynamic origin and credentials header', async () => {
+    const app = new Axiomify();
+    useCors(app, { origin: true, credentials: true });
+    const req = makeReq({ headers: { origin: 'https://any.com' } });
+    const res = makeRes();
+    for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
+    expect(res.headers['Access-Control-Allow-Origin']).toBe('https://any.com');
+    expect(res.headers['Access-Control-Allow-Credentials']).toBe('true');
   });
 
   it('Vary header accumulates across multiple hooks', async () => {

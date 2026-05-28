@@ -25,16 +25,25 @@ export const DEFAULT_BLOCKED_UA_PATTERNS = [
   /zgrab/i,
 ];
 
-export function hasPatternMatch(input: unknown, patterns: RegExp[]): boolean {
+function isPlainObject(val: unknown): boolean {
+  if (typeof val !== 'object' || val === null) return false;
+  const proto = Object.getPrototypeOf(val);
+  if (proto === null) return true;
+  return proto.constructor === Object;
+}
+
+export function hasPatternMatch(input: unknown, patterns: RegExp[], depth = 0): boolean {
+  if (depth > 64) return false;
   if (typeof input === 'string')
     return patterns.some((pattern) => pattern.test(input));
   if (Array.isArray(input))
-    return input.some((value) => hasPatternMatch(value, patterns));
+    return input.some((value) => hasPatternMatch(value, patterns, depth + 1));
   if (input && typeof input === 'object') {
+    if (!isPlainObject(input)) return false;
     return Object.entries(input).some(
       ([key, value]) =>
         patterns.some((pattern) => pattern.test(key)) ||
-        hasPatternMatch(value, patterns),
+        hasPatternMatch(value, patterns, depth + 1),
     );
   }
   return false;

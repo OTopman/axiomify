@@ -19,18 +19,17 @@ import pc from 'picocolors';
  * intuition from those tools.
  */
 export function colourMethod(method: string): string {
-  const m = method.toUpperCase();
-  const padded = m.padEnd(7); // longest is 'OPTIONS' = 7
+  const m = method.toUpperCase().trim();
   switch (m) {
-    case 'GET':     return pc.bold(pc.green(padded));
-    case 'POST':    return pc.bold(pc.blue(padded));
-    case 'PUT':     return pc.bold(pc.yellow(padded));
-    case 'PATCH':   return pc.bold(pc.magenta(padded));
-    case 'DELETE':  return pc.bold(pc.red(padded));
-    case 'HEAD':    return pc.dim(padded);
-    case 'OPTIONS': return pc.dim(padded);
-    case 'WS':      return pc.bold(pc.cyan(padded));
-    default:        return padded;
+    case 'GET':     return pc.bgGreen(pc.black(pc.bold(' GET ')));
+    case 'POST':    return pc.bgBlue(pc.white(pc.bold(' POST ')));
+    case 'PUT':     return pc.bgYellow(pc.black(pc.bold(' PUT ')));
+    case 'PATCH':   return pc.bgMagenta(pc.white(pc.bold(' PATCH ')));
+    case 'DELETE':  return pc.bgRed(pc.white(pc.bold(' DELETE ')));
+    case 'WS':      return pc.bgCyan(pc.black(pc.bold(' WS ')));
+    case 'HEAD':    return pc.bgWhite(pc.black(pc.bold(' HEAD ')));
+    case 'OPTIONS': return pc.bgWhite(pc.black(pc.bold(' OPTIONS ')));
+    default:        return pc.bgWhite(pc.black(` ${m} `));
   }
 }
 
@@ -40,7 +39,15 @@ export function colourMethod(method: string): string {
 
 export const badge = {
   validation(label: string): string {
-    return pc.cyan(label);
+    switch (label) {
+      case 'Body':     return pc.magenta(label);
+      case 'Query':    return pc.green(label);
+      case 'Params':   return pc.yellow(label);
+      case 'Response': return pc.cyan(label);
+      case 'Files':    return pc.blue(label);
+      case 'Message':  return pc.magenta(label);
+      default:         return pc.cyan(label);
+    }
   },
   deprecated(): string {
     return pc.bold(pc.red('⊘ DEPRECATED'));
@@ -113,11 +120,9 @@ export function renderTable(
     return w;
   });
 
-  // Total width = widths + separators (` │ `) + outer borders (`│ ` + ` │`).
-  // If it exceeds the terminal, shrink columns proportionally — but only
-  // those that don't have an explicit minWidth.
-  const overheadPerSep = 3; // " │ "
-  const overhead = (columns.length + 1) * 2 + overheadPerSep * (columns.length - 1);
+  // Total width = widths + separators (`    `)
+  const overheadPerSep = 4; // "    "
+  const overhead = overheadPerSep * (columns.length - 1);
   let total = widths.reduce((a, b) => a + b, 0) + overhead;
   if (total > terminalWidth) {
     const flexIdx = columns
@@ -137,33 +142,34 @@ export function renderTable(
     }
   }
 
-  const bar = (l: string, m: string, r: string) =>
-    l + widths.map((w) => '─'.repeat(w + 2)).join(m) + r;
-
   const lines: string[] = [];
-  lines.push(pc.dim(bar('┌', '┬', '┐')));
+
+  // Header row
   lines.push(
-    pc.dim('│ ') +
-      columns
-        .map((c, i) => pc.bold(pad(c.header, widths[i], c.align ?? 'left')))
-        .join(pc.dim(' │ ')) +
-      pc.dim(' │'),
+    columns
+      .map((c, i) => pc.bold(pc.gray(pad(c.header, widths[i], c.align ?? 'left'))))
+      .join('    ')
   );
-  lines.push(pc.dim(bar('├', '┼', '┤')));
+
+  // Divider line
+  const dividerLine = pc.dim('─'.repeat(total));
+  lines.push(dividerLine);
+
+  // Rows
   for (const row of rows) {
     lines.push(
-      pc.dim('│ ') +
-        columns
-          .map((c, i) => {
-            const cell = row[i] ?? '';
-            const truncated = c.maxWidth ? truncate(cell, widths[i]) : cell;
-            return pad(truncated, widths[i], c.align ?? 'left');
-          })
-          .join(pc.dim(' │ ')) +
-        pc.dim(' │'),
+      columns
+        .map((c, i) => {
+          const cell = row[i] ?? '';
+          const truncated = c.maxWidth ? truncate(cell, widths[i]) : cell;
+          return pad(truncated, widths[i], c.align ?? 'left');
+        })
+        .join('    ')
     );
   }
-  lines.push(pc.dim(bar('└', '┴', '┘')));
+
+  // Footer divider
+  lines.push(dividerLine);
   return lines.join('\n');
 }
 

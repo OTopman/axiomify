@@ -2,8 +2,13 @@ import { ChildProcess, spawn } from 'child_process';
 import * as esbuild from 'esbuild';
 import path from 'path';
 import { getUserExternals } from '../utils/externals';
+import { generateSdk } from './sdk/generate';
 
-export async function devServer(entry: string): Promise<void> {
+export interface DevOptions {
+  watchSdk?: string[];
+}
+
+export async function devServer(entry: string, options: DevOptions = {}): Promise<void> {
   const entryPath = path.resolve(process.cwd(), entry);
   const outPath = path.resolve(process.cwd(), '.axiomify/dev.js');
 
@@ -64,6 +69,20 @@ export async function devServer(entry: string): Promise<void> {
     setup(build) {
       build.onEnd((result) => {
         if (result.errors.length === 0) {
+          if (options.watchSdk && options.watchSdk.length > 0) {
+            console.log('\n🔄 Automatically regenerating SDKs...');
+            // Fire-and-forget generation using the original entry path.
+            // exitOnError: false ensures a schema syntax error doesn't kill the dev server.
+            generateSdk({
+              input: entryPath,
+              target: options.watchSdk,
+              output: 'generated-sdks',
+              exitOnError: false
+            }).catch(e => {
+              console.error('❌ SDK Generation threw an unexpected error:', e);
+            });
+          }
+
           if (firstBuild) {
             firstBuild = false;
             restartServer();

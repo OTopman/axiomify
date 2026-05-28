@@ -24,6 +24,18 @@
   "devDependencies": {
     "zod": "^4.0.0"
   },
+  "keywords": [
+    "axiomify",
+    "framework",
+    "web-framework",
+    "router",
+    "radix-router",
+    "zod",
+    "validation",
+    "ajv",
+    "plugin-system",
+    "typescript"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",

@@ -30,12 +30,24 @@
     }
   },
   "optionalDependencies": {
-    "simdjson": "^0.9.2"
+    "simdjson": "^0.9.2",
+    "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#v20.67.0"
   },
   "devDependencies": {
     "ws": "^8.21.0",
     "@types/ws": "^8.5.13"
   },
+  "keywords": [
+    "axiomify",
+    "uwebsockets",
+    "uws",
+    "http-server",
+    "websocket",
+    "sse",
+    "native-adapter",
+    "high-performance",
+    "nodejs"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",

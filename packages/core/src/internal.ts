@@ -27,13 +27,21 @@ export type AdapterLockToken = typeof ADAPTER_LOCK_TOKEN;
  * output that observability stacks can index on.
  */
 export interface AxiomifyLogger {
+  trace?(message: string, meta?: Record<string, unknown>): void;
+  debug?(message: string, meta?: Record<string, unknown>): void;
+  info?(message: string, meta?: Record<string, unknown>): void;
   warn(message: string, meta?: Record<string, unknown>): void;
   error(message: string, meta?: Record<string, unknown>): void;
+  fatal?(message: string, meta?: Record<string, unknown>): void;
 }
 
 export const defaultLogger: AxiomifyLogger = {
+  trace: (msg, meta) => console.debug(msg, meta ?? ''),
+  debug: (msg, meta) => console.debug(msg, meta ?? ''),
+  info: (msg, meta) => console.log(msg, meta ?? ''),
   warn: (msg, meta) => console.warn(msg, meta ?? ''),
   error: (msg, meta) => console.error(msg, meta ?? ''),
+  fatal: (msg, meta) => console.error(msg, meta ?? ''),
 };
 
 // Legacy re-export — preserved so external code importing CompiledRouteDefinition

@@ -1,5 +1,4 @@
-
-import { describe, it, expect, vi, afterAll, beforeAll } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 
 let uwsSupported = false;
@@ -95,5 +94,25 @@ describe.skipIf(!uwsSupported)('NativeAdapter - WebSockets', () => {
 
       ws.on('error', reject);
     });
+  });
+
+  it('registers custom WebSocket options correctly on the app', async () => {
+    const { Axiomify } = await import('@axiomify/core');
+    const localApp = new Axiomify();
+    localApp.ws({
+      path: '/custom-opts',
+      compression: 1,
+      maxPayloadLength: 1024,
+      idleTimeout: 30,
+      open: () => {},
+    });
+
+    const route = localApp.registeredWsRoutes.find(
+      (r: any) => r.path === '/custom-opts',
+    );
+    expect(route).toBeDefined();
+    expect(route.compression).toBe(1);
+    expect(route.maxPayloadLength).toBe(1024);
+    expect(route.idleTimeout).toBe(30);
   });
 });
