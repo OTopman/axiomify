@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/sdk-runtime",
-  "version": "6.0.0-rc.3",
+  "version": "6.0.0",
   "description": "Runtime library for Axiomify-generated TypeScript SDKs — HTTP client, auth injection, retry engine, interceptors, caching, typed errors.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,6 +19,18 @@
     "build": "tsup"
   },
   "dependencies": {},
+  "keywords": [
+    "axiomify",
+    "sdk",
+    "runtime",
+    "http-client",
+    "fetch",
+    "retry-engine",
+    "interceptors",
+    "circuit-breaker",
+    "offline-queue",
+    "typescript"
+  ],
   "author": {
     "name": "Topman",
     "email": "okunlolatopman14@gmail.com",

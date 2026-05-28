@@ -4,7 +4,7 @@
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
- 
+
 **Schema-first. Uncompromising Performance. Production-ready.**
 
 Axiomify is an ultra high-performance Node.js framework built exclusively on `uWebSockets.js` that uses Zod schemas as a single source of truth for validation, TypeScript types, and OpenAPI documentation. It is engineered from the ground up for zero-overhead routing, strict security, and raw throughput.
@@ -22,40 +22,45 @@ Axiomify is an ultra high-performance Node.js framework built exclusively on `uW
 
 ## Package ecosystem
 
-
-
-| Package | Description |
-|---|---|
-| [`@axiomify/core`](packages/core/) | Router, AJV validation, hook manager, dispatcher, module system |
-| [`@axiomify/cli`](packages/cli/) | `init` · `dev` · `build` · `routes` · `openapi` · `check` · `doctor` |
+| Package                            | Description                                                          |
+| ---------------------------------- | -------------------------------------------------------------------- |
+| [`@axiomify/core`](packages/core/) | Router, AJV validation, hook manager, dispatcher, module system      |
+| [`@axiomify/cli`](packages/cli/)   | `init` · `dev` · `build` · `routes` · `openapi` · `check` · `doctor` |
 
 ### Security
 
-| Package | Description |
-|---|---|
-| [`@axiomify/auth`](packages/auth/) | JWT + refresh rotation + access token revocation via `TokenStore` (`MemoryTokenStore` shipped; Redis/DB stores BYO via the `TokenStore` interface) |
-| [`@axiomify/cors`](packages/cors/) | CORS with strict preflight, `Vary` management, startup validation |
-| [`@axiomify/helmet`](packages/helmet/) | 15 security headers (CSP, HSTS, COEP, COOP, CORP, …) |
-| [`@axiomify/rate-limit`](packages/rate-limit/) | Sliding-window rate limiting + EVALSHA caching + ioredis/redis@4 |
-| [`@axiomify/security`](packages/security/) | XSS sanitisation, HPP normalisation, prototype-pollution + null-byte filtering, bot UA detection; opt-in narrow Mongo-operator detector |
-| [`@axiomify/fingerprint`](packages/fingerprint/) | Server-side request fingerprinting with confidence scoring |
+| Package                                          | Description                                                                                                                                        |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@axiomify/auth`](packages/auth/)               | JWT + refresh rotation + access token revocation via `TokenStore` (`MemoryTokenStore` shipped; Redis/DB stores BYO via the `TokenStore` interface) |
+| [`@axiomify/cors`](packages/cors/)               | CORS with strict preflight, `Vary` management, startup validation                                                                                  |
+| [`@axiomify/helmet`](packages/helmet/)           | 15 security headers (CSP, HSTS, COEP, COOP, CORP, …)                                                                                               |
+| [`@axiomify/rate-limit`](packages/rate-limit/)   | Sliding-window rate limiting + EVALSHA caching + ioredis/redis@4                                                                                   |
+| [`@axiomify/security`](packages/security/)       | XSS sanitisation, HPP normalisation, prototype-pollution + null-byte filtering, bot UA detection; opt-in narrow Mongo-operator detector            |
+| [`@axiomify/fingerprint`](packages/fingerprint/) | Server-side request fingerprinting with confidence scoring                                                                                         |
 
 ### Content & I/O
 
-| Package | Description |
-|---|---|
-| [`@axiomify/upload`](packages/upload/) | RAM-safe multipart streaming via Busboy + auto cleanup on error |
-| [`@axiomify/static`](packages/static/) | Static file serving — 36 MIME types, ETag, SPA index fallback |
-| [`@axiomify/graphql`](packages/graphql/) | GraphQL endpoint + GraphiQL 3 + depth/alias limits |
+| Package                                      | Description                                                                                 |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| [`@axiomify/upload`](packages/upload/)       | RAM-safe multipart streaming via Busboy + auto cleanup on error                             |
+| [`@axiomify/static`](packages/static/)       | Static file serving — 36 MIME types, ETag, SPA index fallback                               |
+| [`@axiomify/graphql`](packages/graphql/)     | GraphQL endpoint + GraphiQL 3 + depth/alias limits                                          |
 | [`@axiomify/socket.io`](packages/socket.io/) | Socket.IO 4.4+ bridge — attaches to the same uWS server as HTTP, so one process serves both |
+| [`@axiomify/ws`](packages/ws/)               | Native pub/sub rooms wrapper leveraging kernel-level WebSocket broadcasting                 |
 
 ### Observability
 
-| Package | Description |
-|---|---|
-| [`@axiomify/openapi`](packages/openapi/) | OpenAPI 3.0 from Zod schemas — Zod v4 native via `z.toJSONSchema()` |
-| [`@axiomify/logger`](packages/logger/) | Structured logging with recursive PII masking |
+| Package                                  | Description                                                           |
+| ---------------------------------------- | --------------------------------------------------------------------- |
+| [`@axiomify/openapi`](packages/openapi/) | OpenAPI 3.0 from Zod schemas — Zod v4 native via `z.toJSONSchema()`   |
+| [`@axiomify/logger`](packages/logger/)   | Structured logging with recursive PII masking                         |
 | [`@axiomify/metrics`](packages/metrics/) | Prometheus metrics — bounded cardinality, WebSocket stats integration |
+
+### Clients & SDK
+
+| Package                                          | Description                                                                     |
+| ------------------------------------------------ | ------------------------------------------------------------------------------- |
+| [`@axiomify/sdk-runtime`](packages/sdk-runtime/) | Zero-dependency fetch-based networking runtime for generated TypeScript clients |
 
 ---
 
@@ -95,10 +100,12 @@ app.ws({
   message: (client, data) => {
     // data is typed and validated — { text: string }
     client.send({ reply: `Echo: ${data.text}` });
-  }
+  },
 });
 
-new NativeAdapter(app, { port: 3000 }).listen(() => console.log('Ready on :3000'));
+new NativeAdapter(app, { port: 3000 }).listen(() =>
+  console.log('Ready on :3000'),
+);
 ```
 
 ---
@@ -114,8 +121,8 @@ const adapter = new NativeAdapter(app, { port: 3000 });
 
 adapter.listenClustered({
   onWorkerReady: () => console.log(`[${process.pid}] ready`),
-  onPrimary:     (pids) => console.log('Workers:', pids),
-  onWorkerExit:  (pid, code) => console.error(`Worker ${pid} exited (${code})`),
+  onPrimary: (pids) => console.log('Workers:', pids),
+  onWorkerExit: (pid, code) => console.error(`Worker ${pid} exited (${code})`),
   gracefulTimeoutMs: 10_000,
 });
 ```
@@ -130,7 +137,9 @@ app.route({
   path: '/orders',
   schema: {
     body: z.object({
-      items: z.array(z.object({ sku: z.string(), qty: z.number().int().positive() })),
+      items: z.array(
+        z.object({ sku: z.string(), qty: z.number().int().positive() }),
+      ),
       coupon: z.string().optional(),
     }),
     query: z.object({ dryRun: z.coerce.boolean().default(false) }),
@@ -151,7 +160,11 @@ app.route({
 ## Authentication with token revocation
 
 ```typescript
-import { createAuthPlugin, createRefreshHandler, MemoryTokenStore } from '@axiomify/auth';
+import {
+  createAuthPlugin,
+  createRefreshHandler,
+  MemoryTokenStore,
+} from '@axiomify/auth';
 
 // `MemoryTokenStore` is per-process. For multi-process or multi-host
 // deployments, implement the `TokenStore` interface against Redis / DB /
@@ -173,7 +186,8 @@ const refresh = createRefreshHandler({
 
 app.route({ method: 'POST', path: '/auth/refresh', handler: refresh });
 app.route({
-  method: 'GET', path: '/me',
+  method: 'GET',
+  path: '/me',
   plugins: [requireAuth],
   handler: async (req, res) => res.send(req.state.user),
 });
@@ -207,7 +221,7 @@ Axiomify Native integrates `uWebSockets.js` directly into the core router. You c
 app.ws({
   path: '/chat',
   schema: {
-    message: z.object({ text: z.string() })
+    message: z.object({ text: z.string() }),
   },
   plugins: [requireAuth],
   open: (client, req) => {
@@ -219,7 +233,7 @@ app.ws({
   },
   close: (client, code, reason) => {
     console.log(`Connection closed: ${code} - ${reason}`);
-  }
+  },
 });
 ```
 
@@ -234,7 +248,9 @@ useOpenAPI(app, {
   info: { title: 'My API', version: '1.0.0' },
   prefix: '/docs',
   components: {
-    securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
+    securitySchemes: {
+      bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+    },
   },
 });
 // Swagger UI at /docs, spec at /docs/openapi.json
@@ -247,17 +263,31 @@ Uses `z.toJSONSchema()` (Zod v4 built-in, emits JSON Schema 2020-12). No third-p
 ## Hooks
 
 ```typescript
-app.addHook('onRequest',    (req, res) => { /* before routing */ });
-app.addHook('onPreHandler', (req, res, match) => { /* after routing */ });
-app.addHook('onPostHandler',(req, res, match) => { /* after handler */ });
-app.addHook('onError',      (err, req, res) => { /* handler threw */ });
-app.addHook('onClose',      (req, res) => { /* always last */ });
+app.addHook('onRequest', (req, res) => {
+  /* before routing */
+});
+app.addHook('onPreHandler', (req, res, match) => {
+  /* after routing */
+});
+app.addHook('onPostHandler', (req, res, match) => {
+  /* after handler */
+});
+app.addHook('onError', (err, req, res) => {
+  /* handler threw */
+});
+app.addHook('onClose', (req, res) => {
+  /* always last */
+});
 
 // Route groups with shared plugins
 app.group('/api/v1', { plugins: [requireAuth] }, (v1) => {
   v1.route({ method: 'GET', path: '/me', handler: getMeHandler });
   v1.group('/admin', { plugins: [requireAdmin] }, (admin) => {
-    admin.route({ method: 'DELETE', path: '/users/:id', handler: deleteUserHandler });
+    admin.route({
+      method: 'DELETE',
+      path: '/users/:id',
+      handler: deleteUserHandler,
+    });
   });
 });
 ```
@@ -272,7 +302,7 @@ import { MemoryTokenStore, type TokenStore } from '@axiomify/auth';
 // Modules with topological dependency resolution
 app.use({
   name: 'auth',
-  dependencies: ['cors'],   // cors is registered before auth, regardless of call order
+  dependencies: ['cors'], // cors is registered before auth, regardless of call order
   register: (app, ctx) => {
     // MemoryTokenStore for single-process; supply your own TokenStore impl
     // backed by Redis / DB / etc. for multi-process or multi-host deployments.
@@ -318,11 +348,11 @@ Flags: `--json` (machine-readable), `--method GET,POST,WS`, `--filter "/api/v1/*
 In CI:
 
 ```yaml
-- run: npx axiomify doctor                                              # env sanity
-- run: npx axiomify check                                               # readiness gate (exit 1 on fail)
+- run: npx axiomify doctor # env sanity
+- run: npx axiomify check # readiness gate (exit 1 on fail)
 - run: npx axiomify build
 - run: npx axiomify openapi -o openapi.json --spec-version "$GITHUB_SHA"
-- run: npx axiomify routes --json > routes.json                          # API surface snapshot
+- run: npx axiomify routes --json > routes.json # API surface snapshot
 ```
 
 Full reference: [docs/[./packages/cli.md](./packages/cli.md)](docs/packages/cli.md).
@@ -333,19 +363,19 @@ Full reference: [docs/[./packages/cli.md](./packages/cli.md)](docs/packages/cli.
 
 ### Single process
 
-| Server | Req/s | Avg lat | p99 |
-|---|---:|---:|---:|
-| Node.js http (bare) | 43,765 | 22 ms | 54 ms |
-| Fastify 5 (bare) | 41,779 | 23 ms | 53 ms |
+| Server                                             |      Req/s |   Avg lat |       p99 |
+| -------------------------------------------------- | ---------: | --------: | --------: |
+| Node.js http (bare)                                |     43,765 |     22 ms |     54 ms |
+| Fastify 5 (bare)                                   |     41,779 |     23 ms |     53 ms |
 | **Axiomify Native — GET /users/:id/posts/:postId** | **83,947** | **11 ms** | **20 ms** |
-| **Axiomify Native — GET /ping** | **73,511** | **13 ms** | **26 ms** |
-| **Axiomify Native — POST /echo** | **54,720** | **18 ms** | **30 ms** |
+| **Axiomify Native — GET /ping**                    | **73,511** | **13 ms** | **26 ms** |
+| **Axiomify Native — POST /echo**                   | **54,720** | **18 ms** | **30 ms** |
 
 ### Clustered (8-core, co-located loadgen)
 
-| Adapter | 1 worker | 2 workers | Scaling |
-|---|---:|---:|---:|
-| Native (uWS) | 85,000 | 91,300 | 107%† |
+| Adapter      | 1 worker | 2 workers | Scaling |
+| ------------ | -------: | --------: | ------: |
+| Native (uWS) |   85,000 |    91,300 |   107%† |
 
 † Native is autocannon-limited at ~90k req/s co-located. Dedicated loadgen gives near-linear scaling.
 
@@ -385,32 +415,32 @@ See [CHANGELOG.md](CHANGELOG.md) for the full list of breaking changes.
 
 Quick reference:
 
-| v5.0.0 (production) | v6.0.0 |
-|---|---|
-| `meta: { tags, summary, description, security }` on routes | Fields moved directly into `schema:` — see [migration guide](docs/migration-v5-to-v6.md) |
-| `@axiomify/express`, `fastify`, `hapi`, `http`, `ws` adapters | Removed — use `@axiomify/native` only |
-| `RouteMeta` type | Removed — fields are part of `RouteSchema` |
-| `useOpenAPI({ routePrefix })` | `useOpenAPI({ prefix })` — `routePrefix` removed |
-| `useSecurity({ sqlInjectionProtection })` | Removed — use parameterised queries |
-| `res.error(err)` | `res.status(code).send(null, msg)` |
-| `SerializerFn(data, msg, code, isErr, req)` 5-arg form | Throws at adapter construction — use `SerializerFn({ data, msg, ... })` |
-| `AppPlugin` type alias | `AppConfigurator` |
-| **v4.x → v5.0.0** | |
-| `new Axiomify()` injects X-Request-Id automatically | Opt in with `app.enableRequestId()` |
-| `app.lockRoutes(reason)` | `app.lockRoutes(ADAPTER_LOCK_TOKEN, reason)` |
-| Node.js cluster round-robin | SO_REUSEPORT via `listenClustered()` |
+| v5.0.0 (production)                                           | v6.0.0                                                                                   |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `meta: { tags, summary, description, security }` on routes    | Fields moved directly into `schema:` — see [migration guide](docs/migration-v5-to-v6.md) |
+| `@axiomify/express`, `fastify`, `hapi`, `http`, `ws` adapters | Removed — use `@axiomify/native` only                                                    |
+| `RouteMeta` type                                              | Removed — fields are part of `RouteSchema`                                               |
+| `useOpenAPI({ routePrefix })`                                 | `useOpenAPI({ prefix })` — `routePrefix` removed                                         |
+| `useSecurity({ sqlInjectionProtection })`                     | Removed — use parameterised queries                                                      |
+| `res.error(err)`                                              | `res.status(code).send(null, msg)`                                                       |
+| `SerializerFn(data, msg, code, isErr, req)` 5-arg form        | Throws at adapter construction — use `SerializerFn({ data, msg, ... })`                  |
+| `AppPlugin` type alias                                        | `AppConfigurator`                                                                        |
+| **v4.x → v5.0.0**                                             |                                                                                          |
+| `new Axiomify()` injects X-Request-Id automatically           | Opt in with `app.enableRequestId()`                                                      |
+| `app.lockRoutes(reason)`                                      | `app.lockRoutes(ADAPTER_LOCK_TOKEN, reason)`                                             |
+| Node.js cluster round-robin                                   | SO_REUSEPORT via `listenClustered()`                                                     |
 
 ---
 
 ## Documentation
 
-| | |
-|---|---|
-| [Getting started](docs/getting-started.md) | Install, first route, first adapter |
-| [Core concepts](docs/core-concepts.md) | Routing, validation, hooks, serialiser |
-| [Plugins & hooks](docs/plugins-and-hooks.md) | Writing plugins, hook execution order |
-| [Production checklist](docs/production-checklist.md) | Security, clustering, health checks |
-| [Examples](examples/) | Runnable servers showing the full ecosystem |
+|                                                      |                                             |
+| ---------------------------------------------------- | ------------------------------------------- |
+| [Getting started](docs/getting-started.md)           | Install, first route, first adapter         |
+| [Core concepts](docs/core-concepts.md)               | Routing, validation, hooks, serialiser      |
+| [Plugins & hooks](docs/plugins-and-hooks.md)         | Writing plugins, hook execution order       |
+| [Production checklist](docs/production-checklist.md) | Security, clustering, health checks         |
+| [Examples](examples/)                                | Runnable servers showing the full ecosystem |
 
 ### Package docs
 

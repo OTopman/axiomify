@@ -1,6 +1,39 @@
 # Changelog
 
-## [6.0.0] — staged on `develop`, unreleased
+## [6.1.0]
+
+### ✨ New features
+
+#### `@axiomify/ws` — Native pub/sub rooms package
+
+- Wraps native uWebSockets.js topic pub/sub in a clean `RoomManager` and `Room` API.
+- Broadcasts to channels in $O(1)$ kernel-space via client `_wsClient.publish()`.
+- Supports schema-less endpoints by parsing raw Buffer/string payloads inside `_processAction`.
+
+#### Enterprise Type-Safe SDK Generation Platform
+
+- **`axiomify sdk generate`**: Generate fully-typed multi-language SDKs (`TypeScript`, `Python`, `Go`, `Swift`, `Kotlin`, `Dart`) from your backend, OpenAPI specs, or GraphQL schemas using the `TypeGraph` AST compiler.
+- **`axiomify sdk diff` / `validate`**: Compare schemas in CI/CD pipelines to prevent breaking API changes, and perform strict syntactic/semantic validation.
+- **Live Watch Mode**: Automatically regenerate SDKs on the fly during development using `axiomify dev --watch-sdk <langs...>`.
+- **`@axiomify/sdk-runtime`**: Zero-dependency fetch-based runtime supporting client-side retries, interceptors, circuit breakers, caching, and offline queueing.
+
+### 🔒 Correctness, performance & security fixes
+
+- **WS Room Presence:** Added a membership check to the Room presence endpoint to prevent unauthorized information leakage of channel participants.
+- **Core/Native:** Properly propagated WebSocket configuration settings (`compression`, `maxPayloadLength`, and `idleTimeout`) directly to the uWebSockets.js C++ layer.
+- **Core/Security:** Integrated an `isPlainObject` validator to prevent object sanitizers from corrupting/mutating `Date` and `Buffer` instances.
+- **Auth:** Optimized the `MemoryTokenStore` to prune expired tokens using a single process-wide `setInterval` loop instead of thousands of individual `setTimeout` timers.
+- **CORS:** Safely resolved the `credentials: true` and `origin: true` combination by reflecting the request origin dynamically.
+- **Security:** Guarded the NoSQL operator regex detector from Stack Overflow DoS using a recursion depth limit (max 64) and plain object filtering.
+- **Native:** Restored `uWebSockets.js` in `optionalDependencies` of `@axiomify/native` to prevent downstream dependency resolution issues.
+
+### Tests
+
+625 passing across 58 files · Coverage: 97.49% lines / 98.48% functions on gated packages.
+
+---
+
+## [6.0.0]
 
 > **Upgrading from v5?** See [docs/migration-v5-to-v6.md](docs/migration-v5-to-v6.md)
 > and run `npx axiomify migrate` to apply renames automatically.
@@ -9,13 +42,13 @@
 
 #### Adapters removed — `@axiomify/native` is the only adapter
 
-| Removed | Replacement |
-|---|---|
-| `@axiomify/express` | `@axiomify/native` |
-| `@axiomify/fastify` | `@axiomify/native` |
-| `@axiomify/hapi` | `@axiomify/native` |
-| `@axiomify/http` | `@axiomify/native` |
-| `@axiomify/ws` | `app.ws()` built into `@axiomify/native` |
+| Removed             | Replacement                              |
+| ------------------- | ---------------------------------------- |
+| `@axiomify/express` | `@axiomify/native`                       |
+| `@axiomify/fastify` | `@axiomify/native`                       |
+| `@axiomify/hapi`    | `@axiomify/native`                       |
+| `@axiomify/http`    | `@axiomify/native`                       |
+| `@axiomify/ws`      | `app.ws()` built into `@axiomify/native` |
 
 #### `route.meta` removed — metadata merged into `schema`
 
@@ -25,10 +58,22 @@ v6 expands coverage to the full OAS 3.1.0 Operation Object (11 fields total).
 
 ```ts
 // v5.0.0
-app.route({ schema: { body: CreateUserSchema }, meta: { tags: ['Users'], summary: 'Create user' }, handler });
+app.route({
+  schema: { body: CreateUserSchema },
+  meta: { tags: ['Users'], summary: 'Create user' },
+  handler,
+});
 
 // v6.0.0
-app.route({ schema: { body: CreateUserSchema, tags: ['Users'], summary: 'Create user', operationId: 'createUser' }, handler });
+app.route({
+  schema: {
+    body: CreateUserSchema,
+    tags: ['Users'],
+    summary: 'Create user',
+    operationId: 'createUser',
+  },
+  handler,
+});
 ```
 
 #### `RouteMeta` type removed — use `RouteSchema` or drop the annotation
@@ -61,7 +106,9 @@ Exports `DEFAULT_SQL_PATTERNS` and `detectSqlInjection` also removed.
 
 ```ts
 import { attachSocketIO, adaptAxiomifyPlugin } from '@axiomify/socket.io';
-const io = await attachSocketIO(adapter, { cors: { origin: 'https://app.example.com' } });
+const io = await attachSocketIO(adapter, {
+  cors: { origin: 'https://app.example.com' },
+});
 io.use(adaptAxiomifyPlugin(requireAuth));
 io.on('connection', (socket) => socket.emit('welcome', {}));
 ```
@@ -89,7 +136,6 @@ rc.1–rc.3 were version alignment bumps from partial npm publish failures.
 rc.3 adds `repository`, `homepage`, `bugs`, `license`, `author`, per-package
 descriptions, and absolute URLs in package READMEs for npmjs.com rendering.
 
-
 ## [6.0.0-rc.*]
 
 Audit-remediation release. Closes every §16 hard-blocker from the
@@ -106,7 +152,7 @@ soak under hostile traffic before promoting to `5.0.0` stable.
 
 ### ⚠️ Breaking changes (beyond the 5.0.0 baseline below)
 
-These two land in 5.0.0 — *not* a future v6 — because the deprecation
+These two land in 5.0.0 — _not_ a future v6 — because the deprecation
 warnings have been live through 4.x and the rc cycle gives us a window
 to remove them cleanly. Both are mechanical migrations.
 
@@ -115,25 +161,38 @@ to remove them cleanly. Both are mechanical migrations.
   was deprecated through 4.x with a runtime warning. `makeSerialize()`
   now THROWS at adapter-construction time with a migration message if it
   detects `fn.length > 1`. Migrate:
+
   ```ts
   // 4.x (removed in 5.0):
-  app.setSerializer((data, message, statusCode, isError, req) => ({ data, ok: !isError }));
+  app.setSerializer((data, message, statusCode, isError, req) => ({
+    data,
+    ok: !isError,
+  }));
 
   // 5.0+:
-  app.setSerializer(({ data, message, statusCode, isError, req }) => ({ data, ok: !isError }));
+  app.setSerializer(({ data, message, statusCode, isError, req }) => ({
+    data,
+    ok: !isError,
+  }));
   ```
+
 - **`AppPlugin` type alias removed.** The deprecated 1-arg plugin shape
   is gone from `@axiomify/core`. The runtime still accepts 1-arg
   configurators (JS drops the extra positional silently) — only the
   named type alias is removed. Code using
   `(app) => { ... }` continues to work; only explicit type annotations
   like `const plugin: AppPlugin = ...` need updating to `AppConfigurator`:
+
   ```ts
   // 4.x (removed in 5.0):
-  const myPlugin: AppPlugin = (app) => { /* ... */ };
+  const myPlugin: AppPlugin = (app) => {
+    /* ... */
+  };
 
   // 5.0+:
-  const myPlugin: AppConfigurator = (app) => { /* ... */ };
+  const myPlugin: AppConfigurator = (app) => {
+    /* ... */
+  };
   // …or just drop the annotation entirely; 1-arg fns are inferred.
   ```
 
@@ -152,10 +211,20 @@ to remove them cleanly. Both are mechanical migrations.
 
   ```ts
   // 4.x
-  app.route({ method: 'GET', path: '/u/:id', meta: { tags: ['U'], operationId: 'getU' }, handler });
+  app.route({
+    method: 'GET',
+    path: '/u/:id',
+    meta: { tags: ['U'], operationId: 'getU' },
+    handler,
+  });
 
   // 5.0+
-  app.route({ method: 'GET', path: '/u/:id', openapi: { tags: ['U'], operationId: 'getU' }, handler });
+  app.route({
+    method: 'GET',
+    path: '/u/:id',
+    openapi: { tags: ['U'], operationId: 'getU' },
+    handler,
+  });
   ```
 
 ### 📘 OpenAPI — 100% Operation Object coverage
@@ -177,6 +246,7 @@ async callback contracts):
   Passed through verbatim; authors supply the OAS Callback Object shape.
 
 Plus two Axiomify-specific helpers for the schema-derived sections:
+
 - **`requestBodyDescription`** — overrides the auto-generated requestBody
   description.
 - **`responseDescriptions`** — `Record<status, description>` map that
@@ -202,7 +272,7 @@ the route OUT of global security) is unambiguous in the source.
   per RFC 7518 §3.2. Apps with under-strength secrets that previously passed will
   now warn (dev) or throw (production).
 - **`@axiomify/auth`**: refresh-token rotation re-ordered. The old shape revoked
-  the previous `jti` *before* signing and saving the new one — a transient Redis
+  the previous `jti` _before_ signing and saving the new one — a transient Redis
   failure between revoke and save hard-logged-out the user. New order: sign new
   tokens → `store.save(newJti)` → respond → `store.revoke(oldJti)`. Final-step
   revoke failures are now soft (client already has new credentials).
@@ -212,7 +282,7 @@ the route OUT of global security) is unambiguous in the source.
 - **`@axiomify/security`**: removed the regex-based SQL injection detector.
   Bypass vectors were trivial (comment insertion, case variation, encoding) and
   the false-positive rate on legitimate JSON containing the strings `union
-  select` / `or 1=1` was high. Use parameterised queries at the DB layer instead.
+select` / `or 1=1` was high. Use parameterised queries at the DB layer instead.
   Setting `sqlInjectionProtection: true` now warns and no-ops. NoSQL operator
   detector (narrow, reliable) retained but remains opt-in.
 
@@ -249,7 +319,7 @@ the route OUT of global security) is unambiguous in the source.
   caches with each other's serializers mid-flight.
 - **`@axiomify/core`**: `app.setSerializer()` throws when called after adapter
   binding. Previously the cached error envelopes (built at adapter construction)
-  used the *old* serializer while live responses used the *new* one, producing
+  used the _old_ serializer while live responses used the _new_ one, producing
   inconsistent response shapes for the same service.
 - **`@axiomify/core`**: `makeSerialize()` rejects async serializers at
   construction time via a synchronous probe. A serializer returning a Promise
@@ -258,7 +328,7 @@ the route OUT of global security) is unambiguous in the source.
 - **`@axiomify/core`**: `HookManager.run` / `runSafe` snapshot the hook array
   before iteration. A hook that calls `app.addHook(type, ...)` of its own type
   no longer mutates the in-progress iteration — added hooks take effect on
-  *the next request*, matching the convention used by Express / Fastify / Koa.
+  _the next request_, matching the convention used by Express / Fastify / Koa.
 - **`@axiomify/native`**: WebSocket message handler — schema validation was
   silently broken in the previous build. The handler called a non-existent
   `ws.routeHandler` which always threw and was caught as `Invalid message`, and
@@ -273,7 +343,7 @@ the route OUT of global security) is unambiguous in the source.
 
 - **`@axiomify/rate-limit`**: Redis client argument shape is probed once and
   cached. The previous code tried the redis@4 object form, caught the throw,
-  retried in ioredis variadic form — on *every* request. V8 deopts surrounding
+  retried in ioredis variadic form — on _every_ request. V8 deopts surrounding
   hot paths that throw under normal flow; measurable cost was ~100ms of CPU/s
   at 100k req/s.
 - **`@axiomify/native`**: SSE payload construction switched from O(n²)
@@ -450,11 +520,11 @@ Confidence-scored server-side fingerprint from headers, TLS signals, and behavio
 
 #### Clustering: verified 160–165% scaling at 2 workers (8-core, co-located loadgen)
 
-| Adapter | 1w | 2w | Scaling |
-|---|---:|---:|---:|
-| `@axiomify/http` | 35,800 | 57,200 | **160%** |
+| Adapter             |     1w |     2w |  Scaling |
+| ------------------- | -----: | -----: | -------: |
+| `@axiomify/http`    | 35,800 | 57,200 | **160%** |
 | `@axiomify/fastify` | 21,300 | 35,200 | **165%** |
-| Native (uWS) | 85,000 | 91,300 | 107%† |
+| Native (uWS)        | 85,000 | 91,300 |    107%† |
 
 † Native is loadgen-limited at co-located ~90k req/s. Dedicated loadgen gives near-linear scaling.
 
@@ -465,6 +535,7 @@ Confidence-scored server-side fingerprint from headers, TLS signals, and behavio
 `cluster.SCHED_NONE` now set before first fork. Workers bind via `reusePort: true` (Node ≥ 16.9) or `exclusive: true` (older Node). Primary process is no longer in the request hot path.
 
 Additional:
+
 - **Crash circuit breaker** — 5+ crashes in 30 s aborts primary (prevents runaway respawn on bad config)
 - **SIGUSR2 rolling restart** — `kill -USR2 <pid>` for zero-downtime reload
 - **Oversubscription warning** when `workers > os.availableParallelism()`
@@ -489,12 +560,12 @@ Replaces hardcoded `console.error` calls in `HookManager` and `ValidationCompile
 
 #### New exports from `@axiomify/core`
 
-| Export | Description |
-|---|---|
+| Export               | Description                                                 |
+| -------------------- | ----------------------------------------------------------- |
 | `ADAPTER_LOCK_TOKEN` | `unique symbol` for `lockRoutes()` / `handleMatchedRoute()` |
-| `AdapterLockToken` | TypeScript type of the token |
-| `AxiomifyLogger` | `{ warn, error }` injectable logger interface |
-| `defaultLogger` | `console`-backed default implementation |
+| `AdapterLockToken`   | TypeScript type of the token                                |
+| `AxiomifyLogger`     | `{ warn, error }` injectable logger interface               |
+| `defaultLogger`      | `console`-backed default implementation                     |
 
 #### `AppModule` / `AppConfigurator` / `AppContext`
 
