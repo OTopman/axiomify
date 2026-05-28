@@ -96,4 +96,20 @@ describe.skipIf(!uwsSupported)('NativeAdapter - WebSockets', () => {
       ws.on('error', reject);
     });
   });
+
+  it('registers custom WebSocket options correctly on the app', () => {
+    app.ws({
+      path: '/custom-opts',
+      compression: 1,
+      maxPayloadLength: 1024,
+      idleTimeout: 30,
+      open: () => {},
+    });
+
+    const route = app.registeredWsRoutes.find((r: any) => r.path === '/custom-opts');
+    expect(route).toBeDefined();
+    expect(route.compression).toBe(1);
+    expect(route.maxPayloadLength).toBe(1024);
+    expect(route.idleTimeout).toBe(30);
+  });
 });

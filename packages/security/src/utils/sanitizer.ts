@@ -74,6 +74,13 @@ function sanitizeXss(value: string): string {
   return s;
 }
 
+function isPlainObject(val: unknown): boolean {
+  if (typeof val !== 'object' || val === null) return false;
+  const proto = Object.getPrototypeOf(val);
+  if (proto === null) return true;
+  return proto.constructor === Object;
+}
+
 export function sanitizeInput(
   input: unknown,
   options: SanitizerOptions = {
@@ -101,6 +108,7 @@ export function sanitizeInput(
   }
 
   if (input && typeof input === 'object') {
+    if (!isPlainObject(input)) return input;
     const sanitized: Record<string, unknown> = Object.create(null);
     for (const [key, value] of Object.entries(input)) {
       if (options.prototypePollutionProtection && PROTOTYPE_KEYS.has(key))

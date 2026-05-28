@@ -79,7 +79,9 @@ export function useCors(app: Axiomify, options: CorsOptions = {}): void {
 
     let resolvedOrigin: string | undefined;
 
-    if (origin === true || origin === '*') {
+    if (origin === true) {
+      resolvedOrigin = requestOrigin;
+    } else if (origin === '*') {
       resolvedOrigin = '*';
     } else if (origin === false) {
       resolvedOrigin = undefined;

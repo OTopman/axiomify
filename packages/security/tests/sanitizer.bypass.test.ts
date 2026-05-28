@@ -177,6 +177,13 @@ describe('sanitizeInput — object and array recursion', () => {
     expect(sanitizeInput(true)).toBe(true);
     expect(sanitizeInput(null)).toBeNull();
   });
+
+  it('preserves native object types like Date and Buffer without corrupting them', () => {
+    const d = new Date();
+    const b = Buffer.from('hello');
+    expect(sanitizeInput(d)).toBe(d);
+    expect(sanitizeInput(b)).toBe(b);
+  });
 });
 
 describe('sanitizeInput — disabled protections', () => {

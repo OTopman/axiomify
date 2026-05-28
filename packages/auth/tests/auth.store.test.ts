@@ -261,3 +261,30 @@ describe('createAuthPlugin — store failure paths', () => {
     expect(res.status).toHaveBeenCalledWith(503);
   });
 });
+
+describe('MemoryTokenStore — functional behavior', () => {
+  it('saves, checks existence, revokes, and prunes tokens correctly', async () => {
+    const store = new MemoryTokenStore();
+    try {
+      const jti = 'test-token-jti';
+      
+      expect(await store.exists(jti)).toBe(false);
+
+      await store.save(jti, 1);
+      expect(await store.exists(jti)).toBe(true);
+
+      await store.revoke(jti);
+      expect(await store.exists(jti)).toBe(false);
+
+      await store.save(jti, -1);
+      expect(await store.exists(jti)).toBe(false);
+
+      const otherJti = 'other-token-jti';
+      await store.save(otherJti, -1);
+      (store as any).prune();
+      expect(await store.exists(otherJti)).toBe(false);
+    } finally {
+      store.close();
+    }
+  });
+});

@@ -132,6 +132,48 @@ describe('Security Package', () => {
     await hook(req, res);
     expect(req.body.value).toBe('abcdef');
   });
+
+  it('NoSQL detector should ignore Dates/Buffers and handle deep/cyclic structures safely', async () => {
+    const hook = setup({ noSqlInjectionProtection: true });
+    
+    // Ignore Dates/Buffers
+    const reqDateBuffer: any = {
+      headers: {},
+      query: {},
+      params: {},
+      body: { date: new Date(), buffer: Buffer.from('hello') },
+    };
+    const res1 = makeRes();
+    await hook(reqDateBuffer, res1);
+    expect(res1.status).not.toHaveBeenCalledWith(403);
+
+    // Deep recursion should be capped (no stack overflow, returns safely)
+    let deep: any = { val: 'safe' };
+    for (let i = 0; i < 70; i++) deep = { child: deep };
+    const reqDeep: any = {
+      headers: {},
+      query: {},
+      params: {},
+      body: deep,
+    };
+    const res2 = makeRes();
+    await hook(reqDeep, res2);
+    expect(res2.status).not.toHaveBeenCalledWith(403);
+
+    // Cyclic structures (which can happen internally) should be handled without throwing call stack size exceeded
+    const cyclic: any = {};
+    cyclic.self = cyclic;
+    const reqCyclic: any = {
+      headers: {},
+      query: {},
+      params: {},
+      body: cyclic,
+    };
+    const res3 = makeRes();
+    // Since cycle will exceed max depth, it will return false instead of blowing up the stack
+    await expect(hook(reqCyclic, res3)).resolves.not.toThrow();
+    expect(res3.status).not.toHaveBeenCalledWith(403);
+  });
 });
 
 // ─── Object.defineProperty replacement ───────────────────────────────────────

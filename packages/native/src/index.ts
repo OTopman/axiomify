@@ -549,9 +549,9 @@ export class NativeAdapter {
       const routeId = `WS:${route.path}`;
 
       const behavior: WebSocketBehavior<any> = {
-        compression: uWS.SHARED_COMPRESSOR,
-        maxPayloadLength: 256 * 1024,
-        idleTimeout: 120,
+        compression: route.compression ?? uWS.SHARED_COMPRESSOR,
+        maxPayloadLength: route.maxPayloadLength ?? 256 * 1024,
+        idleTimeout: route.idleTimeout ?? 120,
 
         upgrade: (res: UWSResponse, req: UWSRequest, context: unknown) => {
           let aborted = false;

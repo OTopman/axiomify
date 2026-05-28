@@ -390,6 +390,25 @@ describe.skipIf(!uwsSupported)('@axiomify/ws - Room Manager', () => {
     await closeWs(ws2);
   });
 
+  it('returns error when querying presence of a room client is not in', async () => {
+    const ws1 = await connectWs(PORT, '/chat');
+    const ws2 = await connectWs(PORT, '/chat');
+    await nextMessage(ws1);
+    await nextMessage(ws2);
+
+    await sendAction(ws1, { action: 'join', room: 'exclusive-presence' });
+
+    const response = await sendAction(ws2, {
+      action: 'presence',
+      room: 'exclusive-presence',
+    });
+    expect(response.event).toBe('error');
+    expect(response.code).toBe('NOT_MEMBER');
+
+    await closeWs(ws1);
+    await closeWs(ws2);
+  });
+
   // -------------------------------------------------------------------------
   // RoomManager API
   // -------------------------------------------------------------------------

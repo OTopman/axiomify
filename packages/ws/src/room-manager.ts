@@ -405,6 +405,10 @@ export class RoomManager extends TypedEmitter {
           client.send({ event: 'error', message: 'Room does not exist', code: 'ROOM_NOT_FOUND' });
           return true;
         }
+        if (!presenceRoom.has(client.id)) {
+          client.send({ event: 'error', message: 'Not a member of this room', code: 'NOT_MEMBER' });
+          return true;
+        }
         client.send({
           event: 'presence',
           room: action.room,
@@ -570,6 +574,9 @@ export function wsRooms(app: Axiomify, options: WsRoomOptions = {}): RoomManager
     path,
     plugins: options.plugins,
     schema: options.schema ? { message: options.schema } : undefined,
+    compression: options.compression,
+    maxPayloadLength: options.maxPayloadLength,
+    idleTimeout: options.idleTimeout,
 
     open(wsClient: WsClient<RequestState>, req: AxiomifyRequest): void {
       const roomClient = manager._onOpen(wsClient);
