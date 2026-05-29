@@ -3,7 +3,7 @@
  *
  * Generates the main HTTP client class with typed methods for every endpoint.
  */
-import type { IRSchema, IREndpoint, IRTypeRef } from '../../../ir/types';
+import type { IRSchema, IREndpoint, IRTypeRef, IREventContract } from '../../../ir/types';
 import { Emitter } from '../../emitter';
 
 export class TsClientEmitter {
@@ -13,7 +13,7 @@ export class TsClientEmitter {
     const emitter = new Emitter();
 
     // Import runtime client
-    emitter.line(`import { BaseClient, type ClientConfig } from '@axiomify/sdk-runtime';`);
+    emitter.line(`import { BaseClient, WebSocketClient, type ClientConfig, type WebSocketClientOptions } from '@axiomify/sdk-runtime';`);
     emitter.line(`import type * as Types from './types';`);
     emitter.line();
 
@@ -27,7 +27,144 @@ export class TsClientEmitter {
         emitter.line();
         this.emitMethod(emitter, ep);
       }
+
+      // Group events by channel
+      const channels = new Map<string, IREventContract[]>();
+      if (this.schema.events) {
+        for (const event of this.schema.events) {
+          const list = channels.get(event.channel || '/') || [];
+          list.push(event);
+          channels.set(event.channel || '/', list);
+        }
+      }
+
+      for (const [channelName, events] of channels.entries()) {
+        const className = toClassName(channelName);
+        const clientClassName = `${className}ChannelClient`;
+        const params = extractParams(channelName);
+
+        emitter.line();
+        if (params.length > 0) {
+          const paramSignature = `params: { ${params.map(p => `${p}: string`).join(', ')} }, options?: WebSocketClientOptions`;
+          emitter.block(`public ${toMethodName(className)}(${paramSignature}): ${clientClassName} {`, `}`, () => {
+            emitter.line(`const wsBase = this.config.baseUrl.replace(/^http/, 'ws');`);
+            let pathExpr = channelName;
+            for (const p of params) {
+              pathExpr = pathExpr.replace(`{${p}}`, `\${params.${p}}`).replace(`:${p}`, `\${params.${p}}`);
+            }
+            emitter.line(`return new ${clientClassName}(\`\${wsBase}${pathExpr}\`, options);`);
+          });
+        } else {
+          emitter.block(`public ${toMethodName(className)}(options?: WebSocketClientOptions): ${clientClassName} {`, `}`, () => {
+            emitter.line(`const wsBase = this.config.baseUrl.replace(/^http/, 'ws');`);
+            emitter.line(`return new ${clientClassName}(\`\${wsBase}${channelName}\`, options);`);
+          });
+        }
+      }
     });
+
+    // Group events by channel again to generate classes at file scope
+    const channels = new Map<string, IREventContract[]>();
+    if (this.schema.events) {
+      for (const event of this.schema.events) {
+        const list = channels.get(event.channel || '/') || [];
+        list.push(event);
+        channels.set(event.channel || '/', list);
+      }
+    }
+
+    for (const [channelName, events] of channels.entries()) {
+      const className = toClassName(channelName);
+      const clientClassName = `${className}ChannelClient`;
+
+      emitter.line();
+      emitter.block(`export class ${clientClassName} {`, `}`, () => {
+        emitter.line(`private ws: WebSocketClient;`);
+        emitter.line(`private listeners = new Map<string, Set<(data: any) => void>>();`);
+        emitter.line();
+        emitter.block(`constructor(url: string, options?: WebSocketClientOptions) {`, `}`, () => {
+          emitter.block(`this.ws = new WebSocketClient(url, {`, `});`, () => {
+            emitter.line(`...options,`);
+            emitter.block(`onMessage: (data: string) => {`, `},`, () => {
+              emitter.line(`options?.onMessage?.(data);`);
+              emitter.block(`try {`, `} catch (e) {`, () => {
+                emitter.line(`const parsed = JSON.parse(data);`);
+                emitter.line(`const eventName = String(parsed.event || parsed.type || parsed.action || '').toLowerCase();`);
+                emitter.line(`let matched = false;`);
+                emitter.block(`for (const [registeredName, list] of this.listeners.entries()) {`, `}`, () => {
+                  emitter.block(`if (registeredName.toLowerCase() === eventName) {`, `}`, () => {
+                    emitter.line(`const payload = parsed.data !== undefined ? parsed.data : (parsed.payload !== undefined ? parsed.payload : parsed);`);
+                    emitter.block(`for (const cb of list) {`, `}`, () => {
+                      emitter.line(`cb(payload);`);
+                    });
+                    emitter.line(`matched = true;`);
+                  });
+                });
+                emitter.block(`if (!matched) {`, `}`, () => {
+                  emitter.block(`for (const list of this.listeners.values()) {`, `}`, () => {
+                    emitter.block(`for (const cb of list) {`, `}`, () => {
+                      emitter.line(`cb(parsed);`);
+                    });
+                  });
+                });
+              });
+              emitter.block(``, `}`, () => {
+                emitter.block(`for (const list of this.listeners.values()) {`, `}`, () => {
+                  emitter.block(`for (const cb of list) {`, `}`, () => {
+                    emitter.line(`cb(data);`);
+                  });
+                });
+              });
+            });
+          });
+        });
+
+        emitter.line();
+        emitter.block(`public connect(): void {`, `}`, () => {
+          emitter.line(`this.ws.connect();`);
+        });
+
+        emitter.line();
+        emitter.block(`public disconnect(): void {`, `}`, () => {
+          emitter.line(`this.ws.disconnect();`);
+        });
+
+        for (const event of events) {
+          const eventName = event.name;
+          const payloadType = event.payload ? this.renderTypeRef(event.payload) : 'any';
+          const capEventName = eventName.charAt(0).toUpperCase() + eventName.slice(1);
+          const direction = event.direction;
+
+          // Inbound or Bidirectional subscription
+          if (direction === 'inbound' || direction === 'bidirectional') {
+            emitter.line();
+            emitter.block(`public on${capEventName}(callback: (payload: ${payloadType}) => void): () => void {`, `}`, () => {
+              emitter.line(`let list = this.listeners.get('${eventName}');`);
+              emitter.block(`if (!list) {`, `}`, () => {
+                emitter.line(`list = new Set();`);
+                emitter.line(`this.listeners.set('${eventName}', list);`);
+              });
+              emitter.line(`list.add(callback);`);
+              emitter.block(`return () => {`, `};`, () => {
+                emitter.line(`list.delete(callback);`);
+              });
+            });
+          }
+
+          // Outbound or Bidirectional publication
+          if (direction === 'outbound' || direction === 'bidirectional') {
+            emitter.line();
+            const paramSig = event.payload ? `payload: ${payloadType}` : `payload?: any`;
+            emitter.block(`public send${capEventName}(${paramSig}): void {`, `}`, () => {
+              emitter.block(`this.ws.send(JSON.stringify({`, `}));`, () => {
+                emitter.line(`event: '${eventName}',`);
+                emitter.line(`data: ${event.payload ? 'payload' : 'undefined'}`);
+              });
+            });
+          }
+        }
+      });
+    }
 
     return emitter.toString();
   }
@@ -124,3 +261,31 @@ export class TsClientEmitter {
     return t;
   }
 }
+
+function toClassName(channel: string): string {
+  const parts = channel
+    .split('/')
+    .filter(Boolean)
+    .map(p => p.replace(/[{}]/g, ''))
+    .map(p => p.replace(/[^a-zA-Z0-9]/g, ''))
+    .map(p => p.charAt(0).toUpperCase() + p.slice(1));
+  return parts.join('') || 'Root';
+}
+
+function toMethodName(className: string): string {
+  return className.charAt(0).toLowerCase() + className.slice(1);
+}
+
+function extractParams(channel: string): string[] {
+  const params: string[] = [];
+  const braceMatches = channel.matchAll(/\{([^}]+)\}/g);
+  for (const m of braceMatches) {
+    params.push(m[1]);
+  }
+  const colonMatches = channel.matchAll(/:([a-zA-Z0-9_]+)/g);
+  for (const m of colonMatches) {
+    params.push(m[1]);
+  }
+  return params;
+}
+

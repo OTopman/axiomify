@@ -15,10 +15,11 @@
  * decoded body. The new behaviour throws loudly so the bug surfaces
  * at integration time instead of three weeks later in production.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createNodeReqPolyfill,
   createNodeResPolyfill,
+  adaptMiddleware,
 } from '../src/bridge';
 
 function mockAxiomifyReq() {
@@ -130,5 +131,21 @@ describe('bridge.createNodeResPolyfill — header / status / end mapping', () =>
     expect(() => (nodeRes.write as any)('partial')).toThrow(
       /Chunked writes via res\.write\(\) are not supported/,
     );
+  });
+});
+
+describe('bridge.adaptMiddleware — warnings on unsafe middleware', () => {
+  it('logs warning when JSON body parser middleware is adapted', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    function jsonParser(req: any, res: any, next: any) {}
+
+    adaptMiddleware(jsonParser);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Bridging middleware "jsonParser" may be unsafe')
+    );
+
+    warnSpy.mockRestore();
   });
 });

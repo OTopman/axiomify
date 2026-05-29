@@ -118,7 +118,7 @@ describe('useCors — extended coverage', () => {
 describe('useCors — RegExp and string origin, default allowed headers', () => {
   it('RegExp origin matches and sets resolved origin', async () => {
     const app = new Axiomify();
-    useCors(app, { origin: /example\.com$/ });
+    useCors(app, { origin: /^https?:\/\/(.*\.)?example\.com$/ });
     const req = makeReq({ headers: { origin: 'https://sub.example.com' } });
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
@@ -142,11 +142,22 @@ describe('useCors — RegExp and string origin, default allowed headers', () => 
 
   it('array origin with mixed string and RegExp entries', async () => {
     const app = new Axiomify();
-    useCors(app, { origin: ['https://trusted.com', /\.internal$/] });
+    useCors(app, { origin: ['https://trusted.com', /^https?:\/\/.*\.internal$/] });
     const req = makeReq({ headers: { origin: 'https://svc.internal' } });
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
     expect(res.headers['Access-Control-Allow-Origin']).toBe('https://svc.internal');
+  });
+
+  it('auto-anchors regex and rejects partial match bypasses', async () => {
+    const app = new Axiomify();
+    // /example.com/ is not anchored, so normally matches attacker-example.com
+    useCors(app, { origin: /example\.com/ });
+    const req = makeReq({ headers: { origin: 'https://attacker-example.com' } });
+    const res = makeRes();
+    for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
+    // Should be undefined because it got auto-anchored to /^example\.com$/
+    expect(res.headers['Access-Control-Allow-Origin']).toBeUndefined();
   });
 
   it('OPTIONS without explicit allowedHeaders falls back to request header', async () => {

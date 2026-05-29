@@ -6,7 +6,7 @@ import { LruTtlCache } from './cache';
 import { safeJsonStringify, isBinaryData } from './serializer';
 
 export class BaseClient {
-  private config: ClientConfig;
+  protected config: ClientConfig;
   public interceptors: InterceptorManager;
   private circuitBreaker: CircuitBreaker;
   private cache: LruTtlCache<ClientResponse>;

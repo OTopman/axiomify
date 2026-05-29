@@ -145,6 +145,19 @@ export interface NativeAdapterOptions {
     warn(message: string, meta?: Record<string, unknown>): void;
     error(message: string, meta?: Record<string, unknown>): void;
   };
+  /**
+   * Global request timeout in milliseconds. If the request handler does not
+   * respond (i.e. headers are not sent) within this duration, the connection
+   * is closed with a 504 status.
+   * Omit or set to 0 to disable.
+   * @default 0 (disabled)
+   */
+  requestTimeout?: number;
+  /**
+   * Number of workers to restart concurrently during a rolling restart (SIGUSR2).
+   * @default 1
+   */
+  restartParallelism?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +173,8 @@ export class NativeAdapter {
   private readonly _workers: number;
   private readonly _allowUserspaceProxy: boolean;
   private readonly _logger: NonNullable<NativeAdapterOptions['logger']>;
+  private readonly _requestTimeout: number;
+  private readonly _restartParallelism: number;
   /** Serializer arity cached at construction time — not re-checked per request. */
   private readonly _serialize: (input: SerializerInput) => unknown;
   private _listenSocket: unknown = null;
@@ -181,10 +196,19 @@ export class NativeAdapter {
     this._trustProxy = options.trustProxy ?? false;
     this._workers = options.workers ?? availableParallelism();
     this._allowUserspaceProxy = options.allowUserspaceProxy ?? false;
+    this._requestTimeout = options.requestTimeout ?? 0;
+    this._restartParallelism = options.restartParallelism ?? 1;
     this._logger = options.logger ?? {
       warn: (msg, meta) => console.warn(msg, meta ?? ''),
       error: (msg, meta) => console.error(msg, meta ?? ''),
     };
+    if (!this._trustProxy) {
+      this._logger.warn(
+        '[Axiomify/native] trustProxy is disabled. Behind a reverse proxy (e.g. Nginx, ALB, Cloudflare), ' +
+          'all requests will appear to come from the proxy\'s IP address, which makes rate limiting ineffective. ' +
+          'Set trustProxy: true only if you are behind a trusted proxy.'
+      );
+    }
     this._serialize = makeSerialize(this._app.serializer);
 
     // Per-adapter error envelope cache. setSerializer is locked by core
@@ -379,6 +403,22 @@ export class NativeAdapter {
         undefined,
       );
       axiomifyReq.params = params;
+      let timeoutTimer: NodeJS.Timeout | null = null;
+      if (adapter._requestTimeout > 0) {
+        timeoutTimer = setTimeout(() => {
+          if (!aborted && !axiomifyRes.headersSent) {
+            aborted = true;
+            axiomifyReq.onAbort();
+            axiomifyRes.aborted = true;
+            res.cork(() => {
+              res.writeStatus('504 Gateway Timeout');
+              res.writeHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Gateway Timeout' }));
+            });
+          }
+        }, adapter._requestTimeout);
+      }
+
       const axiomifyRes = new NativeResponse(
         res,
         app,
@@ -386,6 +426,12 @@ export class NativeAdapter {
         method,
         serialize,
         errorCache,
+        () => {
+          if (timeoutTimer) {
+            clearTimeout(timeoutTimer);
+            timeoutTimer = null;
+          }
+        },
       );
 
       // Register abort handler BEFORE any async work.
@@ -393,6 +439,10 @@ export class NativeAdapter {
         aborted = true;
         axiomifyReq.onAbort();
         axiomifyRes.aborted = true;
+        if (timeoutTimer) {
+          clearTimeout(timeoutTimer);
+          timeoutTimer = null;
+        }
       });
 
       // --- ASYNC SECTION ---
@@ -472,6 +522,10 @@ export class NativeAdapter {
           }
         })
         .finally(() => {
+          if (timeoutTimer) {
+            clearTimeout(timeoutTimer);
+            timeoutTimer = null;
+          }
           // Decrement BEFORE notifying drain resolvers so a resolver that
           // schedules `process.exit(0)` sees a consistent count.
           adapter._inflight--;
@@ -900,7 +954,16 @@ export class NativeAdapter {
         assignedPort,
       );
 
+      const heartbeatInterval = setInterval(() => {
+        process.send?.({
+          type: 'HEARTBEAT',
+          pid: process.pid,
+        });
+      }, 5000);
+      heartbeatInterval.unref?.();
+
       process.once('SIGTERM', () => {
+        clearInterval(heartbeatInterval);
         this.close();
         setTimeout(() => {
           console.error(`[Worker ${process.pid}] Drain timeout. Forcing exit.`);
@@ -917,7 +980,7 @@ export class NativeAdapter {
     );
     const liveWorkers = new Map<
       number,
-      { process: cluster.Worker; state: string; port: number }
+      { process: cluster.Worker; state: string; port: number; lastHeartbeat: number }
     >();
 
     let isShuttingDown = false;
@@ -967,7 +1030,12 @@ export class NativeAdapter {
       const w = cluster.fork({ AXIOMIFY_WORKER_IDX: idx.toString() });
       const pid = w.process.pid!;
 
-      liveWorkers.set(pid, { process: w, state: 'STARTING', port: 0 });
+      liveWorkers.set(pid, {
+        process: w,
+        state: 'STARTING',
+        port: 0,
+        lastHeartbeat: Date.now(),
+      });
 
       // Linux Production Optimization: CPU Pinning
       if (isLinux) {
@@ -982,6 +1050,13 @@ export class NativeAdapter {
       }
 
       w.on('message', (msg: { type?: string; port?: number }) => {
+        if (msg?.type === 'HEARTBEAT') {
+          const record = liveWorkers.get(pid);
+          if (record) {
+            record.lastHeartbeat = Date.now();
+          }
+          return;
+        }
         if (msg?.type !== 'WORKER_READY') return;
 
         const record = liveWorkers.get(pid);
@@ -1006,15 +1081,35 @@ export class NativeAdapter {
 
         // Let external orchestrators (Kubernetes/systemd) manage crash loops instead of
         // suiciding the primary process. Backoff helps prevent CPU pinning.
-        const nextDelay = Math.min((respawnDelayMs || 50) * 2, 5_000);
-        setTimeout(() => spawnWorker(idx, nextDelay), nextDelay);
+        // Exponential backoff with 20% random jitter to prevent thundering herd.
+        const baseDelay = Math.min((respawnDelayMs || 50) * 2, 5_000);
+        const jitter = Math.floor(Math.random() * (baseDelay * 0.2));
+        const nextDelay = baseDelay + (Math.random() > 0.5 ? jitter : -jitter);
+        setTimeout(() => spawnWorker(idx, baseDelay), Math.max(0, nextDelay));
       });
       return w;
     };
 
+    // Heartbeat check interval in primary (every 10 seconds)
+    const livenessInterval = setInterval(() => {
+      if (isShuttingDown) return;
+      const now = Date.now();
+      for (const [pid, record] of liveWorkers.entries()) {
+        if (record.state === 'READY' && now - record.lastHeartbeat > 15_000) {
+          this._logger.error(
+            `[Axiomify/native] Worker ${pid} missed heartbeats. Event loop might be blocked. Killing worker.`,
+            { pid }
+          );
+          record.process.kill('SIGKILL');
+        }
+      }
+    }, 10_000);
+    livenessInterval.unref?.();
+
     // SYSTEM SHUTDOWN
     process.once('SIGTERM', () => {
       isShuttingDown = true;
+      clearInterval(livenessInterval);
       l4Proxy?.close();
       if (liveWorkers.size === 0) process.exit(0);
 
@@ -1029,14 +1124,20 @@ export class NativeAdapter {
     process.on('SIGUSR2', () => {
       if (isShuttingDown) return;
       const pids = Array.from(liveWorkers.keys());
-      let i = 0;
+      let nextIndex = 0;
+      let activeRestarts = 0;
 
       const replaceNext = () => {
-        if (i >= pids.length) return;
-        const oldRecord = liveWorkers.get(pids[i]);
+        if (nextIndex >= pids.length) return;
+
+        const currentIdx = nextIndex++;
+        activeRestarts++;
+
+        const oldPid = pids[currentIdx];
+        const oldRecord = liveWorkers.get(oldPid);
 
         // Spawn replacement using the same logical index
-        const newWorker = spawnWorker(i, 0);
+        const newWorker = spawnWorker(currentIdx, 0);
 
         const readyListener = (msg: any) => {
           if (msg?.type === 'WORKER_READY') {
@@ -1045,13 +1146,17 @@ export class NativeAdapter {
               oldRecord.state = 'DRAINING';
               oldRecord.process.kill('SIGTERM');
             }
-            i++;
+            activeRestarts--;
             replaceNext();
           }
         };
         newWorker.on('message', readyListener);
       };
-      replaceNext();
+
+      // Start up to _restartParallelism workers concurrently
+      for (let p = 0; p < this._restartParallelism; p++) {
+        replaceNext();
+      }
     });
 
     for (let i = 0; i < targetWorkers; i++) spawnWorker(i);

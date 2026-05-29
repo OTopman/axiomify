@@ -34,6 +34,27 @@ export function safeDecodeURIComponent(s: string): string {
 }
 
 /**
+ * Replace '+' with ' ' without allocating a regex per call.
+ * Falls back to fast-path identity when no '+' is present.
+ */
+function replacePlus(s: string): string {
+  if (s.indexOf('+') === -1) return s;
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    out += s.charCodeAt(i) === 43 ? ' ' : s[i]; // 43 is '+'
+  }
+  return out;
+}
+
+/**
+ * Maximum number of query-string keys parsed before aborting.
+ * Prevents attacker-controlled key cardinality from exhausting memory
+ * (a query string with 100K `&key=val` pairs would create a 100K-entry object).
+ * @default 1000
+ */
+export const MAX_QUERY_KEYS = 1000;
+
+/**
  * Parses a URL query string or form-urlencoded body in a single pass.
  *
  * Output invariants (also pinned by `query-parser.fuzz.test.ts`):
@@ -42,13 +63,15 @@ export function safeDecodeURIComponent(s: string): string {
  *   - Never throws on any input string — malformed percent-encoding falls
  *     through to `safeDecodeURIComponent`.
  *   - `&&&...` floods run in linear time (no O(n²) string concat).
+ *   - Parsing aborts after `MAX_QUERY_KEYS` unique keys (DoS guard).
  */
-export function fastParseQuery(str: string): Record<string, string | string[]> {
+export function fastParseQuery(str: string, maxKeys: number = MAX_QUERY_KEYS): Record<string, string | string[]> {
   const result: Record<string, string | string[]> = Object.create(null);
   if (!str) return result;
 
   let start = 0;
   let eqIdx = -1;
+  let keyCount = 0;
   const len = str.length;
 
   for (let i = 0; i <= len; i++) {
@@ -62,10 +85,10 @@ export function fastParseQuery(str: string): Record<string, string | string[]> {
 
       const keyEnd = eqIdx === -1 ? i : eqIdx;
 
-      // Form bodies encode spaces as '+'. Replace before decoding.
-      const keyStr = str.substring(start, keyEnd).replace(/\+/g, ' ');
+      // Form bodies encode spaces as '+'. replacePlus avoids regex allocation.
+      const keyStr = replacePlus(str.substring(start, keyEnd));
       const valStr =
-        eqIdx === -1 ? '' : str.substring(eqIdx + 1, i).replace(/\+/g, ' ');
+        eqIdx === -1 ? '' : replacePlus(str.substring(eqIdx + 1, i));
 
       const key = safeDecodeURIComponent(keyStr);
       const val = safeDecodeURIComponent(valStr);
@@ -73,6 +96,8 @@ export function fastParseQuery(str: string): Record<string, string | string[]> {
       const existing = result[key];
       if (existing === undefined) {
         result[key] = val;
+        // Abort after maxKeys unique keys to prevent query-bomb DoS.
+        if (++keyCount >= maxKeys) break;
       } else if (Array.isArray(existing)) {
         existing.push(val);
       } else {

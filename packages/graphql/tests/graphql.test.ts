@@ -338,4 +338,40 @@ describeGQL('GraphQL execution paths', () => {
     const body = JSON.parse(res._raw);
     expect(body.data?.echo).toBe('hi');
   });
+
+  it('rejects query exceeding maxFields', async () => {
+    const app = new Axiomify();
+    useGraphQL(app, { schema: makeSchema(), maxFields: 1 });
+    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const res = makeRes();
+    // Query with 2 fields (hello, add) — exceeds limit of 1
+    await route.handler(makeReq({ query: '{ hello add(a: 1, b: 2) }' }), res);
+    const body = JSON.parse(res._raw);
+    expect(res._code).toBe(400);
+    expect(body.errors).toBeDefined();
+    expect(body.errors[0].message).toMatch(/fields/i);
+  });
+
+  it('redacts internal error messages in production mode', async () => {
+    const app = new Axiomify();
+    useGraphQL(app, {
+      schema: makeSchema(),
+      context: async () => { throw new Error('internal DB credentials leak'); },
+    });
+    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const res = makeRes();
+
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      await route.handler(makeReq({ query: '{ hello }' }), res);
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+    }
+
+    expect(res._code).toBe(500);
+    const body = JSON.parse(res._raw);
+    expect(body.errors[0].message).toBe('Context error.');
+    expect(body.errors[0].message).not.toContain('internal DB credentials leak');
+  });
 });

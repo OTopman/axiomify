@@ -9,7 +9,7 @@ import path from 'path';
 import pc from 'picocolors';
 import { CompilerPipeline } from '../../sdk/compiler/pipeline';
 import { GeneratorRegistry } from '../../sdk/generator';
-import { ingestAxiomifyApp, ingestGraphQL, ingestOpenApi } from '../../sdk/ingest';
+import { ingestAxiomifyApp, ingestGraphQL, ingestOpenApi, ingestAsyncApi } from '../../sdk/ingest';
 import { symbols } from '../../utils/format';
 import { loadApp } from '../../utils/load-app';
 
@@ -37,6 +37,16 @@ export async function generateSdk(opts: GenerateOptions): Promise<boolean> {
   const startTime = Date.now();
   console.log(`\n${symbols.info} Initializing SDK compilation...\n`);
 
+  // Containment check for output directory
+  const projectRoot = path.resolve(process.cwd());
+  const resolvedOutput = path.resolve(projectRoot, opts.output);
+  const relative = path.relative(projectRoot, resolvedOutput);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+    console.error(pc.red(`✗ Output directory "${opts.output}" must be contained within the project root directory ("${projectRoot}").`));
+    if (opts.exitOnError !== false) process.exit(1);
+    return false;
+  }
+
   // 1. Ingestion
   let ingestionResult;
   const inputExt = path.extname(opts.input).toLowerCase();
@@ -50,8 +60,6 @@ export async function generateSdk(opts: GenerateOptions): Promise<boolean> {
       ingestionResult = ingestAxiomifyApp(app, { title: opts.name, version: opts.version });
       await cleanup();
     } else if (inputExt === '.json' || inputExt === '.yaml' || inputExt === '.yml') {
-      // OpenAPI
-      console.log(`  ${symbols.bullet} Ingesting OpenAPI spec from ${pc.cyan(opts.input)}...`);
       const raw = await fs.readFile(path.resolve(process.cwd(), opts.input), 'utf8');
       
       let parsed;
@@ -61,7 +69,14 @@ export async function generateSdk(opts: GenerateOptions): Promise<boolean> {
         const yaml = require('yaml');
         parsed = yaml.parse(raw);
       }
-      ingestionResult = ingestOpenApi(parsed, { title: opts.name, version: opts.version });
+
+      if (parsed && typeof parsed === 'object' && 'asyncapi' in parsed) {
+        console.log(`  ${symbols.bullet} Ingesting AsyncAPI spec from ${pc.cyan(opts.input)}...`);
+        ingestionResult = ingestAsyncApi(parsed, { title: opts.name, version: opts.version });
+      } else {
+        console.log(`  ${symbols.bullet} Ingesting OpenAPI spec from ${pc.cyan(opts.input)}...`);
+        ingestionResult = ingestOpenApi(parsed, { title: opts.name, version: opts.version });
+      }
     } else if (inputExt === '.graphql' || inputExt === '.gql') {
        // GraphQL
        console.log(`  ${symbols.bullet} Ingesting GraphQL SDL from ${pc.cyan(opts.input)}...`);

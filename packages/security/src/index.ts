@@ -34,6 +34,14 @@ export interface SecurityOptions {
    * @default false
    */
   noSqlInjectionProtection?: boolean;
+  /**
+   * Protect against Prototype Pollution by removing '__proto__', 'prototype',
+   * and 'constructor' keys from request body, query, and params.
+   * ⚠️ WARNING: This will silently strip these keys from incoming requests.
+   * If your API expects legitimate fields with these names (e.g. constructor name
+   * in a building materials API), disable this option or handle sanitization manually.
+   * @default true
+   */
   prototypePollutionProtection?: boolean;
   nullByteProtection?: boolean;
   botProtection?: boolean;

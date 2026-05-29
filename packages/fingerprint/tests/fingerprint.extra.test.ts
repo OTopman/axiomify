@@ -156,4 +156,22 @@ describe('useFingerprint — extended paths', () => {
     await hook(req, res);
     expect(req.state.fingerprintData.ip).toBe('ip-omitted');
   });
+
+  it('correctly parses cookies with "=" in their values', async () => {
+    const hook = setup();
+    const req = makeReq({
+      headers: { 'user-agent': 'ua', cookie: 'ax_fp_id=some=value=with=equals; other_cookie=xyz' },
+    });
+    const res = makeRes();
+    await hook(req, res);
+    expect(req.state.fingerprintData.serverId).toBe('some=value=with=equals');
+  });
+
+  it('includes Path=/ attribute in Set-Cookie header', async () => {
+    const hook = setup();
+    const req = makeReq({ headers: { 'user-agent': 'ua' } });
+    const res = makeRes();
+    await hook(req, res);
+    expect(res.headers['Set-Cookie']).toContain('Path=/');
+  });
 });
