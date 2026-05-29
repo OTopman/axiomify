@@ -2,8 +2,8 @@
  * @axiomify/graphql — unit tests via direct src import.
  * graphql is an optional peer dep — tests skip when not installed.
  */
-import { Axiomify, z } from '@axiomify/core';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Axiomify } from '@axiomify/core';
+import { describe, expect, it, vi } from 'vitest';
 import { useGraphQL } from '../src/index';
 
 // Load graphql ONCE from the same resolution path as the src uses
