@@ -128,7 +128,7 @@ describe('useCors — preflight OPTIONS response', () => {
     const { useCors } = await import('../src/index');
 
     const app = new Axiomify();
-    useCors(app, { origin: 'https://app.example-cors.com', methods: ['GET'] });
+    useCors(app, { origin: /^https:\/\/app\.example-cors\.com$/, methods: ['GET'] });
 
     let capturedStatus: number | undefined;
     const mockReq: any = {
