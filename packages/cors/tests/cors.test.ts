@@ -70,7 +70,7 @@ describe('useCors — preflight OPTIONS response', () => {
 
     const app = new Axiomify();
     useCors(app, {
-      origin: 'https://app.example-cors.com',
+      origin: 'https://app\\.example-cors\\.com',
       methods: ['GET', 'POST', 'PUT', 'DELETE'],
       allowedHeaders: ['Content-Type', 'Authorization'],
       maxAge: 86400,
