@@ -174,4 +174,15 @@ describe('useFingerprint — extended paths', () => {
     await hook(req, res);
     expect(res.headers['Set-Cookie']).toContain('Path=/');
   });
+
+  it('handles cookies without equals sign and issues a new cookie when target cookie is not found', async () => {
+    const hook = setup();
+    const req = makeReq({
+      headers: { 'user-agent': 'ua', cookie: 'some_other_cookie; another_key=value' },
+    });
+    const res = makeRes();
+    await hook(req, res);
+    expect(res.header).toHaveBeenCalledWith('Set-Cookie', expect.stringMatching(/^ax_fp_id=/));
+  });
 });
+
