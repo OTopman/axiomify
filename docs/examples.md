@@ -4,15 +4,15 @@ All examples are aligned with the 5.0 API surface.
 
 ## Available examples
 
-| File | Demonstrates |
-|---|---|
-| `examples/native-server.ts` | `@axiomify/native` adapter with manual lifecycle timing hooks |
-| `examples/native-zod-server.ts` | Minimal schema-first server using the native HTTP adapter |
-| `examples/openapi-server.ts` | OpenAPI generation + Swagger UI (`useOpenAPI`) |
-| `examples/graphql-server.ts` | GraphQL endpoint via `useGraphQL` with depth + alias limits |
-| `examples/secure-server.ts` | Logger PII masking + security plugin payload examples |
-| `examples/my-app/src/index.ts` | Fuller app: auth, uploads, OpenAPI, SSE, file streaming, WebSockets |
-| `examples/sdk-client-demo.ts` | SDK consumption client: retries, circuit breaker, caching, paginators, offline queue, SSE & WebSockets |
+| File                            | Demonstrates                                                                                           |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `examples/native-server.ts`     | `@axiomify/native` adapter with manual lifecycle timing hooks                                          |
+| `examples/native-zod-server.ts` | Minimal schema-first server using the native HTTP adapter                                              |
+| `examples/openapi-server.ts`    | OpenAPI generation + Swagger UI (`useOpenAPI`)                                                         |
+| `examples/graphql-server.ts`    | GraphQL endpoint via `useGraphQL` with depth + alias limits                                            |
+| `examples/secure-server.ts`     | Logger PII masking + security plugin payload examples                                                  |
+| `examples/my-app/src/index.ts`  | Fuller app: auth, uploads, OpenAPI, SSE, file streaming, WebSockets                                    |
+| `examples/sdk-client-demo.ts`   | SDK consumption client: retries, circuit breaker, caching, paginators, offline queue, SSE & WebSockets |
 
 ## Notes
 

@@ -4,9 +4,18 @@ import { useCors } from '../src/index';
 
 function makeReq(overrides: Record<string, any> = {}) {
   return {
-    method: 'GET', url: '/', path: '/', ip: '127.0.0.1',
-    headers: {}, body: undefined, query: {}, params: {},
-    state: {}, raw: {}, stream: null, id: 'req_1',
+    method: 'GET',
+    url: '/',
+    path: '/',
+    ip: '127.0.0.1',
+    headers: {},
+    body: undefined,
+    query: {},
+    params: {},
+    state: {},
+    raw: {},
+    stream: null,
+    id: 'req_1',
     ...overrides,
   } as any;
 }
@@ -16,17 +25,31 @@ function makeRes() {
   let statusCode = 200;
   let sent = false;
   const r: any = {
-    get headers() { return headers; },
-    header: (k: string, v: string) => { headers[k] = v; return r; },
-    status: (c: number) => { statusCode = c; return r; },
-    send: vi.fn(() => { sent = true; }),
+    get headers() {
+      return headers;
+    },
+    header: (k: string, v: string) => {
+      headers[k] = v;
+      return r;
+    },
+    status: (c: number) => {
+      statusCode = c;
+      return r;
+    },
+    send: vi.fn(() => {
+      sent = true;
+    }),
     getHeader: (k: string) => headers[k],
     removeHeader: vi.fn(),
     sendRaw: vi.fn(),
     error: vi.fn(),
     stream: vi.fn(),
-    get headersSent() { return sent; },
-    get statusCode() { return statusCode; },
+    get headersSent() {
+      return sent;
+    },
+    get statusCode() {
+      return statusCode;
+    },
     raw: {},
     capabilities: { sse: false, streaming: false },
   };
@@ -43,7 +66,9 @@ describe('useCors — extended coverage', () => {
     const req = makeReq({ headers: { origin: 'https://trusted.com' } });
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
-    expect(res.headers['Access-Control-Allow-Origin']).toBe('https://trusted.com');
+    expect(res.headers['Access-Control-Allow-Origin']).toBe(
+      'https://trusted.com',
+    );
   });
 
   it('function origin returning false does not set ACAO header', async () => {
@@ -64,7 +89,10 @@ describe('useCors — extended coverage', () => {
     });
     const req = makeReq({
       method: 'OPTIONS',
-      headers: { origin: 'https://example-cors.com', 'access-control-request-method': 'POST' },
+      headers: {
+        origin: 'https://example-cors.com',
+        'access-control-request-method': 'POST',
+      },
     });
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
@@ -74,7 +102,10 @@ describe('useCors — extended coverage', () => {
 
   it('sends 400 on strictPreflight OPTIONS without Origin', async () => {
     const app = new Axiomify();
-    useCors(app, { origin: ['https://example-cors.com'], strictPreflight: true });
+    useCors(app, {
+      origin: ['https://example-cors.com'],
+      strictPreflight: true,
+    });
     const req = makeReq({ method: 'OPTIONS', headers: {} });
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
@@ -98,11 +129,16 @@ describe('useCors — extended coverage', () => {
 
   it('sets Access-Control-Expose-Headers when configured', async () => {
     const app = new Axiomify();
-    useCors(app, { origin: ['https://a.com'], exposedHeaders: ['X-Custom', 'X-Total'] });
+    useCors(app, {
+      origin: ['https://a.com'],
+      exposedHeaders: ['X-Custom', 'X-Total'],
+    });
     const req = makeReq({ headers: { origin: 'https://a.com' } });
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
-    expect(res.headers['Access-Control-Expose-Headers']).toBe('X-Custom, X-Total');
+    expect(res.headers['Access-Control-Expose-Headers']).toBe(
+      'X-Custom, X-Total',
+    );
   });
 
   it('sets Access-Control-Allow-Credentials when credentials=true', async () => {
@@ -119,10 +155,14 @@ describe('useCors — RegExp and string origin, default allowed headers', () => 
   it('RegExp origin matches and sets resolved origin', async () => {
     const app = new Axiomify();
     useCors(app, { origin: /^https?:\/\/(.*\.)?example-cors\.com$/ });
-    const req = makeReq({ headers: { origin: 'https://sub.example-cors.com' } });
+    const req = makeReq({
+      headers: { origin: 'https://sub.example-cors.com' },
+    });
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
-    expect(res.headers['Access-Control-Allow-Origin']).toBe('https://sub.example-cors.com');
+    expect(res.headers['Access-Control-Allow-Origin']).toBe(
+      'https://sub.example-cors.com',
+    );
   });
 
   it('string origin: exact match allowed, non-match excluded', async () => {
@@ -142,18 +182,24 @@ describe('useCors — RegExp and string origin, default allowed headers', () => 
 
   it('array origin with mixed string and RegExp entries', async () => {
     const app = new Axiomify();
-    useCors(app, { origin: ['https://trusted.com', /^https?:\/\/.*\.internal$/] });
+    useCors(app, {
+      origin: ['https://trusted.com', /^https?:\/\/.*\.internal$/],
+    });
     const req = makeReq({ headers: { origin: 'https://svc.internal' } });
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
-    expect(res.headers['Access-Control-Allow-Origin']).toBe('https://svc.internal');
+    expect(res.headers['Access-Control-Allow-Origin']).toBe(
+      'https://svc.internal',
+    );
   });
 
   it('auto-anchors regex and rejects partial match bypasses', async () => {
     const app = new Axiomify();
     // /example-cors.com/ is not anchored, so normally matches attacker-example-cors.com
     useCors(app, { origin: /example-cors\.com/ });
-    const req = makeReq({ headers: { origin: 'https://attacker-example-cors.com' } });
+    const req = makeReq({
+      headers: { origin: 'https://attacker-example-cors.com' },
+    });
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
     // Should be undefined because it got auto-anchored to /^example-cors\.com$/
@@ -184,7 +230,9 @@ describe('useCors — RegExp and string origin, default allowed headers', () => 
     });
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
-    expect(res.headers['Access-Control-Allow-Headers']).toBe('Content-Type, Authorization');
+    expect(res.headers['Access-Control-Allow-Headers']).toBe(
+      'Content-Type, Authorization',
+    );
   });
 });
 
@@ -264,13 +312,24 @@ describe('useCors — function origin and setVary fallback', () => {
     // res without getHeader
     const headers: Record<string, string> = {};
     const res: any = {
-      header: (k: string, v: string) => { headers[k] = v; return res; },
+      header: (k: string, v: string) => {
+        headers[k] = v;
+        return res;
+      },
       // no getHeader on this response
-      status: () => res, send: vi.fn(), sendRaw: vi.fn(),
-      removeHeader: vi.fn(), error: vi.fn(), stream: vi.fn(),
-      headersSent: false, statusCode: 200, raw: {},
+      status: () => res,
+      send: vi.fn(),
+      sendRaw: vi.fn(),
+      removeHeader: vi.fn(),
+      error: vi.fn(),
+      stream: vi.fn(),
+      headersSent: false,
+      statusCode: 200,
+      raw: {},
       capabilities: { sse: false, streaming: false },
-      get headers() { return headers; },
+      get headers() {
+        return headers;
+      },
     };
     const req = makeReq({ headers: { origin: 'https://specific.com' } });
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);

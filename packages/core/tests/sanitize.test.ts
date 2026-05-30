@@ -14,18 +14,26 @@ describe('sanitizeInput', () => {
     const input = JSON.parse('{"__proto__":{"polluted":true},"safe":"yes"}');
     const result = sanitizeInput(input) as any;
     expect(result.safe).toBe('yes');
-    expect(Object.prototype.hasOwnProperty.call(result, '__proto__')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(result, '__proto__')).toBe(
+      false,
+    );
     expect(({} as any).polluted).toBeUndefined();
   });
 
   it('strips constructor key from objects', () => {
-    const result = sanitizeInput({ constructor: { bad: true }, safe: 'ok' }) as any;
+    const result = sanitizeInput({
+      constructor: { bad: true },
+      safe: 'ok',
+    }) as any;
     expect(result.safe).toBe('ok');
     expect(result.constructor).toBeUndefined();
   });
 
   it('strips prototype key from objects', () => {
-    const result = sanitizeInput({ prototype: { evil: true }, safe: 'ok' }) as any;
+    const result = sanitizeInput({
+      prototype: { evil: true },
+      safe: 'ok',
+    }) as any;
     expect(result.safe).toBe('ok');
     expect(result.prototype).toBeUndefined();
   });

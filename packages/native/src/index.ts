@@ -4,7 +4,11 @@ import type {
   HttpMethod,
   SerializerInput,
 } from '@axiomify/core';
-import { ADAPTER_LOCK_TOKEN, makeSerialize } from '@axiomify/core';
+import {
+  ADAPTER_LOCK_TOKEN,
+  makeSerialize,
+  compiledStates,
+} from '@axiomify/core';
 import cluster from 'cluster';
 import { cpus } from 'node:os';
 import { availableParallelism } from 'os';
@@ -187,10 +191,11 @@ export class NativeAdapter {
   private _inflight = 0;
   private _drainResolvers: (() => void)[] = [];
   private readonly _errorCache: ErrorCache;
+  private readonly _lockToken = Symbol('axiomify.native.lock');
 
   constructor(app: Axiomify, options: NativeAdapterOptions = {}) {
     this._app = app;
-    this._app.lockRoutes(ADAPTER_LOCK_TOKEN, '@axiomify/native');
+    this._app.lockRoutes(this._lockToken, '@axiomify/native');
     this._port = options.port ?? 3000;
     this._maxBodySize = options.maxBodySize ?? 1_048_576;
     this._trustProxy = options.trustProxy ?? false;
@@ -205,8 +210,8 @@ export class NativeAdapter {
     if (!this._trustProxy) {
       this._logger.warn(
         '[Axiomify/native] trustProxy is disabled. Behind a reverse proxy (e.g. Nginx, ALB, Cloudflare), ' +
-          'all requests will appear to come from the proxy\'s IP address, which makes rate limiting ineffective. ' +
-          'Set trustProxy: true only if you are behind a trusted proxy.'
+          "all requests will appear to come from the proxy's IP address, which makes rate limiting ineffective. " +
+          'Set trustProxy: true only if you are behind a trusted proxy.',
       );
     }
     this._serialize = makeSerialize(this._app.serializer);
@@ -304,7 +309,7 @@ export class NativeAdapter {
       if (!methods.has('OPTIONS')) {
         const paramKeys = extractParamKeys(path);
         const allowMethods = Array.from(methods).sort().join(', ');
-        
+
         const optionsRoute = {
           method: 'OPTIONS',
           path,
@@ -313,33 +318,156 @@ export class NativeAdapter {
             res.status(204).send(null);
           },
         } as any;
-        
+
         this._server.options(path, this._makeHandler(optionsRoute, paramKeys));
         methods.add('OPTIONS');
       }
 
       const allow = Array.from(methods).sort().join(', ');
-      this._server.any(path, (res: UWSResponse, _req: UWSRequest) => {
-        res.onAborted(() => {});
-        res.cork(() => {
-          res.writeStatus(statusLine(405));
-          res.writeHeader('Allow', allow);
-          res.writeHeader('Content-Type', 'application/json');
-          res.end(cached405Body);
+      const app = this._app;
+      const serialize = this._serialize;
+      const errorCache = this._errorCache;
+      const trustProxy = this._trustProxy;
+
+      this._server.any(path, (res: UWSResponse, req: UWSRequest) => {
+        const method = req.getMethod().toUpperCase() as HttpMethod;
+        const url = req.getUrl();
+        const queryStr = req.getQuery();
+        const ip = trustProxy
+          ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
+            _ipDecoder.decode(res.getRemoteAddressAsText())
+          : _ipDecoder.decode(res.getRemoteAddressAsText());
+        const headers = collectHeaders(req);
+
+        let aborted = false;
+        res.onAborted(() => {
+          aborted = true;
         });
+
+        const axiomifyReq = new NativeRequest(
+          method,
+          url,
+          ip,
+          headers,
+          queryStr,
+          undefined,
+        );
+
+        const axiomifyRes = new NativeResponse(
+          res,
+          app,
+          axiomifyReq,
+          method,
+          serialize,
+          errorCache,
+        );
+
+        const dummyRoute = {
+          method,
+          path,
+          handler: (_req: any, r: any) => {
+            r.header('Allow', allow);
+            r.status(405).send(null, 'Method Not Allowed');
+          },
+        } as any;
+
+        compiledStates.set(dummyRoute, {
+          pipeline: [dummyRoute.handler],
+          hasResponseSchema: false,
+        });
+
+        app
+          .handleMatchedRoute(
+            this._lockToken,
+            axiomifyReq,
+            axiomifyRes,
+            dummyRoute,
+            {},
+          )
+          .catch(() => {
+            if (!aborted) {
+              res.cork(() => {
+                res.writeStatus(statusLine(405));
+                res.writeHeader('Allow', allow);
+                res.writeHeader('Content-Type', 'application/json');
+                res.end(cached405Body);
+              });
+            }
+          });
       });
     }
   }
 
   private _registerFallback(): void {
     const cached404 = this._errorCache.cached404;
-    this._server.any('/*', (res: UWSResponse, _req: UWSRequest) => {
-      res.onAborted(() => {});
-      res.cork(() => {
-        res.writeStatus(cached404.statusLine);
-        res.writeHeader('Content-Type', 'application/json');
-        res.end(cached404.body);
+    const app = this._app;
+    const serialize = this._serialize;
+    const errorCache = this._errorCache;
+    const trustProxy = this._trustProxy;
+
+    this._server.any('/*', (res: UWSResponse, req: UWSRequest) => {
+      const method = req.getMethod().toUpperCase() as HttpMethod;
+      const url = req.getUrl();
+      const queryStr = req.getQuery();
+      const ip = trustProxy
+        ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
+          _ipDecoder.decode(res.getRemoteAddressAsText())
+        : _ipDecoder.decode(res.getRemoteAddressAsText());
+      const headers = collectHeaders(req);
+
+      let aborted = false;
+      res.onAborted(() => {
+        aborted = true;
       });
+
+      const axiomifyReq = new NativeRequest(
+        method,
+        url,
+        ip,
+        headers,
+        queryStr,
+        undefined,
+      );
+
+      const axiomifyRes = new NativeResponse(
+        res,
+        app,
+        axiomifyReq,
+        method,
+        serialize,
+        errorCache,
+      );
+
+      const dummyRoute = {
+        method,
+        path: '/*',
+        handler: (_req: any, r: any) => {
+          r.status(404).send(null, 'Route not found');
+        },
+      } as any;
+
+      compiledStates.set(dummyRoute, {
+        pipeline: [dummyRoute.handler],
+        hasResponseSchema: false,
+      });
+
+      app
+        .handleMatchedRoute(
+          this._lockToken,
+          axiomifyReq,
+          axiomifyRes,
+          dummyRoute,
+          {},
+        )
+        .catch(() => {
+          if (!aborted) {
+            res.cork(() => {
+              res.writeStatus(cached404.statusLine);
+              res.writeHeader('Content-Type', 'application/json');
+              res.end(cached404.body);
+            });
+          }
+        });
     });
   }
 
@@ -463,11 +591,36 @@ export class NativeAdapter {
           if (result.tooLarge) {
             if (!aborted) {
               axiomifyRes.aborted = false; // reset to allow send
-              res.cork(() => {
-                res.writeStatus(cached413.statusLine);
-                res.writeHeader('Content-Type', 'application/json');
-                res.end(cached413.body);
+              const dummyRoute = {
+                method: route.method,
+                path: route.path,
+                handler: (_req: any, r: any) => {
+                  r.status(413).send(null, 'Payload Too Large');
+                },
+              } as any;
+
+              compiledStates.set(dummyRoute, {
+                pipeline: [dummyRoute.handler],
+                hasResponseSchema: false,
               });
+
+              app
+                .handleMatchedRoute(
+                  adapter._lockToken,
+                  axiomifyReq,
+                  axiomifyRes,
+                  dummyRoute,
+                  params,
+                )
+                .catch(() => {
+                  if (!aborted) {
+                    res.cork(() => {
+                      res.writeStatus(cached413.statusLine);
+                      res.writeHeader('Content-Type', 'application/json');
+                      res.end(cached413.body);
+                    });
+                  }
+                });
             }
             return;
           }
@@ -484,7 +637,7 @@ export class NativeAdapter {
         axiomifyRes.aborted = aborted;
 
         await app.handleMatchedRoute(
-          ADAPTER_LOCK_TOKEN,
+          adapter._lockToken,
           axiomifyReq,
           axiomifyRes,
           route,
@@ -508,8 +661,8 @@ export class NativeAdapter {
                 typeof anyErr.statusCode === 'number'
                   ? anyErr.statusCode
                   : typeof anyErr.status === 'number'
-                  ? anyErr.status
-                  : 500;
+                    ? anyErr.status
+                    : 500;
               const errMsg =
                 typeof anyErr.message === 'string'
                   ? anyErr.message
@@ -980,7 +1133,12 @@ export class NativeAdapter {
     );
     const liveWorkers = new Map<
       number,
-      { process: cluster.Worker; state: string; port: number; lastHeartbeat: number }
+      {
+        process: cluster.Worker;
+        state: string;
+        port: number;
+        lastHeartbeat: number;
+      }
     >();
 
     let isShuttingDown = false;
@@ -1098,7 +1256,7 @@ export class NativeAdapter {
         if (record.state === 'READY' && now - record.lastHeartbeat > 15_000) {
           this._logger.error(
             `[Axiomify/native] Worker ${pid} missed heartbeats. Event loop might be blocked. Killing worker.`,
-            { pid }
+            { pid },
           );
           record.process.kill('SIGKILL');
         }
@@ -1185,12 +1343,24 @@ export class NativeAdapter {
    *
    * @internal Plugin-author API. Not part of the public Axiomify surface.
    */
-  public getRawServer(token: AdapterLockToken): TemplatedApp {
-    if (token !== ADAPTER_LOCK_TOKEN) {
+  public getRawServer(token: symbol): TemplatedApp {
+    if (token !== this._lockToken && token !== ADAPTER_LOCK_TOKEN) {
       throw new Error(
         '[Axiomify/native] getRawServer() is reserved for adapter-bridge plugins. ' +
           'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
       );
+    }
+    if (token === ADAPTER_LOCK_TOKEN) {
+      const stack = new Error().stack ?? '';
+      const authorized =
+        stack.includes('packages/socket.io') ||
+        stack.includes('@axiomify/socket.io') ||
+        stack.includes('socket.io-bridge');
+      if (!authorized) {
+        throw new Error(
+          '[Axiomify/native] getRawServer() is privileged and can only be called by authorized adapters or bridges.',
+        );
+      }
     }
     return this._server;
   }
@@ -1209,14 +1379,26 @@ export class NativeAdapter {
    */
   private _bridgeShutdownCallbacks: Array<() => void | Promise<void>> = [];
   public registerShutdownCallback(
-    token: AdapterLockToken,
+    token: symbol,
     cb: () => void | Promise<void>,
   ): void {
-    if (token !== ADAPTER_LOCK_TOKEN) {
+    if (token !== this._lockToken && token !== ADAPTER_LOCK_TOKEN) {
       throw new Error(
         '[Axiomify/native] registerShutdownCallback() is reserved for adapter-bridge plugins. ' +
           'Import ADAPTER_LOCK_TOKEN from @axiomify/core.',
       );
+    }
+    if (token === ADAPTER_LOCK_TOKEN) {
+      const stack = new Error().stack ?? '';
+      const authorized =
+        stack.includes('packages/socket.io') ||
+        stack.includes('@axiomify/socket.io') ||
+        stack.includes('socket.io-bridge');
+      if (!authorized) {
+        throw new Error(
+          '[Axiomify/native] registerShutdownCallback() is privileged and can only be called by authorized adapters or bridges.',
+        );
+      }
     }
     this._bridgeShutdownCallbacks.push(cb);
   }

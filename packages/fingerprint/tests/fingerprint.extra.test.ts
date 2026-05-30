@@ -20,7 +20,9 @@ const makeReq = (overrides: any = {}) => ({
 const makeRes = () => {
   const headers: Record<string, string> = {};
   return {
-    header: vi.fn((k: string, v: string) => { headers[k] = v; }),
+    header: vi.fn((k: string, v: string) => {
+      headers[k] = v;
+    }),
     headers,
   } as any;
 };
@@ -75,7 +77,10 @@ describe('useFingerprint — extended paths', () => {
 
   it('falls back to req.ip when trustProxyHeaders is true but no forwarded headers are present', async () => {
     const hook = setup({ trustProxyHeaders: true });
-    const req = makeReq({ headers: { 'user-agent': 'ua' }, ip: '203.0.113.99' });
+    const req = makeReq({
+      headers: { 'user-agent': 'ua' },
+      ip: '203.0.113.99',
+    });
     const res = makeRes();
     await hook(req, res);
     expect(req.state.fingerprintData.ip).toBe('203.0.113.99');
@@ -112,7 +117,10 @@ describe('useFingerprint — extended paths', () => {
 
   it('normalizes IPv4-mapped IPv6 (::ffff:1.2.3.4)', async () => {
     const hook = setup();
-    const req = makeReq({ headers: { 'user-agent': 'ua' }, ip: '::ffff:203.0.113.5' });
+    const req = makeReq({
+      headers: { 'user-agent': 'ua' },
+      ip: '::ffff:203.0.113.5',
+    });
     const res = makeRes();
     await hook(req, res);
     expect(req.state.fingerprintData.ip).toBe('203.0.113.5');
@@ -141,7 +149,10 @@ describe('useFingerprint — extended paths', () => {
   it('uses x-forwarded-for first hop when present (array form)', async () => {
     const hook = setup({ trustProxyHeaders: true });
     const req = makeReq({
-      headers: { 'user-agent': 'ua', 'x-forwarded-for': ['203.0.113.7', '10.0.0.1'] },
+      headers: {
+        'user-agent': 'ua',
+        'x-forwarded-for': ['203.0.113.7', '10.0.0.1'],
+      },
       ip: '10.0.0.5',
     });
     const res = makeRes();
@@ -160,7 +171,10 @@ describe('useFingerprint — extended paths', () => {
   it('correctly parses cookies with "=" in their values', async () => {
     const hook = setup();
     const req = makeReq({
-      headers: { 'user-agent': 'ua', cookie: 'ax_fp_id=some=value=with=equals; other_cookie=xyz' },
+      headers: {
+        'user-agent': 'ua',
+        cookie: 'ax_fp_id=some=value=with=equals; other_cookie=xyz',
+      },
     });
     const res = makeRes();
     await hook(req, res);
@@ -178,11 +192,16 @@ describe('useFingerprint — extended paths', () => {
   it('handles cookies without equals sign and issues a new cookie when target cookie is not found', async () => {
     const hook = setup();
     const req = makeReq({
-      headers: { 'user-agent': 'ua', cookie: 'some_other_cookie; another_key=value' },
+      headers: {
+        'user-agent': 'ua',
+        cookie: 'some_other_cookie; another_key=value',
+      },
     });
     const res = makeRes();
     await hook(req, res);
-    expect(res.header).toHaveBeenCalledWith('Set-Cookie', expect.stringMatching(/^ax_fp_id=/));
+    expect(res.header).toHaveBeenCalledWith(
+      'Set-Cookie',
+      expect.stringMatching(/^ax_fp_id=/),
+    );
   });
 });
-

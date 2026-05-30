@@ -53,7 +53,18 @@ describe('useHelmet — option overrides and string values', () => {
     const { useHelmet } = await import('../src/index');
     const app = new Axiomify();
     useHelmet(app, { xXssProtection: '1; mode=block' });
-    const req: any = { headers: {}, method: 'GET', path: '/', state: {}, ip: '', id: 'r', params: {}, query: {}, body: undefined, url: '/' };
+    const req: any = {
+      headers: {},
+      method: 'GET',
+      path: '/',
+      state: {},
+      ip: '',
+      id: 'r',
+      params: {},
+      query: {},
+      body: undefined,
+      url: '/',
+    };
     const res: any = {
       header: vi.fn().mockReturnThis(),
       removeHeader: vi.fn().mockReturnThis(),
@@ -61,7 +72,10 @@ describe('useHelmet — option overrides and string values', () => {
       send: vi.fn().mockReturnThis(),
     };
     await (app as any).handle(req, res);
-    expect(res.header).toHaveBeenCalledWith('X-XSS-Protection', '1; mode=block');
+    expect(res.header).toHaveBeenCalledWith(
+      'X-XSS-Protection',
+      '1; mode=block',
+    );
   });
 
   it('hsts object form with explicit maxAge / no-subdomains / preload', async () => {
@@ -71,7 +85,18 @@ describe('useHelmet — option overrides and string values', () => {
     useHelmet(app, {
       hsts: { maxAge: 60, includeSubDomains: false, preload: true },
     });
-    const req: any = { headers: {}, method: 'GET', path: '/', state: {}, ip: '', id: 'r', params: {}, query: {}, body: undefined, url: '/' };
+    const req: any = {
+      headers: {},
+      method: 'GET',
+      path: '/',
+      state: {},
+      ip: '',
+      id: 'r',
+      params: {},
+      query: {},
+      body: undefined,
+      url: '/',
+    };
     const res: any = {
       header: vi.fn().mockReturnThis(),
       removeHeader: vi.fn().mockReturnThis(),
@@ -90,7 +115,18 @@ describe('useHelmet — option overrides and string values', () => {
     const { useHelmet } = await import('../src/index');
     const app = new Axiomify();
     useHelmet(app, { hsts: {} });
-    const req: any = { headers: {}, method: 'GET', path: '/', state: {}, ip: '', id: 'r', params: {}, query: {}, body: undefined, url: '/' };
+    const req: any = {
+      headers: {},
+      method: 'GET',
+      path: '/',
+      state: {},
+      ip: '',
+      id: 'r',
+      params: {},
+      query: {},
+      body: undefined,
+      url: '/',
+    };
     const res: any = {
       header: vi.fn().mockReturnThis(),
       removeHeader: vi.fn().mockReturnThis(),

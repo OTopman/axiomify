@@ -1,6 +1,5 @@
 # @axiomify/core
 
-
 [![npm version](https://img.shields.io/npm/v/@axiomify/core.svg)](https://npmjs.com/package/@axiomify/core)
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
@@ -22,7 +21,7 @@ import { NativeAdapter } from '@axiomify/native';
 import { z } from 'zod';
 
 const app = new Axiomify({ logger: console });
-app.enableRequestId();  // opt-in X-Request-Id (off by default)
+app.enableRequestId(); // opt-in X-Request-Id (off by default)
 
 app.route({
   method: 'POST',
@@ -36,7 +35,9 @@ app.route({
   },
 });
 
-new NativeAdapter(app, { port: 3000 }).listen(() => console.log('Ready on 3000'));
+new NativeAdapter(app, { port: 3000 }).listen(() =>
+  console.log('Ready on 3000'),
+);
 ```
 
 ## What's in this package

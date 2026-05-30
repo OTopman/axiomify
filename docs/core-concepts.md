@@ -43,6 +43,7 @@ Zod schemas are not evaluated at request time. At route registration:
 3. The compiled function is stored on the route — no schema introspection at request time.
 
 At request time:
+
 - **AJV validates structure** — the compiled function does the structural check.
 - **`schema.parse(data)` runs a second pass only when the schema declares transforms** (`.default()`, `.coerce.*`, `.transform()`). On transform-free schemas the second pass is skipped entirely.
 
@@ -57,11 +58,21 @@ AJV is configured `coerceTypes: false` and without `removeAdditional`, so the va
 Hooks are registered globally on the `Axiomify` instance and run on every request:
 
 ```typescript
-app.addHook('onRequest',     async (req, res) => { /* set X-Request-Id, auth, etc. */ });
-app.addHook('onPreHandler',  async (req, res, { route, params }) => { /* pre-handler logic */ });
-app.addHook('onPostHandler', async (req, res, { route, params }) => { /* logging, metrics */ });
-app.addHook('onError',       async (err, req, res) => { /* custom error handling */ });
-app.addHook('onClose',       async (req, res) => { /* cleanup, always runs */ });
+app.addHook('onRequest', async (req, res) => {
+  /* set X-Request-Id, auth, etc. */
+});
+app.addHook('onPreHandler', async (req, res, { route, params }) => {
+  /* pre-handler logic */
+});
+app.addHook('onPostHandler', async (req, res, { route, params }) => {
+  /* logging, metrics */
+});
+app.addHook('onError', async (err, req, res) => {
+  /* custom error handling */
+});
+app.addHook('onClose', async (req, res) => {
+  /* cleanup, always runs */
+});
 ```
 
 **Execution order on a matched route:** `onRequest` → router lookup → `onPreHandler` → compiled pipeline (validation steps + plugins + handler) → `onPostHandler` → `onClose`
@@ -71,6 +82,7 @@ When a handler or hook throws, `onError` runs in place of the remaining steps; `
 ### Hook performance
 
 `HookManager.run()` is async-minimal:
+
 - **Empty list** → returns `undefined` synchronously — no Promise allocation
 - **Single handler** → called directly, no async wrapper
 - **Multiple handlers** → sequential async loop
@@ -122,19 +134,19 @@ app.group('/api/v1', { plugins: [requireAuth] }, (v1) => {
 ## Request object
 
 ```typescript
-req.id       // string  — process-local counter ID, or upstream X-Request-Id
-req.method   // HttpMethod
-req.path     // string  — path only, no query string
-req.url      // string  — full URL including query string
-req.ip       // string  — client IP (respects trustProxy on the adapter)
-req.headers  // Record<string, string | string[] | undefined>
-req.body     // unknown — parsed JSON/urlencoded; Zod transforms applied if schema present
-req.query    // Record<string, string | string[]> — multi-value keys are string[]
-req.params   // Record<string, string> — named path parameters
-req.state    // Record<string, unknown> — mutable per-request store for plugins
-req.signal   // AbortSignal — aborted when client disconnects
-req.stream   // Readable — raw request stream for multipart/upload
-req.raw      // unknown — the underlying adapter-specific request object
+req.id; // string  — process-local counter ID, or upstream X-Request-Id
+req.method; // HttpMethod
+req.path; // string  — path only, no query string
+req.url; // string  — full URL including query string
+req.ip; // string  — client IP (respects trustProxy on the adapter)
+req.headers; // Record<string, string | string[] | undefined>
+req.body; // unknown — parsed JSON/urlencoded; Zod transforms applied if schema present
+req.query; // Record<string, string | string[]> — multi-value keys are string[]
+req.params; // Record<string, string> — named path parameters
+req.state; // Record<string, unknown> — mutable per-request store for plugins
+req.signal; // AbortSignal — aborted when client disconnects
+req.stream; // Readable — raw request stream for multipart/upload
+req.raw; // unknown — the underlying adapter-specific request object
 ```
 
 `body`, `query`, and `params` are **writable** — the validation layer assigns the post-transform values back onto the request object.
@@ -151,7 +163,6 @@ res.sendRaw(payload, contentType?)      // bypass the serialiser
 res.stream(readable, contentType?)      // stream a Readable to the client
 res.sseInit(heartbeatMs?)               // start Server-Sent Events
 res.sseSend(data, event?)               // send an SSE event
-res.error(err)                          // @deprecated — always emits 500; use res.status(code).send(null, msg) instead
 res.getHeader(key)                      // read a previously set header
 res.removeHeader(key)                   // remove a previously set header
 res.statusCode                          // read current status code
@@ -196,10 +207,11 @@ The serializer MUST be synchronous. A serializer that returns a Promise throws a
 
 ```typescript
 const app = new Axiomify();
-app.enableRequestId();   // hooks in the X-Request-Id injector
+app.enableRequestId(); // hooks in the X-Request-Id injector
 ```
 
 When enabled, every response gets an `X-Request-Id` header:
+
 - The upstream `X-Request-Id` header value if a gateway forwarded one, **or**
 - A process-local atomic counter ID (`<pid>-<counter>` in base-36).
 
@@ -213,8 +225,13 @@ The counter is module-level so two `Axiomify` instances in the same process don'
 
 ```typescript
 app.healthCheck('/health', {
-  database: async () => db.$queryRaw`SELECT 1`.then(() => true).catch(() => false),
-  cache:    async () => redis.ping().then(() => true).catch(() => false),
+  database: async () =>
+    db.$queryRaw`SELECT 1`.then(() => true).catch(() => false),
+  cache: async () =>
+    redis
+      .ping()
+      .then(() => true)
+      .catch(() => false),
 });
 // 200 { status: 'ok',      checks: { database: true, cache: true } }
 // 503 { status: 'degraded', checks: { database: false, cache: true } }
@@ -234,8 +251,8 @@ const adapter = new NativeAdapter(app, {
 });
 adapter.listenClustered({
   onWorkerReady: () => console.log(`[${process.pid}] ready`),
-  onPrimary:     (pids) => console.log('Workers:', pids),
-  onWorkerExit:  (pid, code) => console.error(`Worker ${pid} exited (${code})`),
+  onPrimary: (pids) => console.log('Workers:', pids),
+  onWorkerExit: (pid, code) => console.error(`Worker ${pid} exited (${code})`),
   gracefulTimeoutMs: 10_000,
 });
 ```

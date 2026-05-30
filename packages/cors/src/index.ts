@@ -60,7 +60,7 @@ function anchorRegExp(re: RegExp): RegExp {
   console.warn(
     `[axiomify/cors] Warning: RegExp origin ${re.toString()} is not fully anchored. ` +
       `Auto-anchoring it to prevent partial match bypasses (e.g. attacker-domain.com). ` +
-      `Please use ^ and $ explicitly, e.g. /^https?:\\/\\/(.*\\.)?domain\\.com$/`
+      `Please use ^ and $ explicitly, e.g. /^https?:\\/\\/(.*\\.)?domain\\.com$/`,
   );
   if (!source.startsWith('^')) {
     source = '^' + source;

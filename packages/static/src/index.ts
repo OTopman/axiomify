@@ -145,10 +145,14 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
           const indexPath = path.join(realPath, 'index.html');
           try {
             const idxStat = await fs.promises.stat(indexPath);
-            if (!idxStat.isFile()) return res.status(404).send(null, 'File not found');
+            if (!idxStat.isFile())
+              return res.status(404).send(null, 'File not found');
             res.header('Cache-Control', cacheControl);
             res.header('Content-Length', String(idxStat.size));
-            res.stream(fs.createReadStream(indexPath), 'text/html; charset=utf-8');
+            res.stream(
+              fs.createReadStream(indexPath),
+              'text/html; charset=utf-8',
+            );
           } catch {
             res.status(404).send(null, 'File not found');
           }

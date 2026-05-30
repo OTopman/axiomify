@@ -5,7 +5,10 @@ export class SemanticVersionEngine {
   /**
    * Suggests the next semantic version based on the breaking change analysis.
    */
-  suggestNextVersion(currentVersion: string, report: BreakingChangeReport): string {
+  suggestNextVersion(
+    currentVersion: string,
+    report: BreakingChangeReport,
+  ): string {
     const parts = currentVersion.split('.').map(Number);
     if (parts.length !== 3 || parts.some(isNaN)) {
       return '1.0.0'; // Fallback
@@ -17,7 +20,7 @@ export class SemanticVersionEngine {
       major += 1;
       minor = 0;
       patch = 0;
-    } else if (report.issues.some(i => i.severity === 'additive')) {
+    } else if (report.issues.some((i) => i.severity === 'additive')) {
       minor += 1;
       patch = 0;
     } else if (report.issues.length > 0) {
@@ -41,13 +44,17 @@ export class ChangelogGenerator {
     if (report.isBreaking) {
       lines.push(`## ⚠️ BREAKING CHANGES`);
       lines.push();
-      for (const issue of report.issues.filter(i => i.severity === 'breaking')) {
-        lines.push(`- **BREAKING**: ${issue.description} (Path: \`${issue.path}\`)`);
+      for (const issue of report.issues.filter(
+        (i) => i.severity === 'breaking',
+      )) {
+        lines.push(
+          `- **BREAKING**: ${issue.description} (Path: \`${issue.path}\`)`,
+        );
       }
       lines.push();
     }
 
-    const additive = report.issues.filter(i => i.severity === 'additive');
+    const additive = report.issues.filter((i) => i.severity === 'additive');
     if (additive.length > 0) {
       lines.push(`## 🚀 Additions & New Features`);
       lines.push();
@@ -57,7 +64,7 @@ export class ChangelogGenerator {
       lines.push();
     }
 
-    const minor = report.issues.filter(i => i.severity === 'minor');
+    const minor = report.issues.filter((i) => i.severity === 'minor');
     if (minor.length > 0) {
       lines.push(`## 🔧 Minor Modifications & Fixes`);
       lines.push();
@@ -85,7 +92,10 @@ export class MigrationEngine {
   /**
    * Produces specific action items or migration steps to help client SDK consumers upgrade.
    */
-  generateMigrationGuide(diff: DiffResult, report: BreakingChangeReport): MigrationStep[] {
+  generateMigrationGuide(
+    diff: DiffResult,
+    report: BreakingChangeReport,
+  ): MigrationStep[] {
     const steps: MigrationStep[] = [];
 
     // Endpoint removals/modifications
@@ -94,15 +104,20 @@ export class MigrationEngine {
         steps.push({
           target: `client.${id}`,
           action: 'remove',
-          description: `The method "${id}" has been removed from the client. Identify alternatives or remove calls to it.`
+          description: `The method "${id}" has been removed from the client. Identify alternatives or remove calls to it.`,
         });
       } else if (epDiff.type === 'modified') {
-        const signatureChanges = epDiff.changes.filter(c => c.path.startsWith('pathParams.') || c.path.startsWith('queryParams.') || c.path.startsWith('requestBody'));
+        const signatureChanges = epDiff.changes.filter(
+          (c) =>
+            c.path.startsWith('pathParams.') ||
+            c.path.startsWith('queryParams.') ||
+            c.path.startsWith('requestBody'),
+        );
         if (signatureChanges.length > 0) {
           steps.push({
             target: `client.${id}`,
             action: 'update_signature',
-            description: `The signature of method "${id}" has changed: ${signatureChanges.map(c => `${c.path} (${c.type})`).join(', ')}.`
+            description: `The signature of method "${id}" has changed: ${signatureChanges.map((c) => `${c.path} (${c.type})`).join(', ')}.`,
           });
         }
       }
@@ -114,16 +129,18 @@ export class MigrationEngine {
         steps.push({
           target: id,
           action: 'remove',
-          description: `The interface/struct "${id}" is no longer exported by the SDK. inspect usage.`
+          description: `The interface/struct "${id}" is no longer exported by the SDK. inspect usage.`,
         });
       } else if (typeDiff.type === 'modified') {
-        const removedFields = typeDiff.changes.filter(c => c.type === 'removed' && c.path.startsWith('fields.'));
+        const removedFields = typeDiff.changes.filter(
+          (c) => c.type === 'removed' && c.path.startsWith('fields.'),
+        );
         for (const change of removedFields) {
           const fieldName = change.path.split('.').pop() || '';
           steps.push({
             target: `${id}.${fieldName}`,
             action: 'remove',
-            description: `Field "${fieldName}" has been removed from type "${id}". Update structures that consume this type.`
+            description: `Field "${fieldName}" has been removed from type "${id}". Update structures that consume this type.`,
           });
         }
       }

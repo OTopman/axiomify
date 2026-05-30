@@ -1,4 +1,3 @@
-
 import { describe, it, expect, vi, afterAll, beforeAll } from 'vitest';
 import http from 'http';
 
@@ -53,7 +52,10 @@ describe.skipIf(!uwsSupported)('NativeAdapter - SSE', () => {
         let data = '';
         res.on('data', (chunk) => {
           data += chunk.toString();
-          if (data.includes('event: greet\n') && data.includes('data: {"hello":"world"}\n\n')) {
+          if (
+            data.includes('event: greet\n') &&
+            data.includes('data: {"hello":"world"}\n\n')
+          ) {
             req.destroy();
             resolve();
           }

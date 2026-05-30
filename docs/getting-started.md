@@ -43,7 +43,7 @@ app.route({
   schema: {
     body: z.object({
       email: z.string().email(),
-      name:  z.string().min(2),
+      name: z.string().min(2),
     }),
   },
   handler: async (req, res) => {

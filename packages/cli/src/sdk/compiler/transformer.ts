@@ -39,12 +39,21 @@ export class Transformer {
  */
 export class HeaderInjectorTransformer implements IRTransformer {
   name = 'HeaderInjector';
-  constructor(private headers: Array<{ name: string; type: IRTypeRef; description?: string; required?: boolean }>) {}
+  constructor(
+    private headers: Array<{
+      name: string;
+      type: IRTypeRef;
+      description?: string;
+      required?: boolean;
+    }>,
+  ) {}
 
   transform(schema: IRSchema): void {
     for (const ep of schema.endpoints) {
       for (const h of this.headers) {
-        const exists = ep.headerParams.some(p => p.name.toLowerCase() === h.name.toLowerCase());
+        const exists = ep.headerParams.some(
+          (p) => p.name.toLowerCase() === h.name.toLowerCase(),
+        );
         if (!exists) {
           ep.headerParams.push({
             name: h.name,
@@ -68,7 +77,7 @@ export class DefaultErrorResponseTransformer implements IRTransformer {
   constructor(
     private statusCodes: string[],
     private errorTypeRef: IRTypeRef,
-    private description = 'Standard API error response'
+    private description = 'Standard API error response',
   ) {}
 
   transform(schema: IRSchema): void {

@@ -3,9 +3,18 @@ import { Axiomify, ADAPTER_LOCK_TOKEN } from '../src/index';
 
 function makeReq(overrides: any = {}): any {
   return {
-    id: 'r1', method: 'GET', url: '/', path: '/', ip: '127.0.0.1',
-    headers: {}, body: undefined, query: {}, params: {},
-    state: {}, raw: {}, stream: null,
+    id: 'r1',
+    method: 'GET',
+    url: '/',
+    path: '/',
+    ip: '127.0.0.1',
+    headers: {},
+    body: undefined,
+    query: {},
+    params: {},
+    state: {},
+    raw: {},
+    stream: null,
     ...overrides,
   };
 }
@@ -15,15 +24,27 @@ function makeRes(overrides: any = {}): any {
   let sent = false;
   const res: any = {
     status: vi.fn().mockReturnThis(),
-    header: vi.fn((k: string, v: string) => { headers[k] = v; return res; }),
+    header: vi.fn((k: string, v: string) => {
+      headers[k] = v;
+      return res;
+    }),
     getHeader: vi.fn((k: string) => headers[k]),
     removeHeader: vi.fn().mockReturnThis(),
-    send: vi.fn(() => { sent = true; }),
-    sendRaw: vi.fn(), error: vi.fn(), stream: vi.fn(),
-    get headersSent() { return sent; },
-    statusCode: 200, raw: {},
+    send: vi.fn(() => {
+      sent = true;
+    }),
+    sendRaw: vi.fn(),
+    error: vi.fn(),
+    stream: vi.fn(),
+    get headersSent() {
+      return sent;
+    },
+    statusCode: 200,
+    raw: {},
     capabilities: { sse: false, streaming: false },
-    get headers() { return headers; },
+    get headers() {
+      return headers;
+    },
     ...overrides,
   };
   return res;
@@ -35,14 +56,20 @@ describe('Axiomify app — extended coverage', () => {
   describe('lockRoutes token guard', () => {
     it('throws when called without ADAPTER_LOCK_TOKEN', () => {
       const app = new Axiomify();
-      expect(() => (app as any).lockRoutes('bad-token')).toThrow(/reserved for adapter use/);
+      expect(() => (app as any).lockRoutes('bad-token')).toThrow(
+        /reserved for adapter use/,
+      );
     });
 
     it('prevents route registration after lock', () => {
       const app = new Axiomify();
       app.lockRoutes(ADAPTER_LOCK_TOKEN, 'test');
       expect(() =>
-        app.route({ method: 'GET', path: '/late', handler: async (_r, res) => res.send({}) }),
+        app.route({
+          method: 'GET',
+          path: '/late',
+          handler: async (_r, res) => res.send({}),
+        }),
       ).toThrow(/after adapter binding/);
     });
   });
@@ -67,18 +94,32 @@ describe('Axiomify app — extended coverage', () => {
     it('injects X-Request-Id on response', async () => {
       const app = new Axiomify();
       app.enableRequestId();
-      app.route({ method: 'GET', path: '/id', handler: async (_r, res) => res.send({}) });
+      app.route({
+        method: 'GET',
+        path: '/id',
+        handler: async (_r, res) => res.send({}),
+      });
       const req = makeReq({ path: '/id' });
       const res = makeRes();
       await app.handle(req, res);
-      expect(res.header).toHaveBeenCalledWith('X-Request-Id', expect.any(String));
+      expect(res.header).toHaveBeenCalledWith(
+        'X-Request-Id',
+        expect.any(String),
+      );
     });
 
     it('respects upstream x-request-id header', async () => {
       const app = new Axiomify();
       app.enableRequestId();
-      app.route({ method: 'GET', path: '/id2', handler: async (_r, res) => res.send({}) });
-      const req = makeReq({ path: '/id2', headers: { 'x-request-id': 'upstream-123' } });
+      app.route({
+        method: 'GET',
+        path: '/id2',
+        handler: async (_r, res) => res.send({}),
+      });
+      const req = makeReq({
+        path: '/id2',
+        headers: { 'x-request-id': 'upstream-123' },
+      });
       const res = makeRes();
       await app.handle(req, res);
       expect(res.header).toHaveBeenCalledWith('X-Request-Id', 'upstream-123');
@@ -97,8 +138,12 @@ describe('Axiomify app — extended coverage', () => {
       let handlerCalled = false;
       app.group('/admin', { plugins: [pluginSpy] }, (g) => {
         g.route({
-          method: 'GET', path: '/users',
-          handler: async (_r, res) => { handlerCalled = true; res.send({}); },
+          method: 'GET',
+          path: '/users',
+          handler: async (_r, res) => {
+            handlerCalled = true;
+            res.send({});
+          },
         });
       });
       const req = makeReq({ path: '/admin/users' });
@@ -114,7 +159,11 @@ describe('Axiomify app — extended coverage', () => {
       const childPlugin = vi.fn(async () => {});
       app.group('/api', { plugins: [parentPlugin] }, (g) => {
         g.group('/v1', { plugins: [childPlugin] }, (v1) => {
-          v1.route({ method: 'GET', path: '/health', handler: async (_r, res) => res.send({}) });
+          v1.route({
+            method: 'GET',
+            path: '/health',
+            handler: async (_r, res) => res.send({}),
+          });
         });
       });
       const req = makeReq({ path: '/api/v1/health' });
@@ -134,7 +183,7 @@ describe('Axiomify app — extended coverage', () => {
     it('returns status ok for default health check', async () => {
       const app = new Axiomify();
       app.healthCheck('/health');
-      const route = app.registeredRoutes.find(r => r.path === '/health')!;
+      const route = app.registeredRoutes.find((r) => r.path === '/health')!;
       const req = makeReq({ path: '/health' });
       const res = makeRes();
       await route.handler(req, res);
@@ -145,8 +194,11 @@ describe('Axiomify app — extended coverage', () => {
 
     it('returns degraded status when a check fails', async () => {
       const app = new Axiomify();
-      app.healthCheck('/health', { db: async () => true, cache: async () => false });
-      const route = app.registeredRoutes.find(r => r.path === '/health')!;
+      app.healthCheck('/health', {
+        db: async () => true,
+        cache: async () => false,
+      });
+      const route = app.registeredRoutes.find((r) => r.path === '/health')!;
       const req = makeReq({ path: '/health' });
       const res = makeRes();
       await route.handler(req, res);
@@ -161,8 +213,19 @@ describe('Axiomify app — extended coverage', () => {
       const app = new Axiomify();
       const order: string[] = [];
       // Register 'a' first so it exists
-      app.use({ name: 'a', register: () => { order.push('a'); } });
-      app.use({ name: 'b', dependencies: ['a'], register: () => { order.push('b'); } });
+      app.use({
+        name: 'a',
+        register: () => {
+          order.push('a');
+        },
+      });
+      app.use({
+        name: 'b',
+        dependencies: ['a'],
+        register: () => {
+          order.push('b');
+        },
+      });
       // 'a' registered first → 'b' after
       expect(order).toEqual(['a', 'b']);
     });
@@ -170,7 +233,11 @@ describe('Axiomify app — extended coverage', () => {
     it('throws on missing dependency', () => {
       const app = new Axiomify();
       expect(() =>
-        app.use({ name: 'x', dependencies: ['nonexistent'], register: () => {} }),
+        app.use({
+          name: 'x',
+          dependencies: ['nonexistent'],
+          register: () => {},
+        }),
       ).toThrow(/nonexistent/);
     });
 
@@ -189,10 +256,13 @@ describe('Axiomify app — extended coverage', () => {
       const app = new Axiomify();
       const configurator = vi.fn();
       app.use(configurator);
-      expect(configurator).toHaveBeenCalledWith(app, expect.objectContaining({
-        provide: expect.any(Function),
-        resolve: expect.any(Function),
-      }));
+      expect(configurator).toHaveBeenCalledWith(
+        app,
+        expect.objectContaining({
+          provide: expect.any(Function),
+          resolve: expect.any(Function),
+        }),
+      );
     });
 
     it('context.provide / resolve work', () => {
@@ -219,13 +289,21 @@ describe('Axiomify app — extended coverage', () => {
 
     it('marks status failed when statusCode >= 400', () => {
       const app = new Axiomify();
-      const out = app.serializer({ data: null, isError: false, statusCode: 404 } as any);
+      const out = app.serializer({
+        data: null,
+        isError: false,
+        statusCode: 404,
+      } as any);
       expect(out.status).toBe('failed');
     });
 
     it('uses provided message verbatim', () => {
       const app = new Axiomify();
-      const out = app.serializer({ data: null, isError: false, message: 'custom' } as any);
+      const out = app.serializer({
+        data: null,
+        isError: false,
+        message: 'custom',
+      } as any);
       expect(out.message).toBe('custom');
     });
   });
@@ -248,7 +326,7 @@ describe('Axiomify app — extended coverage', () => {
     it('registers a websocket route', () => {
       const app = new Axiomify();
       app.ws({ path: '/ws', handler: async () => {} } as any);
-      expect(app.registeredWsRoutes.some(r => r.path === '/ws')).toBe(true);
+      expect(app.registeredWsRoutes.some((r) => r.path === '/ws')).toBe(true);
     });
 
     it('throws when registering ws after routes are locked', () => {
@@ -266,15 +344,21 @@ describe('Axiomify app — extended coverage', () => {
       app.group('/api', (g) => {
         g.ws({ path: '/socket', handler: async () => {} } as any);
       });
-      expect(app.registeredWsRoutes.some(r => r.path === '/api/socket')).toBe(true);
+      expect(app.registeredWsRoutes.some((r) => r.path === '/api/socket')).toBe(
+        true,
+      );
     });
   });
 
   describe('healthCheck — failure path', () => {
     it('returns degraded when a check throws', async () => {
       const app = new Axiomify();
-      app.healthCheck('/h', { db: async () => { throw new Error('boom'); } });
-      const route = app.registeredRoutes.find(r => r.path === '/h')!;
+      app.healthCheck('/h', {
+        db: async () => {
+          throw new Error('boom');
+        },
+      });
+      const route = app.registeredRoutes.find((r) => r.path === '/h')!;
       const req = makeReq({ path: '/h' });
       const res = makeRes();
       await route.handler(req, res);
@@ -294,6 +378,276 @@ describe('Axiomify app — extended coverage', () => {
       const logger = { warn: vi.fn(), error: vi.fn() };
       const app = new Axiomify({ logger });
       expect(app.logger).toBe(logger);
+    });
+  });
+
+  describe('DI Container', () => {
+    it('throws when resolving unregistered service', () => {
+      const app = new Axiomify();
+      expect(() => {
+        app.use((_app, context) => {
+          context.resolve('unregistered-token');
+        });
+      }).toThrow(/DI Error: Cannot resolve unregistered service/);
+    });
+  });
+
+  describe('sortModules', () => {
+    it('throws circular dependency error', () => {
+      const app = new Axiomify();
+      const modA = {
+        name: 'modA',
+        dependencies: ['modB'],
+        register: () => {},
+      };
+      const modB = {
+        name: 'modB',
+        dependencies: ['modA'],
+        register: () => {},
+      };
+
+      const originalSet = Map.prototype.set;
+      Map.prototype.set = function (key, val) {
+        const res = originalSet.call(this, key, val);
+        if (key === 'modA' && val === modA) {
+          originalSet.call(this, 'modB', modB);
+        }
+        return res;
+      };
+
+      try {
+        expect(() => (app as any)._resolveModuleDeps(modA)).toThrow(
+          /Circular dependency detected/,
+        );
+      } finally {
+        Map.prototype.set = originalSet;
+      }
+    });
+
+    it('topologically sorts modules', () => {
+      const app = new Axiomify();
+      const modA = {
+        name: 'modA',
+        dependencies: ['modB'],
+        register: () => {},
+      };
+      const modB = {
+        name: 'modB',
+        dependencies: [],
+        register: () => {},
+      };
+
+      const originalSet = Map.prototype.set;
+      Map.prototype.set = function (key, val) {
+        const res = originalSet.call(this, key, val);
+        if (key === 'modA' && val === modA) {
+          originalSet.call(this, 'modB', modB);
+        }
+        return res;
+      };
+
+      try {
+        const result = (app as any)._resolveModuleDeps(modA);
+        expect(result.map((m: any) => m.name)).toEqual(['modB', 'modA']);
+      } finally {
+        Map.prototype.set = originalSet;
+      }
+    });
+  });
+
+  describe('lockRoutes duplicates', () => {
+    it('throws when locked twice', () => {
+      const app = new Axiomify();
+      app.lockRoutes(ADAPTER_LOCK_TOKEN, 'adapter-a');
+      expect(() => app.lockRoutes(ADAPTER_LOCK_TOKEN, 'adapter-b')).toThrow(
+        /has already been called/,
+      );
+    });
+  });
+
+  describe('setSerializer guard', () => {
+    it('throws when replacing serializer after routes are locked', () => {
+      const app = new Axiomify();
+      app.lockRoutes(ADAPTER_LOCK_TOKEN, 'adapter-a');
+      expect(() => app.setSerializer((x) => JSON.stringify(x))).toThrow(
+        /Cannot replace serializer after adapter binding/,
+      );
+    });
+  });
+
+  describe('nested group routing without options', () => {
+    it('successfully registers nested groups with just a callback', () => {
+      const app = new Axiomify();
+      app.group('/v1', (g1) => {
+        g1.group('/users', (g2) => {
+          g2.route({
+            method: 'GET',
+            path: '/profile',
+            handler: async (_r, res) => res.send({ ok: true }),
+          });
+        });
+      });
+      const route = app.registeredRoutes.find(
+        (r) => r.path === '/v1/users/profile',
+      );
+      expect(route).toBeDefined();
+    });
+  });
+
+  describe('unauthorized stack trace guard', () => {
+    it('throws when lockRoutes is called from an unauthorized caller frame', () => {
+      const app = new Axiomify();
+      const originalPrepare = Error.prepareStackTrace;
+      Error.prepareStackTrace = () => {
+        return 'Error\n    at someExternalModule (/Users/attacker/node_modules/attacker-lib/index.js:1:1)';
+      };
+      try {
+        expect(() => app.lockRoutes(ADAPTER_LOCK_TOKEN)).toThrow(
+          /lockRoutes\(\) is reserved for adapter use/,
+        );
+      } finally {
+        Error.prepareStackTrace = originalPrepare;
+      }
+    });
+
+    it('throws when handleMatchedRoute is called from an unauthorized caller frame', async () => {
+      const app = new Axiomify();
+      const originalPrepare = Error.prepareStackTrace;
+      Error.prepareStackTrace = () => {
+        return 'Error\n    at someExternalModule (/Users/attacker/node_modules/attacker-lib/index.js:1:1)';
+      };
+      try {
+        await expect(
+          (app as any).handleMatchedRoute(ADAPTER_LOCK_TOKEN, {}, {}, {}, {}),
+        ).rejects.toThrow(/handleMatchedRoute\(\) is reserved for adapter use/);
+      } finally {
+        Error.prepareStackTrace = originalPrepare;
+      }
+    });
+  });
+
+  describe('unauthorized stack trace guard — missing stack & caller frame fallback', () => {
+    it('handles undefined stack trace when locking routes', () => {
+      const app = new Axiomify();
+      const originalPrepare = Error.prepareStackTrace;
+      Error.prepareStackTrace = () => undefined;
+      try {
+        expect(() => app.lockRoutes(ADAPTER_LOCK_TOKEN)).toThrow(
+          /lockRoutes\(\) is reserved for adapter use/,
+        );
+      } finally {
+        Error.prepareStackTrace = originalPrepare;
+      }
+    });
+
+    it('handles undefined stack trace when handling matched route', async () => {
+      const app = new Axiomify();
+      const originalPrepare = Error.prepareStackTrace;
+      Error.prepareStackTrace = () => undefined;
+      try {
+        await expect(
+          (app as any).handleMatchedRoute(ADAPTER_LOCK_TOKEN, {}, {}, {}, {}),
+        ).rejects.toThrow(/handleMatchedRoute\(\) is reserved for adapter use/);
+      } finally {
+        Error.prepareStackTrace = originalPrepare;
+      }
+    });
+
+    it('handles missing caller frame fallback in lockRoutes when frames list is empty or only internal', () => {
+      const app = new Axiomify();
+      const originalPrepare = Error.prepareStackTrace;
+      Error.prepareStackTrace = () =>
+        'Error\n    at lockRoutes (src/app.ts:355:1)';
+      try {
+        expect(() => app.lockRoutes(ADAPTER_LOCK_TOKEN)).toThrow(
+          /lockRoutes\(\) is reserved for adapter use/,
+        );
+      } finally {
+        Error.prepareStackTrace = originalPrepare;
+      }
+    });
+
+    it('handles missing caller frame fallback in handleMatchedRoute when frames list only has internal files', async () => {
+      const app = new Axiomify();
+      const originalPrepare = Error.prepareStackTrace;
+      Error.prepareStackTrace = () =>
+        'Error\n    at handleMatchedRoute (src/app.ts:530:1)';
+      try {
+        await expect(
+          (app as any).handleMatchedRoute(ADAPTER_LOCK_TOKEN, {}, {}, {}, {}),
+        ).rejects.toThrow(/handleMatchedRoute\(\) is reserved for adapter use/);
+      } finally {
+        Error.prepareStackTrace = originalPrepare;
+      }
+    });
+  });
+
+  describe('locked routes without reason branch', () => {
+    it('route() locked error formatting without reason', () => {
+      const app = new Axiomify();
+      app.lockRoutes(ADAPTER_LOCK_TOKEN);
+      expect(() =>
+        app.route({
+          method: 'GET',
+          path: '/late-no-reason',
+          handler: async (_r, res) => res.send({}),
+        }),
+      ).toThrow(
+        /Cannot register route GET \/late-no-reason after adapter binding. Register all routes before/,
+      );
+    });
+
+    it('setSerializer() locked error formatting without reason', () => {
+      const app = new Axiomify();
+      app.lockRoutes(ADAPTER_LOCK_TOKEN);
+      expect(() => app.setSerializer((x) => JSON.stringify(x))).toThrow(
+        /Cannot replace serializer after adapter binding. Call setSerializer\(\) before/,
+      );
+    });
+  });
+
+  describe('Kahn cycle detection fallback', () => {
+    it('covers inDegree.get(n) ?? 0 fallback branch', () => {
+      const app = new Axiomify();
+      const modA = {
+        name: 'modA',
+        dependencies: ['modB'],
+        register: () => {},
+      };
+      const modB = {
+        name: 'modB',
+        dependencies: ['modA'],
+        register: () => {},
+      };
+
+      const originalSet = Map.prototype.set;
+      Map.prototype.set = function (key, val) {
+        const res = originalSet.call(this, key, val);
+        if (key === 'modA' && val === modA) {
+          originalSet.call(this, 'modB', modB);
+        }
+        return res;
+      };
+
+      const originalGet = Map.prototype.get;
+      Map.prototype.get = function (key, ...args) {
+        if (key === 'modB') {
+          const stack = new Error().stack || '';
+          if (stack.includes('filter')) {
+            return undefined;
+          }
+        }
+        return originalGet.call(this, key, ...args);
+      };
+
+      try {
+        expect(() => (app as any)._resolveModuleDeps(modA)).toThrow(
+          /Circular dependency detected/,
+        );
+      } finally {
+        Map.prototype.set = originalSet;
+        Map.prototype.get = originalGet;
+      }
     });
   });
 });

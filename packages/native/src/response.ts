@@ -5,9 +5,7 @@ import type {
   ResponseCapabilities,
   SerializerInput,
 } from '@axiomify/core';
-import type {
-  HttpResponse as UWSResponse,
-} from 'uWebSockets.js';
+import type { HttpResponse as UWSResponse } from 'uWebSockets.js';
 import { ErrorCache, statusLine } from './error-cache';
 import { HEADER_INJECTION_PATTERN } from './headers';
 import type { NativeRequest } from './request';
@@ -106,7 +104,10 @@ export class NativeResponse implements AxiomifyResponse {
     // would split the response and inject an attacker-controlled cookie.
     // Throwing here is correct per RFC 9110 §5.5 — invalid characters MUST
     // NOT appear in field values.
-    if (HEADER_INJECTION_PATTERN.test(key) || HEADER_INJECTION_PATTERN.test(value)) {
+    if (
+      HEADER_INJECTION_PATTERN.test(key) ||
+      HEADER_INJECTION_PATTERN.test(value)
+    ) {
       throw new Error(
         `[Axiomify/native] header() rejected CR/LF in name or value ` +
           `(response splitting prevention). Strip control characters before ` +
@@ -173,8 +174,8 @@ export class NativeResponse implements AxiomifyResponse {
       typeof payload === 'string'
         ? payload
         : Buffer.isBuffer(payload)
-        ? payload
-        : String(payload);
+          ? payload
+          : String(payload);
     const sl = statusLine(this.statusCode);
     const headers = this._headers;
 
@@ -388,12 +389,19 @@ export class NativeResponse implements AxiomifyResponse {
     parts.push('\n');
     const payload = parts.join('');
 
-    if (this._pendingSseBytes + payload.length > NativeResponse.SSE_PENDING_BYTE_CAP) {
+    if (
+      this._pendingSseBytes + payload.length >
+      NativeResponse.SSE_PENDING_BYTE_CAP
+    ) {
       // Slow consumer: a client that doesn't drain its TCP buffer would let
       // _pendingSse grow without bound. EventSource spec mandates client
       // auto-reconnect with Last-Event-ID, so closing here is recoverable.
       this.aborted = true;
-      try { this.raw.cork(() => this.raw.end()); } catch { /* already ended */ }
+      try {
+        this.raw.cork(() => this.raw.end());
+      } catch {
+        /* already ended */
+      }
       return;
     }
 

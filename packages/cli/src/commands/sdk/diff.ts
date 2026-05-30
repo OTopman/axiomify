@@ -20,18 +20,21 @@ export function registerSdkDiffCommand(program: Command) {
     .action(async (oldFile: string, newFile: string) => {
       try {
         console.log(pc.blue('ℹ Initializing SDK differ...\n'));
-        
+
         console.log(pc.dim(`  • Loading ${oldFile}...`));
         const oldExt = oldFile.split('.').pop()?.toLowerCase() || '';
         let oldIr;
         const oldRaw = readFileSync(oldFile, 'utf8');
         if (oldExt === 'json' || oldExt === 'yaml' || oldExt === 'yml') {
-           const parsed = oldExt === 'json' ? JSON.parse(oldRaw) : require('yaml').parse(oldRaw);
-           oldIr = ingestOpenApi(parsed, {});
+          const parsed =
+            oldExt === 'json'
+              ? JSON.parse(oldRaw)
+              : require('yaml').parse(oldRaw);
+          oldIr = ingestOpenApi(parsed, {});
         } else if (oldExt === 'graphql' || oldExt === 'gql') {
-           oldIr = await ingestGraphQL(oldRaw, {});
+          oldIr = await ingestGraphQL(oldRaw, {});
         } else {
-           throw new Error(`Unsupported extension for ${oldFile}`);
+          throw new Error(`Unsupported extension for ${oldFile}`);
         }
         oldIr = (await new CompilerPipeline().compile(oldIr.schema)).schema;
 
@@ -40,12 +43,15 @@ export function registerSdkDiffCommand(program: Command) {
         let newIr;
         const newRaw = readFileSync(newFile, 'utf8');
         if (newExt === 'json' || newExt === 'yaml' || newExt === 'yml') {
-           const parsed = newExt === 'json' ? JSON.parse(newRaw) : require('yaml').parse(newRaw);
-           newIr = ingestOpenApi(parsed, {});
+          const parsed =
+            newExt === 'json'
+              ? JSON.parse(newRaw)
+              : require('yaml').parse(newRaw);
+          newIr = ingestOpenApi(parsed, {});
         } else if (newExt === 'graphql' || newExt === 'gql') {
-           newIr = await ingestGraphQL(newRaw, {});
+          newIr = await ingestGraphQL(newRaw, {});
         } else {
-           throw new Error(`Unsupported extension for ${newFile}`);
+          throw new Error(`Unsupported extension for ${newFile}`);
         }
         newIr = (await new CompilerPipeline().compile(newIr.schema)).schema;
 
@@ -57,28 +63,40 @@ export function registerSdkDiffCommand(program: Command) {
         const analyzer = new BreakingChangeAnalyzer();
         const report = analyzer.analyze(diffs);
 
-        const breaking = report.issues.filter(i => i.severity === 'breaking');
-        const nonBreaking = report.issues.filter(i => i.severity !== 'breaking');
+        const breaking = report.issues.filter((i) => i.severity === 'breaking');
+        const nonBreaking = report.issues.filter(
+          (i) => i.severity !== 'breaking',
+        );
 
         if (breaking.length === 0 && nonBreaking.length === 0) {
-           console.log(pc.green('  ✓ No changes detected between schemas.'));
+          console.log(pc.green('  ✓ No changes detected between schemas.'));
         } else {
-           if (breaking.length > 0) {
-              console.log(pc.red(`  ✗ Found ${breaking.length} breaking changes:`));
-              breaking.forEach(b => console.log(pc.red(`      - ${b.description}`)));
-           } else {
-              console.log(pc.green('  ✓ No breaking changes detected.'));
-           }
+          if (breaking.length > 0) {
+            console.log(
+              pc.red(`  ✗ Found ${breaking.length} breaking changes:`),
+            );
+            breaking.forEach((b) =>
+              console.log(pc.red(`      - ${b.description}`)),
+            );
+          } else {
+            console.log(pc.green('  ✓ No breaking changes detected.'));
+          }
 
-           if (nonBreaking.length > 0) {
-              console.log(pc.yellow(`\n  ⚠ Found ${nonBreaking.length} non-breaking changes:`));
-              nonBreaking.forEach(nb => console.log(pc.yellow(`      - ${nb.description}`)));
-           }
+          if (nonBreaking.length > 0) {
+            console.log(
+              pc.yellow(
+                `\n  ⚠ Found ${nonBreaking.length} non-breaking changes:`,
+              ),
+            );
+            nonBreaking.forEach((nb) =>
+              console.log(pc.yellow(`      - ${nb.description}`)),
+            );
+          }
         }
-        
+
         console.log(pc.green('\n✓ Done.'));
         if (report.isBreaking) {
-           process.exit(1);
+          process.exit(1);
         }
       } catch (err: any) {
         console.error(pc.red(`\n✗ Diff failed: ${err.message}`));

@@ -36,7 +36,10 @@ program
   .command('dev')
   .description('Start the development server with hot-reload')
   .argument('[entry]', 'Entry file', 'src/index.ts')
-  .option('--watch-sdk <langs...>', 'Target languages to automatically regenerate SDKs on changes')
+  .option(
+    '--watch-sdk <langs...>',
+    'Target languages to automatically regenerate SDKs on changes',
+  )
   .action((entry: string, options: any) => devServer(entry, options));
 
 program
@@ -49,7 +52,11 @@ program
   .command('routes')
   .description('Inspect and list all registered HTTP + WebSocket routes')
   .argument('[entry]', 'Entry file', 'src/index.ts')
-  .option('--json', 'Emit machine-readable JSON instead of the formatted table', false)
+  .option(
+    '--json',
+    'Emit machine-readable JSON instead of the formatted table',
+    false,
+  )
   .option(
     '-m, --method <list>',
     'Comma-separated list of methods to include (e.g. GET,POST,WS)',
@@ -58,11 +65,7 @@ program
     '-f, --filter <pattern>',
     'Path filter — substring match, or glob with "*" (e.g. /api/v1/*)',
   )
-  .option(
-    '-s, --sort <by>',
-    'Sort routes by "method" or "path"',
-    'path',
-  )
+  .option('-s, --sort <by>', 'Sort routes by "method" or "path"', 'path')
   .action((entry: string, options: RoutesOptions) =>
     inspectRoutes(entry, options),
   );
@@ -80,7 +83,10 @@ program
   .option('--title <title>', 'Override info.title in the generated spec')
   // Renamed from `--version` to dodge commander's global `--version` flag,
   // which short-circuits subcommand parsing.
-  .option('--spec-version <version>', 'Override info.version in the generated spec')
+  .option(
+    '--spec-version <version>',
+    'Override info.version in the generated spec',
+  )
   .action(
     (
       entry: string,
@@ -125,7 +131,11 @@ scaffold
   .option('--rate-limit', 'Include a default rate-limit plugin', false)
   .option('--dry-run', 'Print the generated source without writing', false)
   .option('--force', 'Overwrite the file if it already exists', false)
-  .option('--dir <dir>', 'Directory under cwd to create the file in', 'src/routes')
+  .option(
+    '--dir <dir>',
+    'Directory under cwd to create the file in',
+    'src/routes',
+  )
   .action(
     (
       method: string,
@@ -142,9 +152,15 @@ scaffold
 
 program
   .command('migrate')
-  .description('v5 → v6 codemod: merge meta: fields into schema:, fix routePrefix → prefix, etc')
+  .description(
+    'v5 → v6 codemod: merge meta: fields into schema:, fix routePrefix → prefix, etc',
+  )
   .option('--dry-run', 'Show the unified diff without writing', false)
-  .option('--report-only', 'Print a migration report and exit; do not write', false)
+  .option(
+    '--report-only',
+    'Print a migration report and exit; do not write',
+    false,
+  )
   .option('--dir <dir>', 'Directory to scan recursively', 'src')
   .action((options: { dryRun?: boolean; reportOnly?: boolean; dir?: string }) =>
     runMigrate(options),
@@ -157,15 +173,28 @@ const sdk = program
 
 sdk
   .command('generate')
-  .description('Generate type-safe SDKs from an Axiomify app, OpenAPI spec, or GraphQL schema')
-  .argument('<input>', 'Input file (e.g. src/index.ts, spec.json, schema.graphql)')
-  .requiredOption('-t, --target <langs...>', 'Target languages (e.g. typescript python)')
+  .description(
+    'Generate type-safe SDKs from an Axiomify app, OpenAPI spec, or GraphQL schema',
+  )
+  .argument(
+    '<input>',
+    'Input file (e.g. src/index.ts, spec.json, schema.graphql)',
+  )
+  .requiredOption(
+    '-t, --target <langs...>',
+    'Target languages (e.g. typescript python)',
+  )
   .option('-o, --output <dir>', 'Output directory', 'generated-sdks')
   .option('-n, --name <name>', 'Package name (e.g. my-api-sdk)')
   .option('-v, --version <version>', 'Package version (e.g. 1.0.0)')
-  .option('--no-runtime', 'Do not include runtime dependencies (generate pure types)')
+  .option(
+    '--no-runtime',
+    'Do not include runtime dependencies (generate pure types)',
+  )
   .option('--dry-run', 'Print generated files instead of writing them to disk')
-  .action(async (input: string, options: any) => { await generateSdk({ input, ...options }); });
+  .action(async (input: string, options: any) => {
+    await generateSdk({ input, ...options });
+  });
 
 import { registerSdkDiffCommand } from './commands/sdk/diff';
 import { registerSdkValidateCommand } from './commands/sdk/validate';

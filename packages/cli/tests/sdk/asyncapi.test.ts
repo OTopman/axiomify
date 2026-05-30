@@ -13,8 +13,8 @@ describe('AsyncAPI Ingestion & Client Generation', () => {
           parameters: {
             roomId: {
               description: 'The ID of the room',
-              schema: { type: 'string' }
-            }
+              schema: { type: 'string' },
+            },
           },
           publish: {
             operationId: 'sendChatMessage',
@@ -24,11 +24,11 @@ describe('AsyncAPI Ingestion & Client Generation', () => {
                 type: 'object',
                 properties: {
                   text: { type: 'string' },
-                  sender: { type: 'string' }
+                  sender: { type: 'string' },
                 },
-                required: ['text', 'sender']
-              }
-            }
+                required: ['text', 'sender'],
+              },
+            },
           },
           subscribe: {
             operationId: 'onChatMessage',
@@ -39,14 +39,14 @@ describe('AsyncAPI Ingestion & Client Generation', () => {
                 properties: {
                   text: { type: 'string' },
                   sender: { type: 'string' },
-                  timestamp: { type: 'number' }
+                  timestamp: { type: 'number' },
                 },
-                required: ['text', 'sender', 'timestamp']
-              }
-            }
-          }
-        }
-      }
+                required: ['text', 'sender', 'timestamp'],
+              },
+            },
+          },
+        },
+      },
     };
 
     // 1. Ingest
@@ -68,34 +68,43 @@ describe('AsyncAPI Ingestion & Client Generation', () => {
     const sendType = types.get('SendChatMessagePayload')!;
     expect(sendType.kind).toBe('object');
     if (sendType.kind === 'object') {
-      expect(sendType.fields.map(f => f.name)).toContain('text');
-      expect(sendType.fields.map(f => f.name)).toContain('sender');
+      expect(sendType.fields.map((f) => f.name)).toContain('text');
+      expect(sendType.fields.map((f) => f.name)).toContain('sender');
     }
 
     // Verify event contracts in schema
     const events = compileResult.schema.events;
     expect(events).toHaveLength(2);
 
-    const sendEvent = events.find(e => e.name === 'sendChatMessage')!;
+    const sendEvent = events.find((e) => e.name === 'sendChatMessage')!;
     expect(sendEvent).toBeDefined();
     expect(sendEvent.direction).toBe('outbound');
     expect(sendEvent.channel).toBe('/rooms/{roomId}');
     expect(sendEvent.payload?.ref).toBe('SendChatMessagePayload');
 
-    const recvEvent = events.find(e => e.name === 'onChatMessage')!;
+    const recvEvent = events.find((e) => e.name === 'onChatMessage')!;
     expect(recvEvent).toBeDefined();
     expect(recvEvent.direction).toBe('inbound');
     expect(recvEvent.channel).toBe('/rooms/{roomId}');
     expect(recvEvent.payload?.ref).toBe('OnChatMessagePayload');
 
     // 3. Emit Code
-    const clientEmitter = new TsClientEmitter(compileResult.schema, 'ApiClient');
+    const clientEmitter = new TsClientEmitter(
+      compileResult.schema,
+      'ApiClient',
+    );
     const clientCode = clientEmitter.emitAll();
 
     // Verify generated ApiClient factory method
-    expect(clientCode).toContain('public roomsRoomId(params: { roomId: string }, options?: WebSocketClientOptions): RoomsRoomIdChannelClient');
-    expect(clientCode).toContain('const wsBase = this.config.baseUrl.replace(/^http/, \'ws\');');
-    expect(clientCode).toContain('return new RoomsRoomIdChannelClient(`\${wsBase}/rooms/${params.roomId}`, options);');
+    expect(clientCode).toContain(
+      'public roomsRoomId(params: { roomId: string }, options?: WebSocketClientOptions): RoomsRoomIdChannelClient',
+    );
+    expect(clientCode).toContain(
+      "const wsBase = this.config.baseUrl.replace(/^http/, 'ws');",
+    );
+    expect(clientCode).toContain(
+      'return new RoomsRoomIdChannelClient(`\${wsBase}/rooms/${params.roomId}`, options);',
+    );
 
     // Verify generated ChannelClient class
     expect(clientCode).toContain('export class RoomsRoomIdChannelClient {');
@@ -103,8 +112,12 @@ describe('AsyncAPI Ingestion & Client Generation', () => {
     expect(clientCode).toContain('onMessage: (data: string) => {');
 
     // Verify event methods
-    expect(clientCode).toContain('public onOnChatMessage(callback: (payload: Types.OnChatMessagePayload) => void): () => void');
-    expect(clientCode).toContain('public sendSendChatMessage(payload: Types.SendChatMessagePayload): void');
-    expect(clientCode).toContain('event: \'sendChatMessage\'');
+    expect(clientCode).toContain(
+      'public onOnChatMessage(callback: (payload: Types.OnChatMessagePayload) => void): () => void',
+    );
+    expect(clientCode).toContain(
+      'public sendSendChatMessage(payload: Types.SendChatMessagePayload): void',
+    );
+    expect(clientCode).toContain("event: 'sendChatMessage'");
   });
 });

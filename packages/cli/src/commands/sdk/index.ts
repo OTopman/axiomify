@@ -8,4 +8,3 @@ export * from './publish';
 export * from './upgrade';
 export * from './validate';
 export * from './watch';
-

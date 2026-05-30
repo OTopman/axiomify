@@ -9,7 +9,7 @@ import { GeneratorRegistry } from '../../registry';
 export class TypeScriptGenerator extends Generator {
   async generate(): Promise<GeneratedFile[]> {
     const graph = TypeGraph.fromSchema(this.schema);
-    
+
     // 1. Generate types.ts
     const typeEmitter = new TsTypeEmitter(this.schema, graph);
     this.addFile('types.ts', typeEmitter.emitAll());
@@ -27,19 +27,31 @@ export class TypeScriptGenerator extends Generator {
     this.addFile('hooks.ts', hooksEmitter.emitAll('ApiClient'));
 
     // 5. Generate index.ts
-    this.addFile('index.ts', `export * from './types';\nexport * from './client';\nexport * from './validators';\nexport * from './hooks';\n`);
+    this.addFile(
+      'index.ts',
+      `export * from './types';\nexport * from './client';\nexport * from './validators';\nexport * from './hooks';\n`,
+    );
 
     // 6. Generate package.json
-    this.addFile('package.json', JSON.stringify({
-      name: this.options.packageName,
-      version: this.options.version || '1.0.0',
-      main: 'index.ts',
-      dependencies: {
-        ...(this.options.runtime ? { '@axiomify/sdk-runtime': 'latest' } : {}),
-        "zod": "^3.22.0",
-        "@tanstack/react-query": "^5.0.0"
-      }
-    }, null, 2));
+    this.addFile(
+      'package.json',
+      JSON.stringify(
+        {
+          name: this.options.packageName,
+          version: this.options.version || '1.0.0',
+          main: 'index.ts',
+          dependencies: {
+            ...(this.options.runtime
+              ? { '@axiomify/sdk-runtime': 'latest' }
+              : {}),
+            zod: '^3.22.0',
+            '@tanstack/react-query': '^5.0.0',
+          },
+        },
+        null,
+        2,
+      ),
+    );
 
     return this.files;
   }

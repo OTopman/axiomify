@@ -1,6 +1,5 @@
 # @axiomify/cli
 
-
 [![npm version](https://img.shields.io/npm/v/@axiomify/cli.svg)](https://npmjs.com/package//@axiomify/cli)
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
@@ -23,15 +22,15 @@ the same major as your `@axiomify/*` runtime packages.
 
 ## Commands at a glance
 
-| Command | Purpose |
-|---|---|
-| `axiomify init [directory]` | Bootstrap a new project |
-| `axiomify dev [entry]` | Hot-reload dev server (esbuild watch) |
-| `axiomify build [entry]` | Compile a production bundle to `dist/` |
-| `axiomify routes [entry]` | Inspect every HTTP + WebSocket route |
-| `axiomify openapi [entry]` | Generate the OpenAPI 3.0.3 spec |
-| `axiomify check [entry]` | Static production-readiness audit |
-| `axiomify doctor` | Diagnose the host environment |
+| Command                     | Purpose                                          |
+| --------------------------- | ------------------------------------------------ |
+| `axiomify init [directory]` | Bootstrap a new project                          |
+| `axiomify dev [entry]`      | Hot-reload dev server (esbuild watch)            |
+| `axiomify build [entry]`    | Compile a production bundle to `dist/`           |
+| `axiomify routes [entry]`   | Inspect every HTTP + WebSocket route             |
+| `axiomify openapi [entry]`  | Generate the OpenAPI 3.0.3 spec                  |
+| `axiomify check [entry]`    | Static production-readiness audit                |
+| `axiomify doctor`           | Diagnose the host environment                    |
 | `axiomify sdk <subcommand>` | Manage, generate, build, validate, and diff SDKs |
 
 `[entry]` defaults to `src/index.ts` everywhere it's accepted.
@@ -66,7 +65,7 @@ hooks can drain, with a SIGKILL fallback after 3 seconds.
 
 ## `axiomify routes`
 
-Inspects the app *without* booting a listener. Prints a
+Inspects the app _without_ booting a listener. Prints a
 Unicode-bordered table with colour-coded HTTP methods, validation
 badges, OpenAPI tags + `operationId`, plugin count, timeout, and
 deprecation marker.
@@ -172,12 +171,12 @@ axiomify sdk benchmark
 ## CI example
 
 ```yaml
-- run: npx axiomify doctor    # environment sanity
-- run: npx axiomify check     # static readiness audit
+- run: npx axiomify doctor # environment sanity
+- run: npx axiomify check # static readiness audit
 - run: npx axiomify build
 - run: npx axiomify openapi -o ./openapi.json --spec-version "$GITHUB_SHA"
-- run: npx axiomify routes --json > routes.json   # surface snapshot
-- run: npx axiomify sdk validate ./openapi.json   # schema verification
+- run: npx axiomify routes --json > routes.json # surface snapshot
+- run: npx axiomify sdk validate ./openapi.json # schema verification
 - run: npx axiomify sdk diff old-spec.json ./openapi.json # check breaking changes
 ```
 

@@ -50,7 +50,11 @@ export interface SecurityOptions {
   sanitizerMaxDepth?: number;
 }
 
-function patchRequestProperty(req: AxiomifyRequest, key: keyof AxiomifyRequest, newValue: unknown) {
+function patchRequestProperty(
+  req: AxiomifyRequest,
+  key: keyof AxiomifyRequest,
+  newValue: unknown,
+) {
   // Direct assignment. Object.defineProperty would force V8 to drop the
   // request's hidden class and re-derive the inline cache for every subsequent
   // property access on the object — measurable per-request cost.

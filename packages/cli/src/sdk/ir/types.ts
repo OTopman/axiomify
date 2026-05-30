@@ -339,11 +339,14 @@ export interface IRSecurityScheme {
 export interface IRServer {
   url: string;
   description?: string;
-  variables?: Record<string, {
-    default: string;
-    enum?: string[];
-    description?: string;
-  }>;
+  variables?: Record<
+    string,
+    {
+      default: string;
+      enum?: string[];
+      description?: string;
+    }
+  >;
 }
 
 // ─── Pagination ───────────────────────────────────────────────────────────────

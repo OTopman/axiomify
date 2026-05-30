@@ -44,9 +44,13 @@ describe('sanitizeXss — single-pass bypass regression (CWE-80)', () => {
 
   it('removes script tag with spaces or attributes in end tag (CWE-80 / js/bad-tag-filter)', () => {
     expect(xss('<script>alert(1)</script >')).not.toContain('alert(1)');
-    expect(xss('<script>alert(1)</script foo="bar">')).not.toContain('alert(1)');
+    expect(xss('<script>alert(1)</script foo="bar">')).not.toContain(
+      'alert(1)',
+    );
     expect(xss('<script>alert(1)</script/nested>')).not.toContain('alert(1)');
-    expect(xss('<scrip<script>is removed</script >t>alert(1)</script foo="bar">')).not.toContain('alert(1)');
+    expect(
+      xss('<scrip<script>is removed</script >t>alert(1)</script foo="bar">'),
+    ).not.toContain('alert(1)');
   });
 
   // ── javascript: bypass ───────────────────────────────────────────────────
@@ -65,12 +69,16 @@ describe('sanitizeXss — single-pass bypass regression (CWE-80)', () => {
   it('removes whitespace-padded javascript: bypass', () => {
     // j a v a s c r i p t :
     const payload = 'j a v a s c r i p t :alert(1)';
-    expect(xss(payload)).not.toMatch(/j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:/i);
+    expect(xss(payload)).not.toMatch(
+      /j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:/i,
+    );
   });
 
   // ── data: bypass ─────────────────────────────────────────────────────────
   it('removes a plain data: URI', () => {
-    expect(xss('<img src="data:text/html,<h1>xss</h1>">')).not.toMatch(/data:/i);
+    expect(xss('<img src="data:text/html,<h1>xss</h1>">')).not.toMatch(
+      /data:/i,
+    );
   });
 
   it('removes nested data: bypass: ddata:ata:', () => {
@@ -143,7 +151,9 @@ describe('sanitizeXss — single-pass bypass regression (CWE-80)', () => {
 
 describe('sanitizeInput — object and array recursion', () => {
   it('sanitizes nested object values', () => {
-    const result = sanitizeInput({ user: { bio: '<script>alert(1)</script>' } }) as any;
+    const result = sanitizeInput({
+      user: { bio: '<script>alert(1)</script>' },
+    }) as any;
     expect(result.user.bio).not.toMatch(/<script/i);
   });
 
@@ -154,7 +164,11 @@ describe('sanitizeInput — object and array recursion', () => {
   });
 
   it('strips prototype pollution keys', () => {
-    const input = { name: 'Ada', __proto__: { polluted: true }, constructor: { bad: true } } as any;
+    const input = {
+      name: 'Ada',
+      __proto__: { polluted: true },
+      constructor: { bad: true },
+    } as any;
     const result = sanitizeInput(input) as any;
     expect(result.__proto__).toBeUndefined();
     expect(result.constructor).toBeUndefined();

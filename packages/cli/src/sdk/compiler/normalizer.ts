@@ -52,10 +52,18 @@ export class Normalizer {
         if (member.ref) {
           const target = this.schema.types.get(member.ref);
           if (target) {
-            toReplace.set(id, { ...target, id, description: type.description ?? target.description });
+            toReplace.set(id, {
+              ...target,
+              id,
+              description: type.description ?? target.description,
+            });
           }
         } else if (member.inline) {
-          toReplace.set(id, { ...member.inline, id, description: type.description ?? member.inline.description });
+          toReplace.set(id, {
+            ...member.inline,
+            id,
+            description: type.description ?? member.inline.description,
+          });
         }
       }
 
@@ -64,10 +72,18 @@ export class Normalizer {
         if (member.ref) {
           const target = this.schema.types.get(member.ref);
           if (target) {
-            toReplace.set(id, { ...target, id, description: type.description ?? target.description });
+            toReplace.set(id, {
+              ...target,
+              id,
+              description: type.description ?? target.description,
+            });
           }
         } else if (member.inline) {
-          toReplace.set(id, { ...member.inline, id, description: type.description ?? member.inline.description });
+          toReplace.set(id, {
+            ...member.inline,
+            id,
+            description: type.description ?? member.inline.description,
+          });
         }
       }
 
@@ -130,7 +146,11 @@ export class Normalizer {
       const inline = ref.inline;
 
       // Only promote complex types (objects, unions, intersections)
-      if (inline.kind !== 'object' && inline.kind !== 'union' && inline.kind !== 'intersection') {
+      if (
+        inline.kind !== 'object' &&
+        inline.kind !== 'union' &&
+        inline.kind !== 'intersection'
+      ) {
         return ref;
       }
 
@@ -146,13 +166,17 @@ export class Normalizer {
 
       // Promote request body inline types
       if (ep.requestBody?.type.inline) {
-        ep.requestBody.type = promoteRef(ep.requestBody.type, `${opPascal}Request`);
+        ep.requestBody.type = promoteRef(
+          ep.requestBody.type,
+          `${opPascal}Request`,
+        );
       }
 
       // Promote response inline types
       for (const [code, resp] of Object.entries(ep.responses)) {
         if (resp.type?.inline) {
-          const suffix = code === '200' || code === '201' ? 'Response' : `Response${code}`;
+          const suffix =
+            code === '200' || code === '201' ? 'Response' : `Response${code}`;
           resp.type = promoteRef(resp.type, `${opPascal}${suffix}`);
         }
       }
@@ -160,8 +184,15 @@ export class Normalizer {
       // Promote parameter inline types
       const promoteParams = (params: IRParameter[], prefix: string) => {
         for (const param of params) {
-          if (param.type.inline && (param.type.inline.kind === 'object' || param.type.inline.kind === 'enum')) {
-            param.type = promoteRef(param.type, `${opPascal}${toPascalCase(param.name)}${prefix}`);
+          if (
+            param.type.inline &&
+            (param.type.inline.kind === 'object' ||
+              param.type.inline.kind === 'enum')
+          ) {
+            param.type = promoteRef(
+              param.type,
+              `${opPascal}${toPascalCase(param.name)}${prefix}`,
+            );
           }
         }
       };
@@ -177,12 +208,22 @@ export class Normalizer {
           event.payload = promoteRef(event.payload, `${evPascal}Payload`);
         }
         if (event.ackPayload?.inline) {
-          event.ackPayload = promoteRef(event.ackPayload, `${evPascal}AckPayload`);
+          event.ackPayload = promoteRef(
+            event.ackPayload,
+            `${evPascal}AckPayload`,
+          );
         }
         if (event.headers) {
           for (const header of event.headers) {
-            if (header.type.inline && (header.type.inline.kind === 'object' || header.type.inline.kind === 'enum')) {
-              header.type = promoteRef(header.type, `${evPascal}${toPascalCase(header.name)}Header`);
+            if (
+              header.type.inline &&
+              (header.type.inline.kind === 'object' ||
+                header.type.inline.kind === 'enum')
+            ) {
+              header.type = promoteRef(
+                header.type,
+                `${evPascal}${toPascalCase(header.name)}Header`,
+              );
             }
           }
         }
@@ -375,15 +416,24 @@ export class Normalizer {
   // ─── Utilities ────────────────────────────────────────────────────
 
   /** Walk all type refs within a type definition and apply a transform. */
-  private walkTypeRefs(type: IRType, transform: (ref: IRTypeRef) => IRTypeRef): void {
+  private walkTypeRefs(
+    type: IRType,
+    transform: (ref: IRTypeRef) => IRTypeRef,
+  ): void {
     switch (type.kind) {
       case 'object':
         for (const field of type.fields) {
           field.type = transform(field.type);
-          if (field.type.inline) this.walkTypeRefs(field.type.inline, transform);
+          if (field.type.inline)
+            this.walkTypeRefs(field.type.inline, transform);
         }
-        if (typeof type.additionalProperties === 'object' && 'ref' in type.additionalProperties) {
-          type.additionalProperties = transform(type.additionalProperties as IRTypeRef);
+        if (
+          typeof type.additionalProperties === 'object' &&
+          'ref' in type.additionalProperties
+        ) {
+          type.additionalProperties = transform(
+            type.additionalProperties as IRTypeRef,
+          );
         }
         break;
       case 'array':
@@ -413,7 +463,10 @@ export class Normalizer {
   }
 
   /** Walk all type refs within an endpoint and apply a transform. */
-  private walkEndpointRefs(ep: IREndpoint, transform: (ref: IRTypeRef) => IRTypeRef): void {
+  private walkEndpointRefs(
+    ep: IREndpoint,
+    transform: (ref: IRTypeRef) => IRTypeRef,
+  ): void {
     for (const p of ep.pathParams) p.type = transform(p.type);
     for (const p of ep.queryParams) p.type = transform(p.type);
     for (const p of ep.headerParams) p.type = transform(p.type);
@@ -422,7 +475,8 @@ export class Normalizer {
       if (resp.type) resp.type = transform(resp.type);
     }
     // Streaming contract refs
-    if (ep.streaming?.itemType) ep.streaming.itemType = transform(ep.streaming.itemType);
+    if (ep.streaming?.itemType)
+      ep.streaming.itemType = transform(ep.streaming.itemType);
     if (ep.streaming?.eventTypes) {
       for (const [evt, ref] of Object.entries(ep.streaming.eventTypes)) {
         ep.streaming.eventTypes[evt] = transform(ref);
@@ -431,14 +485,19 @@ export class Normalizer {
   }
 
   /** Walk all type refs within an event and apply a transform. */
-  private walkEventRefs(event: IREventContract, transform: (ref: IRTypeRef) => IRTypeRef): void {
+  private walkEventRefs(
+    event: IREventContract,
+    transform: (ref: IRTypeRef) => IRTypeRef,
+  ): void {
     if (event.payload) {
       event.payload = transform(event.payload);
-      if (event.payload.inline) this.walkTypeRefs(event.payload.inline, transform);
+      if (event.payload.inline)
+        this.walkTypeRefs(event.payload.inline, transform);
     }
     if (event.ackPayload) {
       event.ackPayload = transform(event.ackPayload);
-      if (event.ackPayload.inline) this.walkTypeRefs(event.ackPayload.inline, transform);
+      if (event.ackPayload.inline)
+        this.walkTypeRefs(event.ackPayload.inline, transform);
     }
     if (event.headers) {
       for (const h of event.headers) {
@@ -453,10 +512,20 @@ export class Normalizer {
    * so that structurally identical types with different names are merged.
    */
   private canonicalHash(type: IRType): string {
-    const { id: _id, description: _desc, metadata: _meta, lineage: _lin, ...canonical } = type;
+    const {
+      id: _id,
+      description: _desc,
+      metadata: _meta,
+      lineage: _lin,
+      ...canonical
+    } = type;
     const str = JSON.stringify(canonical, (key, value) => {
       if (value instanceof Map) {
-        return Object.fromEntries([...value.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+        return Object.fromEntries(
+          [...value.entries()].sort((a, b) =>
+            String(a[0]).localeCompare(String(b[0])),
+          ),
+        );
       }
       if (value instanceof Set) return [...value].sort();
       return value;

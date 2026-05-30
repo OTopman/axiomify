@@ -8,6 +8,11 @@ export default defineConfig({
   treeshake: true,
   sourcemap: false,
   // Framework deps ship separately; uWS is a peer. Never bundle them.
-  external: ['@axiomify/core', '@axiomify/native', 'uWebSockets.js'],
+  external: [
+    '@axiomify/core',
+    '@axiomify/native',
+    '@axiomify/security',
+    'uWebSockets.js',
+  ],
   tsconfig: 'tsconfig.json',
 });

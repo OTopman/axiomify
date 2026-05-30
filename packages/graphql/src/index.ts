@@ -136,7 +136,11 @@ function escapeHtml(s: string): string {
 }
 
 function escapeJsString(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return JSON.stringify(s)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
 }
 
 function buildPlaygroundHtml(graphqlPath: string): string {
@@ -181,7 +185,7 @@ function buildPlaygroundHtml(graphqlPath: string): string {
     <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1"></script>
     <script crossorigin src="https://unpkg.com/graphiql@3.8.3/graphiql.min.js" integrity="sha384-HbRVEFG0JGJZeAHCJ9Xm2+tpknBQ7QZmNlO/DgZtkZ0aJSypT96YYGRNod99l9Ie"></script>
     <script>
-      const fetcher = GraphiQL.createFetcher({ url: '${jsPath}' });
+      const fetcher = GraphiQL.createFetcher({ url: ${jsPath} });
       ReactDOM.createRoot(document.getElementById('graphiql')).render(
         React.createElement(GraphiQL, { fetcher })
       );
@@ -209,8 +213,7 @@ export function useGraphQL<TContext = Record<string, unknown>>(
 
   // Default: disable introspection in production, enable in dev/test.
   // Explicit option always wins so callers can override in either direction.
-  const disableIntrospection =
-    options.disableIntrospection ?? isProduction;
+  const disableIntrospection = options.disableIntrospection ?? isProduction;
 
   const gqlPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
   const pgPath =
@@ -347,9 +350,10 @@ export function useGraphQL<TContext = Record<string, unknown>>(
           JSON.stringify({
             errors: [
               {
-                message: process.env.NODE_ENV === 'production'
-                  ? 'Context error.'
-                  : ((ctxErr as Error)?.message ?? 'Context error.'),
+                message:
+                  process.env.NODE_ENV === 'production'
+                    ? 'Context error.'
+                    : ((ctxErr as Error)?.message ?? 'Context error.'),
               },
             ],
           }),
@@ -385,9 +389,10 @@ export function useGraphQL<TContext = Record<string, unknown>>(
         JSON.stringify({
           errors: [
             {
-              message: process.env.NODE_ENV === 'production'
-                ? 'Execution error.'
-                : ((execErr as Error)?.message ?? 'Execution error.'),
+              message:
+                process.env.NODE_ENV === 'production'
+                  ? 'Execution error.'
+                  : ((execErr as Error)?.message ?? 'Execution error.'),
             },
           ],
         }),

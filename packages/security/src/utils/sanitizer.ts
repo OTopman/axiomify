@@ -40,7 +40,11 @@ const PROTOTYPE_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
  */
 const MAX_SANITIZE_ITERATIONS = 10;
 
-function replaceUntilStable(input: string, pattern: RegExp, replacement: string): string {
+function replaceUntilStable(
+  input: string,
+  pattern: RegExp,
+  replacement: string,
+): string {
   let previous: string;
   let iterations = 0;
   do {
@@ -58,7 +62,11 @@ function sanitizeXss(value: string): string {
   //   Input:  <scrip<script>is removed</script>t>alert(1)</script>
   //   Pass 1: <script>alert(1)</script>   ← still dangerous
   //   Pass 2: alert(1)                    ← safe
-  s = replaceUntilStable(s, /<script\b[^<]*(?:(?!<\/script\s*[^>]*>)<[^<]*)*<\/script\s*[^>]*>/gi, '');
+  s = replaceUntilStable(
+    s,
+    /<script\b[^<]*(?:(?!<\/script\s*[^>]*>)<[^<]*)*<\/script\s*[^>]*>/gi,
+    '',
+  );
 
   // javascript: URI scheme — loop guards against:
   //   jajavascript:vascript: → javascript: (after one pass) → '' (after two)
@@ -74,7 +82,11 @@ function sanitizeXss(value: string): string {
 
   // <iframe>, <object>, <embed>, <base>
   // Loop guards against <ifr<iframe>ame src=...></iframe>ame src=...>
-  s = replaceUntilStable(s, /<\s*\/?\s*(iframe|object|embed|base)\b[^>]*>/gi, '');
+  s = replaceUntilStable(
+    s,
+    /<\s*\/?\s*(iframe|object|embed|base)\b[^>]*>/gi,
+    '',
+  );
 
   // <svg> (used for event-handler injection via <svg onload=...>)
   // Loop guards against <<svg>svg onload=alert(1)><</svg>/svg>

@@ -23,7 +23,8 @@ npm install @axiomify/metrics
 ```ts
 useMetrics(app, {
   path: '/metrics',
-  protect: async (req) => req.headers['x-internal-key'] === process.env.METRICS_KEY,
+  protect: async (req) =>
+    req.headers['x-internal-key'] === process.env.METRICS_KEY,
 });
 ```
 

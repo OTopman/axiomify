@@ -118,11 +118,7 @@ declare module 'uWebSockets.js' {
     maxPayloadLength?: number;
     idleTimeout?: number;
     sendPingsAutomatically?: boolean;
-    upgrade?: (
-      res: HttpResponse,
-      req: HttpRequest,
-      context: unknown,
-    ) => void;
+    upgrade?: (res: HttpResponse, req: HttpRequest, context: unknown) => void;
     open?: (ws: WebSocket<UserData>) => void;
     message?: (
       ws: WebSocket<UserData>,
@@ -149,7 +145,12 @@ declare module 'uWebSockets.js' {
     getBufferedAmount(): number;
     getUserData(): UserData;
     subscribe(topic: string): boolean;
-    publish(topic: string, message: string | ArrayBuffer, isBinary?: boolean, compress?: boolean): boolean;
+    publish(
+      topic: string,
+      message: string | ArrayBuffer,
+      isBinary?: boolean,
+      compress?: boolean,
+    ): boolean;
   }
 
   // -------------------------------------------------------------------------

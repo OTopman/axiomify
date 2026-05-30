@@ -1,7 +1,11 @@
 import { type ClientRequest, type ClientResponse } from './types';
 
-export type RequestInterceptor = (req: ClientRequest) => Promise<ClientRequest> | ClientRequest;
-export type ResponseInterceptor = (res: ClientResponse) => Promise<ClientResponse> | ClientResponse;
+export type RequestInterceptor = (
+  req: ClientRequest,
+) => Promise<ClientRequest> | ClientRequest;
+export type ResponseInterceptor = (
+  res: ClientResponse,
+) => Promise<ClientResponse> | ClientResponse;
 export type ErrorInterceptor = (err: any) => Promise<any> | any;
 
 export class InterceptorManager {

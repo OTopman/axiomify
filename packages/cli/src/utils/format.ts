@@ -21,15 +21,24 @@ import pc from 'picocolors';
 export function colourMethod(method: string): string {
   const m = method.toUpperCase().trim();
   switch (m) {
-    case 'GET':     return pc.bgGreen(pc.black(pc.bold(' GET ')));
-    case 'POST':    return pc.bgBlue(pc.white(pc.bold(' POST ')));
-    case 'PUT':     return pc.bgYellow(pc.black(pc.bold(' PUT ')));
-    case 'PATCH':   return pc.bgMagenta(pc.white(pc.bold(' PATCH ')));
-    case 'DELETE':  return pc.bgRed(pc.white(pc.bold(' DELETE ')));
-    case 'WS':      return pc.bgCyan(pc.black(pc.bold(' WS ')));
-    case 'HEAD':    return pc.bgWhite(pc.black(pc.bold(' HEAD ')));
-    case 'OPTIONS': return pc.bgWhite(pc.black(pc.bold(' OPTIONS ')));
-    default:        return pc.bgWhite(pc.black(` ${m} `));
+    case 'GET':
+      return pc.bgGreen(pc.black(pc.bold(' GET ')));
+    case 'POST':
+      return pc.bgBlue(pc.white(pc.bold(' POST ')));
+    case 'PUT':
+      return pc.bgYellow(pc.black(pc.bold(' PUT ')));
+    case 'PATCH':
+      return pc.bgMagenta(pc.white(pc.bold(' PATCH ')));
+    case 'DELETE':
+      return pc.bgRed(pc.white(pc.bold(' DELETE ')));
+    case 'WS':
+      return pc.bgCyan(pc.black(pc.bold(' WS ')));
+    case 'HEAD':
+      return pc.bgWhite(pc.black(pc.bold(' HEAD ')));
+    case 'OPTIONS':
+      return pc.bgWhite(pc.black(pc.bold(' OPTIONS ')));
+    default:
+      return pc.bgWhite(pc.black(` ${m} `));
   }
 }
 
@@ -40,13 +49,20 @@ export function colourMethod(method: string): string {
 export const badge = {
   validation(label: string): string {
     switch (label) {
-      case 'Body':     return pc.magenta(label);
-      case 'Query':    return pc.green(label);
-      case 'Params':   return pc.yellow(label);
-      case 'Response': return pc.cyan(label);
-      case 'Files':    return pc.blue(label);
-      case 'Message':  return pc.magenta(label);
-      default:         return pc.cyan(label);
+      case 'Body':
+        return pc.magenta(label);
+      case 'Query':
+        return pc.green(label);
+      case 'Params':
+        return pc.yellow(label);
+      case 'Response':
+        return pc.cyan(label);
+      case 'Files':
+        return pc.blue(label);
+      case 'Message':
+        return pc.magenta(label);
+      default:
+        return pc.cyan(label);
     }
   },
   deprecated(): string {
@@ -147,8 +163,10 @@ export function renderTable(
   // Header row
   lines.push(
     columns
-      .map((c, i) => pc.bold(pc.gray(pad(c.header, widths[i], c.align ?? 'left'))))
-      .join('    ')
+      .map((c, i) =>
+        pc.bold(pc.gray(pad(c.header, widths[i], c.align ?? 'left'))),
+      )
+      .join('    '),
   );
 
   // Divider line
@@ -164,7 +182,7 @@ export function renderTable(
           const truncated = c.maxWidth ? truncate(cell, widths[i]) : cell;
           return pad(truncated, widths[i], c.align ?? 'left');
         })
-        .join('    ')
+        .join('    '),
     );
   }
 
@@ -177,7 +195,11 @@ export function renderTable(
 // Misc
 // ---------------------------------------------------------------------------
 
-export function pluralise(n: number, singular: string, plural?: string): string {
+export function pluralise(
+  n: number,
+  singular: string,
+  plural?: string,
+): string {
   return n === 1 ? `${n} ${singular}` : `${n} ${plural ?? singular + 's'}`;
 }
 

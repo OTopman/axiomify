@@ -16,8 +16,15 @@ import type { IRSchema, IRType, IRTypeRef } from './types';
 export interface TypeEdge {
   from: string;
   to: string;
-  relation: 'field' | 'array-items' | 'union-member' | 'intersection-member' |
-            'map-value' | 'tuple-element' | 'additional-properties' | 'generic-param';
+  relation:
+    | 'field'
+    | 'array-items'
+    | 'union-member'
+    | 'intersection-member'
+    | 'map-value'
+    | 'tuple-element'
+    | 'additional-properties'
+    | 'generic-param';
 }
 
 /** A node in the type graph. */
@@ -135,7 +142,7 @@ export class TypeGraph {
       );
       throw new Error(
         `[TypeGraph] Circular dependency among types: [${remaining.join(', ')}]. ` +
-        `Run detectCycles() to get details.`,
+          `Run detectCycles() to get details.`,
       );
     }
 
@@ -212,7 +219,8 @@ export class TypeGraph {
 
         // Annotate the type's metadata so generators know this is a lazy ref
         if (fromNode?.type.metadata) {
-          const lazyRefs = (fromNode.type.metadata['_lazyRefs'] as string[] | undefined) ?? [];
+          const lazyRefs =
+            (fromNode.type.metadata['_lazyRefs'] as string[] | undefined) ?? [];
           lazyRefs.push(to);
           fromNode.type.metadata['_lazyRefs'] = lazyRefs;
         } else if (fromNode?.type) {
@@ -409,7 +417,13 @@ export class TypeGraph {
       if (!thisEdgeSet.has(key)) removedEdges.push(edge);
     }
 
-    return { addedNodes, removedNodes, addedEdges, removedEdges, modifiedNodes };
+    return {
+      addedNodes,
+      removedNodes,
+      addedEdges,
+      removedEdges,
+      modifiedNodes,
+    };
   }
 
   // ─── Serialization ──────────────────────────────────────────────────
@@ -447,7 +461,11 @@ export class TypeGraph {
 
   // ─── Internal ───────────────────────────────────────────────────────
 
-  private _addEdge(from: string, to: string, relation: TypeEdge['relation']): void {
+  private _addEdge(
+    from: string,
+    to: string,
+    relation: TypeEdge['relation'],
+  ): void {
     this._edges.push({ from, to, relation });
     this._nodes.get(from)?.dependsOn.add(to);
     this._nodes.get(to)?.dependedBy.add(from);
@@ -456,9 +474,15 @@ export class TypeGraph {
   private static _extractRefs(
     type: IRType,
   ): Array<{ targetId: string | undefined; relation: TypeEdge['relation'] }> {
-    const refs: Array<{ targetId: string | undefined; relation: TypeEdge['relation'] }> = [];
+    const refs: Array<{
+      targetId: string | undefined;
+      relation: TypeEdge['relation'];
+    }> = [];
 
-    const resolveRef = (ref: IRTypeRef | undefined, relation: TypeEdge['relation']) => {
+    const resolveRef = (
+      ref: IRTypeRef | undefined,
+      relation: TypeEdge['relation'],
+    ) => {
       if (!ref) return;
       if (ref.ref) refs.push({ targetId: ref.ref, relation });
       if (ref.inline) refs.push(...TypeGraph._extractRefs(ref.inline));

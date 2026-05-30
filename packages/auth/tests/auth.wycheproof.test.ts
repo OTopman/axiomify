@@ -8,11 +8,12 @@ describe('Auth Plugin — Wycheproof JWT Security Test Vectors', () => {
   const hmacSecret = 'super-secret-key-that-is-at-least-32-chars-long!';
 
   // Generate an RSA Key Pair dynamically for Algorithm Confusion tests
-  const { privateKey: rsaPrivateKey, publicKey: rsaPublicKey } = crypto.generateKeyPairSync('rsa', {
-    modulusLength: 2048,
-    publicKeyEncoding: { type: 'spki', format: 'pem' },
-    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-  });
+  const { privateKey: rsaPrivateKey, publicKey: rsaPublicKey } =
+    crypto.generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    });
 
   // Helper to build mock request and response
   const makeRequest = (token: string | null) => {
@@ -34,7 +35,9 @@ describe('Auth Plugin — Wycheproof JWT Security Test Vectors', () => {
   describe('Algorithm Confusion (HMAC using RSA Public Key)', () => {
     it('rejects a token signed with RS256 using RSA private key when verifying with public key as symmetric secret', async () => {
       // Sign token using RSA private key via RS256
-      const token = jwt.sign({ id: 'user-1' }, rsaPrivateKey, { algorithm: 'RS256' });
+      const token = jwt.sign({ id: 'user-1' }, rsaPrivateKey, {
+        algorithm: 'RS256',
+      });
 
       // Configure plugin using the public key as the HMAC symmetric secret.
       // If we attempt to verify, it should reject because the alg is RS256,
@@ -55,7 +58,9 @@ describe('Auth Plugin — Wycheproof JWT Security Test Vectors', () => {
 
     it('rejects a token forged using HS256 signed with the RSA public key if algorithms is pinned to RS256', async () => {
       // Attacker signature forgery: signs using HS256 but signs it with the PUBLIC key
-      const token = jwt.sign({ id: 'user-1' }, rsaPublicKey, { algorithm: 'HS256' });
+      const token = jwt.sign({ id: 'user-1' }, rsaPublicKey, {
+        algorithm: 'HS256',
+      });
 
       // Target configuration is RS256
       const plugin = createAuthPlugin({
@@ -88,8 +93,12 @@ describe('Auth Plugin — Wycheproof JWT Security Test Vectors', () => {
     it('rejects token with alg: none in header', async () => {
       // Create a token with alg: none. Under RFC 7519, none-tokens have no signature.
       // We manually construct it: header.payload.
-      const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
-      const payload = Buffer.from(JSON.stringify({ id: 'user-1' })).toString('base64url');
+      const header = Buffer.from(
+        JSON.stringify({ alg: 'none', typ: 'JWT' }),
+      ).toString('base64url');
+      const payload = Buffer.from(JSON.stringify({ id: 'user-1' })).toString(
+        'base64url',
+      );
       const token = `${header}.${payload}.`;
 
       const plugin = createAuthPlugin({ secret: hmacSecret });
@@ -103,8 +112,12 @@ describe('Auth Plugin — Wycheproof JWT Security Test Vectors', () => {
     });
 
     it('rejects token with alg: NONE (case variation)', async () => {
-      const header = Buffer.from(JSON.stringify({ alg: 'NONE', typ: 'JWT' })).toString('base64url');
-      const payload = Buffer.from(JSON.stringify({ id: 'user-1' })).toString('base64url');
+      const header = Buffer.from(
+        JSON.stringify({ alg: 'NONE', typ: 'JWT' }),
+      ).toString('base64url');
+      const payload = Buffer.from(JSON.stringify({ id: 'user-1' })).toString(
+        'base64url',
+      );
       const token = `${header}.${payload}.`;
 
       const plugin = createAuthPlugin({ secret: hmacSecret });
@@ -124,7 +137,9 @@ describe('Auth Plugin — Wycheproof JWT Security Test Vectors', () => {
       const validToken = jwt.sign({ id: 'user-1' }, hmacSecret);
       const parts = validToken.split('.');
       // Mutate one char in the signature part
-      const modifiedSignature = parts[2].substring(0, parts[2].length - 1) + (parts[2].endsWith('A') ? 'B' : 'A');
+      const modifiedSignature =
+        parts[2].substring(0, parts[2].length - 1) +
+        (parts[2].endsWith('A') ? 'B' : 'A');
       const tamperedToken = `${parts[0]}.${parts[1]}.${modifiedSignature}`;
 
       const plugin = createAuthPlugin({ secret: hmacSecret });
@@ -170,7 +185,10 @@ describe('Auth Plugin — Wycheproof JWT Security Test Vectors', () => {
   // 4. Temporal Validation (exp and nbf claims)
   describe('Temporal Validation (exp / nbf)', () => {
     it('rejects expired tokens', async () => {
-      const token = jwt.sign({ id: 'user-1', exp: Math.floor(Date.now() / 1000) - 10 }, hmacSecret);
+      const token = jwt.sign(
+        { id: 'user-1', exp: Math.floor(Date.now() / 1000) - 10 },
+        hmacSecret,
+      );
 
       const plugin = createAuthPlugin({ secret: hmacSecret });
       const req = makeRequest(token);
@@ -183,7 +201,10 @@ describe('Auth Plugin — Wycheproof JWT Security Test Vectors', () => {
     });
 
     it('rejects tokens used before nbf (not before) time', async () => {
-      const token = jwt.sign({ id: 'user-1', nbf: Math.floor(Date.now() / 1000) + 120 }, hmacSecret);
+      const token = jwt.sign(
+        { id: 'user-1', nbf: Math.floor(Date.now() / 1000) + 120 },
+        hmacSecret,
+      );
 
       const plugin = createAuthPlugin({ secret: hmacSecret });
       const req = makeRequest(token);

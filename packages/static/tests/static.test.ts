@@ -10,8 +10,19 @@ vi.mock('fs', async () => {
     promises: {
       stat: vi.fn().mockImplementation(async (filepath: string) => {
         if (filepath.includes('missing')) throw { code: 'ENOENT' };
-        if (filepath.includes('directory')) return { isFile: () => false, isDirectory: () => true, size: 0, mtime: new Date() };
-        return { isFile: () => true, isDirectory: () => false, size: 1024, mtime: new Date() };
+        if (filepath.includes('directory'))
+          return {
+            isFile: () => false,
+            isDirectory: () => true,
+            size: 0,
+            mtime: new Date(),
+          };
+        return {
+          isFile: () => true,
+          isDirectory: () => false,
+          size: 1024,
+          mtime: new Date(),
+        };
       }),
       realpath: vi.fn().mockImplementation((p: string) => Promise.resolve(p)),
     },
@@ -22,14 +33,26 @@ vi.mock('fs', async () => {
 describe('serveStatic Plugin', () => {
   let statSpy: any;
   beforeEach(() => {
-    vi.spyOn(fs.promises, 'realpath').mockImplementation((p: any) => Promise.resolve(String(p)));
+    vi.spyOn(fs.promises, 'realpath').mockImplementation((p: any) =>
+      Promise.resolve(String(p)),
+    );
     statSpy = vi
       .spyOn(fs.promises, 'stat')
       .mockImplementation(async (filepath: any) => {
         if (filepath.includes('missing')) throw { code: 'ENOENT' };
         if (filepath.includes('directory'))
-          return { isFile: () => false, isDirectory: () => true, size: 0, mtime: new Date() } as any;
-        return { isFile: () => true, isDirectory: () => false, size: 1024, mtime: new Date() } as any;
+          return {
+            isFile: () => false,
+            isDirectory: () => true,
+            size: 0,
+            mtime: new Date(),
+          } as any;
+        return {
+          isFile: () => true,
+          isDirectory: () => false,
+          size: 1024,
+          mtime: new Date(),
+        } as any;
       });
     vi.spyOn(fs, 'createReadStream').mockReturnValue('mock-stream' as any);
   });
@@ -85,7 +108,11 @@ describe('serveStatic Plugin', () => {
 
   it('returns 403 if path resolves to a directory and serveIndex is disabled', async () => {
     const mockApp = { route: vi.fn() } as any;
-    serveStatic(mockApp, { prefix: '/assets', root: '/var/www', serveIndex: false });
+    serveStatic(mockApp, {
+      prefix: '/assets',
+      root: '/var/www',
+      serveIndex: false,
+    });
 
     const handler = mockApp.route.mock.calls[0][0].handler;
 
@@ -109,7 +136,9 @@ describe('serveStatic — cacheControl option', () => {
       size: 42,
       mtime: new Date('2024-01-01'),
     });
-    (fs.promises as any).realpath = vi.fn().mockImplementation((p: string) => Promise.resolve(p));
+    (fs.promises as any).realpath = vi
+      .fn()
+      .mockImplementation((p: string) => Promise.resolve(p));
     (fs as any).createReadStream = vi.fn().mockReturnValue('mock-stream');
   });
 
@@ -118,13 +147,20 @@ describe('serveStatic — cacheControl option', () => {
     const app = new A();
     serveStatic(app, { prefix: '/files', root: '/srv/public' });
 
-    const route = app.registeredRoutes.find(r => r.path === '/files/*')!;
+    const route = app.registeredRoutes.find((r) => r.path === '/files/*')!;
     const setCacheControl: string[] = [];
     const mockReq: any = {
-      method: 'GET', path: '/files/test.txt', params: { '*': 'test.txt' }, headers: {}, state: {},
+      method: 'GET',
+      path: '/files/test.txt',
+      params: { '*': 'test.txt' },
+      headers: {},
+      state: {},
     };
     const mockRes: any = {
-      header: (k: string, v: string) => { if (k === 'Cache-Control') setCacheControl.push(v); return mockRes; },
+      header: (k: string, v: string) => {
+        if (k === 'Cache-Control') setCacheControl.push(v);
+        return mockRes;
+      },
       stream: vi.fn(),
       status: vi.fn().mockReturnThis(),
       send: vi.fn(),
@@ -144,13 +180,20 @@ describe('serveStatic — cacheControl option', () => {
       cacheControl: 'public, max-age=31536000, immutable',
     });
 
-    const route = app.registeredRoutes.find(r => r.path === '/assets/*')!;
+    const route = app.registeredRoutes.find((r) => r.path === '/assets/*')!;
     const setCacheControl: string[] = [];
     const mockReq: any = {
-      method: 'GET', path: '/assets/app.js', params: { '*': 'app.js' }, headers: {}, state: {},
+      method: 'GET',
+      path: '/assets/app.js',
+      params: { '*': 'app.js' },
+      headers: {},
+      state: {},
     };
     const mockRes: any = {
-      header: (k: string, v: string) => { if (k === 'Cache-Control') setCacheControl.push(v); return mockRes; },
+      header: (k: string, v: string) => {
+        if (k === 'Cache-Control') setCacheControl.push(v);
+        return mockRes;
+      },
       stream: vi.fn(),
       status: vi.fn().mockReturnThis(),
       send: vi.fn(),
@@ -173,7 +216,9 @@ describe('serveStatic — extended MIME table', () => {
       size: 10,
       mtime: new Date('2024-01-01'),
     });
-    (fs.promises as any).realpath = vi.fn().mockImplementation((p: string) => Promise.resolve(p));
+    (fs.promises as any).realpath = vi
+      .fn()
+      .mockImplementation((p: string) => Promise.resolve(p));
     (fs as any).createReadStream = vi.fn().mockReturnValue('mock-stream');
   });
 
@@ -182,33 +227,42 @@ describe('serveStatic — extended MIME table', () => {
     ['test.avif', 'image/avif'],
     ['test.wasm', 'application/wasm'],
     ['test.woff2', 'font/woff2'],
-    ['test.csv',  'text/csv; charset=utf-8'],
+    ['test.csv', 'text/csv; charset=utf-8'],
     ['test.yaml', 'application/yaml'],
-    ['test.pdf',  'application/pdf'],
-    ['test.ico',  'image/x-icon'],
-    ['test.mp3',  'audio/mpeg'],
+    ['test.pdf', 'application/pdf'],
+    ['test.ico', 'image/x-icon'],
+    ['test.mp3', 'audio/mpeg'],
     ['unknown.xyz', 'application/octet-stream'],
   ] as const;
 
-  it.each(MIME_CASES)('serves %s with Content-Type %s', async (filename, expectedMime) => {
-    const { Axiomify: A } = await import('../../core/src/app');
-    const app = new A();
-    serveStatic(app, { prefix: '/m', root: '/srv/m' });
+  it.each(MIME_CASES)(
+    'serves %s with Content-Type %s',
+    async (filename, expectedMime) => {
+      const { Axiomify: A } = await import('../../core/src/app');
+      const app = new A();
+      serveStatic(app, { prefix: '/m', root: '/srv/m' });
 
-    const route = app.registeredRoutes.find(r => r.path === '/m/*')!;
-    let capturedMime = '';
-    const mockReq: any = {
-      method: 'GET', path: `/m/${filename}`, params: { '*': filename }, headers: {}, state: {},
-    };
-    const mockRes: any = {
-      header: vi.fn().mockReturnThis(),
-      stream: (_s: unknown, ct: string) => { capturedMime = ct; },
-      status: vi.fn().mockReturnThis(),
-      send: vi.fn(),
-      headersSent: false,
-    };
+      const route = app.registeredRoutes.find((r) => r.path === '/m/*')!;
+      let capturedMime = '';
+      const mockReq: any = {
+        method: 'GET',
+        path: `/m/${filename}`,
+        params: { '*': filename },
+        headers: {},
+        state: {},
+      };
+      const mockRes: any = {
+        header: vi.fn().mockReturnThis(),
+        stream: (_s: unknown, ct: string) => {
+          capturedMime = ct;
+        },
+        status: vi.fn().mockReturnThis(),
+        send: vi.fn(),
+        headersSent: false,
+      };
 
-    await route.handler(mockReq, mockRes);
-    expect(capturedMime).toBe(expectedMime);
-  });
+      await route.handler(mockReq, mockRes);
+      expect(capturedMime).toBe(expectedMime);
+    },
+  );
 });

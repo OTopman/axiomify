@@ -12,7 +12,6 @@ import { withRetry } from '../src/retry';
 import { SseClient } from '../src/sse';
 import { WebSocketClient } from '../src/websocket';
 
-
 // Cache original globals
 const originalFetch = globalThis.fetch;
 const originalNavigator = (globalThis as any).navigator;
@@ -25,7 +24,7 @@ function stubNavigator(props: Record<string, any>) {
   Object.defineProperty(globalThis, 'navigator', {
     value: props,
     writable: true,
-    configurable: true
+    configurable: true,
   });
 }
 
@@ -33,7 +32,7 @@ function stubWindow(props: Record<string, any>) {
   Object.defineProperty(globalThis, 'window', {
     value: props,
     writable: true,
-    configurable: true
+    configurable: true,
   });
 }
 
@@ -124,7 +123,7 @@ describe('@axiomify/sdk-runtime tests', () => {
       const cb = new CircuitBreaker({
         failureThreshold: 2,
         cooldownPeriodMs: 1000,
-        halfOpenMaxProbeRequests: 2
+        halfOpenMaxProbeRequests: 2,
       });
 
       const failingTask = () => Promise.reject(new Error('fail'));
@@ -145,14 +144,16 @@ describe('@axiomify/sdk-runtime tests', () => {
       const cb = new CircuitBreaker({
         failureThreshold: 1,
         cooldownPeriodMs: 1000,
-        halfOpenMaxProbeRequests: 2
+        halfOpenMaxProbeRequests: 2,
       });
 
-      await expect(cb.run(() => Promise.reject(new Error('fail')))).rejects.toThrow('fail');
+      await expect(
+        cb.run(() => Promise.reject(new Error('fail'))),
+      ).rejects.toThrow('fail');
       expect(cb.getState()).toBe('OPEN');
 
       mockNow += 1001;
-      
+
       // The next call will evaluate checkState() and move to HALF_OPEN
       let count = 0;
       const result = await cb.run(async () => {
@@ -171,15 +172,19 @@ describe('@axiomify/sdk-runtime tests', () => {
       const cb = new CircuitBreaker({
         failureThreshold: 1,
         cooldownPeriodMs: 1000,
-        halfOpenMaxProbeRequests: 2
+        halfOpenMaxProbeRequests: 2,
       });
 
-      await expect(cb.run(() => Promise.reject(new Error('fail')))).rejects.toThrow('fail');
+      await expect(
+        cb.run(() => Promise.reject(new Error('fail'))),
+      ).rejects.toThrow('fail');
       expect(cb.getState()).toBe('OPEN');
 
       mockNow += 1001;
 
-      await expect(cb.run(() => Promise.reject(new Error('another fail')))).rejects.toThrow('another fail');
+      await expect(
+        cb.run(() => Promise.reject(new Error('another fail'))),
+      ).rejects.toThrow('another fail');
       expect(cb.getState()).toBe('OPEN');
     });
   });
@@ -189,7 +194,7 @@ describe('@axiomify/sdk-runtime tests', () => {
     const config = {
       production: 'https://prod.com',
       staging: 'https://stage.com',
-      development: 'http://localhost'
+      development: 'http://localhost',
     };
 
     it('should set default environment and allow changes', () => {
@@ -205,7 +210,9 @@ describe('@axiomify/sdk-runtime tests', () => {
     it('should throw error when environment is not configured', () => {
       const sw = new EnvironmentSwitcher(config);
       expect(sw.getCurrentEnvironment()).toBe('production');
-      expect(() => sw.setEnvironment('test')).toThrow('Environment "test" is not configured.');
+      expect(() => sw.setEnvironment('test')).toThrow(
+        'Environment "test" is not configured.',
+      );
     });
   });
 
@@ -215,7 +222,7 @@ describe('@axiomify/sdk-runtime tests', () => {
       const pages = [
         { items: [1, 2], nextCursor: 'c1', hasMore: true },
         { items: [3, 4], nextCursor: 'c2', hasMore: true },
-        { items: [5], hasMore: false }
+        { items: [5], hasMore: false },
       ];
 
       const fetchPage = vi.fn().mockImplementation(async (params) => {
@@ -228,7 +235,7 @@ describe('@axiomify/sdk-runtime tests', () => {
       const paginator = new Paginator({
         fetchPage,
         initialParams: { cursor: undefined },
-        cursorParamName: 'cursor'
+        cursorParamName: 'cursor',
       });
 
       expect(paginator.hasNext()).toBe(true);
@@ -256,7 +263,7 @@ describe('@axiomify/sdk-runtime tests', () => {
       const paginator = new Paginator({
         fetchPage: async () => ({ items: [1], nextCursor: undefined }),
         initialParams: {},
-        cursorParamName: 'cursor'
+        cursorParamName: 'cursor',
       });
       await paginator.nextPage();
       expect(paginator.hasNext()).toBe(false);
@@ -328,12 +335,12 @@ describe('@axiomify/sdk-runtime tests', () => {
       stubWindow({
         addEventListener: (event: string, cb: any) => {
           listeners[event] = cb;
-        }
+        },
       });
 
       const q = new OfflineQueue();
       const spy = vi.spyOn(q, 'flush');
-      
+
       expect(listeners['online']).toBeDefined();
       listeners['online']();
       expect(spy).toHaveBeenCalled();
@@ -351,11 +358,16 @@ describe('@axiomify/sdk-runtime tests', () => {
     it('OAuth2BearerProvider should fetch new token and cache it', async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ access_token: 'abc', expires_in: 60 })
+        json: async () => ({ access_token: 'abc', expires_in: 60 }),
       });
       globalThis.fetch = mockFetch;
 
-      const prov = new OAuth2BearerProvider('http://auth', 'id', 'secret', 'scope1');
+      const prov = new OAuth2BearerProvider(
+        'http://auth',
+        'id',
+        'secret',
+        'scope1',
+      );
       const t1 = await prov.getToken();
       expect(t1).toBe('Bearer abc');
       expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -364,7 +376,9 @@ describe('@axiomify/sdk-runtime tests', () => {
       const fetchCallArgs = mockFetch.mock.calls[0];
       expect(fetchCallArgs[0]).toBe('http://auth');
       expect(fetchCallArgs[1].method).toBe('POST');
-      expect(fetchCallArgs[1].headers).toEqual({ 'Content-Type': 'application/x-www-form-urlencoded' });
+      expect(fetchCallArgs[1].headers).toEqual({
+        'Content-Type': 'application/x-www-form-urlencoded',
+      });
       expect(fetchCallArgs[1].body).toContain('grant_type=client_credentials');
       expect(fetchCallArgs[1].body).toContain('client_id=id');
       expect(fetchCallArgs[1].body).toContain('client_secret=secret');
@@ -386,11 +400,13 @@ describe('@axiomify/sdk-runtime tests', () => {
     it('OAuth2BearerProvider should throw if fetch fails', async () => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: false,
-        status: 401
+        status: 401,
       });
 
       const prov = new OAuth2BearerProvider('http://auth', 'id', 'secret');
-      await expect(prov.getToken()).rejects.toThrow('Failed to fetch OAuth2 token: 401');
+      await expect(prov.getToken()).rejects.toThrow(
+        'Failed to fetch OAuth2 token: 401',
+      );
     });
   });
 
@@ -407,7 +423,10 @@ describe('@axiomify/sdk-runtime tests', () => {
         return req;
       });
 
-      const result = await manager.runRequestInterceptors({ path: '/test', method: 'GET' });
+      const result = await manager.runRequestInterceptors({
+        path: '/test',
+        method: 'GET',
+      });
       expect(result.headers).toEqual({ x1: '1', x2: '2' });
     });
 
@@ -426,7 +445,7 @@ describe('@axiomify/sdk-runtime tests', () => {
         status: 200,
         headers: new Headers(),
         data: 'original',
-        request: { path: '/', method: 'GET' }
+        request: { path: '/', method: 'GET' },
       });
 
       expect(result.status).toBe(201);
@@ -443,7 +462,9 @@ describe('@axiomify/sdk-runtime tests', () => {
         throw new Error('thrown in interceptor: ' + err.message);
       });
 
-      await expect(manager.runErrorInterceptors(new Error('original'))).rejects.toThrow('thrown in interceptor: custom error');
+      await expect(
+        manager.runErrorInterceptors(new Error('original')),
+      ).rejects.toThrow('thrown in interceptor: custom error');
     });
   });
 
@@ -454,11 +475,13 @@ describe('@axiomify/sdk-runtime tests', () => {
       const obj = {
         num: 42,
         big: 12345678901234567890n,
-        date: date
+        date: date,
       };
 
       const result = safeJsonStringify(obj);
-      expect(result).toBe('{"num":42,"big":"12345678901234567890","date":"2026-05-27T12:00:00.000Z"}');
+      expect(result).toBe(
+        '{"num":42,"big":"12345678901234567890","date":"2026-05-27T12:00:00.000Z"}',
+      );
     });
 
     it('safeJsonStringify should format Date when toJSON is undefined', () => {
@@ -545,28 +568,33 @@ describe('@axiomify/sdk-runtime tests', () => {
   describe('SseClient', () => {
     it('should connect and parse simple SSE event strings', async () => {
       let resolveStream: () => void;
-      const streamPromise = new Promise<void>(resolve => {
+      const streamPromise = new Promise<void>((resolve) => {
         resolveStream = resolve;
       });
 
       const mockReader = {
-        read: vi.fn()
+        read: vi
+          .fn()
           .mockResolvedValueOnce({
-            value: new TextEncoder().encode('event: update\ndata: {"val":1}\n\n'),
-            done: false
+            value: new TextEncoder().encode(
+              'event: update\ndata: {"val":1}\n\n',
+            ),
+            done: false,
           })
           .mockResolvedValueOnce({
-            value: new TextEncoder().encode(':comment here\ndata: second-message\n\n'),
-            done: false
+            value: new TextEncoder().encode(
+              ':comment here\ndata: second-message\n\n',
+            ),
+            done: false,
           })
-          .mockResolvedValueOnce({ done: true })
+          .mockResolvedValueOnce({ done: true }),
       };
 
       const mockResponse = {
         ok: true,
         body: {
-          getReader: () => mockReader
-        }
+          getReader: () => mockReader,
+        },
       };
 
       globalThis.fetch = vi.fn().mockResolvedValue(mockResponse);
@@ -585,7 +613,7 @@ describe('@axiomify/sdk-runtime tests', () => {
         onOpen: openSpy,
         onMessage: messageSpy,
         baseDelayMs: 0,
-        maxRetries: 1
+        maxRetries: 1,
       });
 
       sse.connect();
@@ -595,16 +623,22 @@ describe('@axiomify/sdk-runtime tests', () => {
       expect(openSpy).toHaveBeenCalled();
       expect(messageSpy).toHaveBeenCalledTimes(2);
       expect(messageSpy).toHaveBeenNthCalledWith(1, 'update', '{"val":1}');
-      expect(messageSpy).toHaveBeenNthCalledWith(2, 'message', 'second-message');
+      expect(messageSpy).toHaveBeenNthCalledWith(
+        2,
+        'message',
+        'second-message',
+      );
     });
 
     it('should back off and reconnect on network failure', async () => {
       let resolveStream: () => void;
-      const streamPromise = new Promise<void>(resolve => {
+      const streamPromise = new Promise<void>((resolve) => {
         resolveStream = resolve;
       });
 
-      globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network disconnected'));
+      globalThis.fetch = vi
+        .fn()
+        .mockRejectedValue(new Error('Network disconnected'));
 
       let errorCount = 0;
       const errorSpy = vi.fn().mockImplementation((err) => {
@@ -617,30 +651,37 @@ describe('@axiomify/sdk-runtime tests', () => {
       const sse = new SseClient('http://sse', {
         onError: errorSpy,
         baseDelayMs: 0,
-        maxRetries: 2
+        maxRetries: 2,
       });
 
       sse.connect();
 
       await streamPromise;
-      
+
       expect(errorSpy).toHaveBeenCalled();
-      expect(errorSpy).toHaveBeenLastCalledWith(expect.objectContaining({ message: 'Max SSE reconnection retries reached' }));
+      expect(errorSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          message: 'Max SSE reconnection retries reached',
+        }),
+      );
     });
 
     it('should handle non-ok SSE HTTP response status', async () => {
       let resolveStream: () => void;
-      const streamPromise = new Promise<void>(resolve => {
+      const streamPromise = new Promise<void>((resolve) => {
         resolveStream = resolve;
       });
 
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: false,
-        status: 500
+        status: 500,
       });
 
-      let errorSpy = vi.fn().mockImplementation((err) => {
-        if (err.message.includes('SSE HTTP failure: 500') || err.message.includes('Max SSE reconnection retries reached')) {
+      const errorSpy = vi.fn().mockImplementation((err) => {
+        if (
+          err.message.includes('SSE HTTP failure: 500') ||
+          err.message.includes('Max SSE reconnection retries reached')
+        ) {
           resolveStream();
         }
       });
@@ -648,7 +689,7 @@ describe('@axiomify/sdk-runtime tests', () => {
       const sse = new SseClient('http://sse', {
         onError: errorSpy,
         baseDelayMs: 0,
-        maxRetries: 1
+        maxRetries: 1,
       });
 
       sse.connect();
@@ -658,17 +699,20 @@ describe('@axiomify/sdk-runtime tests', () => {
 
     it('should throw error if response body is not readable', async () => {
       let resolveStream: () => void;
-      const streamPromise = new Promise<void>(resolve => {
+      const streamPromise = new Promise<void>((resolve) => {
         resolveStream = resolve;
       });
 
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
-        body: null
+        body: null,
       });
 
-      let errorSpy = vi.fn().mockImplementation((err) => {
-        if (err.message.includes('Response body is not readable') || err.message.includes('Max SSE reconnection retries reached')) {
+      const errorSpy = vi.fn().mockImplementation((err) => {
+        if (
+          err.message.includes('Response body is not readable') ||
+          err.message.includes('Max SSE reconnection retries reached')
+        ) {
           resolveStream();
         }
       });
@@ -676,7 +720,7 @@ describe('@axiomify/sdk-runtime tests', () => {
       const sse = new SseClient('http://sse', {
         onError: errorSpy,
         baseDelayMs: 0,
-        maxRetries: 1
+        maxRetries: 1,
       });
 
       sse.connect();
@@ -687,29 +731,32 @@ describe('@axiomify/sdk-runtime tests', () => {
     it('should handle AbortError silently on disconnect', async () => {
       const mockReader = {
         read: vi.fn().mockImplementation(() => {
-          const err = new DOMException('The user aborted a request.', 'AbortError');
+          const err = new DOMException(
+            'The user aborted a request.',
+            'AbortError',
+          );
           throw err;
-        })
+        }),
       };
 
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         body: {
-          getReader: () => mockReader
-        }
+          getReader: () => mockReader,
+        },
       });
 
       const errorSpy = vi.fn();
       const sse = new SseClient('http://sse', {
         onError: errorSpy,
         baseDelayMs: 0,
-        maxRetries: 1
+        maxRetries: 1,
       });
 
       sse.connect();
       sse.disconnect();
-      
-      await new Promise(resolve => setTimeout(resolve, 5));
+
+      await new Promise((resolve) => setTimeout(resolve, 5));
       expect(errorSpy).not.toHaveBeenCalled();
     });
   });
@@ -720,7 +767,7 @@ describe('@axiomify/sdk-runtime tests', () => {
       const mockWsInstance = {
         readyState: 1, // OPEN
         send: vi.fn(),
-        close: vi.fn()
+        close: vi.fn(),
       };
 
       const WSClassMock = vi.fn().mockImplementation(() => mockWsInstance);
@@ -736,7 +783,7 @@ describe('@axiomify/sdk-runtime tests', () => {
         onMessage: messageSpy,
         heartbeatIntervalMs: 10,
         baseDelayMs: 0,
-        maxRetries: 2
+        maxRetries: 2,
       });
 
       client.connect();
@@ -755,7 +802,7 @@ describe('@axiomify/sdk-runtime tests', () => {
       expect(mockWsInstance.send).toHaveBeenCalledWith('ping-server');
 
       // Heartbeat ping verification (wait a bit for interval)
-      await new Promise(resolve => setTimeout(resolve, 15));
+      await new Promise((resolve) => setTimeout(resolve, 15));
       expect(mockWsInstance.send).toHaveBeenLastCalledWith('ping');
 
       // Trigger close
@@ -768,14 +815,14 @@ describe('@axiomify/sdk-runtime tests', () => {
 
     it('should reconnect on close', async () => {
       let resolveReconnect: () => void;
-      const reconnectPromise = new Promise<void>(resolve => {
+      const reconnectPromise = new Promise<void>((resolve) => {
         resolveReconnect = resolve;
       });
 
       const mockWsInstance = {
-        close: vi.fn()
+        close: vi.fn(),
       };
-      
+
       let wsInstantiationCount = 0;
       const WSClassMock = vi.fn().mockImplementation(() => {
         wsInstantiationCount++;
@@ -788,7 +835,7 @@ describe('@axiomify/sdk-runtime tests', () => {
 
       const client = new WebSocketClient('ws://reconnect', {
         baseDelayMs: 0,
-        maxRetries: 2
+        maxRetries: 2,
       });
 
       client.connect();
@@ -819,11 +866,13 @@ describe('@axiomify/sdk-runtime tests', () => {
       const client = new WebSocketClient('ws://test', {
         onError: errorSpy,
         baseDelayMs: 0,
-        maxRetries: 1
+        maxRetries: 1,
       });
 
       client.connect();
-      expect(errorSpy).toHaveBeenCalledWith(expect.objectContaining({ message: 'Constructor failed' }));
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Constructor failed' }),
+      );
     });
 
     it('should handle max retries exceeded', async () => {
@@ -836,13 +885,17 @@ describe('@axiomify/sdk-runtime tests', () => {
       const client = new WebSocketClient('ws://test', {
         onError: errorSpy,
         baseDelayMs: 0,
-        maxRetries: 1
+        maxRetries: 1,
       });
 
       client.connect();
       // Wait for reconnect attempt to fire and fail
-      await new Promise(resolve => setTimeout(resolve, 5));
-      expect(errorSpy).toHaveBeenCalledWith(expect.objectContaining({ message: 'Max WebSocket reconnection retries reached' }));
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'Max WebSocket reconnection retries reached',
+        }),
+      );
     });
 
     it('should trigger close on heartbeat send failure', async () => {
@@ -851,20 +904,22 @@ describe('@axiomify/sdk-runtime tests', () => {
         send: vi.fn().mockImplementation(() => {
           throw new Error('Send failed');
         }),
-        close: vi.fn()
+        close: vi.fn(),
       };
-      (globalThis as any).WebSocket = vi.fn().mockImplementation(() => mockWsInstance);
+      (globalThis as any).WebSocket = vi
+        .fn()
+        .mockImplementation(() => mockWsInstance);
 
       const client = new WebSocketClient('ws://test', {
         heartbeatIntervalMs: 5,
-        baseDelayMs: 0
+        baseDelayMs: 0,
       });
 
       client.connect();
       (mockWsInstance as any).onopen();
-      
+
       // wait for heartbeat timer to fire
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       expect(mockWsInstance.close).toHaveBeenCalled();
     });
 
@@ -874,7 +929,7 @@ describe('@axiomify/sdk-runtime tests', () => {
 
       const client = new WebSocketClient('ws://127.0.0.1:9999', {
         baseDelayMs: 0,
-        maxRetries: 0
+        maxRetries: 0,
       });
 
       try {
@@ -898,20 +953,20 @@ describe('@axiomify/sdk-runtime tests', () => {
         ok: true,
         status: 200,
         headers,
-        json: async () => ({ res: 'ok' })
+        json: async () => ({ res: 'ok' }),
       });
 
       const client = new BaseClient({
         baseUrl: 'https://api.test',
         enableCache: true,
         cacheTtlMs: 1000,
-        fetch: mockFetch
+        fetch: mockFetch,
       });
 
       const res = await client['request']({
         path: '/items',
         method: 'GET',
-        query: { limit: 10 }
+        query: { limit: 10 },
       });
 
       expect(res).toEqual({ res: 'ok' });
@@ -925,7 +980,7 @@ describe('@axiomify/sdk-runtime tests', () => {
       const resCached = await client['request']({
         path: '/items',
         method: 'GET',
-        query: { limit: 10 }
+        query: { limit: 10 },
       });
       expect(resCached).toEqual({ res: 'ok' });
       expect(mockFetch).toHaveBeenCalledTimes(1); // Still 1 call!
@@ -939,11 +994,11 @@ describe('@axiomify/sdk-runtime tests', () => {
         status: 200,
         headers,
         json: async () => ({ success: true }),
-        text: async () => JSON.stringify({ success: true })
+        text: async () => JSON.stringify({ success: true }),
       });
 
       const tokenProvider = {
-        getToken: vi.fn().mockReturnValue('Bearer super-token')
+        getToken: vi.fn().mockReturnValue('Bearer super-token'),
       };
 
       const beforeSpy = vi.fn();
@@ -954,16 +1009,16 @@ describe('@axiomify/sdk-runtime tests', () => {
         authProvider: tokenProvider,
         telemetry: {
           onBeforeRequest: beforeSpy,
-          onAfterResponse: afterSpy
+          onAfterResponse: afterSpy,
         },
-        fetch: mockFetch
+        fetch: mockFetch,
       });
 
       const payload = { data: 'test' };
       const res = await client['request']({
         path: '/save',
         method: 'POST',
-        body: payload
+        body: payload,
       });
 
       expect(res).toEqual({ success: true });
@@ -984,29 +1039,31 @@ describe('@axiomify/sdk-runtime tests', () => {
         ok: true,
         status: 200,
         headers: new Headers(),
-        text: async () => 'binary-received'
+        text: async () => 'binary-received',
       });
 
       const client = new BaseClient({
         baseUrl: 'https://api.test',
-        fetch: mockFetch
+        fetch: mockFetch,
       });
 
       const binaryData = new Uint8Array([1, 2, 3]);
       await client['request']({
         path: '/upload',
         method: 'POST',
-        body: binaryData
+        body: binaryData,
       });
 
       const fetchOpts = mockFetch.mock.calls[0][1];
-      expect(fetchOpts.headers.get('Content-Type')).toBe('application/octet-stream');
+      expect(fetchOpts.headers.get('Content-Type')).toBe(
+        'application/octet-stream',
+      );
       expect(fetchOpts.body).toBe(binaryData);
     });
 
     it('should support in-flight request deduplication', async () => {
       let resolvePromise: any;
-      const delayedPromise = new Promise(resolve => {
+      const delayedPromise = new Promise((resolve) => {
         resolvePromise = resolve;
       });
 
@@ -1019,13 +1076,13 @@ describe('@axiomify/sdk-runtime tests', () => {
           status: 200,
           headers,
           json: async () => ({ data: 'dedup' }),
-          text: async () => JSON.stringify({ data: 'dedup' })
+          text: async () => JSON.stringify({ data: 'dedup' }),
         };
       });
 
       const client = new BaseClient({
         baseUrl: 'https://api.test',
-        fetch: mockFetch
+        fetch: mockFetch,
       });
 
       const p1 = client['request']({ path: '/dedup', method: 'GET' });
@@ -1044,7 +1101,9 @@ describe('@axiomify/sdk-runtime tests', () => {
       const mockFetch = vi.fn().mockImplementation(async (url, opts) => {
         const signal = opts.signal;
         return new Promise((resolve, reject) => {
-          signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+          signal.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError')),
+          );
         });
       });
 
@@ -1054,12 +1113,12 @@ describe('@axiomify/sdk-runtime tests', () => {
         timeoutMs: 10,
         fetch: mockFetch,
         telemetry: {
-          onError: errorSpy
-        }
+          onError: errorSpy,
+        },
       });
 
       const p = client['request']({ path: '/hang', method: 'GET' });
-      
+
       await expect(p).rejects.toThrow();
       expect(errorSpy).toHaveBeenCalled();
     });
@@ -1072,19 +1131,21 @@ describe('@axiomify/sdk-runtime tests', () => {
         status: 400,
         headers,
         json: async () => ({ error: 'Bad Request' }),
-        text: async () => JSON.stringify({ error: 'Bad Request' })
+        text: async () => JSON.stringify({ error: 'Bad Request' }),
       });
 
       const client = new BaseClient({
         baseUrl: 'https://api.test',
-        fetch: mockFetch
+        fetch: mockFetch,
       });
 
       client.interceptors.useError((err) => {
         throw new Error('intercepted: ' + err.message);
       });
 
-      await expect(client['request']({ path: '/bad', method: 'GET' })).rejects.toThrow('intercepted: API Error: 400');
+      await expect(
+        client['request']({ path: '/bad', method: 'GET' }),
+      ).rejects.toThrow('intercepted: API Error: 400');
     });
 
     it('should format FormData payload and forward custom request headers', async () => {
@@ -1092,12 +1153,12 @@ describe('@axiomify/sdk-runtime tests', () => {
         ok: true,
         status: 200,
         headers: new Headers(),
-        text: async () => 'form-data-received'
+        text: async () => 'form-data-received',
       });
 
       const client = new BaseClient({
         baseUrl: 'https://api.test',
-        fetch: mockFetch
+        fetch: mockFetch,
       });
 
       if (typeof FormData !== 'undefined') {
@@ -1108,9 +1169,9 @@ describe('@axiomify/sdk-runtime tests', () => {
           path: '/form',
           method: 'POST',
           headers: {
-            'X-Custom-Header': 'custom-value'
+            'X-Custom-Header': 'custom-value',
           },
-          body: formData
+          body: formData,
         });
 
         const fetchOpts = mockFetch.mock.calls[0][1];

@@ -1,4 +1,8 @@
-import type { AxiomifyRequest, AxiomifyResponse, RouteDefinition } from './types';
+import type {
+  AxiomifyRequest,
+  AxiomifyResponse,
+  RouteDefinition,
+} from './types';
 
 /**
  * Runtime state produced by {@link RouteRegistry} for each registered route.
@@ -17,7 +21,9 @@ import type { AxiomifyRequest, AxiomifyResponse, RouteDefinition } from './types
  */
 export interface CompiledState {
   /** Ordered array of middleware + handler steps. Built once at registration. */
-  pipeline: Array<(req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void>>;
+  pipeline: Array<
+    (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void>
+  >;
   /**
    * True when the route carries a `schema.response` validator.
    * Used by the dispatcher to skip the ValidatingResponse wrapper for the

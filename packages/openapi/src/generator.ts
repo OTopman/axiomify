@@ -29,14 +29,19 @@ export interface OpenApiOptions {
 // We use the built-in method when available; fall back to zod-to-json-schema
 // only for Zod v3 installations.
 
-type ZodLike = ZodTypeAny & { toJSONSchema?: (opts?: Record<string, unknown>) => Record<string, unknown> };
+type ZodLike = ZodTypeAny & {
+  toJSONSchema?: (opts?: Record<string, unknown>) => Record<string, unknown>;
+};
 
 function zodSchemaToOpenApi(schema: ZodTypeAny): Record<string, unknown> {
   const s = schema as ZodLike;
 
   // Zod v4 native path
   if (typeof s.toJSONSchema === 'function') {
-    const full = s.toJSONSchema({ target: 'openApi3_1' }) as Record<string, unknown>;
+    const full = s.toJSONSchema({ target: 'openApi3_1' }) as Record<
+      string,
+      unknown
+    >;
     // Strip the $schema meta key — OpenAPI objects don't include it inline.
     const { $schema: _dropped, ...rest } = full as Record<string, unknown>;
     return rest;
@@ -46,7 +51,10 @@ function zodSchemaToOpenApi(schema: ZodTypeAny): Record<string, unknown> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { zodToJsonSchema } = require('zod-to-json-schema');
-    return zodToJsonSchema(schema, { target: 'openApi3' }) as Record<string, unknown>;
+    return zodToJsonSchema(schema, { target: 'openApi3' }) as Record<
+      string,
+      unknown
+    >;
   } catch {
     return { type: 'object' };
   }
@@ -102,19 +110,20 @@ export class OpenApiGenerator {
         responses: this.extractResponses(route),
       };
 
-      if (s.description)            operation.description  = s.description;
-      if (s.tags)                   operation.tags         = s.tags;
+      if (s.description) operation.description = s.description;
+      if (s.tags) operation.tags = s.tags;
       // OAS §4.8.10.10: absent key inherits global security; [] opts out.
-      if (s.security !== undefined) operation.security     = s.security;
-      if (s.deprecated)             operation.deprecated   = true;
-      if (s.externalDocs)           operation.externalDocs = s.externalDocs;
+      if (s.security !== undefined) operation.security = s.security;
+      if (s.deprecated) operation.deprecated = true;
+      if (s.externalDocs) operation.externalDocs = s.externalDocs;
       // OAS §4.8.10.11 / §4.8.10.8: pass servers + callbacks verbatim.
-      if (s.servers)                operation.servers      = s.servers;
-      if (s.callbacks)              operation.callbacks    = s.callbacks;
+      if (s.servers) operation.servers = s.servers;
+      if (s.callbacks) operation.callbacks = s.callbacks;
 
       const body = this.extractBody(route);
       if (body) {
-        if (s.requestBodyDescription) body.description = s.requestBodyDescription;
+        if (s.requestBodyDescription)
+          body.description = s.requestBodyDescription;
         operation.requestBody = body;
       }
 
@@ -133,16 +142,27 @@ export class OpenApiGenerator {
     const parameters: unknown[] = [];
 
     if (route.schema?.params) {
-      const paramSchema = zodSchemaToOpenApi(route.schema.params as unknown as ZodTypeAny);
-      const properties = (paramSchema.properties as Record<string, unknown>) ?? {};
+      const paramSchema = zodSchemaToOpenApi(
+        route.schema.params as unknown as ZodTypeAny,
+      );
+      const properties =
+        (paramSchema.properties as Record<string, unknown>) ?? {};
       for (const [key, prop] of Object.entries(properties)) {
-        parameters.push({ name: key, in: 'path', required: true, schema: prop });
+        parameters.push({
+          name: key,
+          in: 'path',
+          required: true,
+          schema: prop,
+        });
       }
     }
 
     if (route.schema?.query) {
-      const querySchema = zodSchemaToOpenApi(route.schema.query as unknown as ZodTypeAny);
-      const properties = (querySchema.properties as Record<string, unknown>) ?? {};
+      const querySchema = zodSchemaToOpenApi(
+        route.schema.query as unknown as ZodTypeAny,
+      );
+      const properties =
+        (querySchema.properties as Record<string, unknown>) ?? {};
       const required = (querySchema.required as string[]) ?? [];
       for (const [key, prop] of Object.entries(properties)) {
         parameters.push({
@@ -184,19 +204,32 @@ export class OpenApiGenerator {
     return verb + parts.join('');
   }
 
-  private extractBody(route: RouteDefinition): { required: boolean; content: Record<string, unknown>; description?: string } | undefined {
+  private extractBody(route: RouteDefinition):
+    | {
+        required: boolean;
+        content: Record<string, unknown>;
+        description?: string;
+      }
+    | undefined {
     if (!route.schema?.body && !route.schema?.files) return undefined;
 
     const hasFiles = !!route.schema.files;
     const contentType = hasFiles ? 'multipart/form-data' : 'application/json';
 
-    let finalSchema: Record<string, unknown> = { type: 'object', properties: {} };
+    let finalSchema: Record<string, unknown> = {
+      type: 'object',
+      properties: {},
+    };
 
     if (route.schema.body) {
-      const bodySchema = zodSchemaToOpenApi(route.schema.body as unknown as ZodTypeAny);
+      const bodySchema = zodSchemaToOpenApi(
+        route.schema.body as unknown as ZodTypeAny,
+      );
 
       if (bodySchema.type === 'object') {
-        finalSchema.properties = { ...(bodySchema.properties as Record<string, unknown>) };
+        finalSchema.properties = {
+          ...(bodySchema.properties as Record<string, unknown>),
+        };
         if (bodySchema.required) finalSchema.required = bodySchema.required;
         if (bodySchema.additionalProperties !== undefined) {
           finalSchema.additionalProperties = bodySchema.additionalProperties;
@@ -210,26 +243,35 @@ export class OpenApiGenerator {
     }
 
     if (hasFiles) {
-      const files = route.schema.files as Record<string, { maxSize?: number; description?: string }>;
+      const files = route.schema.files as Record<
+        string,
+        { maxSize?: number; description?: string }
+      >;
       const props = (finalSchema.properties as Record<string, unknown>) ?? {};
       for (const [fieldName, config] of Object.entries(files)) {
         props[fieldName] = {
           type: 'string',
           format: 'binary',
           ...(config.description ? { description: config.description } : {}),
-          ...(config.maxSize ? { description: `Max size: ${config.maxSize} bytes` } : {}),
+          ...(config.maxSize
+            ? { description: `Max size: ${config.maxSize} bytes` }
+            : {}),
         };
       }
       finalSchema.properties = props;
     }
 
-    return { required: true, content: { [contentType]: { schema: finalSchema } } };
+    return {
+      required: true,
+      content: { [contentType]: { schema: finalSchema } },
+    };
   }
 
   private extractResponses(route: RouteDefinition): Record<string, unknown> {
     // Pull the per-status description map. Authors override generator
     // defaults via schema.responseDescriptions: { '200': '...', '404': '...' }.
-    const descriptions = (route.schema as RouteSchema)?.responseDescriptions ?? {};
+    const descriptions =
+      (route.schema as RouteSchema)?.responseDescriptions ?? {};
 
     const defaultResponse = {
       '200': {

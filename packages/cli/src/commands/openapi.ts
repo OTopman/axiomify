@@ -49,7 +49,12 @@ async function jsonToYaml(obj: unknown): Promise<string> {
     if (Array.isArray(v)) {
       if (v.length === 0) return '[]';
       return v
-        .map((item) => `\n${pad}- ${emit(item, indent + 1).replace(/^/gm, '  ').trimStart()}`)
+        .map(
+          (item) =>
+            `\n${pad}- ${emit(item, indent + 1)
+              .replace(/^/gm, '  ')
+              .trimStart()}`,
+        )
         .join('');
     }
     if (typeof v === 'object') {
@@ -117,8 +122,8 @@ export async function emitOpenApi(
       format === 'yaml'
         ? await jsonToYaml(spec)
         : opts.minify
-        ? JSON.stringify(spec)
-        : JSON.stringify(spec, null, 2);
+          ? JSON.stringify(spec)
+          : JSON.stringify(spec, null, 2);
 
     if (opts.output) {
       const outPath = path.resolve(process.cwd(), opts.output);
@@ -129,7 +134,9 @@ export async function emitOpenApi(
       const routeCount = (app.registeredRoutes ?? []).length;
       console.log(
         `${pc.green('✓')} OpenAPI spec written to ${pc.cyan(opts.output)} ` +
-          pc.dim(`(${routeCount} route${routeCount === 1 ? '' : 's'}, ${format})`),
+          pc.dim(
+            `(${routeCount} route${routeCount === 1 ? '' : 's'}, ${format})`,
+          ),
       );
     } else {
       process.stdout.write(serialised + '\n');

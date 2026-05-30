@@ -1,6 +1,5 @@
 # @axiomify/openapi
 
-
 [![npm version](https://img.shields.io/npm/v/@axiomify/openapi.svg)](https://npmjs.com/package/@axiomify/openapi)
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
@@ -35,12 +34,13 @@ app.route({
     summary: 'Create a new user',
     operationId: 'createUser',
   },
-  handler: async (req, res) => res.status(201).send({ id: 'usr_1', ...req.body }),
+  handler: async (req, res) =>
+    res.status(201).send({ id: 'usr_1', ...req.body }),
 });
 
 useOpenAPI(app, {
   info: { title: 'My API', version: '1.0.0' },
-  prefix: '/docs',            // UI at /docs  ·  spec at /docs/openapi.json
+  prefix: '/docs', // UI at /docs  ·  spec at /docs/openapi.json
   protect: (req) => req.headers['x-internal-token'] === process.env.DOCS_TOKEN,
 });
 ```
@@ -55,7 +55,7 @@ useOpenAPI(app, {
       bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
     },
   },
-  security: [{ bearerAuth: [] }],   // applied globally to all routes
+  security: [{ bearerAuth: [] }], // applied globally to all routes
 });
 
 // Per-route override — empty security array opts out of global security (OAS §4.8.10.10)

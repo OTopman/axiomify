@@ -31,7 +31,7 @@ describe('Router', () => {
   it('handles MethodNotAllowed (405)', () => {
     const router = new Router();
     router.register(makeRoute('POST', '/users'));
-    
+
     const match = router.lookup('GET', '/users');
     expect(match).toEqual({ error: 'MethodNotAllowed', allowed: ['POST'] });
   });
@@ -41,7 +41,10 @@ describe('Router', () => {
     router.register(makeRoute('GET', '/users'));
 
     const match = router.lookup('POST', '/users');
-    expect(match).toEqual({ error: 'MethodNotAllowed', allowed: ['GET', 'HEAD'] });
+    expect(match).toEqual({
+      error: 'MethodNotAllowed',
+      allowed: ['GET', 'HEAD'],
+    });
   });
 
   it('handles named parameters', () => {
