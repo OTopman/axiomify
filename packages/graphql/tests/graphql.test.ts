@@ -2,14 +2,27 @@
  * @axiomify/graphql — unit tests via direct src import.
  * graphql is an optional peer dep — tests skip when not installed.
  */
-import { Axiomify, z } from '@axiomify/core';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Axiomify } from '@axiomify/core';
+import { describe, expect, it, vi } from 'vitest';
 import { useGraphQL } from '../src/index';
 
 // Load graphql ONCE from the same resolution path as the src uses
 // so both share the same module instance (no "from another realm" error).
 let gql: typeof import('graphql') | null = null;
 try { gql = await import('graphql'); } catch { /* optional */ }
+
+vi.mock('graphql', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('graphql')>();
+  return {
+    ...actual,
+    execute: (args: any) => {
+      if ((globalThis as any).__mockExecute) {
+        return (globalThis as any).__mockExecute(args);
+      }
+      return actual.execute(args);
+    },
+  };
+});
 
 const describeGQL = gql ? describe : describe.skip;
 
@@ -338,4 +351,94 @@ describeGQL('GraphQL execution paths', () => {
     const body = JSON.parse(res._raw);
     expect(body.data?.echo).toBe('hi');
   });
+
+  it('rejects query exceeding maxFields', async () => {
+    const app = new Axiomify();
+    useGraphQL(app, { schema: makeSchema(), maxFields: 1 });
+    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const res = makeRes();
+    // Query with 2 fields (hello, add) — exceeds limit of 1
+    await route.handler(makeReq({ query: '{ hello add(a: 1, b: 2) }' }), res);
+    const body = JSON.parse(res._raw);
+    expect(res._code).toBe(400);
+    expect(body.errors).toBeDefined();
+    expect(body.errors[0].message).toMatch(/fields/i);
+  });
+
+  it('redacts internal error messages in production mode', async () => {
+    const app = new Axiomify();
+    useGraphQL(app, {
+      schema: makeSchema(),
+      context: async () => { throw new Error('internal DB credentials leak'); },
+    });
+    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const res = makeRes();
+
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      await route.handler(makeReq({ query: '{ hello }' }), res);
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+    }
+
+    expect(res._code).toBe(500);
+    const body = JSON.parse(res._raw);
+    expect(body.errors[0].message).toBe('Context error.');
+    expect(body.errors[0].message).not.toContain('internal DB credentials leak');
+  });
+
+  it('returns extensions in response when present', async () => {
+    if (!gql) return;
+    (globalThis as any).__mockExecute = async () => ({
+      data: { hello: 'world' },
+      extensions: { myExtension: 'value' },
+    });
+    try {
+      const app = new Axiomify();
+      useGraphQL(app, { schema: makeSchema() });
+      const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+      const res = makeRes();
+      await route.handler(makeReq({ query: '{ hello }' }), res);
+      const body = JSON.parse(res._raw);
+      expect(body.extensions).toEqual({ myExtension: 'value' });
+    } finally {
+      (globalThis as any).__mockExecute = undefined;
+    }
+  });
+
+  it('handles execution throw and redacts error in production mode', async () => {
+    if (!gql) return;
+    (globalThis as any).__mockExecute = async () => {
+      throw new Error('internal execution details');
+    };
+    try {
+      const app = new Axiomify();
+      useGraphQL(app, { schema: makeSchema() });
+      const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+
+      // 1. Dev mode
+      const resDev = makeRes();
+      await route.handler(makeReq({ query: '{ hello }' }), resDev);
+      expect(resDev._code).toBe(500);
+      let body = JSON.parse(resDev._raw);
+      expect(body.errors[0].message).toBe('internal execution details');
+
+      // 2. Production mode
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      const resProd = makeRes();
+      try {
+        await route.handler(makeReq({ query: '{ hello }' }), resProd);
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
+      expect(resProd._code).toBe(500);
+      body = JSON.parse(resProd._raw);
+      expect(body.errors[0].message).toBe('Execution error.');
+    } finally {
+      (globalThis as any).__mockExecute = undefined;
+    }
+  });
 });
+

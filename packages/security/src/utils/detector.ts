@@ -11,7 +11,7 @@ export interface DetectorOptions {
  * database driver. These patterns are a supplementary heuristic.
  */
 export const DEFAULT_NOSQL_PATTERNS = [
-  /\$(?:ne|gt|gte|lt|lte|regex|where|expr|jsonSchema)\b/i,
+  /\$(?:ne|gt|gte|lt|lte|regex|where|expr|jsonSchema|elemMatch|slice|pull|lookup)\b/i,
   /\{\s*\$where/i,
 ];
 

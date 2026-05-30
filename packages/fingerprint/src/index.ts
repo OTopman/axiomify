@@ -5,8 +5,19 @@ import type {
 } from '@axiomify/core';
 import { createHash, randomUUID } from 'node:crypto';
 
-function escapeRegExp(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function parseCookie(cookieStr: string, name: string): string | undefined {
+  if (!cookieStr) return undefined;
+  const pairs = cookieStr.split(';');
+  for (let i = 0; i < pairs.length; i++) {
+    const pair = pairs[i];
+    const eqIdx = pair.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = pair.substring(0, eqIdx).trim();
+    if (key === name) {
+      return pair.substring(eqIdx + 1).trim();
+    }
+  }
+  return undefined;
 }
 
 export interface FingerprintData {
@@ -197,18 +208,13 @@ export function useFingerprint(
           : 31536000;
 
       const cookies = (req.headers.cookie as string) || '';
-      // Escape the cookie name before building the RegExp to prevent ReDoS
-      // if the name ever contains regex metacharacters.
-      const match = cookies.match(
-        new RegExp(`${escapeRegExp(cookieName)}=([^;]+)`),
-      );
-      serverId = match ? match[1] : undefined;
+      serverId = parseCookie(cookies, cookieName);
 
       if (!serverId && res && typeof res.header === 'function') {
         serverId = randomUUID();
         res.header(
           'Set-Cookie',
-          `${cookieName}=${serverId}; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAge}`,
+          `${cookieName}=${serverId}; HttpOnly; Secure; SameSite=Strict; Max-Age=${maxAge}; Path=/`,
         );
       }
     }

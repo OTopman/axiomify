@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
 import { Axiomify } from '@axiomify/core';
+import { describe, expect, it, vi } from 'vitest';
 import { useCors } from '../src/index';
 
 describe('CORS Plugin', () => {
@@ -70,7 +70,7 @@ describe('useCors — preflight OPTIONS response', () => {
 
     const app = new Axiomify();
     useCors(app, {
-      origin: 'https://app.example.com',
+      origin: 'https://localhost',
       methods: ['GET', 'POST', 'PUT', 'DELETE'],
       allowedHeaders: ['Content-Type', 'Authorization'],
       maxAge: 86400,
@@ -90,7 +90,7 @@ describe('useCors — preflight OPTIONS response', () => {
       path: '/api/users',
       url: '/api/users',
       headers: {
-        origin: 'https://app.example.com',
+        origin: 'https://localhost',
         'access-control-request-method': 'POST',
         'access-control-request-headers': 'content-type, authorization',
       },
@@ -117,7 +117,7 @@ describe('useCors — preflight OPTIONS response', () => {
     }
 
     // CORS headers must be set
-    expect(capturedHeaders['access-control-allow-origin']).toBe('https://app.example.com');
+    expect(capturedHeaders['access-control-allow-origin']).toBe('https://localhost');
     expect(capturedHeaders['access-control-allow-methods']).toMatch(/POST/);
     expect(capturedHeaders['access-control-allow-headers']).toMatch(/content-type/i);
     expect(capturedHeaders['access-control-max-age']).toBe('86400');
@@ -128,14 +128,14 @@ describe('useCors — preflight OPTIONS response', () => {
     const { useCors } = await import('../src/index');
 
     const app = new Axiomify();
-    useCors(app, { origin: 'https://app.example.com', methods: ['GET'] });
+    useCors(app, { origin: /^https:\/\/app\.example-cors\.com$/, methods: ['GET'] });
 
     let capturedStatus: number | undefined;
     const mockReq: any = {
       method: 'OPTIONS',
       path: '/api/data',
       url: '/api/data',
-      headers: { origin: 'https://evil.example.com', 'access-control-request-method': 'GET' },
+      headers: { origin: 'https://evil.example-cors.com', 'access-control-request-method': 'GET' },
       params: {}, state: {}, query: {},
     };
     const mockRes: any = {
@@ -158,6 +158,6 @@ describe('useCors — preflight OPTIONS response', () => {
     const allowedOrigin = mockRes.header.mock?.calls?.find(
       ([k]: [string]) => k.toLowerCase() === 'access-control-allow-origin'
     );
-    expect(allowedOrigin?.[1]).not.toBe('https://evil.example.com');
+    expect(allowedOrigin?.[1]).not.toBe('https://evil.example-cors.com');
   });
 });

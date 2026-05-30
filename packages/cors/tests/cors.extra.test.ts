@@ -58,13 +58,13 @@ describe('useCors — extended coverage', () => {
   it('handles OPTIONS preflight with allowedHeaders', async () => {
     const app = new Axiomify();
     useCors(app, {
-      origin: ['https://example.com'],
+      origin: ['https://example-cors.com'],
       methods: ['GET', 'POST'],
       allowedHeaders: ['Content-Type'],
     });
     const req = makeReq({
       method: 'OPTIONS',
-      headers: { origin: 'https://example.com', 'access-control-request-method': 'POST' },
+      headers: { origin: 'https://example-cors.com', 'access-control-request-method': 'POST' },
     });
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
@@ -74,7 +74,7 @@ describe('useCors — extended coverage', () => {
 
   it('sends 400 on strictPreflight OPTIONS without Origin', async () => {
     const app = new Axiomify();
-    useCors(app, { origin: ['https://example.com'], strictPreflight: true });
+    useCors(app, { origin: ['https://example-cors.com'], strictPreflight: true });
     const req = makeReq({ method: 'OPTIONS', headers: {} });
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
@@ -118,11 +118,11 @@ describe('useCors — extended coverage', () => {
 describe('useCors — RegExp and string origin, default allowed headers', () => {
   it('RegExp origin matches and sets resolved origin', async () => {
     const app = new Axiomify();
-    useCors(app, { origin: /example\.com$/ });
-    const req = makeReq({ headers: { origin: 'https://sub.example.com' } });
+    useCors(app, { origin: /^https?:\/\/(.*\.)?example-cors\.com$/ });
+    const req = makeReq({ headers: { origin: 'https://sub.example-cors.com' } });
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
-    expect(res.headers['Access-Control-Allow-Origin']).toBe('https://sub.example.com');
+    expect(res.headers['Access-Control-Allow-Origin']).toBe('https://sub.example-cors.com');
   });
 
   it('string origin: exact match allowed, non-match excluded', async () => {
@@ -142,11 +142,22 @@ describe('useCors — RegExp and string origin, default allowed headers', () => 
 
   it('array origin with mixed string and RegExp entries', async () => {
     const app = new Axiomify();
-    useCors(app, { origin: ['https://trusted.com', /\.internal$/] });
+    useCors(app, { origin: ['https://trusted.com', /^https?:\/\/.*\.internal$/] });
     const req = makeReq({ headers: { origin: 'https://svc.internal' } });
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
     expect(res.headers['Access-Control-Allow-Origin']).toBe('https://svc.internal');
+  });
+
+  it('auto-anchors regex and rejects partial match bypasses', async () => {
+    const app = new Axiomify();
+    // /example-cors.com/ is not anchored, so normally matches attacker-example-cors.com
+    useCors(app, { origin: /example-cors\.com/ });
+    const req = makeReq({ headers: { origin: 'https://attacker-example-cors.com' } });
+    const res = makeRes();
+    for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
+    // Should be undefined because it got auto-anchored to /^example-cors\.com$/
+    expect(res.headers['Access-Control-Allow-Origin']).toBeUndefined();
   });
 
   it('OPTIONS without explicit allowedHeaders falls back to request header', async () => {

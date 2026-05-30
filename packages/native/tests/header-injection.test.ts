@@ -37,7 +37,7 @@ function makeResponse() {
     app.route({
       method: 'GET',
       path: '/h',
-      handler: (_req, res) => { captured = res; res.send({}); },
+      handler: (_req, res) => { captured = res; },
     });
     const adapter = new NativeAdapter(app, { port: 0 });
     adapter.listen();
@@ -111,5 +111,18 @@ describe('NativeResponse.header() — header injection prevention', () => {
   it('accepts values with tabs and printable ASCII (RFC 9110 field-vchar)', async () => {
     const { res } = await makeResponse();
     expect(() => res.header('X-Foo', 'multi word value\twith tab')).not.toThrow();
+  });
+
+  it('throws when sendRaw() contentType contains CRLF', async () => {
+    const { res } = await makeResponse();
+    expect(() => res.sendRaw('body', 'text/html\r\nSet-Cookie: pwned=1'))
+      .toThrow(/response splitting/i);
+  });
+
+  it('throws when stream() contentType contains CRLF', async () => {
+    const { res } = await makeResponse();
+    const { Readable } = require('node:stream');
+    expect(() => res.stream(Readable.from([]), 'text/html\r\nSet-Cookie: pwned=1'))
+      .toThrow(/response splitting/i);
   });
 });

@@ -18,6 +18,7 @@ import type {
   IRObjectType,
   IREndpoint,
   IRParameter,
+  IREventContract,
 } from '../ir/types';
 
 export class Normalizer {
@@ -169,6 +170,25 @@ export class Normalizer {
       promoteParams(ep.headerParams, 'Header');
     }
 
+    if (this.schema.events) {
+      for (const event of this.schema.events) {
+        const evPascal = toPascalCase(event.name);
+        if (event.payload?.inline) {
+          event.payload = promoteRef(event.payload, `${evPascal}Payload`);
+        }
+        if (event.ackPayload?.inline) {
+          event.ackPayload = promoteRef(event.ackPayload, `${evPascal}AckPayload`);
+        }
+        if (event.headers) {
+          for (const header of event.headers) {
+            if (header.type.inline && (header.type.inline.kind === 'object' || header.type.inline.kind === 'enum')) {
+              header.type = promoteRef(header.type, `${evPascal}${toPascalCase(header.name)}Header`);
+            }
+          }
+        }
+      }
+    }
+
     if (promoted > 0) {
       this.diagnostics.push({
         severity: 'info',
@@ -220,6 +240,13 @@ export class Normalizer {
       this.walkEndpointRefs(ep, replaceRef);
     }
 
+    // Replace in all events
+    if (this.schema.events) {
+      for (const event of this.schema.events) {
+        this.walkEventRefs(event, replaceRef);
+      }
+    }
+
     // Remove inlined types from the registry
     for (const id of toInline.keys()) {
       this.schema.types.delete(id);
@@ -267,6 +294,11 @@ export class Normalizer {
     }
     for (const ep of this.schema.endpoints) {
       this.walkEndpointRefs(ep, replaceRef);
+    }
+    if (this.schema.events) {
+      for (const event of this.schema.events) {
+        this.walkEventRefs(event, replaceRef);
+      }
     }
 
     // Remove duplicates
@@ -322,6 +354,11 @@ export class Normalizer {
       }
       for (const ep of this.schema.endpoints) {
         this.walkEndpointRefs(ep, replaceRef);
+      }
+      if (this.schema.events) {
+        for (const event of this.schema.events) {
+          this.walkEventRefs(event, replaceRef);
+        }
       }
     }
 
@@ -389,6 +426,24 @@ export class Normalizer {
     if (ep.streaming?.eventTypes) {
       for (const [evt, ref] of Object.entries(ep.streaming.eventTypes)) {
         ep.streaming.eventTypes[evt] = transform(ref);
+      }
+    }
+  }
+
+  /** Walk all type refs within an event and apply a transform. */
+  private walkEventRefs(event: IREventContract, transform: (ref: IRTypeRef) => IRTypeRef): void {
+    if (event.payload) {
+      event.payload = transform(event.payload);
+      if (event.payload.inline) this.walkTypeRefs(event.payload.inline, transform);
+    }
+    if (event.ackPayload) {
+      event.ackPayload = transform(event.ackPayload);
+      if (event.ackPayload.inline) this.walkTypeRefs(event.ackPayload.inline, transform);
+    }
+    if (event.headers) {
+      for (const h of event.headers) {
+        h.type = transform(h.type);
+        if (h.type.inline) this.walkTypeRefs(h.type.inline, transform);
       }
     }
   }

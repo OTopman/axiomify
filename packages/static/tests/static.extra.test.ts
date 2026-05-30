@@ -87,7 +87,7 @@ describe('serveStatic', () => {
     fs.writeFileSync(path.join(tmpDir, 'a.txt'), 'hello');
     try {
       const stat = fs.statSync(path.join(tmpDir, 'a.txt'));
-      const etag = `W/"${stat.size.toString(16)}-${stat.mtime.getTime().toString(16)}"`;
+      const etag = `W/"${stat.ino.toString(16)}-${stat.size.toString(16)}-${stat.mtime.getTime().toString(16)}"`;
       const app = new Axiomify();
       serveStatic(app, { prefix: '/f', root: tmpDir });
       const route = app.registeredRoutes.find(r => r.path === '/f/*')!;

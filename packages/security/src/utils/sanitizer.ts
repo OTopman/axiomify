@@ -33,11 +33,20 @@ const PROTOTYPE_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
  *
  * Reference: CWE-20 / CWE-80 / CWE-116; OWASP A1 Injection.
  */
+/**
+ * Hard iteration cap — prevents O(n²) ReDoS from adversarial inputs.
+ * The deepest real-world nested bypass needs 3 iterations; 10 provides
+ * generous headroom while bounding CPU cost.
+ */
+const MAX_SANITIZE_ITERATIONS = 10;
+
 function replaceUntilStable(input: string, pattern: RegExp, replacement: string): string {
   let previous: string;
+  let iterations = 0;
   do {
     previous = input;
     input = input.replace(pattern, replacement);
+    if (++iterations >= MAX_SANITIZE_ITERATIONS) break;
   } while (input !== previous);
   return input;
 }
