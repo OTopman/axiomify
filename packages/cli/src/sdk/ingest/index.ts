@@ -6,4 +6,3 @@ export { ingestGraphQL } from './graphql';
 export type { GraphQLIngestOptions } from './graphql';
 export { ingestOpenApi } from './openapi';
 export type { OpenApiIngestOptions } from './openapi';
-

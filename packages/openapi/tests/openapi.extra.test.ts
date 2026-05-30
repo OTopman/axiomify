@@ -4,9 +4,18 @@ import { useOpenAPI as useSwagger } from '../src/index';
 
 function makeReq(overrides: any = {}): any {
   return {
-    id: 'r1', method: 'GET', url: '/docs', path: '/docs',
-    ip: '127.0.0.1', headers: {}, body: undefined, query: {}, params: {},
-    state: {}, raw: {}, stream: null,
+    id: 'r1',
+    method: 'GET',
+    url: '/docs',
+    path: '/docs',
+    ip: '127.0.0.1',
+    headers: {},
+    body: undefined,
+    query: {},
+    params: {},
+    state: {},
+    raw: {},
+    stream: null,
     ...overrides,
   };
 }
@@ -18,12 +27,23 @@ function makeRes(overrides: any = {}): any {
     header: vi.fn().mockReturnThis(),
     getHeader: vi.fn(),
     removeHeader: vi.fn().mockReturnThis(),
-    send: vi.fn(() => { sent = true; }),
-    sendRaw: vi.fn((d: any) => { res._raw = d; sent = true; }),
-    error: vi.fn(), stream: vi.fn(),
-    get headersSent() { return sent; },
-    get statusCode() { return res._code ?? 200; },
-    _code: 200, raw: {},
+    send: vi.fn(() => {
+      sent = true;
+    }),
+    sendRaw: vi.fn((d: any) => {
+      res._raw = d;
+      sent = true;
+    }),
+    error: vi.fn(),
+    stream: vi.fn(),
+    get headersSent() {
+      return sent;
+    },
+    get statusCode() {
+      return res._code ?? 200;
+    },
+    _code: 200,
+    raw: {},
     capabilities: { sse: false, streaming: false },
     ...overrides,
   };
@@ -34,7 +54,7 @@ describe('useSwagger — extended coverage', () => {
   it('registers /docs GET and /docs/openapi.json GET routes', () => {
     const app = new Axiomify();
     useSwagger(app, { info: { title: 'Test', version: '1.0.0' } });
-    const paths = app.registeredRoutes.map(r => r.path);
+    const paths = app.registeredRoutes.map((r) => r.path);
     expect(paths).toContain('/docs');
     expect(paths).toContain('/docs/openapi.json');
   });
@@ -42,12 +62,15 @@ describe('useSwagger — extended coverage', () => {
   it('returns OpenAPI JSON spec from the spec route', async () => {
     const app = new Axiomify();
     app.route({
-      method: 'GET', path: '/users',
+      method: 'GET',
+      path: '/users',
       schema: { response: z.object({ id: z.string() }), tags: ['Users'] },
       handler: async (_r, res) => res.send({ id: '1' }),
     });
     useSwagger(app, { info: { title: 'API', version: '2.0.0' } });
-    const specRoute = app.registeredRoutes.find(r => r.path === '/docs/openapi.json')!;
+    const specRoute = app.registeredRoutes.find(
+      (r) => r.path === '/docs/openapi.json',
+    )!;
     const req = makeReq({ path: '/docs/openapi.json' });
     const res = makeRes();
     await specRoute.handler(req, res);
@@ -61,7 +84,7 @@ describe('useSwagger — extended coverage', () => {
   it('serves Swagger UI HTML from the docs route', async () => {
     const app = new Axiomify();
     useSwagger(app, { info: { title: 'T', version: '1' } });
-    const docsRoute = app.registeredRoutes.find(r => r.path === '/docs')!;
+    const docsRoute = app.registeredRoutes.find((r) => r.path === '/docs')!;
     const req = makeReq({ path: '/docs' });
     const res = makeRes();
     await docsRoute.handler(req, res);
@@ -75,7 +98,9 @@ describe('useSwagger — extended coverage', () => {
       info: { title: 'T', version: '1' },
       protect: async () => false,
     });
-    const specRoute = app.registeredRoutes.find(r => r.path === '/docs/openapi.json')!;
+    const specRoute = app.registeredRoutes.find(
+      (r) => r.path === '/docs/openapi.json',
+    )!;
     const req = makeReq({ path: '/docs/openapi.json' });
     const res = makeRes();
     await specRoute.handler(req, res);
@@ -84,15 +109,21 @@ describe('useSwagger — extended coverage', () => {
 
   it('custom prefix changes route paths', () => {
     const app = new Axiomify();
-    useSwagger(app, { info: { title: 'T', version: '1' }, prefix: '/api-docs' });
-    const paths = app.registeredRoutes.map(r => r.path);
+    useSwagger(app, {
+      info: { title: 'T', version: '1' },
+      prefix: '/api-docs',
+    });
+    const paths = app.registeredRoutes.map((r) => r.path);
     expect(paths).toContain('/api-docs');
     expect(paths).toContain('/api-docs/openapi.json');
   });
 
   it('autoInferResponses registers onPostHandler hook', () => {
     const app = new Axiomify();
-    useSwagger(app, { info: { title: 'T', version: '1' }, autoInferResponses: true });
+    useSwagger(app, {
+      info: { title: 'T', version: '1' },
+      autoInferResponses: true,
+    });
     const hooks = (app as any).hooks.hooks;
     expect(hooks.onPostHandler.length).toBeGreaterThan(0);
   });
@@ -101,8 +132,11 @@ describe('useSwagger — extended coverage', () => {
 describe('useSwagger — autoInferResponses + prefix edge cases', () => {
   it('prefix with trailing slash is normalized', () => {
     const app = new Axiomify();
-    useSwagger(app, { info: { title: 'T', version: '1' }, prefix: '/api-docs/' });
-    const paths = app.registeredRoutes.map(r => r.path);
+    useSwagger(app, {
+      info: { title: 'T', version: '1' },
+      prefix: '/api-docs/',
+    });
+    const paths = app.registeredRoutes.map((r) => r.path);
     expect(paths).toContain('/api-docs');
     expect(paths).toContain('/api-docs/openapi.json');
   });
@@ -110,14 +144,22 @@ describe('useSwagger — autoInferResponses + prefix edge cases', () => {
   it('prefix without leading slash gets one added', () => {
     const app = new Axiomify();
     useSwagger(app, { info: { title: 'T', version: '1' }, prefix: 'swagger' });
-    const paths = app.registeredRoutes.map(r => r.path);
+    const paths = app.registeredRoutes.map((r) => r.path);
     expect(paths).toContain('/swagger');
   });
 
   it('autoInferResponses hook infers schema from response payload', async () => {
     const app = new Axiomify();
-    app.route({ method: 'GET', path: '/items', handler: async (_r, res) => res.send([{ id: 1 }]) });
-    useSwagger(app, { info: { title: 'T', version: '1' }, autoInferResponses: true, allowPublicInProduction: true });
+    app.route({
+      method: 'GET',
+      path: '/items',
+      handler: async (_r, res) => res.send([{ id: 1 }]),
+    });
+    useSwagger(app, {
+      info: { title: 'T', version: '1' },
+      autoInferResponses: true,
+      allowPublicInProduction: true,
+    });
 
     const hooks = (app as any).hooks.hooks;
     const req = makeReq({ path: '/items' });
@@ -126,17 +168,29 @@ describe('useSwagger — autoInferResponses + prefix edge cases', () => {
     const res: any = {
       status: vi.fn().mockReturnThis(),
       header: vi.fn().mockReturnThis(),
-      getHeader: vi.fn(), removeHeader: vi.fn(), send: vi.fn(),
-      sendRaw: vi.fn(), error: vi.fn(), stream: vi.fn(),
-      headersSent: false, raw: {},
+      getHeader: vi.fn(),
+      removeHeader: vi.fn(),
+      send: vi.fn(),
+      sendRaw: vi.fn(),
+      error: vi.fn(),
+      stream: vi.fn(),
+      headersSent: false,
+      raw: {},
       capabilities: { sse: false, streaming: false },
-      get statusCode() { return _statusCode; },
-      set statusCode(v: number) { _statusCode = v; },
+      get statusCode() {
+        return _statusCode;
+      },
+      set statusCode(v: number) {
+        _statusCode = v;
+      },
     };
     res.payload = [{ id: 1 }];
 
     for (const h of hooks.onPostHandler) {
-      await h(req, res, { route: { path: '/items', method: 'GET' } as any, params: {} });
+      await h(req, res, {
+        route: { path: '/items', method: 'GET' } as any,
+        params: {},
+      });
     }
     // No throw = success — autoInferResponses ran without error
   });
@@ -144,7 +198,7 @@ describe('useSwagger — autoInferResponses + prefix edge cases', () => {
   it('prefix "/" serves docs at root', () => {
     const app = new Axiomify();
     useSwagger(app, { info: { title: 'T', version: '1' }, prefix: '/' });
-    const paths = app.registeredRoutes.map(r => r.path);
+    const paths = app.registeredRoutes.map((r) => r.path);
     expect(paths).toContain('/');
     expect(paths).toContain('/openapi.json');
   });
@@ -156,12 +210,17 @@ describe('useSwagger — autoInferResponses + prefix edge cases', () => {
     try {
       const app = new Axiomify();
       useSwagger(app, { info: { title: 'T', version: '1' } });
-      const specRoute = app.registeredRoutes.find(r => r.path === '/docs/openapi.json')!;
+      const specRoute = app.registeredRoutes.find(
+        (r) => r.path === '/docs/openapi.json',
+      )!;
       const res = makeRes();
       await specRoute.handler(makeReq({ path: '/docs/openapi.json' }), res);
       expect(res.status).toHaveBeenCalledWith(403);
       // Call again - warning should only be emitted once
-      await specRoute.handler(makeReq({ path: '/docs/openapi.json' }), makeRes());
+      await specRoute.handler(
+        makeReq({ path: '/docs/openapi.json' }),
+        makeRes(),
+      );
     } finally {
       process.env.NODE_ENV = original;
       warnSpy.mockRestore();
@@ -174,8 +233,13 @@ describe('useSwagger — autoInferResponses + prefix edge cases', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       const app = new Axiomify();
-      useSwagger(app, { info: { title: 'T', version: '1' }, allowPublicInProduction: true });
-      const specRoute = app.registeredRoutes.find(r => r.path === '/docs/openapi.json')!;
+      useSwagger(app, {
+        info: { title: 'T', version: '1' },
+        allowPublicInProduction: true,
+      });
+      const specRoute = app.registeredRoutes.find(
+        (r) => r.path === '/docs/openapi.json',
+      )!;
       const res = makeRes();
       await specRoute.handler(makeReq({ path: '/docs/openapi.json' }), res);
       expect(res.status).toHaveBeenCalledWith(200);
@@ -188,7 +252,7 @@ describe('useSwagger — autoInferResponses + prefix edge cases', () => {
   it('docs HTML handler uses setHeader when present on res', async () => {
     const app = new Axiomify();
     useSwagger(app, { info: { title: 'T', version: '1' } });
-    const docsRoute = app.registeredRoutes.find(r => r.path === '/docs')!;
+    const docsRoute = app.registeredRoutes.find((r) => r.path === '/docs')!;
     const setHeaderSpy = vi.fn();
     const res: any = {
       status: vi.fn().mockReturnThis(),
@@ -200,58 +264,103 @@ describe('useSwagger — autoInferResponses + prefix edge cases', () => {
       removeHeader: vi.fn().mockReturnThis(),
       headersSent: false,
       _code: 200,
-      get statusCode() { return 200; },
+      get statusCode() {
+        return 200;
+      },
       raw: {},
       capabilities: { sse: false, streaming: false },
     };
     await docsRoute.handler(makeReq({ path: '/docs' }), res);
-    expect(setHeaderSpy).toHaveBeenCalledWith('Content-Security-Policy', expect.any(String));
+    expect(setHeaderSpy).toHaveBeenCalledWith(
+      'Content-Security-Policy',
+      expect.any(String),
+    );
   });
 
   it('autoInferResponses parses string payloads as JSON', async () => {
     const app = new Axiomify();
-    app.route({ method: 'GET', path: '/items', handler: async (_r, res) => res.send([{ id: 1 }]) });
-    useSwagger(app, { info: { title: 'T', version: '1' }, autoInferResponses: true, allowPublicInProduction: true });
+    app.route({
+      method: 'GET',
+      path: '/items',
+      handler: async (_r, res) => res.send([{ id: 1 }]),
+    });
+    useSwagger(app, {
+      info: { title: 'T', version: '1' },
+      autoInferResponses: true,
+      allowPublicInProduction: true,
+    });
     const hooks = (app as any).hooks.hooks;
     const req = makeReq({ path: '/items' });
     let _statusCode = 200;
     const res: any = {
       status: vi.fn().mockReturnThis(),
       header: vi.fn().mockReturnThis(),
-      getHeader: vi.fn(), removeHeader: vi.fn(), send: vi.fn(),
-      sendRaw: vi.fn(), error: vi.fn(), stream: vi.fn(),
-      headersSent: false, raw: {},
+      getHeader: vi.fn(),
+      removeHeader: vi.fn(),
+      send: vi.fn(),
+      sendRaw: vi.fn(),
+      error: vi.fn(),
+      stream: vi.fn(),
+      headersSent: false,
+      raw: {},
       capabilities: { sse: false, streaming: false },
-      get statusCode() { return _statusCode; },
-      set statusCode(v: number) { _statusCode = v; },
+      get statusCode() {
+        return _statusCode;
+      },
+      set statusCode(v: number) {
+        _statusCode = v;
+      },
     };
     res.payload = '{"id": 42}';
     for (const h of hooks.onPostHandler) {
-      const ret = h(req, res, { route: { path: '/items', method: 'GET' } as any, params: {} });
+      const ret = h(req, res, {
+        route: { path: '/items', method: 'GET' } as any,
+        params: {},
+      });
       if (ret) await ret;
     }
   });
 
   it('autoInferResponses leaves non-JSON string payloads alone', async () => {
     const app = new Axiomify();
-    app.route({ method: 'GET', path: '/text', handler: async (_r, res) => res.send('hi') });
-    useSwagger(app, { info: { title: 'T', version: '1' }, autoInferResponses: true, allowPublicInProduction: true });
+    app.route({
+      method: 'GET',
+      path: '/text',
+      handler: async (_r, res) => res.send('hi'),
+    });
+    useSwagger(app, {
+      info: { title: 'T', version: '1' },
+      autoInferResponses: true,
+      allowPublicInProduction: true,
+    });
     const hooks = (app as any).hooks.hooks;
     const req = makeReq({ path: '/text' });
     let _statusCode = 200;
     const res: any = {
       status: vi.fn().mockReturnThis(),
       header: vi.fn().mockReturnThis(),
-      getHeader: vi.fn(), removeHeader: vi.fn(), send: vi.fn(),
-      sendRaw: vi.fn(), error: vi.fn(), stream: vi.fn(),
-      headersSent: false, raw: {},
+      getHeader: vi.fn(),
+      removeHeader: vi.fn(),
+      send: vi.fn(),
+      sendRaw: vi.fn(),
+      error: vi.fn(),
+      stream: vi.fn(),
+      headersSent: false,
+      raw: {},
       capabilities: { sse: false, streaming: false },
-      get statusCode() { return _statusCode; },
-      set statusCode(v: number) { _statusCode = v; },
+      get statusCode() {
+        return _statusCode;
+      },
+      set statusCode(v: number) {
+        _statusCode = v;
+      },
     };
     res.payload = 'plain string not json';
     for (const h of hooks.onPostHandler) {
-      const ret = h(req, res, { route: { path: '/text', method: 'GET' } as any, params: {} });
+      const ret = h(req, res, {
+        route: { path: '/text', method: 'GET' } as any,
+        params: {},
+      });
       if (ret) await ret;
     }
   });
@@ -265,30 +374,48 @@ describe('useSwagger — autoInferResponses + prefix edge cases', () => {
       schema: { response: z.object({ id: z.string() }) },
       handler: async (_r, res) => res.send({ id: '1' }),
     });
-    useSwagger(app, { info: { title: 'T', version: '1' }, autoInferResponses: true, allowPublicInProduction: true });
+    useSwagger(app, {
+      info: { title: 'T', version: '1' },
+      autoInferResponses: true,
+      allowPublicInProduction: true,
+    });
     const hooks = (app as any).hooks.hooks;
     const req = makeReq({ path: '/typed' });
     let _statusCode = 200;
     const res: any = {
       status: vi.fn().mockReturnThis(),
       header: vi.fn().mockReturnThis(),
-      getHeader: vi.fn(), removeHeader: vi.fn(), send: vi.fn(),
-      sendRaw: vi.fn(), error: vi.fn(), stream: vi.fn(),
-      headersSent: false, raw: {},
+      getHeader: vi.fn(),
+      removeHeader: vi.fn(),
+      send: vi.fn(),
+      sendRaw: vi.fn(),
+      error: vi.fn(),
+      stream: vi.fn(),
+      headersSent: false,
+      raw: {},
       capabilities: { sse: false, streaming: false },
-      get statusCode() { return _statusCode; },
-      set statusCode(v: number) { _statusCode = v; },
+      get statusCode() {
+        return _statusCode;
+      },
+      set statusCode(v: number) {
+        _statusCode = v;
+      },
     };
     res.payload = { id: 'x' };
     for (const h of hooks.onPostHandler) {
-      const ret = h(req, res, { route: { path: '/typed', method: 'GET' } as any, params: {} });
+      const ret = h(req, res, {
+        route: { path: '/typed', method: 'GET' } as any,
+        params: {},
+      });
       if (ret) await ret;
     }
   });
 
   it('defineSecuritySchemes.require returns single requirement', async () => {
     const { defineSecuritySchemes, Security } = await import('../src/index');
-    const sec = defineSecuritySchemes({ bearerAuth: { type: 'http' } } as const);
+    const sec = defineSecuritySchemes({
+      bearerAuth: { type: 'http' },
+    } as const);
     const req = sec.require('bearerAuth', ['read:users']);
     expect(req).toEqual([{ bearerAuth: ['read:users'] }]);
   });
@@ -302,20 +429,39 @@ describe('useSwagger — autoInferResponses + prefix edge cases', () => {
 
   it('autoInferResponses skips docs endpoints without error', async () => {
     const app = new Axiomify();
-    useSwagger(app, { info: { title: 'T', version: '1' }, autoInferResponses: true, allowPublicInProduction: true });
+    useSwagger(app, {
+      info: { title: 'T', version: '1' },
+      autoInferResponses: true,
+      allowPublicInProduction: true,
+    });
     const hooks = (app as any).hooks.hooks;
     const req = makeReq({ path: '/docs/openapi.json' });
     let _sc = 200;
     const res: any = {
-      status: vi.fn().mockReturnThis(), header: vi.fn().mockReturnThis(),
-      getHeader: vi.fn(), removeHeader: vi.fn(), send: vi.fn(),
-      sendRaw: vi.fn(), error: vi.fn(), stream: vi.fn(),
-      headersSent: false, raw: {}, capabilities: { sse: false, streaming: false },
-      get statusCode() { return _sc; }, set statusCode(v: number) { _sc = v; },
+      status: vi.fn().mockReturnThis(),
+      header: vi.fn().mockReturnThis(),
+      getHeader: vi.fn(),
+      removeHeader: vi.fn(),
+      send: vi.fn(),
+      sendRaw: vi.fn(),
+      error: vi.fn(),
+      stream: vi.fn(),
+      headersSent: false,
+      raw: {},
+      capabilities: { sse: false, streaming: false },
+      get statusCode() {
+        return _sc;
+      },
+      set statusCode(v: number) {
+        _sc = v;
+      },
     };
     res.payload = {};
     for (const h of hooks.onPostHandler) {
-      const ret = h(req, res, { route: { path: '/docs/openapi.json', method: 'GET' } as any, params: {} });
+      const ret = h(req, res, {
+        route: { path: '/docs/openapi.json', method: 'GET' } as any,
+        params: {},
+      });
       if (ret) await ret;
     }
     // Docs endpoint was skipped — no error

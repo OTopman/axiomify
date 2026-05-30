@@ -1,6 +1,5 @@
 # @axiomify/static
 
-
 [![npm version](https://img.shields.io/npm/v/@axiomify/static.svg)](https://npmjs.com/package/@axiomify/static)
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
@@ -28,45 +27,53 @@ serveStatic(app, {
 
 ## Options
 
-| Option | Default | Description |
-|---|---|---|
-| `prefix` | required | URL path prefix (e.g. `'/public'`, `'/'`). |
-| `root` | required | Filesystem directory to serve files from. |
-| `cacheControl` | `'public, max-age=86400'` | `Cache-Control` header value for all files. |
+| Option                    | Default                             | Description                                                                      |
+| ------------------------- | ----------------------------------- | -------------------------------------------------------------------------------- |
+| `prefix`                  | required                            | URL path prefix (e.g. `'/public'`, `'/'`).                                       |
+| `root`                    | required                            | Filesystem directory to serve files from.                                        |
+| `cacheControl`            | `'public, max-age=86400'`           | `Cache-Control` header value for all files.                                      |
 | `forceDownloadExtensions` | `['.svg', '.html', '.htm', '.xml']` | Extensions served with `Content-Disposition: attachment`. Prevents SVG/HTML XSS. |
-| `serveIndex` | `true` | Serve `index.html` when a directory path is requested. |
+| `serveIndex`              | `true`                              | Serve `index.html` when a directory path is requested.                           |
 
 ## Cache control examples
 
 ```typescript
 // Immutable content-hashed assets (JS bundles, CSS)
-serveStatic(app, { prefix: '/assets', root: './dist', cacheControl: 'public, max-age=31536000, immutable' });
+serveStatic(app, {
+  prefix: '/assets',
+  root: './dist',
+  cacheControl: 'public, max-age=31536000, immutable',
+});
 
 // API responses / no caching
 serveStatic(app, { prefix: '/data', root: './data', cacheControl: 'no-store' });
 
 // CDN with stale-while-revalidate
-serveStatic(app, { prefix: '/media', root: './media', cacheControl: 'public, max-age=3600, stale-while-revalidate=86400' });
+serveStatic(app, {
+  prefix: '/media',
+  root: './media',
+  cacheControl: 'public, max-age=3600, stale-while-revalidate=86400',
+});
 ```
 
 ## Supported MIME types
 
-| Extension | Content-Type |
-|---|---|
-| `.html`, `.htm` | `text/html; charset=utf-8` |
-| `.css` | `text/css; charset=utf-8` |
-| `.js`, `.mjs` | `application/javascript; charset=utf-8` |
-| `.json` | `application/json; charset=utf-8` |
-| `.png`, `.jpg`, `.gif`, `.webp`, `.avif` | `image/*` |
-| `.svg` | `image/svg+xml` |
-| `.woff`, `.woff2`, `.ttf` | `font/*` |
-| `.mp4`, `.webm`, `.mp3`, `.wav` | `video/*`, `audio/*` |
-| `.pdf` | `application/pdf` |
-| `.csv` | `text/csv; charset=utf-8` |
-| `.yaml`, `.yml` | `application/yaml` |
-| `.wasm` | `application/wasm` |
-| `.ico` | `image/x-icon` |
-| anything else | `application/octet-stream` |
+| Extension                                | Content-Type                            |
+| ---------------------------------------- | --------------------------------------- |
+| `.html`, `.htm`                          | `text/html; charset=utf-8`              |
+| `.css`                                   | `text/css; charset=utf-8`               |
+| `.js`, `.mjs`                            | `application/javascript; charset=utf-8` |
+| `.json`                                  | `application/json; charset=utf-8`       |
+| `.png`, `.jpg`, `.gif`, `.webp`, `.avif` | `image/*`                               |
+| `.svg`                                   | `image/svg+xml`                         |
+| `.woff`, `.woff2`, `.ttf`                | `font/*`                                |
+| `.mp4`, `.webm`, `.mp3`, `.wav`          | `video/*`, `audio/*`                    |
+| `.pdf`                                   | `application/pdf`                       |
+| `.csv`                                   | `text/csv; charset=utf-8`               |
+| `.yaml`, `.yml`                          | `application/yaml`                      |
+| `.wasm`                                  | `application/wasm`                      |
+| `.ico`                                   | `image/x-icon`                          |
+| anything else                            | `application/octet-stream`              |
 
 ## Security
 
@@ -83,7 +90,7 @@ serveStatic(app, { prefix: '/media', root: './media', cacheControl: 'public, max
 serveStatic(app, {
   prefix: '/',
   root: './dist',
-  serveIndex: true,   // default — serves index.html for directory requests
+  serveIndex: true, // default — serves index.html for directory requests
   cacheControl: 'no-store', // don't cache the HTML shell
 });
 ```

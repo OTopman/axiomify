@@ -11,21 +11,25 @@ npm install --save-dev @types/jsonwebtoken
 
 ## API
 
-| Export | Description |
-|---|---|
-| `createAuthPlugin(options)` | Route plugin that validates Bearer JWT tokens |
-| `createRefreshHandler(options)` | Route handler that rotates refresh tokens |
-| `getAuthUser(req)` | Returns the authenticated payload from `req.state.user` (set by `createAuthPlugin` after token verification). |
-| `MemoryTokenStore` | In-process token store — **dev/single-process only** |
+| Export                          | Description                                                                                                   |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `createAuthPlugin(options)`     | Route plugin that validates Bearer JWT tokens                                                                 |
+| `createRefreshHandler(options)` | Route handler that rotates refresh tokens                                                                     |
+| `getAuthUser(req)`              | Returns the authenticated payload from `req.state.user` (set by `createAuthPlugin` after token verification). |
+| `MemoryTokenStore`              | In-process token store — **dev/single-process only**                                                          |
 
 ## Quick start
 
 ```typescript
-import { createAuthPlugin, createRefreshHandler, getAuthUser } from '@axiomify/auth';
+import {
+  createAuthPlugin,
+  createRefreshHandler,
+  getAuthUser,
+} from '@axiomify/auth';
 
 // Protect routes
 const requireAuth = createAuthPlugin({
-  secret: process.env.JWT_SECRET!,  // ≥ 32 bytes (256 bits, RFC 7518 §3.2)
+  secret: process.env.JWT_SECRET!, // ≥ 32 bytes (256 bits, RFC 7518 §3.2)
   algorithms: ['HS256'],
 });
 
@@ -33,9 +37,9 @@ const requireAuth = createAuthPlugin({
 const refreshTokens = createRefreshHandler({
   secret: process.env.JWT_SECRET!,
   refreshSecret: process.env.JWT_REFRESH_SECRET!,
-  accessTokenTtl: 900,        // 15 min
+  accessTokenTtl: 900, // 15 min
   refreshTokenTtl: 2_592_000, // 30 days
-  store: redisTokenStore,     // required for revocation
+  store: redisTokenStore, // required for revocation
 });
 
 app.route({ method: 'POST', path: '/auth/refresh', handler: refreshTokens });
@@ -104,33 +108,34 @@ const redis = createClient({ url: process.env.REDIS_URL });
 await redis.connect();
 
 const redisTokenStore: TokenStore = {
-  save:   (jti, ttl) => redis.set(`jwt:${jti}`, '1', { EX: ttl }).then(() => undefined),
-  exists: (jti)      => redis.get(`jwt:${jti}`).then(v => v === '1'),
-  revoke: (jti)      => redis.del(`jwt:${jti}`).then(() => undefined),
+  save: (jti, ttl) =>
+    redis.set(`jwt:${jti}`, '1', { EX: ttl }).then(() => undefined),
+  exists: (jti) => redis.get(`jwt:${jti}`).then((v) => v === '1'),
+  revoke: (jti) => redis.del(`jwt:${jti}`).then(() => undefined),
 };
 ```
 
 ## `createAuthPlugin` options
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `secret` | `string` | required | JWT signing secret. Minimum **32 bytes** (256 bits, per RFC 7518 §3.2 for HS256). Validated at startup — throws in production, warns in development. Generate via `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`. |
-| `algorithms` | `Algorithm[]` | `['HS256']` | Accepted algorithms. The `'none'` algorithm is always blocked. |
-| `getToken` | `(req) => string \| null` | `Authorization: Bearer` | Custom token extractor. |
-| `issuer` | `string` | — | Validates the `iss` claim. |
-| `audience` | `string \| string[]` | — | Validates the `aud` claim. |
-| `store` | `TokenStore` | — | When set, checks `store.exists(jti)` on every request. |
+| Option       | Type                      | Default                 | Description                                                                                                                                                                                                                                      |
+| ------------ | ------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `secret`     | `string`                  | required                | JWT signing secret. Minimum **32 bytes** (256 bits, per RFC 7518 §3.2 for HS256). Validated at startup — throws in production, warns in development. Generate via `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`. |
+| `algorithms` | `Algorithm[]`             | `['HS256']`             | Accepted algorithms. The `'none'` algorithm is always blocked.                                                                                                                                                                                   |
+| `getToken`   | `(req) => string \| null` | `Authorization: Bearer` | Custom token extractor.                                                                                                                                                                                                                          |
+| `issuer`     | `string`                  | —                       | Validates the `iss` claim.                                                                                                                                                                                                                       |
+| `audience`   | `string \| string[]`      | —                       | Validates the `aud` claim.                                                                                                                                                                                                                       |
+| `store`      | `TokenStore`              | —                       | When set, checks `store.exists(jti)` on every request.                                                                                                                                                                                           |
 
 ## `createRefreshHandler` options
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `secret` | `string` | required | Access token secret. |
-| `refreshSecret` | `string` | required | Refresh token secret. Use a different secret from `secret`. |
-| `accessTokenTtl` | `number` | `900` | Access token TTL in seconds (15 min). |
-| `refreshTokenTtl` | `number` | `604800` | Refresh token TTL in seconds (7 days). |
-| `store` | `TokenStore` | — | **Strongly recommended.** Without it, stolen refresh tokens cannot be revoked. |
-| `algorithms` | `Algorithm[]` | `['HS256']` | Accepted algorithms. |
+| Option            | Type          | Default     | Description                                                                    |
+| ----------------- | ------------- | ----------- | ------------------------------------------------------------------------------ |
+| `secret`          | `string`      | required    | Access token secret.                                                           |
+| `refreshSecret`   | `string`      | required    | Refresh token secret. Use a different secret from `secret`.                    |
+| `accessTokenTtl`  | `number`      | `900`       | Access token TTL in seconds (15 min).                                          |
+| `refreshTokenTtl` | `number`      | `604800`    | Refresh token TTL in seconds (7 days).                                         |
+| `store`           | `TokenStore`  | —           | **Strongly recommended.** Without it, stolen refresh tokens cannot be revoked. |
+| `algorithms`      | `Algorithm[]` | `['HS256']` | Accepted algorithms.                                                           |
 
 ## Rate limiting the refresh endpoint
 

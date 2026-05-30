@@ -32,7 +32,11 @@ function isPlainObject(val: unknown): boolean {
   return proto.constructor === Object;
 }
 
-export function hasPatternMatch(input: unknown, patterns: RegExp[], depth = 0): boolean {
+export function hasPatternMatch(
+  input: unknown,
+  patterns: RegExp[],
+  depth = 0,
+): boolean {
   if (depth > 64) return false;
   if (typeof input === 'string')
     return patterns.some((pattern) => pattern.test(input));

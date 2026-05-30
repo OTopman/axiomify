@@ -9,9 +9,18 @@ import { Axiomify } from '../src/index';
 
 function makeReq(overrides: any = {}): any {
   return {
-    id: 'r1', method: 'GET', url: '/', path: '/', ip: '127.0.0.1',
-    headers: {}, body: undefined, query: {}, params: {},
-    state: {}, raw: {}, stream: null,
+    id: 'r1',
+    method: 'GET',
+    url: '/',
+    path: '/',
+    ip: '127.0.0.1',
+    headers: {},
+    body: undefined,
+    query: {},
+    params: {},
+    state: {},
+    raw: {},
+    stream: null,
     ...overrides,
   };
 }
@@ -23,10 +32,17 @@ function makeRes(overrides: any = {}): any {
     header: vi.fn().mockReturnThis(),
     getHeader: vi.fn(),
     removeHeader: vi.fn().mockReturnThis(),
-    send: vi.fn(() => { sent = true; }),
-    sendRaw: vi.fn(), error: vi.fn(), stream: vi.fn(),
-    get headersSent() { return sent; },
-    statusCode: 200, raw: {},
+    send: vi.fn(() => {
+      sent = true;
+    }),
+    sendRaw: vi.fn(),
+    error: vi.fn(),
+    stream: vi.fn(),
+    get headersSent() {
+      return sent;
+    },
+    statusCode: 200,
+    raw: {},
     capabilities: { sse: false, streaming: false },
     ...overrides,
   };
@@ -38,8 +54,12 @@ describe('RouteRegistry — extended coverage', () => {
     const app = new Axiomify({ timeout: 0 });
     let called = false;
     app.route({
-      method: 'GET', path: '/fast',
-      handler: async (_r, res) => { called = true; res.send({}); },
+      method: 'GET',
+      path: '/fast',
+      handler: async (_r, res) => {
+        called = true;
+        res.send({});
+      },
     });
     const req = makeReq({ path: '/fast' });
     const res = makeRes();
@@ -50,9 +70,10 @@ describe('RouteRegistry — extended coverage', () => {
   it('timeout path: throws 408 when handler exceeds timeout', async () => {
     const app = new Axiomify({ timeout: 10 });
     app.route({
-      method: 'GET', path: '/slow',
+      method: 'GET',
+      path: '/slow',
       handler: async (_r, res) => {
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 200));
         res.send({});
       },
     });
@@ -65,10 +86,11 @@ describe('RouteRegistry — extended coverage', () => {
   it('per-route timeout overrides global timeout', async () => {
     const app = new Axiomify({ timeout: 5_000 });
     app.route({
-      method: 'GET', path: '/fast-override',
+      method: 'GET',
+      path: '/fast-override',
       timeout: 10,
       handler: async (_r, res) => {
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 200));
         res.send({});
       },
     });
@@ -83,13 +105,17 @@ describe('RouteRegistry — extended coverage', () => {
     const startSpan = vi.fn(() => ({ end: spanEnd }));
     const app = new Axiomify({ telemetry: { startSpan } });
     app.route({
-      method: 'GET', path: '/traced',
+      method: 'GET',
+      path: '/traced',
       handler: async (_r, res) => res.send({}),
     });
     const req = makeReq({ path: '/traced' });
     const res = makeRes();
     await app.handle(req, res);
-    expect(startSpan).toHaveBeenCalledWith('http.request', { method: 'GET', path: '/traced' });
+    expect(startSpan).toHaveBeenCalledWith('http.request', {
+      method: 'GET',
+      path: '/traced',
+    });
     expect(spanEnd).toHaveBeenCalled();
   });
 
@@ -116,8 +142,11 @@ describe('RouteRegistry — extended coverage', () => {
     const startSpan = vi.fn(() => ({ end: spanEnd }));
     const app = new Axiomify({ telemetry: { startSpan } });
     app.route({
-      method: 'GET', path: '/traced-throw',
-      handler: async () => { throw new Error('oops'); },
+      method: 'GET',
+      path: '/traced-throw',
+      handler: async () => {
+        throw new Error('oops');
+      },
     });
     const req = makeReq({ path: '/traced-throw' });
     const res = makeRes();

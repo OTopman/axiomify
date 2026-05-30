@@ -14,7 +14,9 @@
  * can authenticate with the core. It is NOT a security boundary; it is an
  * intent gate.
  */
-export const ADAPTER_LOCK_TOKEN: unique symbol = Symbol.for('axiomify.adapter.lock.v1');
+export const ADAPTER_LOCK_TOKEN: unique symbol = Symbol.for(
+  'axiomify.adapter.lock.v1',
+);
 export type AdapterLockToken = typeof ADAPTER_LOCK_TOKEN;
 
 /**

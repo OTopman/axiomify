@@ -4,9 +4,18 @@ import type { AxiomifyRequest, AxiomifyResponse } from '@axiomify/core';
 
 function makeReq(overrides: any = {}): AxiomifyRequest {
   return {
-    id: 'req_1', method: 'POST', url: '/login', path: '/login',
-    ip: '10.0.0.1', headers: {}, body: {}, query: {}, params: {},
-    state: {}, raw: {}, stream: null as any,
+    id: 'req_1',
+    method: 'POST',
+    url: '/login',
+    path: '/login',
+    ip: '10.0.0.1',
+    headers: {},
+    body: {},
+    query: {},
+    params: {},
+    state: {},
+    raw: {},
+    stream: null as any,
     ...overrides,
   } as any;
 }
@@ -16,15 +25,33 @@ function makeRes(): any {
   let statusCode = 200;
   let sent = false;
   const res: any = {
-    status: vi.fn((c: number) => { statusCode = c; return res; }),
-    header: vi.fn((k: string, v: string) => { headers[k] = v; return res; }),
-    send: vi.fn(() => { sent = true; }),
+    status: vi.fn((c: number) => {
+      statusCode = c;
+      return res;
+    }),
+    header: vi.fn((k: string, v: string) => {
+      headers[k] = v;
+      return res;
+    }),
+    send: vi.fn(() => {
+      sent = true;
+    }),
     getHeader: vi.fn((k: string) => headers[k]),
-    removeHeader: vi.fn(), sendRaw: vi.fn(), error: vi.fn(), stream: vi.fn(),
-    get headersSent() { return sent; },
-    get statusCode() { return statusCode; },
-    raw: {}, capabilities: { sse: false, streaming: false },
-    get headers() { return headers; },
+    removeHeader: vi.fn(),
+    sendRaw: vi.fn(),
+    error: vi.fn(),
+    stream: vi.fn(),
+    get headersSent() {
+      return sent;
+    },
+    get statusCode() {
+      return statusCode;
+    },
+    raw: {},
+    capabilities: { sse: false, streaming: false },
+    get headers() {
+      return headers;
+    },
   };
   return res;
 }
@@ -33,7 +60,8 @@ describe('createRateLimitPlugin', () => {
   it('allows requests within the limit', async () => {
     const plugin = createRateLimitPlugin({
       store: new MemoryStore(),
-      max: 5, windowMs: 60_000,
+      max: 5,
+      windowMs: 60_000,
       allowMemoryStoreInProduction: true,
     });
     const res = makeRes();
@@ -44,7 +72,9 @@ describe('createRateLimitPlugin', () => {
   it('blocks requests beyond the limit with 429', async () => {
     const store = new MemoryStore();
     const plugin = createRateLimitPlugin({
-      store, max: 2, windowMs: 60_000,
+      store,
+      max: 2,
+      windowMs: 60_000,
       allowMemoryStoreInProduction: true,
     });
     const req = makeReq({ ip: '5.5.5.5' });
@@ -58,18 +88,24 @@ describe('createRateLimitPlugin', () => {
   it('sets RateLimit response headers', async () => {
     const plugin = createRateLimitPlugin({
       store: new MemoryStore(),
-      max: 10, windowMs: 60_000,
+      max: 10,
+      windowMs: 60_000,
       allowMemoryStoreInProduction: true,
     });
     const res = makeRes();
     await plugin(makeReq({ ip: '6.6.6.6' }), res);
-    expect(res.header).toHaveBeenCalledWith('X-RateLimit-Limit', expect.any(String));
+    expect(res.header).toHaveBeenCalledWith(
+      'X-RateLimit-Limit',
+      expect.any(String),
+    );
   });
 
   it('uses keyGenerator when provided', async () => {
     const store = new MemoryStore();
     const plugin = createRateLimitPlugin({
-      store, max: 2, windowMs: 60_000,
+      store,
+      max: 2,
+      windowMs: 60_000,
       allowMemoryStoreInProduction: true,
       keyGenerator: (r) => (r as any).body?.email ?? r.ip,
     });
@@ -89,7 +125,9 @@ describe('createRateLimitPlugin', () => {
   it('returns 429 with default message when limit exceeded', async () => {
     const store = new MemoryStore();
     const plugin = createRateLimitPlugin({
-      store, max: 1, windowMs: 60_000,
+      store,
+      max: 1,
+      windowMs: 60_000,
       allowMemoryStoreInProduction: true,
     });
     const req = makeReq({ ip: '7.7.7.7' });
@@ -123,9 +161,9 @@ describe('createRateLimitPlugin — edge cases', () => {
   it('throws in production when no store and no allowMemoryStoreInProduction', () => {
     const original = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
-    expect(() =>
-      createRateLimitPlugin({ windowMs: 1000, max: 10 }),
-    ).toThrow(/Refusing to use in-memory/);
+    expect(() => createRateLimitPlugin({ windowMs: 1000, max: 10 })).toThrow(
+      /Refusing to use in-memory/,
+    );
     process.env.NODE_ENV = original;
   });
 
@@ -133,7 +171,11 @@ describe('createRateLimitPlugin — edge cases', () => {
     const original = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    createRateLimitPlugin({ max: 5, windowMs: 1000, allowMemoryStoreInProduction: true });
+    createRateLimitPlugin({
+      max: 5,
+      windowMs: 1000,
+      allowMemoryStoreInProduction: true,
+    });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('MemoryStore'));
     process.env.NODE_ENV = original;
     vi.restoreAllMocks();
@@ -142,7 +184,8 @@ describe('createRateLimitPlugin — edge cases', () => {
   it('does not throw when skip() returns true', async () => {
     const plugin = createRateLimitPlugin({
       store: new MemoryStore(),
-      max: 1, windowMs: 60_000,
+      max: 1,
+      windowMs: 60_000,
       allowMemoryStoreInProduction: true,
       skip: () => true,
     });
@@ -157,9 +200,13 @@ describe('createRateLimitPlugin — edge cases', () => {
   it('falls back to IP when keyGenerator throws', async () => {
     const store = new MemoryStore();
     const plugin = createRateLimitPlugin({
-      store, max: 10, windowMs: 60_000,
+      store,
+      max: 10,
+      windowMs: 60_000,
       allowMemoryStoreInProduction: true,
-      keyGenerator: () => { throw new Error('bad key'); },
+      keyGenerator: () => {
+        throw new Error('bad key');
+      },
     });
     const req = makeReq({ ip: '10.10.10.10' });
     const res = makeRes();
@@ -213,10 +260,17 @@ describe('createRateLimitPlugin — missing req.ip fallback', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     // Reset the module-level _emittedIpWarning by reimporting in isolation
     const store = new MemoryStore();
-    const plugin = createRateLimitPlugin({ store, max: 10, windowMs: 60_000, allowMemoryStoreInProduction: true });
+    const plugin = createRateLimitPlugin({
+      store,
+      max: 10,
+      windowMs: 60_000,
+      allowMemoryStoreInProduction: true,
+    });
     const req = makeReq({ ip: '' });
     await plugin(req, makeRes());
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('req.ip is falsy'));
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('req.ip is falsy'),
+    );
     warn.mockRestore();
   });
 });
@@ -238,7 +292,7 @@ describe('MemoryStore — cleanup and compaction', () => {
     // Use a very short window — 1ms
     await store.increment('expire-key', 1);
     // Wait for the window to expire
-    await new Promise(r => setTimeout(r, 5));
+    await new Promise((r) => setTimeout(r, 5));
     const result = await store.increment('expire-key', 1);
     // After window expiry, count should reset to 1
     expect(result.count).toBe(1);
@@ -250,18 +304,21 @@ describe('MemoryStore — cleanup and compaction', () => {
       store.increment(`concurrent-${i % 3}`, 60_000),
     );
     const results = await Promise.all(promises);
-    expect(results.every(r => r.count >= 1)).toBe(true);
+    expect(results.every((r) => r.count >= 1)).toBe(true);
   });
 });
 
 describe('createRateLimitPlugin — store failure returns 503', () => {
   it('fails closed with 503 when store.increment throws', async () => {
     const brokenStore = {
-      increment: vi.fn(async () => { throw new Error('redis down'); }),
+      increment: vi.fn(async () => {
+        throw new Error('redis down');
+      }),
     };
     const plugin = createRateLimitPlugin({
       store: brokenStore,
-      max: 10, windowMs: 60_000,
+      max: 10,
+      windowMs: 60_000,
       allowMemoryStoreInProduction: true,
     });
     const res = makeRes();
@@ -272,9 +329,13 @@ describe('createRateLimitPlugin — store failure returns 503', () => {
   it('swallows skip() throw — defaults to not skip', async () => {
     const store = new MemoryStore();
     const plugin = createRateLimitPlugin({
-      store, max: 1, windowMs: 60_000,
+      store,
+      max: 1,
+      windowMs: 60_000,
       allowMemoryStoreInProduction: true,
-      skip: () => { throw new Error('skip broken'); },
+      skip: () => {
+        throw new Error('skip broken');
+      },
     });
     const req = makeReq({ ip: '8.8.8.8' });
     await plugin(req, makeRes());
@@ -310,7 +371,9 @@ describe('RedisStore — full path coverage', () => {
   it('evalsha NOSCRIPT triggers eval fallback', async () => {
     const client: any = {
       eval: vi.fn().mockResolvedValue([2, 1234]),
-      evalsha: vi.fn().mockRejectedValue(new Error('NOSCRIPT No matching script')),
+      evalsha: vi
+        .fn()
+        .mockRejectedValue(new Error('NOSCRIPT No matching script')),
     };
     const store = new RedisStore(client);
     // First call loads the script via eval
@@ -382,7 +445,7 @@ describe('MemoryStore — compaction', () => {
       // 1ms window — each prior timestamp immediately falls outside
       await store.increment(key, 1);
       // Microtask yield to keep Date.now() ticking forward
-      if (i % 100 === 0) await new Promise(r => setTimeout(r, 2));
+      if (i % 100 === 0) await new Promise((r) => setTimeout(r, 2));
     }
     // No assertion — just verify the path didn't throw
   });

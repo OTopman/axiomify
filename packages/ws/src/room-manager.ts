@@ -28,13 +28,25 @@
  * });
  * ```
  */
-import type { Axiomify, AxiomifyRequest, RequestState, WsClient } from '@axiomify/core';
-import { Room } from './room';
 import type {
-  RoomClient,
-  RoomEvents,
-  WsRoomOptions,
-} from './types';
+  Axiomify,
+  AxiomifyRequest,
+  RequestState,
+  WsClient,
+} from '@axiomify/core';
+import { Room } from './room';
+import type { RoomClient, RoomEvents, WsRoomOptions } from './types';
+import { wsClientMap } from './client-map';
+
+// Optional dynamic dependency on @axiomify/security for WebSocket message sanitization
+let sanitizeInput: any = null;
+try {
+  if (typeof require !== 'undefined') {
+    sanitizeInput = require('@axiomify/security').sanitizeInput;
+  }
+} catch {
+  // Option not installed/available
+}
 
 // ---------------------------------------------------------------------------
 // Tiny typed event emitter (no external deps)
@@ -144,7 +156,19 @@ export class RoomManager extends TypedEmitter {
    * Get an existing room or create a new one.
    * The `roomCreate` event fires only on creation.
    */
+  private _validateRoomName(name: string): void {
+    if (typeof name !== 'string' || name.length === 0 || name.length > 256) {
+      throw new Error(
+        'Invalid room name: must be a non-empty string up to 256 characters',
+      );
+    }
+    if (!/^[a-zA-Z0-9_\-.:/@#]+$/.test(name)) {
+      throw new Error('Invalid room name: contains illegal characters');
+    }
+  }
+
   getOrCreateRoom(name: string): Room {
+    this._validateRoomName(name);
     let room = this._rooms.get(name);
     if (!room) {
       room = new Room(name);
@@ -291,7 +315,7 @@ export class RoomManager extends TypedEmitter {
       },
     };
 
-    (roomClient as any)._wsClient = wsClient;
+    wsClientMap.set(roomClient, wsClient);
     this._clients.set(clientId, roomClient);
 
     return roomClient;
@@ -310,16 +334,18 @@ export class RoomManager extends TypedEmitter {
     this._clientRooms.delete(clientId);
   }
 
-  /** @internal Process a wire-protocol action from the client. */
   _processAction(clientId: string, data: unknown): boolean {
-    let parsed: any = data;
+    if (typeof data !== 'string' && !Buffer.isBuffer(data)) {
+      return false;
+    }
+    let parsed: any;
     if (Buffer.isBuffer(data)) {
       try {
         parsed = JSON.parse(data.toString('utf8'));
       } catch {
         return false;
       }
-    } else if (typeof data === 'string') {
+    } else {
       try {
         parsed = JSON.parse(data);
       } catch {
@@ -338,7 +364,11 @@ export class RoomManager extends TypedEmitter {
     switch (action.action) {
       case 'join': {
         if (typeof action.room !== 'string' || action.room.length === 0) {
-          client.send({ event: 'error', message: 'Invalid room name', code: 'INVALID_ROOM' });
+          client.send({
+            event: 'error',
+            message: 'Invalid room name',
+            code: 'INVALID_ROOM',
+          });
           return true;
         }
         try {
@@ -356,7 +386,11 @@ export class RoomManager extends TypedEmitter {
 
       case 'leave': {
         if (typeof action.room !== 'string') {
-          client.send({ event: 'error', message: 'Invalid room name', code: 'INVALID_ROOM' });
+          client.send({
+            event: 'error',
+            message: 'Invalid room name',
+            code: 'INVALID_ROOM',
+          });
           return true;
         }
         client.leave(action.room);
@@ -366,16 +400,28 @@ export class RoomManager extends TypedEmitter {
 
       case 'message': {
         if (typeof action.room !== 'string') {
-          client.send({ event: 'error', message: 'Invalid room name', code: 'INVALID_ROOM' });
+          client.send({
+            event: 'error',
+            message: 'Invalid room name',
+            code: 'INVALID_ROOM',
+          });
           return true;
         }
         const room = this._rooms.get(action.room);
         if (!room) {
-          client.send({ event: 'error', message: 'Room does not exist', code: 'ROOM_NOT_FOUND' });
+          client.send({
+            event: 'error',
+            message: 'Room does not exist',
+            code: 'ROOM_NOT_FOUND',
+          });
           return true;
         }
         if (!room.has(client.id)) {
-          client.send({ event: 'error', message: 'Not a member of this room', code: 'NOT_MEMBER' });
+          client.send({
+            event: 'error',
+            message: 'Not a member of this room',
+            code: 'NOT_MEMBER',
+          });
           return true;
         }
         // Broadcast to all room members via the WsClient's publish method.
@@ -397,16 +443,28 @@ export class RoomManager extends TypedEmitter {
 
       case 'presence': {
         if (typeof action.room !== 'string') {
-          client.send({ event: 'error', message: 'Invalid room name', code: 'INVALID_ROOM' });
+          client.send({
+            event: 'error',
+            message: 'Invalid room name',
+            code: 'INVALID_ROOM',
+          });
           return true;
         }
         const presenceRoom = this._rooms.get(action.room);
         if (!presenceRoom) {
-          client.send({ event: 'error', message: 'Room does not exist', code: 'ROOM_NOT_FOUND' });
+          client.send({
+            event: 'error',
+            message: 'Room does not exist',
+            code: 'ROOM_NOT_FOUND',
+          });
           return true;
         }
         if (!presenceRoom.has(client.id)) {
-          client.send({ event: 'error', message: 'Not a member of this room', code: 'NOT_MEMBER' });
+          client.send({
+            event: 'error',
+            message: 'Not a member of this room',
+            code: 'NOT_MEMBER',
+          });
           return true;
         }
         client.send({
@@ -428,6 +486,7 @@ export class RoomManager extends TypedEmitter {
 
   /** @internal Join a room. Called by RoomClient.join(). */
   _joinRoom(clientId: string, roomName: string): void {
+    this._validateRoomName(roomName);
     const clientRoomSet = this._clientRooms.get(clientId);
     if (!clientRoomSet) {
       throw new Error(`Client ${clientId} is not connected`);
@@ -561,7 +620,10 @@ export class RoomManager extends TypedEmitter {
  * });
  * ```
  */
-export function wsRooms(app: Axiomify, options: WsRoomOptions = {}): RoomManager {
+export function wsRooms(
+  app: Axiomify,
+  options: WsRoomOptions = {},
+): RoomManager {
   const manager = new RoomManager(options);
   const path = options.path ?? '/ws';
 
@@ -591,18 +653,29 @@ export function wsRooms(app: Axiomify, options: WsRoomOptions = {}): RoomManager
       const clientId = (wsClient.state as any)[CLIENT_ID_KEY] as string;
       if (!clientId) return;
 
+      let sanitizedData = data;
+      if (options.sanitize !== false && sanitizeInput) {
+        const sanitizeOpts =
+          typeof options.sanitize === 'object' ? options.sanitize : undefined;
+        sanitizedData = sanitizeInput(data, sanitizeOpts);
+      }
+
       // Try to process as a wire-protocol action first.
-      const handled = manager._processAction(clientId, data);
+      const handled = manager._processAction(clientId, sanitizedData);
 
       // Fire onMessage for all messages (wire-protocol or custom).
       const client = manager.client(clientId);
       if (client) {
-        manager.emit('message', client, data);
-        options.onMessage?.(client, data);
+        manager.emit('message', client, sanitizedData);
+        options.onMessage?.(client, sanitizedData);
       }
     },
 
-    close(wsClient: WsClient<RequestState>, code: number, reason: string): void {
+    close(
+      wsClient: WsClient<RequestState>,
+      code: number,
+      reason: string,
+    ): void {
       const clientId = (wsClient.state as any)[CLIENT_ID_KEY] as string;
       if (!clientId) return;
 

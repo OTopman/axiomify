@@ -23,13 +23,13 @@ serveStatic(app, {
 
 ## Options
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `prefix` | `string` | required | URL path prefix. Use `'/'` for root. |
-| `root` | `string` | required | Filesystem directory to serve from. |
-| `cacheControl` | `string` | `'public, max-age=86400'` | `Cache-Control` header value for all responses. |
-| `forceDownloadExtensions` | `string[]` | `['.svg', '.html', '.htm', '.xml']` | Served with `Content-Disposition: attachment`. |
-| `serveIndex` | `boolean` | `true` | Serve `index.html` for directory paths (SPA support). |
+| Option                    | Type       | Default                             | Description                                           |
+| ------------------------- | ---------- | ----------------------------------- | ----------------------------------------------------- |
+| `prefix`                  | `string`   | required                            | URL path prefix. Use `'/'` for root.                  |
+| `root`                    | `string`   | required                            | Filesystem directory to serve from.                   |
+| `cacheControl`            | `string`   | `'public, max-age=86400'`           | `Cache-Control` header value for all responses.       |
+| `forceDownloadExtensions` | `string[]` | `['.svg', '.html', '.htm', '.xml']` | Served with `Content-Disposition: attachment`.        |
+| `serveIndex`              | `boolean`  | `true`                              | Serve `index.html` for directory paths (SPA support). |
 
 ## Cache control
 
@@ -64,24 +64,24 @@ serveStatic(app, {
 serveStatic(app, {
   prefix: '/',
   root: './dist',
-  cacheControl: 'no-cache',         // prevent stale HTML shell
-  serveIndex: true,                 // default — serves index.html for directories
+  cacheControl: 'no-cache', // prevent stale HTML shell
+  serveIndex: true, // default — serves index.html for directories
 });
 ```
 
 ## Supported MIME types (36)
 
-| Category | Extensions |
-|---|---|
-| Web | `.html`, `.htm`, `.css`, `.js`, `.mjs`, `.ts`, `.json`, `.xml`, `.txt`, `.md` |
-| Images | `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.ico`, `.webp`, `.avif`, `.bmp`, `.tiff` |
-| Fonts | `.woff`, `.woff2`, `.ttf`, `.otf`, `.eot` |
-| Media | `.mp4`, `.webm`, `.ogg`, `.mp3`, `.wav`, `.flac` |
-| Data | `.csv`, `.yaml`, `.yml` |
-| Docs | `.pdf` |
-| Archives | `.zip`, `.gz`, `.tar` |
-| System | `.wasm` |
-| Unknown | `application/octet-stream` |
+| Category | Extensions                                                                         |
+| -------- | ---------------------------------------------------------------------------------- |
+| Web      | `.html`, `.htm`, `.css`, `.js`, `.mjs`, `.ts`, `.json`, `.xml`, `.txt`, `.md`      |
+| Images   | `.png`, `.jpg`, `.jpeg`, `.gif`, `.svg`, `.ico`, `.webp`, `.avif`, `.bmp`, `.tiff` |
+| Fonts    | `.woff`, `.woff2`, `.ttf`, `.otf`, `.eot`                                          |
+| Media    | `.mp4`, `.webm`, `.ogg`, `.mp3`, `.wav`, `.flac`                                   |
+| Data     | `.csv`, `.yaml`, `.yml`                                                            |
+| Docs     | `.pdf`                                                                             |
+| Archives | `.zip`, `.gz`, `.tar`                                                              |
+| System   | `.wasm`                                                                            |
+| Unknown  | `application/octet-stream`                                                         |
 
 ## Security
 
@@ -100,6 +100,6 @@ serveStatic(app, {
 serveStatic(app, {
   prefix: '/icons',
   root: './icons',
-  forceDownloadExtensions: [],  // disable forced download
+  forceDownloadExtensions: [], // disable forced download
 });
 ```

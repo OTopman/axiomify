@@ -11,7 +11,8 @@ import { createHash } from 'crypto';
 // real) collision probability. PID-prefixed for multi-process safety.
 let _rlCounter = 0;
 const _rlPid = process.pid.toString(36);
-const nextMember = (now: number) => `${now}:${_rlPid}:${(++_rlCounter).toString(36)}`;
+const nextMember = (now: number) =>
+  `${now}:${_rlPid}:${(++_rlCounter).toString(36)}`;
 
 const REDIS_SLIDING_WINDOW_SCRIPT = `
   local key = KEYS[1]
@@ -29,7 +30,9 @@ const REDIS_SLIDING_WINDOW_SCRIPT = `
 `;
 
 // SHA1 of the script — computed once at module load, used for EVALSHA caching.
-const SCRIPT_SHA = createHash('sha1').update(REDIS_SLIDING_WINDOW_SCRIPT).digest('hex');
+const SCRIPT_SHA = createHash('sha1')
+  .update(REDIS_SLIDING_WINDOW_SCRIPT)
+  .digest('hex');
 
 export interface RateLimitStore {
   increment(
@@ -53,8 +56,15 @@ export interface RedisClient {
   eval?(script: string, numkeys: number, ...args: string[]): Promise<unknown>;
   evalsha?(sha: string, numkeys: number, ...args: string[]): Promise<unknown>;
   // redis@4-style (object)
-  eval?(opts: { script: string; keys: string[]; arguments: string[] }): Promise<unknown>;
-  evalSha?(sha: string, opts: { keys: string[]; arguments: string[] }): Promise<unknown>;
+  eval?(opts: {
+    script: string;
+    keys: string[];
+    arguments: string[];
+  }): Promise<unknown>;
+  evalSha?(
+    sha: string,
+    opts: { keys: string[]; arguments: string[] },
+  ): Promise<unknown>;
 }
 
 export class RedisStore {
@@ -109,13 +119,19 @@ export class RedisStore {
 
   private async _eval(keys: string[], args: string[]): Promise<unknown> {
     if (typeof (this.client as { eval?: unknown }).eval !== 'function') {
-      throw new Error('[axiomify/rate-limit] RedisClient must implement eval()');
+      throw new Error(
+        '[axiomify/rate-limit] RedisClient must implement eval()',
+      );
     }
     const c = this.client as { eval: (...a: unknown[]) => Promise<unknown> };
 
     // Fast path: shape already known. No try/catch, no probe.
     if (this._evalStyle === 'object') {
-      return c.eval({ script: REDIS_SLIDING_WINDOW_SCRIPT, keys, arguments: args } as never);
+      return c.eval({
+        script: REDIS_SLIDING_WINDOW_SCRIPT,
+        keys,
+        arguments: args,
+      } as never);
     }
     if (this._evalStyle === 'variadic') {
       return c.eval(REDIS_SLIDING_WINDOW_SCRIPT, keys.length, ...keys, ...args);
@@ -124,25 +140,37 @@ export class RedisStore {
     // First call: probe both shapes ONCE and lock the result. Subsequent
     // calls go through the fast path above with zero overhead.
     try {
-      const result = await c.eval({ script: REDIS_SLIDING_WINDOW_SCRIPT, keys, arguments: args } as never);
+      const result = await c.eval({
+        script: REDIS_SLIDING_WINDOW_SCRIPT,
+        keys,
+        arguments: args,
+      } as never);
       this._evalStyle = 'object';
       return result;
     } catch {
-      const result = await c.eval(REDIS_SLIDING_WINDOW_SCRIPT, keys.length, ...keys, ...args);
+      const result = await c.eval(
+        REDIS_SLIDING_WINDOW_SCRIPT,
+        keys.length,
+        ...keys,
+        ...args,
+      );
       this._evalStyle = 'variadic';
       return result;
     }
   }
 
   private async _evalSha(keys: string[], args: string[]): Promise<unknown> {
-    const evalSha = (this.client as { evalsha?: unknown; evalSha?: unknown }).evalsha
-      ?? (this.client as { evalSha?: unknown }).evalSha;
+    const evalSha =
+      (this.client as { evalsha?: unknown; evalSha?: unknown }).evalsha ??
+      (this.client as { evalSha?: unknown }).evalSha;
 
     if (typeof evalSha !== 'function') {
       // No evalsha method — signal the caller to use EVAL instead.
       throw new Error('NOSCRIPT');
     }
-    const fn = (evalSha as (...a: unknown[]) => Promise<unknown>).bind(this.client);
+    const fn = (evalSha as (...a: unknown[]) => Promise<unknown>).bind(
+      this.client,
+    );
 
     // Fast path: shape already known.
     if (this._evalShaStyle === 'variadic') {
@@ -318,7 +346,10 @@ function createDefaultKeyGenerator(
   };
 }
 
-function createStore(options: RateLimitOptions, warnings: WarningCtx): RateLimitStore {
+function createStore(
+  options: RateLimitOptions,
+  warnings: WarningCtx,
+): RateLimitStore {
   const provided = options.store;
   if (provided) return provided;
 
@@ -358,7 +389,9 @@ function buildLimiter(options: RateLimitOptions = {}) {
   const warnings = newWarningCtx();
   const store = createStore(options, warnings);
   const keyGenerator =
-    options.keyGenerator ?? options.keyExtractor ?? createDefaultKeyGenerator(warnings);
+    options.keyGenerator ??
+    options.keyExtractor ??
+    createDefaultKeyGenerator(warnings);
 
   return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
     // Wrap skip() in try/catch — a throwing skip silently bypasses rate limiting.

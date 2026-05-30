@@ -8,7 +8,10 @@ export interface EnvironmentConfig {
 export class EnvironmentSwitcher {
   private currentEnv: string;
 
-  constructor(private urls: EnvironmentConfig, defaultEnv: string = 'production') {
+  constructor(
+    private urls: EnvironmentConfig,
+    defaultEnv: string = 'production',
+  ) {
     this.currentEnv = defaultEnv;
   }
 

@@ -8,7 +8,7 @@ describe('SchemaDiffer and BreakingChangeAnalyzer', () => {
     const oldSchema: IRSchema = {
       info: { title: 'Test API', version: '1.0.0' },
       types: new Map(),
-      endpoints: []
+      endpoints: [],
     };
 
     const newSchema: IRSchema = {
@@ -21,9 +21,9 @@ describe('SchemaDiffer and BreakingChangeAnalyzer', () => {
           path: '/users',
           description: '',
           parameters: [],
-          responses: []
-        }
-      ]
+          responses: [],
+        },
+      ],
     };
 
     const differ = new SchemaDiffer();
@@ -51,15 +51,15 @@ describe('SchemaDiffer and BreakingChangeAnalyzer', () => {
           path: '/users',
           description: '',
           parameters: [],
-          responses: []
-        }
-      ]
+          responses: [],
+        },
+      ],
     };
 
     const newSchema: IRSchema = {
       info: { title: 'Test API', version: '1.0.0' },
       types: new Map(),
-      endpoints: []
+      endpoints: [],
     };
 
     const differ = new SchemaDiffer();
@@ -85,9 +85,9 @@ describe('SchemaDiffer and BreakingChangeAnalyzer', () => {
           path: '/users',
           description: '',
           parameters: [],
-          responses: []
-        }
-      ]
+          responses: [],
+        },
+      ],
     };
 
     const newSchema: IRSchema = {
@@ -100,9 +100,9 @@ describe('SchemaDiffer and BreakingChangeAnalyzer', () => {
           path: '/api/users', // Changed path
           description: '',
           parameters: [],
-          responses: []
-        }
-      ]
+          responses: [],
+        },
+      ],
     };
 
     const differ = new SchemaDiffer();

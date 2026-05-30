@@ -7,8 +7,13 @@ import { ingestGraphQL, ingestOpenApi } from '../../sdk/ingest';
 export function registerSdkBuildCommand(program: Command) {
   program
     .command('build')
-    .description('Build, validate, and check API schema compile target readiness')
-    .argument('<input>', 'The input schema file (e.g. spec.json, schema.graphql)')
+    .description(
+      'Build, validate, and check API schema compile target readiness',
+    )
+    .argument(
+      '<input>',
+      'The input schema file (e.g. spec.json, schema.graphql)',
+    )
     .action(async (input: string) => {
       try {
         console.log(pc.blue('ℹ Initializing SDK build...\n'));
@@ -17,7 +22,8 @@ export function registerSdkBuildCommand(program: Command) {
         const raw = readFileSync(input, 'utf8');
 
         if (ext === 'json' || ext === 'yaml' || ext === 'yml') {
-          const parsed = ext === 'json' ? JSON.parse(raw) : require('yaml').parse(raw);
+          const parsed =
+            ext === 'json' ? JSON.parse(raw) : require('yaml').parse(raw);
           ir = ingestOpenApi(parsed, {});
         } else if (ext === 'graphql' || ext === 'gql') {
           ir = await ingestGraphQL(raw, {});
@@ -40,7 +46,9 @@ export function registerSdkBuildCommand(program: Command) {
         }
 
         console.log(pc.green(`\n✓ Build succeeded!`));
-        console.log(pc.dim(`      Endpoints: ${result.schema.endpoints.length}`));
+        console.log(
+          pc.dim(`      Endpoints: ${result.schema.endpoints.length}`),
+        );
         console.log(pc.dim(`      Types: ${result.schema.types.size}`));
         console.log(pc.dim(`      Duration: ${result.durationMs}ms`));
       } catch (err: any) {

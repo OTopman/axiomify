@@ -1,6 +1,5 @@
 # @axiomify/metrics
 
-
 [![npm version](https://img.shields.io/npm/v/@axiomify/metrics.svg)](https://npmjs.com/package/@axiomify/metrics)
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
@@ -20,7 +19,7 @@ npm install @axiomify/metrics
 import { useMetrics } from '@axiomify/metrics';
 
 useMetrics(app, {
-  path: '/metrics',  // default
+  path: '/metrics', // default
 });
 ```
 
@@ -28,14 +27,15 @@ Point your Prometheus scrape config at `http://localhost:3000/metrics`.
 
 ## Options
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `path` | `string` | `'/metrics'` | Endpoint path for the metrics export. |
-| `protect` | `(req) => boolean \| Promise<boolean>` | — | Return `false` to reject with 403. |
-| `requireToken` | `string` | — | Require `X-Metrics-Token` header to match this value. |
-| `allowlist` | `string[]` | — | Allow only these IPv4 addresses or CIDR ranges. |
+| Option         | Type                                   | Default      | Description                                           |
+| -------------- | -------------------------------------- | ------------ | ----------------------------------------------------- |
+| `path`         | `string`                               | `'/metrics'` | Endpoint path for the metrics export.                 |
+| `protect`      | `(req) => boolean \| Promise<boolean>` | —            | Return `false` to reject with 403.                    |
+| `requireToken` | `string`                               | —            | Require `X-Metrics-Token` header to match this value. |
+| `allowlist`    | `string[]`                             | —            | Allow only these IPv4 addresses or CIDR ranges.       |
 
 If none of `protect`, `requireToken`, or `allowlist` are set, a startup warning is emitted:
+
 ```
 [axiomify/metrics] Warning: /metrics is publicly accessible. Set protect, requireToken, or allowlist.
 ```
@@ -80,8 +80,6 @@ axiomify_process_uptime_seconds 3600.2
 ```
 
 **Cardinality is bounded** — labels use matched route patterns (`/users/:id`), never concrete URLs (`/users/42`). This prevents label explosion from path parameters.
-
-
 
 ## Prometheus scrape config
 

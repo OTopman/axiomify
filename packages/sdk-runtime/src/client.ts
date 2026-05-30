@@ -15,7 +15,9 @@ export class BaseClient {
   constructor(config: ClientConfig) {
     this.config = config;
     this.interceptors = new InterceptorManager();
-    this.circuitBreaker = new CircuitBreaker(config.circuitBreakerConfig as any);
+    this.circuitBreaker = new CircuitBreaker(
+      config.circuitBreakerConfig as any,
+    );
     this.cache = new LruTtlCache(100, config.cacheTtlMs || 60000);
   }
 
@@ -36,7 +38,7 @@ export class BaseClient {
     }
 
     const requestPromise = this.executeRequest<T>(req, cacheKey);
-    
+
     if (isGet) {
       this.inFlightRequests.set(cacheKey, requestPromise);
     }
@@ -51,12 +53,15 @@ export class BaseClient {
     }
   }
 
-  private async executeRequest<T>(req: ClientRequest, cacheKey: string): Promise<T> {
+  private async executeRequest<T>(
+    req: ClientRequest,
+    cacheKey: string,
+  ): Promise<T> {
     // 3. Circuit Breaker Wrapper
     return this.circuitBreaker.run(async () => {
       // Execute standard request
       // Run request interceptors
-      let currentReq = await this.interceptors.runRequestInterceptors(req);
+      const currentReq = await this.interceptors.runRequestInterceptors(req);
 
       // Build url
       const url = new URL(currentReq.path, this.config.baseUrl);
@@ -70,7 +75,8 @@ export class BaseClient {
 
       const headers = new Headers(this.config.headers);
       if (currentReq.headers) {
-        for (const [k, v] of Object.entries(currentReq.headers)) headers.set(k, v);
+        for (const [k, v] of Object.entries(currentReq.headers))
+          headers.set(k, v);
       }
 
       if (this.config.authProvider) {
@@ -88,7 +94,10 @@ export class BaseClient {
         if (isBinaryData(currentReq.body)) {
           fetchOpts.body = currentReq.body as any;
           headers.set('Content-Type', 'application/octet-stream');
-        } else if (typeof FormData !== 'undefined' && currentReq.body instanceof FormData) {
+        } else if (
+          typeof FormData !== 'undefined' &&
+          currentReq.body instanceof FormData
+        ) {
           fetchOpts.body = currentReq.body;
           // Fetch auto-sets Content-Type boundary for FormData
         } else {
@@ -111,12 +120,15 @@ export class BaseClient {
         if (this.config.timeoutMs) {
           abortController = new AbortController();
           fetchOpts.signal = abortController.signal;
-          timeoutId = setTimeout(() => abortController?.abort(), this.config.timeoutMs);
+          timeoutId = setTimeout(
+            () => abortController?.abort(),
+            this.config.timeoutMs,
+          );
         }
 
         try {
           const rawResponse = await fetchImpl(url.toString(), fetchOpts);
-          
+
           let data: any = null;
           if (rawResponse.status !== 204) {
             const contentType = rawResponse.headers.get('content-type');
@@ -131,7 +143,7 @@ export class BaseClient {
             data,
             status: rawResponse.status,
             headers: rawResponse.headers,
-            request: currentReq
+            request: currentReq,
           };
 
           // Run response interceptors
@@ -143,7 +155,11 @@ export class BaseClient {
           }
 
           if (!rawResponse.ok) {
-            throw new SdkError(`API Error: ${rawResponse.status}`, rawResponse.status, res);
+            throw new SdkError(
+              `API Error: ${rawResponse.status}`,
+              rawResponse.status,
+              res,
+            );
           }
 
           // Cache caching candidate

@@ -7,9 +7,11 @@ describe('SDK Generation CLI Command', () => {
 
   beforeEach(() => {
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    processExitSpy = vi.spyOn(process, 'exit').mockImplementation((code?: string | number | null | undefined) => {
-      throw new Error(`process.exit called with ${code}`);
-    });
+    processExitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((code?: string | number | null | undefined) => {
+        throw new Error(`process.exit called with ${code}`);
+      });
   });
 
   afterEach(() => {
@@ -26,7 +28,9 @@ describe('SDK Generation CLI Command', () => {
 
     expect(success).toBe(false);
     expect(consoleErrorSpy).toHaveBeenCalled();
-    expect(consoleErrorSpy.mock.calls[0][0]).toContain('must be contained within the project root directory');
+    expect(consoleErrorSpy.mock.calls[0][0]).toContain(
+      'must be contained within the project root directory',
+    );
     expect(processExitSpy).not.toHaveBeenCalled();
   });
 
@@ -36,11 +40,13 @@ describe('SDK Generation CLI Command', () => {
         input: 'valid.json',
         target: ['typescript'],
         output: '/absolute/path/outside',
-      })
+      }),
     ).rejects.toThrow('process.exit called with 1');
 
     expect(consoleErrorSpy).toHaveBeenCalled();
-    expect(consoleErrorSpy.mock.calls[0][0]).toContain('must be contained within the project root directory');
+    expect(consoleErrorSpy.mock.calls[0][0]).toContain(
+      'must be contained within the project root directory',
+    );
   });
 
   it('should permit output directory inside project root', async () => {
@@ -57,6 +63,8 @@ describe('SDK Generation CLI Command', () => {
     // It should have logged "Ingestion failed" because the input file doesn't exist.
     expect(consoleErrorSpy).toHaveBeenCalled();
     expect(consoleErrorSpy.mock.calls[0][0]).toContain('Ingestion failed');
-    expect(consoleErrorSpy.mock.calls[0][0]).not.toContain('must be contained within the project root directory');
+    expect(consoleErrorSpy.mock.calls[0][0]).not.toContain(
+      'must be contained within the project root directory',
+    );
   });
 });

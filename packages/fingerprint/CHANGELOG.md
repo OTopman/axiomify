@@ -201,14 +201,12 @@
   microtask. Single-handler lists call the handler directly without a loop.
 
   ### Dispatcher: allocation reduction
-
   - `ValidatingResponse` wrapper allocated only for routes with `schema.response` or HEAD method
   - Router writes params directly into caller-provided `req.params` — no intermediate object
   - `Object.assign` replaces `for-in` for params copy (V8 inline cache, no prototype walk)
   - Single-step pipeline unrolled (no loop for handler-only routes)
 
   ### Clustering: verified 160–165% scaling at 2 workers (8-core machine)
-
   - `@axiomify/http` 2w: **57,200 req/s (160% of 1-worker baseline)**
   - `@axiomify/fastify` 2w: **35,200 req/s (165% of 1-worker baseline)**
 
@@ -312,7 +310,6 @@
   `zod-to-json-schema`, which returned empty `{}` for all Zod v4 schemas.
 
   ### `@axiomify/auth`: token revocation + JWT algorithm pinning
-
   - Access token revocation via `TokenStore` (checked on every authenticated request)
   - Refresh token rotation with configurable TTL
   - Algorithm pinning — tokens signed with non-listed algorithms are rejected at startup

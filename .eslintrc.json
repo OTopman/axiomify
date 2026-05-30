@@ -1,6 +1,6 @@
 {
   "parser": "@typescript-eslint/parser",
-  "extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended"],
+  "extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended", "prettier"],
   "env": {
     "node": true,
     "es2022": true
@@ -8,7 +8,14 @@
   "rules": {
     "@typescript-eslint/no-explicit-any": "warn",
     "@typescript-eslint/ban-types": "off",
-    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }]
+    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "@typescript-eslint/no-unsafe-function-type": "warn",
+    "@typescript-eslint/no-require-imports": "warn",
+    "@typescript-eslint/no-this-alias": "warn",
+    "no-useless-escape": "warn",
+    "no-case-declarations": "warn",
+    "no-constant-condition": "warn",
+    "@typescript-eslint/no-empty-object-type": "warn"
   },
   "ignorePatterns": ["dist/", "node_modules/", "axiomify-client.js", "*.d.ts"]
 }

@@ -9,19 +9,29 @@ export function registerSdkBenchmarkCommand(program: Command) {
     .command('benchmark')
     .description('Benchmark the compiler and code generator throughput')
     .action(async () => {
-      console.log(pc.blue('ℹ Initializing SDK compiler & generator performance benchmark...\n'));
+      console.log(
+        pc.blue(
+          'ℹ Initializing SDK compiler & generator performance benchmark...\n',
+        ),
+      );
 
       // 1. Synthesize a large mock schema (50 endpoints, 100 object types)
-      console.log(pc.dim('  • Synthesizing mock schema (50 endpoints, 100 types)...'));
+      console.log(
+        pc.dim('  • Synthesizing mock schema (50 endpoints, 100 types)...'),
+      );
       const mockSchema: IRSchema = {
-        info: { title: 'Benchmark API', version: '2.0.0', sourceFormat: 'openapi' },
+        info: {
+          title: 'Benchmark API',
+          version: '2.0.0',
+          sourceFormat: 'openapi',
+        },
         types: new Map<string, IRType>(),
         endpoints: [],
         securitySchemes: new Map(),
         servers: [],
         globalSecurity: [],
         events: [],
-        reactiveContracts: []
+        reactiveContracts: [],
       };
 
       // Generate 100 objects
@@ -31,11 +41,35 @@ export function registerSdkBenchmarkCommand(program: Command) {
           id: typeId,
           kind: 'object',
           fields: [
-            { name: 'id', required: true, type: { inline: { id: '_string', kind: 'scalar', scalar: 'string' } } },
-            { name: 'name', required: true, type: { inline: { id: '_string', kind: 'scalar', scalar: 'string' } } },
-            { name: 'age', required: false, type: { inline: { id: '_number', kind: 'scalar', scalar: 'number' } } },
-            { name: 'createdAt', required: true, type: { inline: { id: '_datetime', kind: 'scalar', scalar: 'datetime' } } }
-          ]
+            {
+              name: 'id',
+              required: true,
+              type: {
+                inline: { id: '_string', kind: 'scalar', scalar: 'string' },
+              },
+            },
+            {
+              name: 'name',
+              required: true,
+              type: {
+                inline: { id: '_string', kind: 'scalar', scalar: 'string' },
+              },
+            },
+            {
+              name: 'age',
+              required: false,
+              type: {
+                inline: { id: '_number', kind: 'scalar', scalar: 'number' },
+              },
+            },
+            {
+              name: 'createdAt',
+              required: true,
+              type: {
+                inline: { id: '_datetime', kind: 'scalar', scalar: 'datetime' },
+              },
+            },
+          ],
         });
       }
 
@@ -48,7 +82,14 @@ export function registerSdkBenchmarkCommand(program: Command) {
           method: 'GET',
           path: `/resource/${i}/{id}`,
           pathParams: [
-            { name: 'id', location: 'path', required: true, type: { inline: { id: '_string', kind: 'scalar', scalar: 'string' } } }
+            {
+              name: 'id',
+              location: 'path',
+              required: true,
+              type: {
+                inline: { id: '_string', kind: 'scalar', scalar: 'string' },
+              },
+            },
           ],
           queryParams: [],
           headerParams: [],
@@ -56,12 +97,12 @@ export function registerSdkBenchmarkCommand(program: Command) {
             '200': {
               statusCode: '200',
               description: 'Success',
-              type: { ref: `Model${(i * 2) % 100 || 100}` }
-            }
+              type: { ref: `Model${(i * 2) % 100 || 100}` },
+            },
           },
           successResponse: '200',
           security: [],
-          tags: ['benchmark']
+          tags: ['benchmark'],
         });
       }
 
@@ -88,7 +129,7 @@ export function registerSdkBenchmarkCommand(program: Command) {
         const generator = new GenClass(compResult.schema, {
           packageName: `benchmark-sdk-${t}`,
           outputDir: 'dummy',
-          version: '1.0.0'
+          version: '1.0.0',
         });
         const files = await generator.generate();
         totalFiles += files.length;
@@ -100,9 +141,21 @@ export function registerSdkBenchmarkCommand(program: Command) {
       console.log();
       console.log(pc.bold('Results Summary:'));
       console.log(pc.dim(`  - Compilation Time: ${compileTime}ms`));
-      console.log(pc.dim(`  - Generation Time (all ${targets.length} targets): ${genTime}ms`));
+      console.log(
+        pc.dim(
+          `  - Generation Time (all ${targets.length} targets): ${genTime}ms`,
+        ),
+      );
       console.log(pc.dim(`  - Total files generated: ${totalFiles}`));
-      console.log(pc.dim(`  - Compilation Throughput: ${(50 / (compileTime / 1000)).toFixed(2)} endpoints/sec`));
-      console.log(pc.dim(`  - Generation Throughput: ${(totalFiles / (genTime / 1000)).toFixed(2)} files/sec`));
+      console.log(
+        pc.dim(
+          `  - Compilation Throughput: ${(50 / (compileTime / 1000)).toFixed(2)} endpoints/sec`,
+        ),
+      );
+      console.log(
+        pc.dim(
+          `  - Generation Throughput: ${(totalFiles / (genTime / 1000)).toFixed(2)} files/sec`,
+        ),
+      );
     });
 }

@@ -43,7 +43,9 @@ describe('createRefreshHandler — store failure paths', () => {
   it('returns 503 when store.exists throws (store unavailable)', async () => {
     const store: TokenStore = {
       save: vi.fn(),
-      exists: vi.fn(async () => { throw new Error('redis down'); }),
+      exists: vi.fn(async () => {
+        throw new Error('redis down');
+      }),
       revoke: vi.fn(),
     };
     const handler = createRefreshHandler({
@@ -65,7 +67,9 @@ describe('createRefreshHandler — store failure paths', () => {
   it('does NOT revoke the old token when store.save fails on the new one', async () => {
     const revoke = vi.fn();
     const store: TokenStore = {
-      save: vi.fn(async () => { throw new Error('redis write failed'); }),
+      save: vi.fn(async () => {
+        throw new Error('redis write failed');
+      }),
       exists: vi.fn(async () => true),
       revoke,
     };
@@ -104,7 +108,10 @@ describe('Auth — option branch coverage', () => {
   it('throws when every provided algorithm is blocked (e.g. "none")', async () => {
     const { createAuthPlugin } = await import('../src/index');
     expect(() =>
-      createAuthPlugin({ secret: accessSecret, algorithms: ['none' as any, 'NONE' as any] }),
+      createAuthPlugin({
+        secret: accessSecret,
+        algorithms: ['none' as any, 'NONE' as any],
+      }),
     ).toThrow(/none/);
   });
 
@@ -113,16 +120,23 @@ describe('Auth — option branch coverage', () => {
     const requireAuth = createAuthPlugin({ secret: accessSecret });
     const app = new Axiomify();
     app.route({
-      method: 'GET', path: '/multi',
+      method: 'GET',
+      path: '/multi',
       plugins: [requireAuth],
       handler: async (_r, res) => res.send({}),
     });
     const token = jwt.sign({ id: 'u1' }, accessSecret);
     const req = {
-      method: 'GET', path: '/multi',
+      method: 'GET',
+      path: '/multi',
       headers: { authorization: [`Bearer ${token}`, `Bearer other`] },
-      id: 'r', params: {}, query: {}, state: {}, body: undefined,
-      url: '/multi', ip: '127.0.0.1',
+      id: 'r',
+      params: {},
+      query: {},
+      state: {},
+      body: undefined,
+      url: '/multi',
+      ip: '127.0.0.1',
     } as any;
     const res = makeRes() as any;
     await app.handle(req, res);
@@ -134,15 +148,22 @@ describe('Auth — option branch coverage', () => {
     const requireAuth = createAuthPlugin({ secret: accessSecret });
     const app = new Axiomify();
     app.route({
-      method: 'GET', path: '/none',
+      method: 'GET',
+      path: '/none',
       plugins: [requireAuth],
       handler: async (_r, res) => res.send({}),
     });
     const req = {
-      method: 'GET', path: '/none',
+      method: 'GET',
+      path: '/none',
       headers: {},
-      id: 'r', params: {}, query: {}, state: {}, body: undefined,
-      url: '/none', ip: '127.0.0.1',
+      id: 'r',
+      params: {},
+      query: {},
+      state: {},
+      body: undefined,
+      url: '/none',
+      ip: '127.0.0.1',
     } as any;
     const res = makeRes() as any;
     await app.handle(req, res);
@@ -175,18 +196,28 @@ describe('Auth — option branch coverage', () => {
       issuer: 'iss-x',
       audience: 'aud-y',
     });
-    const token = jwt.sign({ id: 'u1' }, accessSecret, { issuer: 'iss-x', audience: 'aud-y' });
+    const token = jwt.sign({ id: 'u1' }, accessSecret, {
+      issuer: 'iss-x',
+      audience: 'aud-y',
+    });
     const app = new Axiomify();
     app.route({
-      method: 'GET', path: '/iss',
+      method: 'GET',
+      path: '/iss',
       plugins: [requireAuth],
       handler: async (_r, res) => res.send({}),
     });
     const req = {
-      method: 'GET', path: '/iss',
+      method: 'GET',
+      path: '/iss',
       headers: { authorization: `Bearer ${token}` },
-      id: 'r', params: {}, query: {}, state: {}, body: undefined,
-      url: '/iss', ip: '127.0.0.1',
+      id: 'r',
+      params: {},
+      query: {},
+      state: {},
+      body: undefined,
+      url: '/iss',
+      ip: '127.0.0.1',
     } as any;
     const res = makeRes() as any;
     await app.handle(req, res);
@@ -200,15 +231,22 @@ describe('Auth — option branch coverage', () => {
     const tokenWithoutJti = jwt.sign({ id: 'u1' }, accessSecret); // no jti
     const app = new Axiomify();
     app.route({
-      method: 'GET', path: '/njti',
+      method: 'GET',
+      path: '/njti',
       plugins: [requireAuth],
       handler: async (_r, res) => res.send({}),
     });
     const req = {
-      method: 'GET', path: '/njti',
+      method: 'GET',
+      path: '/njti',
       headers: { authorization: `Bearer ${tokenWithoutJti}` },
-      id: 'r', params: {}, query: {}, state: {}, body: undefined,
-      url: '/njti', ip: '127.0.0.1',
+      id: 'r',
+      params: {},
+      query: {},
+      state: {},
+      body: undefined,
+      url: '/njti',
+      ip: '127.0.0.1',
     } as any;
     const res = makeRes() as any;
     await app.handle(req, res);
@@ -217,7 +255,10 @@ describe('Auth — option branch coverage', () => {
 
   it('createRefreshHandler: array authorization header is unwrapped', async () => {
     const { createRefreshHandler } = await import('../src/index');
-    const handler = createRefreshHandler({ secret: accessSecret, refreshSecret });
+    const handler = createRefreshHandler({
+      secret: accessSecret,
+      refreshSecret,
+    });
     const token = jwt.sign({ id: 'u1', jti: 'j-1' }, refreshSecret);
     const res = makeRes();
     await handler(
@@ -233,7 +274,9 @@ describe('createAuthPlugin — store failure paths', () => {
     const app = new Axiomify();
     const store: TokenStore = {
       save: vi.fn(),
-      exists: vi.fn(async () => { throw new Error('redis down'); }),
+      exists: vi.fn(async () => {
+        throw new Error('redis down');
+      }),
       revoke: vi.fn(),
     };
     const requireAuth = createAuthPlugin({ secret: accessSecret, store });
@@ -267,7 +310,7 @@ describe('MemoryTokenStore — functional behavior', () => {
     const store = new MemoryTokenStore();
     try {
       const jti = 'test-token-jti';
-      
+
       expect(await store.exists(jti)).toBe(false);
 
       await store.save(jti, 1);

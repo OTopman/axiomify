@@ -7,7 +7,11 @@ import { TypeGraph } from '../../../ir/type-graph';
 import { Emitter } from '../../emitter';
 
 export class KotlinTypeEmitter {
-  constructor(private schema: IRSchema, private graph: TypeGraph, private pkgName: string) {}
+  constructor(
+    private schema: IRSchema,
+    private graph: TypeGraph,
+    private pkgName: string,
+  ) {}
 
   emitAll(): string {
     const emitter = new Emitter('    ');
@@ -44,13 +48,15 @@ export class KotlinTypeEmitter {
           for (let i = 0; i < type.fields.length; i++) {
             const field = type.fields[i];
             if (field.description) this.emitDoc(emitter, field.description);
-            
+
             const ktType = this.renderTypeRef(field.type);
             const opt = field.required ? '' : '? = null';
             const comma = i < type.fields.length - 1 ? ',' : '';
-            
+
             // Map serial name if not simple matching identifier
-            emitter.line(`@SerialName("${field.name}") val ${this.toCamelCase(field.name)}: ${ktType}${opt}${comma}`);
+            emitter.line(
+              `@SerialName("${field.name}") val ${this.toCamelCase(field.name)}: ${ktType}${opt}${comma}`,
+            );
           }
         });
         break;
@@ -59,7 +65,9 @@ export class KotlinTypeEmitter {
         emitter.line(`@Serializable`);
         emitter.block(`enum class ${type.id} {`, `}`, () => {
           for (const v of type.values) {
-            emitter.line(`@SerialName("${v.value}") ${this.toUpperSnakeCase(v.name)},`);
+            emitter.line(
+              `@SerialName("${v.value}") ${this.toUpperSnakeCase(v.name)},`,
+            );
           }
         });
         break;
@@ -73,33 +81,47 @@ export class KotlinTypeEmitter {
             const name = member.ref ? member.ref : `Value${i}`;
             const memberType = this.renderTypeRef(member);
             emitter.line(`@Serializable`);
-            emitter.line(`data class ${name}(val value: ${memberType}): ${type.id}`);
+            emitter.line(
+              `data class ${name}(val value: ${memberType}): ${type.id}`,
+            );
           }
         });
         break;
 
       case 'intersection':
-        emitter.line(`typealias ${type.id} = Map<String, kotlinx.serialization.json.JsonElement>`);
+        emitter.line(
+          `typealias ${type.id} = Map<String, kotlinx.serialization.json.JsonElement>`,
+        );
         break;
 
       case 'array':
-        emitter.line(`typealias ${type.id} = List<${this.renderTypeRef(type.items)}>`);
+        emitter.line(
+          `typealias ${type.id} = List<${this.renderTypeRef(type.items)}>`,
+        );
         break;
 
       case 'scalar':
-        emitter.line(`typealias ${type.id} = ${this.renderScalar(type.scalar)}`);
+        emitter.line(
+          `typealias ${type.id} = ${this.renderScalar(type.scalar)}`,
+        );
         break;
-        
+
       case 'map':
-        emitter.line(`typealias ${type.id} = Map<String, ${this.renderTypeRef(type.valueType)}>`);
+        emitter.line(
+          `typealias ${type.id} = Map<String, ${this.renderTypeRef(type.valueType)}>`,
+        );
         break;
 
       case 'tuple':
-        emitter.line(`typealias ${type.id} = List<kotlinx.serialization.json.JsonElement>`);
+        emitter.line(
+          `typealias ${type.id} = List<kotlinx.serialization.json.JsonElement>`,
+        );
         break;
 
       case 'literal':
-        emitter.line(`typealias ${type.id} = kotlinx.serialization.json.JsonPrimitive`);
+        emitter.line(
+          `typealias ${type.id} = kotlinx.serialization.json.JsonPrimitive`,
+        );
         break;
     }
   }
@@ -108,38 +130,51 @@ export class KotlinTypeEmitter {
     let t = 'Any';
     if (ref.ref) t = ref.ref;
     else if (ref.inline) {
-      if (ref.inline.kind === 'scalar') t = this.renderScalar(ref.inline.scalar);
-      else if (ref.inline.kind === 'array') t = `List<${this.renderTypeRef(ref.inline.items)}>`;
+      if (ref.inline.kind === 'scalar')
+        t = this.renderScalar(ref.inline.scalar);
+      else if (ref.inline.kind === 'array')
+        t = `List<${this.renderTypeRef(ref.inline.items)}>`;
     }
-    
+
     if (ref.isArray) t = `List<${t}>`;
     return t;
   }
 
   private renderScalar(s: string): string {
-    switch(s) {
-      case 'integer': return 'Int';
-      case 'bigint': return 'Long';
-      case 'number': return 'Double';
-      case 'boolean': return 'Boolean';
+    switch (s) {
+      case 'integer':
+        return 'Int';
+      case 'bigint':
+        return 'Long';
+      case 'number':
+        return 'Double';
+      case 'boolean':
+        return 'Boolean';
       case 'string':
       case 'date':
       case 'datetime':
       case 'uuid':
       case 'uri':
-      case 'email': return 'String';
-      case 'binary': return 'ByteArray';
-      default: return 'kotlinx.serialization.json.JsonElement';
+      case 'email':
+        return 'String';
+      case 'binary':
+        return 'ByteArray';
+      default:
+        return 'kotlinx.serialization.json.JsonElement';
     }
   }
 
   private toCamelCase(str: string): string {
-    return str.replace(/_([a-z])/g, (_, c) => c.toUpperCase())
-              .replace(/^[A-Z]/, (c) => c.toLowerCase());
+    return str
+      .replace(/_([a-z])/g, (_, c) => c.toUpperCase())
+      .replace(/^[A-Z]/, (c) => c.toLowerCase());
   }
 
   private toUpperSnakeCase(str: string): string {
-    return str.replace(/([A-Z])/g, '_$1').toUpperCase().replace(/^_/, '');
+    return str
+      .replace(/([A-Z])/g, '_$1')
+      .toUpperCase()
+      .replace(/^_/, '');
   }
 
   private emitDoc(emitter: Emitter, text: string): void {

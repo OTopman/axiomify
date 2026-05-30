@@ -65,7 +65,10 @@ export const MAX_QUERY_KEYS = 1000;
  *   - `&&&...` floods run in linear time (no O(n²) string concat).
  *   - Parsing aborts after `MAX_QUERY_KEYS` unique keys (DoS guard).
  */
-export function fastParseQuery(str: string, maxKeys: number = MAX_QUERY_KEYS): Record<string, string | string[]> {
+export function fastParseQuery(
+  str: string,
+  maxKeys: number = MAX_QUERY_KEYS,
+): Record<string, string | string[]> {
   const result: Record<string, string | string[]> = Object.create(null);
   if (!str) return result;
 

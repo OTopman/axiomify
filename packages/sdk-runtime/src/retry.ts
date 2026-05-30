@@ -16,7 +16,7 @@ export const DEFAULT_RETRY_CONFIG: RetryConfig = {
 
 export async function withRetry<T>(
   requestFn: () => Promise<T>,
-  config: Partial<RetryConfig> = {}
+  config: Partial<RetryConfig> = {},
 ): Promise<T> {
   const mergedConfig = { ...DEFAULT_RETRY_CONFIG, ...config };
   let attempts = 0;
@@ -38,11 +38,11 @@ export async function withRetry<T>(
       // Exponential backoff with full jitter
       const delay = Math.min(
         mergedConfig.maxDelayMs,
-        mergedConfig.baseDelayMs * Math.pow(2, attempts - 1)
+        mergedConfig.baseDelayMs * Math.pow(2, attempts - 1),
       );
       const jitter = Math.random() * delay;
 
-      await new Promise(resolve => setTimeout(resolve, jitter));
+      await new Promise((resolve) => setTimeout(resolve, jitter));
     }
   }
 }

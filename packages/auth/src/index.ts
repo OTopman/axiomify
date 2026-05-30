@@ -4,8 +4,14 @@ import type {
   RouteMiddleware,
 } from '@axiomify/core';
 import { randomUUID } from 'crypto';
-import type { Algorithm, JwtPayload, SignOptions, VerifyOptions } from 'jsonwebtoken';
+import type {
+  Algorithm,
+  JwtPayload,
+  SignOptions,
+  VerifyOptions,
+} from 'jsonwebtoken';
 import { sign, verify } from 'jsonwebtoken';
+import cluster from 'cluster';
 
 export interface AuthUser {
   id: string;
@@ -49,12 +55,26 @@ export class MemoryTokenStore implements TokenStore {
   private pruneTimer: NodeJS.Timeout;
 
   constructor() {
-    if (process.env.NODE_ENV === 'production') {
+    const isClustered =
+      cluster.isWorker ||
+      (cluster.workers && Object.keys(cluster.workers).length > 0);
+    if (isClustered) {
+      const msg =
+        '[axiomify/auth] MemoryTokenStore cannot be used in clustered mode. ' +
+        'Since MemoryTokenStore is per-process, token revocation will not propagate to other workers, ' +
+        'creating a security vulnerability where revoked tokens remain valid on other instances. ' +
+        'Please use a distributed store (e.g. Redis) instead.';
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error(msg);
+      } else {
+        console.warn(msg);
+      }
+    } else if (process.env.NODE_ENV === 'production') {
       console.warn(
         '[axiomify/auth] MemoryTokenStore is per-process and not shared across ' +
-        'multiple instances or workers. Revoked tokens are not propagated to other ' +
-        'processes, making token revocation unreliable in multi-process deployments. ' +
-        'Use a distributed store (e.g. Redis) for production.',
+          'multiple instances or workers. Revoked tokens are not propagated to other ' +
+          'processes, making token revocation unreliable in multi-process deployments. ' +
+          'Use a distributed store (e.g. Redis) for production.',
       );
     }
     this.pruneTimer = setInterval(() => this.prune(), 60_000);
@@ -113,8 +133,13 @@ export interface RefreshOptions {
 
 const BLOCKED_ALGORITHMS = new Set(['none', 'NONE', 'None']);
 function validateAlgorithms(algorithms: string[]): Algorithm[] {
-  const safe = algorithms.filter((a) => !BLOCKED_ALGORITHMS.has(a)) as Algorithm[];
-  if (safe.length === 0) throw new Error('[axiomify/auth] Every provided algorithm was rejected. The "none" algorithm is not permitted.');
+  const safe = algorithms.filter(
+    (a) => !BLOCKED_ALGORITHMS.has(a),
+  ) as Algorithm[];
+  if (safe.length === 0)
+    throw new Error(
+      '[axiomify/auth] Every provided algorithm was rejected. The "none" algorithm is not permitted.',
+    );
   return safe;
 }
 function extractBearer(header: string): string | null {
@@ -122,11 +147,14 @@ function extractBearer(header: string): string | null {
   return match ? match[1] : null;
 }
 function buildGetToken(options: AuthOptions) {
-  return options.getToken ?? ((req: AxiomifyRequest) => {
-    let authHeader = req.headers['authorization'];
-    if (Array.isArray(authHeader)) authHeader = authHeader[0];
-    return authHeader ? extractBearer(authHeader) : null;
-  });
+  return (
+    options.getToken ??
+    ((req: AxiomifyRequest) => {
+      let authHeader = req.headers['authorization'];
+      if (Array.isArray(authHeader)) authHeader = authHeader[0];
+      return authHeader ? extractBearer(authHeader) : null;
+    })
+  );
 }
 function validateSecret(secret: string, context: string): void {
   // RFC 7518 §3.2 requires HS256 keys to be at least 256 bits (32 bytes).
@@ -143,16 +171,27 @@ function validateSecret(secret: string, context: string): void {
     console.warn(msg);
   }
 }
-function tokenOptions(options: Pick<AuthOptions, 'issuer' | 'audience'>): Pick<SignOptions & VerifyOptions, 'issuer' | 'audience'> {
-  return { ...(options.issuer ? { issuer: options.issuer } : {}), ...(options.audience ? { audience: options.audience } : {}) } as Pick<SignOptions & VerifyOptions, 'issuer' | 'audience'>;
+function tokenOptions(
+  options: Pick<AuthOptions, 'issuer' | 'audience'>,
+): Pick<SignOptions & VerifyOptions, 'issuer' | 'audience'> {
+  return {
+    ...(options.issuer ? { issuer: options.issuer } : {}),
+    ...(options.audience ? { audience: options.audience } : {}),
+  } as Pick<SignOptions & VerifyOptions, 'issuer' | 'audience'>;
 }
 
-async function verifyAsync(token: string, secret: string, options: VerifyOptions): Promise<JwtPayload> {
+async function verifyAsync(
+  token: string,
+  secret: string,
+  options: VerifyOptions,
+): Promise<JwtPayload> {
   const payload = await new Promise((resolve, reject) =>
-    verify(token, secret, options, (err, decoded) => (err ? reject(err) : resolve(decoded))),
+    verify(token, secret, options, (err, decoded) =>
+      err ? reject(err) : resolve(decoded),
+    ),
   );
 
-  if (!payload || typeof payload === "string") {
+  if (!payload || typeof payload === 'string') {
     const err = new Error('Invalid JWT payload type');
     err.name = 'JsonWebTokenError';
     throw err;
@@ -161,9 +200,17 @@ async function verifyAsync(token: string, secret: string, options: VerifyOptions
   return payload as JwtPayload;
 }
 
-async function signAsync(payload: string | Buffer | object, secret: string, options: SignOptions): Promise<string> {
+async function signAsync(
+  payload: string | Buffer | object,
+  secret: string,
+  options: SignOptions,
+): Promise<string> {
   return (await new Promise((resolve, reject) =>
-    sign(payload, secret, options, (err, token) => (err || !token ? reject(err ?? new Error('Token signing failed')) : resolve(token))),
+    sign(payload, secret, options, (err, token) =>
+      err || !token
+        ? reject(err ?? new Error('Token signing failed'))
+        : resolve(token),
+    ),
   )) as string;
 }
 
@@ -178,8 +225,13 @@ export function createRefreshHandler(options: RefreshOptions): RouteMiddleware {
   const refreshTtl = options.refreshTokenTtl ?? 604_800;
   const issuerAudience = tokenOptions(options);
 
-  const handler: RouteMiddleware = async (req: AxiomifyRequest, res: AxiomifyResponse) => {
-    const authHeader = Array.isArray(req.headers['authorization']) ? req.headers['authorization'][0] : (req.headers['authorization'] as string | undefined);
+  const handler: RouteMiddleware = async (
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+  ) => {
+    const authHeader = Array.isArray(req.headers['authorization'])
+      ? req.headers['authorization'][0]
+      : (req.headers['authorization'] as string | undefined);
     const token = authHeader ? extractBearer(authHeader) : null;
     if (!token) return res.status(401).send(null, 'Missing refresh token');
 
@@ -187,7 +239,10 @@ export function createRefreshHandler(options: RefreshOptions): RouteMiddleware {
     // surface 503s for store/sign failures instead of masking them as 401s.
     let decoded: JwtPayload;
     try {
-      decoded = await verifyAsync(token, options.refreshSecret, { algorithms, ...issuerAudience });
+      decoded = await verifyAsync(token, options.refreshSecret, {
+        algorithms,
+        ...issuerAudience,
+      });
     } catch {
       return res.status(401).send(null, 'Invalid refresh token');
     }
@@ -207,7 +262,8 @@ export function createRefreshHandler(options: RefreshOptions): RouteMiddleware {
       } catch {
         return res.status(503).send(null, 'Token store unavailable');
       }
-      if (!exists) return res.status(401).send(null, 'Refresh token has been revoked');
+      if (!exists)
+        return res.status(401).send(null, 'Refresh token has been revoked');
     }
 
     // Order is critical: save the NEW jti BEFORE revoking the OLD one. If
@@ -219,16 +275,16 @@ export function createRefreshHandler(options: RefreshOptions): RouteMiddleware {
     let newRefreshToken: string;
     const nextJti = randomUUID();
     try {
-      accessToken = await signAsync(
-        { id },
-        options.secret,
-        { expiresIn: accessTtl, jwtid: randomUUID(), ...issuerAudience },
-      );
-      newRefreshToken = await signAsync(
-        { id },
-        options.refreshSecret,
-        { expiresIn: refreshTtl, jwtid: nextJti, ...issuerAudience },
-      );
+      accessToken = await signAsync({ id }, options.secret, {
+        expiresIn: accessTtl,
+        jwtid: randomUUID(),
+        ...issuerAudience,
+      });
+      newRefreshToken = await signAsync({ id }, options.refreshSecret, {
+        expiresIn: refreshTtl,
+        jwtid: nextJti,
+        ...issuerAudience,
+      });
     } catch {
       return res.status(500).send(null, 'Failed to issue tokens');
     }
@@ -251,7 +307,11 @@ export function createRefreshHandler(options: RefreshOptions): RouteMiddleware {
       }
     }
 
-    res.status(200).send({ accessToken, refreshToken: newRefreshToken, expiresIn: accessTtl });
+    res.status(200).send({
+      accessToken,
+      refreshToken: newRefreshToken,
+      expiresIn: accessTtl,
+    });
   };
 
   return handler;
@@ -265,27 +325,45 @@ export function createAuthPlugin(options: AuthOptions): RouteMiddleware {
 
   return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
     const token = getToken(req);
-    if (!token) return res.status(401).send(null, 'Unauthorized: Missing token');
+    if (!token)
+      return res.status(401).send(null, 'Unauthorized: Missing token');
     try {
-      const decoded = await verifyAsync(token, options.secret, { algorithms, ...issuerAudience });
+      const decoded = await verifyAsync(token, options.secret, {
+        algorithms,
+        ...issuerAudience,
+      });
       if (options.store) {
         const jti = (decoded as any).jti as string | undefined;
-        if (!jti) return res.status(401).send(null, 'Unauthorized: Token missing jti claim');
+        if (!jti)
+          return res
+            .status(401)
+            .send(null, 'Unauthorized: Token missing jti claim');
         let active: boolean;
         try {
           active = await options.store.exists(jti);
         } catch (storeErr) {
           // Store is unavailable — fail closed with 500, not 401
-          throw Object.assign(new Error('Token store unavailable'), { statusCode: 503 });
+          throw Object.assign(new Error('Token store unavailable'), {
+            statusCode: 503,
+          });
         }
-        if (!active) return res.status(401).send(null, 'Unauthorized: Token has been revoked');
+        if (!active)
+          return res
+            .status(401)
+            .send(null, 'Unauthorized: Token has been revoked');
       }
       req.state.user = decoded;
     } catch (err) {
       // Only treat JWT errors as 401; re-throw infra errors
       const name = (err as Error)?.name ?? '';
-      if (name === 'JsonWebTokenError' || name === 'TokenExpiredError' || name === 'NotBeforeError') {
-        return res.status(401).send(null, 'Unauthorized: Invalid or expired token');
+      if (
+        name === 'JsonWebTokenError' ||
+        name === 'TokenExpiredError' ||
+        name === 'NotBeforeError'
+      ) {
+        return res
+          .status(401)
+          .send(null, 'Unauthorized: Invalid or expired token');
       }
       throw err; // 503 or other — dispatcher sends correct status
     }

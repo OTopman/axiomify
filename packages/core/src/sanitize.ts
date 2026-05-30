@@ -14,11 +14,7 @@ export function sanitizeInput<T>(obj: T): T {
   if (!isPlainObject(obj)) return obj;
   const clean: Record<string, unknown> = Object.create(null);
   for (const key in obj as Record<string, unknown>) {
-    if (
-      key === '__proto__' ||
-      key === 'constructor' ||
-      key === 'prototype'
-    ) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
       continue;
     }
     clean[key] = sanitizeInput((obj as Record<string, unknown>)[key]);

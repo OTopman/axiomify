@@ -1,6 +1,5 @@
 # @axiomify/helmet
 
-
 [![npm version](https://img.shields.io/npm/v/@axiomify/helmet.svg)](https://npmjs.com/package/@axiomify/helmet)
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
@@ -26,9 +25,10 @@ useHelmet(app); // all defaults — safe for most production apps
 
 ```typescript
 useHelmet(app, {
-  contentSecurityPolicy: "default-src 'self'; script-src 'self' https://cdn.example.com; img-src 'self' data:",
+  contentSecurityPolicy:
+    "default-src 'self'; script-src 'self' https://cdn.example.com; img-src 'self' data:",
   hsts: true,
-  hstsMaxAge: 31_536_000,          // 1 year
+  hstsMaxAge: 31_536_000, // 1 year
   hstsIncludeSubDomains: true,
   hstsPreload: true,
   xFrameOptions: 'DENY',
@@ -40,35 +40,35 @@ useHelmet(app, {
 
 ## Options
 
-| Option | Default | Description |
-|---|---|---|
-| `contentSecurityPolicy` | `"default-src 'self'"` | `Content-Security-Policy` header value. Set `false` to omit. |
-| `hsts` | `false` | Enable `Strict-Transport-Security`. Off by default to avoid breaking local HTTP dev. |
-| `hstsMaxAge` | `15_552_000` (180 days) | HSTS `max-age` in seconds. |
-| `hstsIncludeSubDomains` | `true` | Include `includeSubDomains` directive. |
-| `hstsPreload` | `false` | Include `preload` directive (submit to browser preload list separately). |
-| `xFrameOptions` | `'SAMEORIGIN'` | `X-Frame-Options`. `'DENY'`, `'SAMEORIGIN'`, or `false`. |
-| `xContentTypeOptions` | `'nosniff'` | `X-Content-Type-Options`. |
-| `xXssProtection` | `'0'` | `X-XSS-Protection`. OWASP recommends `'0'` to disable the buggy browser filter. |
-| `referrerPolicy` | `'no-referrer'` | `Referrer-Policy`. |
-| `permissionsPolicy` | `'...'` | `Permissions-Policy`. Restricts camera, microphone, geolocation by default. |
-| `crossOriginEmbedderPolicy` | `'require-corp'` | `Cross-Origin-Embedder-Policy`. |
-| `crossOriginOpenerPolicy` | `'same-origin'` | `Cross-Origin-Opener-Policy`. |
-| `crossOriginResourcePolicy` | `'same-origin'` | `Cross-Origin-Resource-Policy`. |
-| `originAgentCluster` | `'?1'` | `Origin-Agent-Cluster`. Isolates the origin into its own agent cluster. |
-| `xDnsPrefetchControl` | `'off'` | `X-DNS-Prefetch-Control`. |
-| `xDownloadOptions` | `'noopen'` | `X-Download-Options` (IE-only). |
-| `xPermittedCrossDomainPolicies` | `'none'` | `X-Permitted-Cross-Domain-Policies`. |
-| `xRobotsTag` | `false` | `X-Robots-Tag`. Set to `'noindex, nofollow'` for private APIs. |
-| `removeHeaders` | `[]` | Headers to remove from responses (e.g. `['X-Powered-By', 'Server']`). |
-| `removePoweredBy` | `true` | Remove `X-Powered-By` header. |
+| Option                          | Default                 | Description                                                                          |
+| ------------------------------- | ----------------------- | ------------------------------------------------------------------------------------ |
+| `contentSecurityPolicy`         | `"default-src 'self'"`  | `Content-Security-Policy` header value. Set `false` to omit.                         |
+| `hsts`                          | `false`                 | Enable `Strict-Transport-Security`. Off by default to avoid breaking local HTTP dev. |
+| `hstsMaxAge`                    | `15_552_000` (180 days) | HSTS `max-age` in seconds.                                                           |
+| `hstsIncludeSubDomains`         | `true`                  | Include `includeSubDomains` directive.                                               |
+| `hstsPreload`                   | `false`                 | Include `preload` directive (submit to browser preload list separately).             |
+| `xFrameOptions`                 | `'SAMEORIGIN'`          | `X-Frame-Options`. `'DENY'`, `'SAMEORIGIN'`, or `false`.                             |
+| `xContentTypeOptions`           | `'nosniff'`             | `X-Content-Type-Options`.                                                            |
+| `xXssProtection`                | `'0'`                   | `X-XSS-Protection`. OWASP recommends `'0'` to disable the buggy browser filter.      |
+| `referrerPolicy`                | `'no-referrer'`         | `Referrer-Policy`.                                                                   |
+| `permissionsPolicy`             | `'...'`                 | `Permissions-Policy`. Restricts camera, microphone, geolocation by default.          |
+| `crossOriginEmbedderPolicy`     | `'require-corp'`        | `Cross-Origin-Embedder-Policy`.                                                      |
+| `crossOriginOpenerPolicy`       | `'same-origin'`         | `Cross-Origin-Opener-Policy`.                                                        |
+| `crossOriginResourcePolicy`     | `'same-origin'`         | `Cross-Origin-Resource-Policy`.                                                      |
+| `originAgentCluster`            | `'?1'`                  | `Origin-Agent-Cluster`. Isolates the origin into its own agent cluster.              |
+| `xDnsPrefetchControl`           | `'off'`                 | `X-DNS-Prefetch-Control`.                                                            |
+| `xDownloadOptions`              | `'noopen'`              | `X-Download-Options` (IE-only).                                                      |
+| `xPermittedCrossDomainPolicies` | `'none'`                | `X-Permitted-Cross-Domain-Policies`.                                                 |
+| `xRobotsTag`                    | `false`                 | `X-Robots-Tag`. Set to `'noindex, nofollow'` for private APIs.                       |
+| `removeHeaders`                 | `[]`                    | Headers to remove from responses (e.g. `['X-Powered-By', 'Server']`).                |
+| `removePoweredBy`               | `true`                  | Remove `X-Powered-By` header.                                                        |
 
 ## Set to `false` to disable any header
 
 ```typescript
 useHelmet(app, {
   crossOriginEmbedderPolicy: false, // disable if using cross-origin iframes/resources
-  xFrameOptions: false,             // disable if embedding in iframes intentionally
+  xFrameOptions: false, // disable if embedding in iframes intentionally
 });
 ```
 

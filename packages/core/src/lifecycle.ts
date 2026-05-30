@@ -66,7 +66,10 @@ export class HookManager {
   ): Promise<void> | void {
     const list = this.hooks[type];
     if (list.length === 0) return; // sync fast-path — no Promise created
-    if (list.length === 1) return (list[0] as (...a: unknown[]) => Promise<void> | void)(...(args as unknown[]));
+    if (list.length === 1)
+      return (list[0] as (...a: unknown[]) => Promise<void> | void)(
+        ...(args as unknown[]),
+      );
     // Snapshot before iteration. A hook that calls app.addHook(type, ...) on
     // its own type would otherwise grow the array mid-loop and the new hook
     // would run for the current request — surprising, undocumented, and

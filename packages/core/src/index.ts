@@ -16,7 +16,11 @@ export * from './validation';
 // authenticate with privileged core APIs (lockRoutes, handleMatchedRoute) and
 // share the logger interface.
 export { ADAPTER_LOCK_TOKEN, defaultLogger } from './internal';
-export type { AdapterLockToken, AxiomifyLogger, CompiledRouteDefinition } from './internal';
+export type {
+  AdapterLockToken,
+  AxiomifyLogger,
+  CompiledRouteDefinition,
+} from './internal';
 
 // Re-export capability types at the top level for convenience.
 export type { ResponseCapabilities, SseCapableResponse } from './types';

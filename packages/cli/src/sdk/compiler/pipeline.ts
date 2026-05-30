@@ -29,7 +29,10 @@ export class CompilerPipeline {
   /**
    * Run the full compilation pipeline on a raw, ingested IR schema.
    */
-  async compile(schema: IRSchema, initialDiagnostics: IRDiagnostic[] = []): Promise<IRCompilationResult> {
+  async compile(
+    schema: IRSchema,
+    initialDiagnostics: IRDiagnostic[] = [],
+  ): Promise<IRCompilationResult> {
     const startTime = Date.now();
     const diagnostics = [...initialDiagnostics];
 
@@ -55,7 +58,7 @@ export class CompilerPipeline {
     this.validator.validate(schema, diagnostics);
 
     const hasErrors = diagnostics.some((d) => d.severity === 'error');
-    
+
     return {
       schema,
       diagnostics,

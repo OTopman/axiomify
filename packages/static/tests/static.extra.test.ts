@@ -6,9 +6,18 @@ import { serveStatic } from '../src/index';
 
 function makeReq(overrides: any = {}) {
   return {
-    id: 'r1', method: 'GET', url: '/assets/file.txt', path: '/assets/file.txt',
-    ip: '127.0.0.1', headers: {}, body: undefined, query: {}, params: {},
-    state: {}, raw: {}, stream: null,
+    id: 'r1',
+    method: 'GET',
+    url: '/assets/file.txt',
+    path: '/assets/file.txt',
+    ip: '127.0.0.1',
+    headers: {},
+    body: undefined,
+    query: {},
+    params: {},
+    state: {},
+    raw: {},
+    stream: null,
     ...overrides,
   } as any;
 }
@@ -17,14 +26,29 @@ function makeRes() {
   const headers: Record<string, string> = {};
   let statusCode = 200;
   const res: any = {
-    status: vi.fn((c: number) => { statusCode = c; return res; }),
-    header: vi.fn((k: string, v: string) => { headers[k] = v; return res; }),
-    send: vi.fn(), sendRaw: vi.fn(), stream: vi.fn(),
-    getHeader: vi.fn(), removeHeader: vi.fn(), error: vi.fn(),
-    get statusCode() { return statusCode; },
-    headersSent: false, raw: {},
+    status: vi.fn((c: number) => {
+      statusCode = c;
+      return res;
+    }),
+    header: vi.fn((k: string, v: string) => {
+      headers[k] = v;
+      return res;
+    }),
+    send: vi.fn(),
+    sendRaw: vi.fn(),
+    stream: vi.fn(),
+    getHeader: vi.fn(),
+    removeHeader: vi.fn(),
+    error: vi.fn(),
+    get statusCode() {
+      return statusCode;
+    },
+    headersSent: false,
+    raw: {},
     capabilities: { sse: false, streaming: false },
-    get headers() { return headers; },
+    get headers() {
+      return headers;
+    },
   };
   return res;
 }
@@ -33,13 +57,13 @@ describe('serveStatic', () => {
   it('registers a wildcard route for the given prefix', () => {
     const app = new Axiomify();
     serveStatic(app, { prefix: '/assets', root: '/tmp' });
-    expect(app.registeredRoutes.some(r => r.path === '/assets/*')).toBe(true);
+    expect(app.registeredRoutes.some((r) => r.path === '/assets/*')).toBe(true);
   });
 
   it('returns 404 when file does not exist (ENOENT)', async () => {
     const app = new Axiomify();
     serveStatic(app, { prefix: '/assets', root: '/nonexistent-dir-xyz' });
-    const route = app.registeredRoutes.find(r => r.path === '/assets/*')!;
+    const route = app.registeredRoutes.find((r) => r.path === '/assets/*')!;
     const req = makeReq({ params: { '*': 'missing.txt' } });
     const res = makeRes();
     await route.handler(req, res);
@@ -49,7 +73,7 @@ describe('serveStatic', () => {
   it('prevents path traversal — returns 403 for ../../ paths', async () => {
     const app = new Axiomify();
     serveStatic(app, { prefix: '/assets', root: '/tmp' });
-    const route = app.registeredRoutes.find(r => r.path === '/assets/*')!;
+    const route = app.registeredRoutes.find((r) => r.path === '/assets/*')!;
     const req = makeReq({ params: { '*': '../../etc/passwd' } });
     const res = makeRes();
     await route.handler(req, res);
@@ -63,7 +87,7 @@ describe('serveStatic', () => {
     try {
       const app = new Axiomify();
       serveStatic(app, { prefix: '/files', root: tmpDir });
-      const route = app.registeredRoutes.find(r => r.path === '/files/*')!;
+      const route = app.registeredRoutes.find((r) => r.path === '/files/*')!;
       const req = makeReq({ params: { '*': 'data.json' } });
       // Intercept stream() to immediately destroy the readable before cleanup
       let capturedStream: fs.ReadStream | null = null;
@@ -75,7 +99,7 @@ describe('serveStatic', () => {
       await route.handler(req, res);
       expect(res.stream).toHaveBeenCalled();
       // Wait for stream destroy to complete
-      await new Promise(r => setTimeout(r, 20));
+      await new Promise((r) => setTimeout(r, 20));
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -90,8 +114,11 @@ describe('serveStatic', () => {
       const etag = `W/"${stat.ino.toString(16)}-${stat.size.toString(16)}-${stat.mtime.getTime().toString(16)}"`;
       const app = new Axiomify();
       serveStatic(app, { prefix: '/f', root: tmpDir });
-      const route = app.registeredRoutes.find(r => r.path === '/f/*')!;
-      const req = makeReq({ params: { '*': 'a.txt' }, headers: { 'if-none-match': etag } });
+      const route = app.registeredRoutes.find((r) => r.path === '/f/*')!;
+      const req = makeReq({
+        params: { '*': 'a.txt' },
+        headers: { 'if-none-match': etag },
+      });
       const res = makeRes();
       await route.handler(req, res);
       expect(res.status).toHaveBeenCalledWith(304);
@@ -112,7 +139,7 @@ describe('serveStatic — extended paths', () => {
       const app = new Axiomify();
       // root is a file, not a directory — realpath join will give a non-ENOENT error
       serveStatic(app, { prefix: '/x', root: tmpFile });
-      const route = app.registeredRoutes.find(r => r.path === '/x/*')!;
+      const route = app.registeredRoutes.find((r) => r.path === '/x/*')!;
       const req = makeReq({ params: { '*': 'sub/file.txt' } });
       const res = makeRes();
       await route.handler(req, res);
@@ -133,14 +160,17 @@ describe('serveStatic — extended paths', () => {
     try {
       const app = new Axiomify();
       serveStatic(app, { prefix: '/s', root: tmpDir, serveIndex: true });
-      const route = app.registeredRoutes.find(r => r.path === '/s/*')!;
+      const route = app.registeredRoutes.find((r) => r.path === '/s/*')!;
       const req = makeReq({ params: { '*': 'sub' } });
       const res = makeRes();
       // intercept stream to avoid dangling FD
       let streamCalled = false;
-      res.stream = vi.fn((readable: any) => { streamCalled = true; readable.destroy(); });
+      res.stream = vi.fn((readable: any) => {
+        streamCalled = true;
+        readable.destroy();
+      });
       await route.handler(req, res);
-      await new Promise(r => setTimeout(r, 20));
+      await new Promise((r) => setTimeout(r, 20));
       expect(streamCalled).toBe(true);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -155,7 +185,7 @@ describe('serveStatic — extended paths', () => {
     try {
       const app = new Axiomify();
       serveStatic(app, { prefix: '/f', root: tmpDir, serveIndex: false });
-      const route = app.registeredRoutes.find(r => r.path === '/f/*')!;
+      const route = app.registeredRoutes.find((r) => r.path === '/f/*')!;
       const req = makeReq({ params: { '*': 'sub' } });
       const res = makeRes();
       await route.handler(req, res);
@@ -172,7 +202,7 @@ describe('serveStatic — !isFile() path', () => {
     // stat.isFile() returns false, stat.isDirectory() returns false.
     const app = new Axiomify();
     serveStatic(app, { prefix: '/dev', root: '/dev' });
-    const route = app.registeredRoutes.find(r => r.path === '/dev/*')!;
+    const route = app.registeredRoutes.find((r) => r.path === '/dev/*')!;
     const req = makeReq({ params: { '*': 'null' } });
     const res = makeRes();
     await route.handler(req, res);
@@ -191,13 +221,16 @@ describe('serveStatic — index.html serving', () => {
     try {
       const app = new Axiomify();
       serveStatic(app, { prefix: '/app', root: tmpDir, serveIndex: true });
-      const route = app.registeredRoutes.find(r => r.path === '/app/*')!;
+      const route = app.registeredRoutes.find((r) => r.path === '/app/*')!;
       const req = makeReq({ params: { '*': 'sub' } });
       let streamCalled = false;
       const res = makeRes();
-      res.stream = vi.fn((readable: any) => { streamCalled = true; readable.destroy(); });
+      res.stream = vi.fn((readable: any) => {
+        streamCalled = true;
+        readable.destroy();
+      });
       await route.handler(req, res);
-      await new Promise(r => setTimeout(r, 20));
+      await new Promise((r) => setTimeout(r, 20));
       expect(streamCalled).toBe(true);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -212,7 +245,7 @@ describe('serveStatic — index.html serving', () => {
     try {
       const app = new Axiomify();
       serveStatic(app, { prefix: '/app', root: tmpDir, serveIndex: true });
-      const route = app.registeredRoutes.find(r => r.path === '/app/*')!;
+      const route = app.registeredRoutes.find((r) => r.path === '/app/*')!;
       const req = makeReq({ params: { '*': 'empty' } });
       const res = makeRes();
       await route.handler(req, res);
@@ -225,87 +258,139 @@ describe('serveStatic — index.html serving', () => {
 
 describe('serveStatic — extra branches', () => {
   it('prefix already starting with / is preserved as-is', () => {
-    
-    
     const app = new Axiomify();
     serveStatic(app, { prefix: '/already', root: '/tmp' });
-    expect(app.registeredRoutes.some((r: any) => r.path === '/already/*')).toBe(true);
+    expect(app.registeredRoutes.some((r: any) => r.path === '/already/*')).toBe(
+      true,
+    );
   });
 
   it('returns 400 for malformed percent-encoded path', async () => {
-    
-    
     const app = new Axiomify();
     serveStatic(app, { prefix: '/x', root: '/tmp' });
     const route = app.registeredRoutes.find((r: any) => r.path === '/x/*')!;
     const headers: Record<string, string> = {};
     let statusCode = 200;
     const res: any = {
-      status: (c: number) => { statusCode = c; return res; },
-      header: (k: string, v: string) => { headers[k] = v; return res; },
-      send: () => {}, sendRaw: () => {}, stream: () => {},
-      getHeader: () => undefined, removeHeader: () => res,
-      headersSent: false, raw: {},
-      get statusCode() { return statusCode; },
+      status: (c: number) => {
+        statusCode = c;
+        return res;
+      },
+      header: (k: string, v: string) => {
+        headers[k] = v;
+        return res;
+      },
+      send: () => {},
+      sendRaw: () => {},
+      stream: () => {},
+      getHeader: () => undefined,
+      removeHeader: () => res,
+      headersSent: false,
+      raw: {},
+      get statusCode() {
+        return statusCode;
+      },
       capabilities: { sse: false, streaming: false },
     };
     const req: any = {
-      id: 'r', method: 'GET', url: '/x/%E0', path: '/x/%E0',
-      ip: '127.0.0.1', headers: {}, body: undefined,
-      query: {}, params: { '*': '%E0%A4' }, // invalid UTF-8 percent sequence
-      state: {}, raw: {}, stream: null,
+      id: 'r',
+      method: 'GET',
+      url: '/x/%E0',
+      path: '/x/%E0',
+      ip: '127.0.0.1',
+      headers: {},
+      body: undefined,
+      query: {},
+      params: { '*': '%E0%A4' }, // invalid UTF-8 percent sequence
+      state: {},
+      raw: {},
+      stream: null,
     };
     await route.handler(req, res);
     expect(statusCode).toBe(400);
   });
 
   it('returns 403 when path contains a null byte', async () => {
-    
-    
     const app = new Axiomify();
     serveStatic(app, { prefix: '/x', root: '/tmp' });
     const route = app.registeredRoutes.find((r: any) => r.path === '/x/*')!;
     const headers: Record<string, string> = {};
     let statusCode = 200;
     const res: any = {
-      status: (c: number) => { statusCode = c; return res; },
-      header: (k: string, v: string) => { headers[k] = v; return res; },
-      send: () => {}, sendRaw: () => {}, stream: () => {},
-      getHeader: () => undefined, removeHeader: () => res,
-      headersSent: false, raw: {},
-      get statusCode() { return statusCode; },
+      status: (c: number) => {
+        statusCode = c;
+        return res;
+      },
+      header: (k: string, v: string) => {
+        headers[k] = v;
+        return res;
+      },
+      send: () => {},
+      sendRaw: () => {},
+      stream: () => {},
+      getHeader: () => undefined,
+      removeHeader: () => res,
+      headersSent: false,
+      raw: {},
+      get statusCode() {
+        return statusCode;
+      },
       capabilities: { sse: false, streaming: false },
     };
     const req: any = {
-      id: 'r', method: 'GET', url: '/x/null', path: '/x/null',
-      ip: '127.0.0.1', headers: {}, body: undefined,
-      query: {}, params: { '*': 'evil\0.txt' },
-      state: {}, raw: {}, stream: null,
+      id: 'r',
+      method: 'GET',
+      url: '/x/null',
+      path: '/x/null',
+      ip: '127.0.0.1',
+      headers: {},
+      body: undefined,
+      query: {},
+      params: { '*': 'evil\0.txt' },
+      state: {},
+      raw: {},
+      stream: null,
     };
     await route.handler(req, res);
     expect(statusCode).toBe(403);
   });
 
   it('returns 403 when path is absolute (e.g. /etc/passwd)', async () => {
-    
-    
     const app = new Axiomify();
     serveStatic(app, { prefix: '/x', root: '/tmp' });
     const route = app.registeredRoutes.find((r: any) => r.path === '/x/*')!;
     let statusCode = 200;
     const res: any = {
-      status: (c: number) => { statusCode = c; return res; },
-      header: () => res, send: () => {}, sendRaw: () => {}, stream: () => {},
-      getHeader: () => undefined, removeHeader: () => res,
-      headersSent: false, raw: {},
-      get statusCode() { return statusCode; },
+      status: (c: number) => {
+        statusCode = c;
+        return res;
+      },
+      header: () => res,
+      send: () => {},
+      sendRaw: () => {},
+      stream: () => {},
+      getHeader: () => undefined,
+      removeHeader: () => res,
+      headersSent: false,
+      raw: {},
+      get statusCode() {
+        return statusCode;
+      },
       capabilities: { sse: false, streaming: false },
     };
     const req: any = {
-      id: 'r', method: 'GET', url: '/x', path: '/x',
-      ip: '127.0.0.1', headers: {}, body: undefined,
-      query: {}, params: { '*': '/etc/passwd' },
-      state: {}, raw: {}, stream: null,
+      id: 'r',
+      method: 'GET',
+      url: '/x',
+      path: '/x',
+      ip: '127.0.0.1',
+      headers: {},
+      body: undefined,
+      query: {},
+      params: { '*': '/etc/passwd' },
+      state: {},
+      raw: {},
+      stream: null,
     };
     await route.handler(req, res);
     expect(statusCode).toBe(403);
@@ -314,8 +399,7 @@ describe('serveStatic — extra branches', () => {
   it('respects custom forceDownloadExtensions option', async () => {
     const fs = require('fs') as typeof import('fs');
     const path = require('path') as typeof import('path');
-    
-    
+
     const tmpDir = `/tmp/axiomify-fd-${Date.now()}`;
     fs.mkdirSync(tmpDir, { recursive: true });
     const filePath = path.join(tmpDir, 'doc.svg');
@@ -323,7 +407,8 @@ describe('serveStatic — extra branches', () => {
     try {
       const app = new Axiomify();
       serveStatic(app, {
-        prefix: '/s', root: tmpDir,
+        prefix: '/s',
+        root: tmpDir,
         forceDownloadExtensions: ['.SVG'], // uppercase to verify lowercase normalization
       });
       const route = app.registeredRoutes.find((r: any) => r.path === '/s/*')!;
@@ -331,23 +416,45 @@ describe('serveStatic — extra branches', () => {
       let statusCode = 200;
       let streamCalled = false;
       const res: any = {
-        status: (c: number) => { statusCode = c; return res; },
-        header: (k: string, v: string) => { headers[k] = v; return res; },
-        send: () => {}, sendRaw: () => {},
-        stream: (s: any) => { streamCalled = true; s.destroy(); },
-        getHeader: () => undefined, removeHeader: () => res,
-        headersSent: false, raw: {},
-        get statusCode() { return statusCode; },
+        status: (c: number) => {
+          statusCode = c;
+          return res;
+        },
+        header: (k: string, v: string) => {
+          headers[k] = v;
+          return res;
+        },
+        send: () => {},
+        sendRaw: () => {},
+        stream: (s: any) => {
+          streamCalled = true;
+          s.destroy();
+        },
+        getHeader: () => undefined,
+        removeHeader: () => res,
+        headersSent: false,
+        raw: {},
+        get statusCode() {
+          return statusCode;
+        },
         capabilities: { sse: false, streaming: false },
       };
       const req: any = {
-        id: 'r', method: 'GET', url: '/s/doc.svg', path: '/s/doc.svg',
-        ip: '127.0.0.1', headers: {}, body: undefined,
-        query: {}, params: { '*': 'doc.svg' },
-        state: {}, raw: {}, stream: null,
+        id: 'r',
+        method: 'GET',
+        url: '/s/doc.svg',
+        path: '/s/doc.svg',
+        ip: '127.0.0.1',
+        headers: {},
+        body: undefined,
+        query: {},
+        params: { '*': 'doc.svg' },
+        state: {},
+        raw: {},
+        stream: null,
       };
       await route.handler(req, res);
-      await new Promise(r => setTimeout(r, 20));
+      await new Promise((r) => setTimeout(r, 20));
       expect(streamCalled).toBe(true);
       expect(headers['Content-Disposition']).toContain('attachment');
       expect(headers['X-Content-Type-Options']).toBe('nosniff');
@@ -359,25 +466,28 @@ describe('serveStatic — extra branches', () => {
   it('escapes filename special characters (double quotes and backslashes) in Content-Disposition', async () => {
     const fs = require('fs') as typeof import('fs');
     const path = require('path') as typeof import('path');
-    
+
     const tmpDir = `/tmp/axiomify-escape-${Date.now()}`;
     fs.mkdirSync(tmpDir, { recursive: true });
-    
+
     const rawFileName = 'doc"\\test.svg';
     const rawFilePath = path.join(tmpDir, rawFileName);
     fs.writeFileSync(rawFilePath, '<svg/>');
-    
-    const realpathSpy = vi.spyOn(fs.promises, 'realpath').mockImplementation(async (p) => {
-      if (typeof p === 'string' && p.endsWith('doc.svg')) {
-        return rawFilePath;
-      }
-      return p;
-    });
-    
+
+    const realpathSpy = vi
+      .spyOn(fs.promises, 'realpath')
+      .mockImplementation(async (p) => {
+        if (typeof p === 'string' && p.endsWith('doc.svg')) {
+          return rawFilePath;
+        }
+        return p;
+      });
+
     try {
       const app = new Axiomify();
       serveStatic(app, {
-        prefix: '/s', root: tmpDir,
+        prefix: '/s',
+        root: tmpDir,
         forceDownloadExtensions: ['.svg'],
       });
       const route = app.registeredRoutes.find((r: any) => r.path === '/s/*')!;
@@ -385,25 +495,49 @@ describe('serveStatic — extra branches', () => {
       let statusCode = 200;
       let streamCalled = false;
       const res: any = {
-        status: (c: number) => { statusCode = c; return res; },
-        header: (k: string, v: string) => { headers[k] = v; return res; },
-        send: () => {}, sendRaw: () => {},
-        stream: (s: any) => { streamCalled = true; s.destroy(); },
-        getHeader: () => undefined, removeHeader: () => res,
-        headersSent: false, raw: {},
-        get statusCode() { return statusCode; },
+        status: (c: number) => {
+          statusCode = c;
+          return res;
+        },
+        header: (k: string, v: string) => {
+          headers[k] = v;
+          return res;
+        },
+        send: () => {},
+        sendRaw: () => {},
+        stream: (s: any) => {
+          streamCalled = true;
+          s.destroy();
+        },
+        getHeader: () => undefined,
+        removeHeader: () => res,
+        headersSent: false,
+        raw: {},
+        get statusCode() {
+          return statusCode;
+        },
         capabilities: { sse: false, streaming: false },
       };
       const req: any = {
-        id: 'r', method: 'GET', url: '/s/doc.svg', path: '/s/doc.svg',
-        ip: '127.0.0.1', headers: {}, body: undefined,
-        query: {}, params: { '*': 'doc.svg' },
-        state: {}, raw: {}, stream: null,
+        id: 'r',
+        method: 'GET',
+        url: '/s/doc.svg',
+        path: '/s/doc.svg',
+        ip: '127.0.0.1',
+        headers: {},
+        body: undefined,
+        query: {},
+        params: { '*': 'doc.svg' },
+        state: {},
+        raw: {},
+        stream: null,
       };
       await route.handler(req, res);
-      await new Promise(r => setTimeout(r, 20));
+      await new Promise((r) => setTimeout(r, 20));
       expect(streamCalled).toBe(true);
-      expect(headers['Content-Disposition']).toBe('attachment; filename="doc\\"\\\\test.svg"');
+      expect(headers['Content-Disposition']).toBe(
+        'attachment; filename="doc\\"\\\\test.svg"',
+      );
     } finally {
       realpathSpy.mockRestore();
       fs.rmSync(tmpDir, { recursive: true, force: true });
