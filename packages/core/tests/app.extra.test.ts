@@ -380,4 +380,274 @@ describe('Axiomify app — extended coverage', () => {
       expect(app.logger).toBe(logger);
     });
   });
+
+  describe('DI Container', () => {
+    it('throws when resolving unregistered service', () => {
+      const app = new Axiomify();
+      expect(() => {
+        app.use((_app, context) => {
+          context.resolve('unregistered-token');
+        });
+      }).toThrow(/DI Error: Cannot resolve unregistered service/);
+    });
+  });
+
+  describe('sortModules', () => {
+    it('throws circular dependency error', () => {
+      const app = new Axiomify();
+      const modA = {
+        name: 'modA',
+        dependencies: ['modB'],
+        register: () => {},
+      };
+      const modB = {
+        name: 'modB',
+        dependencies: ['modA'],
+        register: () => {},
+      };
+
+      const originalSet = Map.prototype.set;
+      Map.prototype.set = function (key, val) {
+        const res = originalSet.call(this, key, val);
+        if (key === 'modA' && val === modA) {
+          originalSet.call(this, 'modB', modB);
+        }
+        return res;
+      };
+
+      try {
+        expect(() => (app as any)._resolveModuleDeps(modA)).toThrow(
+          /Circular dependency detected/,
+        );
+      } finally {
+        Map.prototype.set = originalSet;
+      }
+    });
+
+    it('topologically sorts modules', () => {
+      const app = new Axiomify();
+      const modA = {
+        name: 'modA',
+        dependencies: ['modB'],
+        register: () => {},
+      };
+      const modB = {
+        name: 'modB',
+        dependencies: [],
+        register: () => {},
+      };
+
+      const originalSet = Map.prototype.set;
+      Map.prototype.set = function (key, val) {
+        const res = originalSet.call(this, key, val);
+        if (key === 'modA' && val === modA) {
+          originalSet.call(this, 'modB', modB);
+        }
+        return res;
+      };
+
+      try {
+        const result = (app as any)._resolveModuleDeps(modA);
+        expect(result.map((m: any) => m.name)).toEqual(['modB', 'modA']);
+      } finally {
+        Map.prototype.set = originalSet;
+      }
+    });
+  });
+
+  describe('lockRoutes duplicates', () => {
+    it('throws when locked twice', () => {
+      const app = new Axiomify();
+      app.lockRoutes(ADAPTER_LOCK_TOKEN, 'adapter-a');
+      expect(() => app.lockRoutes(ADAPTER_LOCK_TOKEN, 'adapter-b')).toThrow(
+        /has already been called/,
+      );
+    });
+  });
+
+  describe('setSerializer guard', () => {
+    it('throws when replacing serializer after routes are locked', () => {
+      const app = new Axiomify();
+      app.lockRoutes(ADAPTER_LOCK_TOKEN, 'adapter-a');
+      expect(() => app.setSerializer((x) => JSON.stringify(x))).toThrow(
+        /Cannot replace serializer after adapter binding/,
+      );
+    });
+  });
+
+  describe('nested group routing without options', () => {
+    it('successfully registers nested groups with just a callback', () => {
+      const app = new Axiomify();
+      app.group('/v1', (g1) => {
+        g1.group('/users', (g2) => {
+          g2.route({
+            method: 'GET',
+            path: '/profile',
+            handler: async (_r, res) => res.send({ ok: true }),
+          });
+        });
+      });
+      const route = app.registeredRoutes.find(
+        (r) => r.path === '/v1/users/profile',
+      );
+      expect(route).toBeDefined();
+    });
+  });
+
+  describe('unauthorized stack trace guard', () => {
+    it('throws when lockRoutes is called from an unauthorized caller frame', () => {
+      const app = new Axiomify();
+      const originalPrepare = Error.prepareStackTrace;
+      Error.prepareStackTrace = () => {
+        return 'Error\n    at someExternalModule (/Users/attacker/node_modules/attacker-lib/index.js:1:1)';
+      };
+      try {
+        expect(() => app.lockRoutes(ADAPTER_LOCK_TOKEN)).toThrow(
+          /lockRoutes\(\) is reserved for adapter use/,
+        );
+      } finally {
+        Error.prepareStackTrace = originalPrepare;
+      }
+    });
+
+    it('throws when handleMatchedRoute is called from an unauthorized caller frame', async () => {
+      const app = new Axiomify();
+      const originalPrepare = Error.prepareStackTrace;
+      Error.prepareStackTrace = () => {
+        return 'Error\n    at someExternalModule (/Users/attacker/node_modules/attacker-lib/index.js:1:1)';
+      };
+      try {
+        await expect(
+          (app as any).handleMatchedRoute(ADAPTER_LOCK_TOKEN, {}, {}, {}, {}),
+        ).rejects.toThrow(/handleMatchedRoute\(\) is reserved for adapter use/);
+      } finally {
+        Error.prepareStackTrace = originalPrepare;
+      }
+    });
+  });
+
+  describe('unauthorized stack trace guard — missing stack & caller frame fallback', () => {
+    it('handles undefined stack trace when locking routes', () => {
+      const app = new Axiomify();
+      const originalPrepare = Error.prepareStackTrace;
+      Error.prepareStackTrace = () => undefined;
+      try {
+        expect(() => app.lockRoutes(ADAPTER_LOCK_TOKEN)).toThrow(
+          /lockRoutes\(\) is reserved for adapter use/,
+        );
+      } finally {
+        Error.prepareStackTrace = originalPrepare;
+      }
+    });
+
+    it('handles undefined stack trace when handling matched route', async () => {
+      const app = new Axiomify();
+      const originalPrepare = Error.prepareStackTrace;
+      Error.prepareStackTrace = () => undefined;
+      try {
+        await expect(
+          (app as any).handleMatchedRoute(ADAPTER_LOCK_TOKEN, {}, {}, {}, {}),
+        ).rejects.toThrow(/handleMatchedRoute\(\) is reserved for adapter use/);
+      } finally {
+        Error.prepareStackTrace = originalPrepare;
+      }
+    });
+
+    it('handles missing caller frame fallback in lockRoutes when frames list is empty or only internal', () => {
+      const app = new Axiomify();
+      const originalPrepare = Error.prepareStackTrace;
+      Error.prepareStackTrace = () =>
+        'Error\n    at lockRoutes (src/app.ts:355:1)';
+      try {
+        expect(() => app.lockRoutes(ADAPTER_LOCK_TOKEN)).toThrow(
+          /lockRoutes\(\) is reserved for adapter use/,
+        );
+      } finally {
+        Error.prepareStackTrace = originalPrepare;
+      }
+    });
+
+    it('handles missing caller frame fallback in handleMatchedRoute when frames list only has internal files', async () => {
+      const app = new Axiomify();
+      const originalPrepare = Error.prepareStackTrace;
+      Error.prepareStackTrace = () =>
+        'Error\n    at handleMatchedRoute (src/app.ts:530:1)';
+      try {
+        await expect(
+          (app as any).handleMatchedRoute(ADAPTER_LOCK_TOKEN, {}, {}, {}, {}),
+        ).rejects.toThrow(/handleMatchedRoute\(\) is reserved for adapter use/);
+      } finally {
+        Error.prepareStackTrace = originalPrepare;
+      }
+    });
+  });
+
+  describe('locked routes without reason branch', () => {
+    it('route() locked error formatting without reason', () => {
+      const app = new Axiomify();
+      app.lockRoutes(ADAPTER_LOCK_TOKEN);
+      expect(() =>
+        app.route({
+          method: 'GET',
+          path: '/late-no-reason',
+          handler: async (_r, res) => res.send({}),
+        }),
+      ).toThrow(
+        /Cannot register route GET \/late-no-reason after adapter binding. Register all routes before/,
+      );
+    });
+
+    it('setSerializer() locked error formatting without reason', () => {
+      const app = new Axiomify();
+      app.lockRoutes(ADAPTER_LOCK_TOKEN);
+      expect(() => app.setSerializer((x) => JSON.stringify(x))).toThrow(
+        /Cannot replace serializer after adapter binding. Call setSerializer\(\) before/,
+      );
+    });
+  });
+
+  describe('Kahn cycle detection fallback', () => {
+    it('covers inDegree.get(n) ?? 0 fallback branch', () => {
+      const app = new Axiomify();
+      const modA = {
+        name: 'modA',
+        dependencies: ['modB'],
+        register: () => {},
+      };
+      const modB = {
+        name: 'modB',
+        dependencies: ['modA'],
+        register: () => {},
+      };
+
+      const originalSet = Map.prototype.set;
+      Map.prototype.set = function (key, val) {
+        const res = originalSet.call(this, key, val);
+        if (key === 'modA' && val === modA) {
+          originalSet.call(this, 'modB', modB);
+        }
+        return res;
+      };
+
+      const originalGet = Map.prototype.get;
+      Map.prototype.get = function (key, ...args) {
+        if (key === 'modB') {
+          const stack = new Error().stack || '';
+          if (stack.includes('filter')) {
+            return undefined;
+          }
+        }
+        return originalGet.call(this, key, ...args);
+      };
+
+      try {
+        expect(() => (app as any)._resolveModuleDeps(modA)).toThrow(
+          /Circular dependency detected/,
+        );
+      } finally {
+        Map.prototype.set = originalSet;
+        Map.prototype.get = originalGet;
+      }
+    });
+  });
 });

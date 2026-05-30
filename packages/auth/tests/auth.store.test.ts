@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import cluster from 'cluster';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Axiomify } from '../../core/src/app';
 import {
@@ -328,6 +329,217 @@ describe('MemoryTokenStore — functional behavior', () => {
       expect(await store.exists(otherJti)).toBe(false);
     } finally {
       store.close();
+    }
+  });
+});
+
+describe('MemoryTokenStore — clustered mode', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalIsWorker = cluster.isWorker;
+  const originalWorkers = cluster.workers;
+
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    warnSpy.mockRestore();
+    process.env.NODE_ENV = originalNodeEnv;
+    Object.defineProperty(cluster, 'isWorker', {
+      value: originalIsWorker,
+      configurable: true,
+    });
+    Object.defineProperty(cluster, 'workers', {
+      value: originalWorkers,
+      configurable: true,
+    });
+  });
+
+  it('throws in production when constructed inside a cluster worker', () => {
+    process.env.NODE_ENV = 'production';
+    Object.defineProperty(cluster, 'isWorker', {
+      value: true,
+      configurable: true,
+    });
+    expect(() => new MemoryTokenStore()).toThrow(
+      /cannot be used in clustered mode/,
+    );
+  });
+
+  it('warns in development when constructed inside a cluster worker', () => {
+    process.env.NODE_ENV = 'development';
+    Object.defineProperty(cluster, 'isWorker', {
+      value: true,
+      configurable: true,
+    });
+    new MemoryTokenStore();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('cannot be used in clustered mode'),
+    );
+  });
+
+  it('warns in development when constructed with cluster workers present', () => {
+    process.env.NODE_ENV = 'development';
+    Object.defineProperty(cluster, 'isWorker', {
+      value: false,
+      configurable: true,
+    });
+    Object.defineProperty(cluster, 'workers', {
+      value: { worker1: {} },
+      configurable: true,
+    });
+    new MemoryTokenStore();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('cannot be used in clustered mode'),
+    );
+  });
+});
+
+describe('createRefreshHandler — additional failure paths', () => {
+  it('returns 500 when token signing fails', async () => {
+    const token = jwt.sign({ id: 'u1', jti: 'j-1' }, refreshSecret);
+    const signSpy = vi
+      .spyOn(jwt, 'sign')
+      .mockImplementation((payload, secret, options, callback) => {
+        if (typeof callback === 'function') {
+          callback(new Error('Mock signing error'), undefined);
+        }
+        return '';
+      });
+    try {
+      const handler = createRefreshHandler({
+        secret: accessSecret,
+        refreshSecret,
+      });
+      const res = makeRes();
+      await handler(
+        { headers: { authorization: `Bearer ${token}` } } as any,
+        res as any,
+      );
+      expect(res.status).toHaveBeenCalledWith(500);
+    } finally {
+      signSpy.mockRestore();
+    }
+  });
+
+  it('swallows errors when store.revoke throws during token refresh', async () => {
+    const store: TokenStore = {
+      save: vi.fn(),
+      exists: vi.fn(async () => true),
+      revoke: vi.fn(async () => {
+        throw new Error('redis revoke error');
+      }),
+    };
+    const handler = createRefreshHandler({
+      secret: accessSecret,
+      refreshSecret,
+      store,
+    });
+    const token = jwt.sign({ id: 'u1', jti: 'old-jti' }, refreshSecret);
+    const res = makeRes();
+    await handler(
+      { headers: { authorization: `Bearer ${token}` } } as any,
+      res as any,
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(store.revoke).toHaveBeenCalledWith('old-jti');
+  });
+});
+
+describe('Auth — additional branch coverage', () => {
+  it('extractBearer returns null for invalid Bearer format', async () => {
+    const handler = createRefreshHandler({
+      secret: accessSecret,
+      refreshSecret,
+    });
+    const res = makeRes();
+    await handler(
+      { headers: { authorization: 'Basic plain' } } as any,
+      res as any,
+    );
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('signAsync rejects with token signing failed when err and token are both null', async () => {
+    const token = jwt.sign({ id: 'u1', jti: 'j-1' }, refreshSecret);
+    const signSpy = vi
+      .spyOn(jwt, 'sign')
+      .mockImplementation((payload, secret, options, callback) => {
+        if (typeof callback === 'function') {
+          // both err and token are falsy/null
+          callback(null as any, null as any);
+        }
+        return '';
+      });
+    try {
+      const handler = createRefreshHandler({
+        secret: accessSecret,
+        refreshSecret,
+      });
+      const res = makeRes();
+      await handler(
+        { headers: { authorization: `Bearer ${token}` } } as any,
+        res as any,
+      );
+      expect(res.status).toHaveBeenCalledWith(500);
+    } finally {
+      signSpy.mockRestore();
+    }
+  });
+
+  it('uses sub field when id is missing in refresh token', async () => {
+    const handler = createRefreshHandler({
+      secret: accessSecret,
+      refreshSecret,
+    });
+    // payload has sub but no id
+    const token = jwt.sign({ sub: 'u-sub', jti: 'j-sub' }, refreshSecret);
+    const res = makeRes();
+    await handler(
+      { headers: { authorization: `Bearer ${token}` } } as any,
+      res as any,
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('re-throws error in authenticate middleware when error lacks a name', async () => {
+    const requireAuth = createAuthPlugin({
+      secret: accessSecret,
+    });
+    const app = new Axiomify();
+    app.route({
+      method: 'GET',
+      path: '/auth-error-no-name',
+      plugins: [requireAuth],
+      handler: async (_r, res) => res.send({}),
+    });
+    const token = jwt.sign({ id: 'u1' }, accessSecret);
+    const verifySpy = vi
+      .spyOn(jwt, 'verify')
+      .mockImplementation((token, secret, options, callback) => {
+        if (typeof callback === 'function') {
+          callback('custom-string-error' as any, undefined);
+        }
+        return {} as any;
+      });
+    try {
+      const req = {
+        method: 'GET',
+        path: '/auth-error-no-name',
+        headers: { authorization: `Bearer ${token}` },
+        id: 'r',
+        params: {},
+        query: {},
+        state: {},
+        body: undefined,
+        url: '/auth-error-no-name',
+        ip: '127.0.0.1',
+      } as any;
+      const res = makeRes() as any;
+      await app.handle(req, res);
+      expect(res.status).toHaveBeenCalledWith(500);
+    } finally {
+      verifySpy.mockRestore();
     }
   });
 });

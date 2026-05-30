@@ -538,8 +538,129 @@ describe('Dispatcher — ValidatingResponse and error dev stack', () => {
     await app.handle(makeAxiomifyReq({ path: '/null-cb' }), inner);
     expect(innerCb).toBeNull();
   });
+  describe('dispatcher error fallback message', () => {
+    it('uses "Internal Server Error" message when thrown error has no message string', async () => {
+      const app = new Axiomify();
+      app.route({
+        method: 'GET',
+        path: '/no-msg-err',
+        handler: async () => {
+          throw { statusCode: 400 }; // object with no message
+        },
+      });
+      const [res] = makeAxiomifyResPair();
+      await app.handle(makeAxiomifyReq({ path: '/no-msg-err' }), res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.send).toHaveBeenCalledWith(null, 'Internal Server Error');
+    });
+  });
 
-  // The `res.error()` shorthand was deprecated in 5.0 and removed in 6.0;
-  // callers should use `res.status(500).send(null, msg)` directly. The
-  // dispatcher's ValidatingResponse no longer wraps it.
+  describe('ValidatingResponse statusCode getter', () => {
+    it('passes through statusCode from the inner response', async () => {
+      const app = new Axiomify();
+      let capturedStatusCode = -1;
+      app.route({
+        method: 'GET',
+        path: '/val-res-code',
+        schema: {
+          response: {
+            200: z.object({ ok: z.boolean() }),
+          },
+        },
+        handler: async (req, res) => {
+          capturedStatusCode = res.statusCode;
+          res.send({ ok: true });
+        },
+      });
+      const [res] = makeAxiomifyResPair();
+      await app.handle(makeAxiomifyReq({ path: '/val-res-code' }), res);
+      expect(capturedStatusCode).toBe(200);
+    });
+  });
+
+  describe('Dispatcher extra branch coverage', () => {
+    it('onPreHandler hook sending response short-circuits dispatch', async () => {
+      const app = new Axiomify();
+      app.addHook('onPreHandler', async (req, res) => {
+        res.status(200).send({ pre: true });
+      });
+      app.route({
+        method: 'GET',
+        path: '/pre-sent',
+        handler: async (req, res) => {
+          res.send({ handler: true });
+        },
+      });
+      const [res, events] = makeAxiomifyResPair();
+      const req = makeAxiomifyReq({ path: '/pre-sent' });
+      await app.handle(req, res);
+      expect(events()).toContain('send:{"pre":true}');
+      expect(events()).not.toContain('send:{"handler":true}');
+    });
+
+    it('pipeline break when req.signal.aborted is true', async () => {
+      const app = new Axiomify();
+      const mockHandler = vi.fn();
+      app.route({
+        method: 'GET',
+        path: '/aborted',
+        plugins: [
+          async (req, res) => {
+            (req as any).signal = { aborted: true };
+          },
+        ],
+        handler: mockHandler,
+      });
+      const [res] = makeAxiomifyResPair();
+      const req = makeAxiomifyReq({ path: '/aborted' });
+      await app.handle(req, res);
+      expect(mockHandler).not.toHaveBeenCalled();
+    });
+
+    it('onError hook sending response stops default error response writing', async () => {
+      const app = new Axiomify();
+      app.addHook('onError', async (err, req, res) => {
+        res.status(418).send({ errorCaught: true });
+      });
+      app.route({
+        method: 'GET',
+        path: '/throws-handled',
+        handler: async () => {
+          throw new Error('fatal');
+        },
+      });
+      const [res, events] = makeAxiomifyResPair();
+      const req = makeAxiomifyReq({ path: '/throws-handled' });
+      await app.handle(req, res);
+      expect(events()).toContain('status:418');
+      expect(events()).toContain('send:{"errorCaught":true}');
+      expect(events().filter((e) => e.startsWith('send:'))).toHaveLength(1);
+    });
+
+    it('development mode handles non-string stack', async () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'development';
+      try {
+        const app = new Axiomify();
+        app.route({
+          method: 'GET',
+          path: '/non-string-stack',
+          handler: async () => {
+            const err = new Error('custom');
+            Object.defineProperty(err, 'stack', { value: 12345 });
+            throw err;
+          },
+        });
+        const [res, events] = makeAxiomifyResPair();
+        const req = makeAxiomifyReq({ path: '/non-string-stack' });
+        await app.handle(req, res);
+        const sendEvent = events().find((e) => e.startsWith('send:'));
+        expect(sendEvent).toBeDefined();
+        const body = JSON.parse(sendEvent!.substring(5));
+        expect(body.stack).toBeUndefined();
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
+    });
+  });
 });

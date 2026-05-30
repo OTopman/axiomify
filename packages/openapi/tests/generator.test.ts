@@ -581,3 +581,72 @@ describe('OpenApiGenerator — `meta:` field removed in 6.0', () => {
     expect(op?.operationId).toBe('getLegacy');
   });
 });
+
+describe('OpenApiGenerator — additional coverage', () => {
+  it('synthesises operationId with "All" when path contains wildcard segment *', () => {
+    const { Axiomify } = require('@axiomify/core');
+    const app = new Axiomify();
+    app.route({
+      method: 'GET',
+      path: '/files/*',
+      handler: async (_r, res) => res.send({}),
+    });
+    const gen = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    });
+    const spec = gen.generate();
+    expect(spec.paths['/files/*']?.get?.operationId).toBe('getFilesAll');
+  });
+
+  it('generates binary format with max size description for upload files with config.maxSize', () => {
+    const { Axiomify } = require('@axiomify/core');
+    const app = new Axiomify();
+    app.route({
+      method: 'POST',
+      path: '/upload-size',
+      schema: {
+        files: {
+          attachment: { maxSize: 5000 },
+        },
+      } as any,
+      handler: async (_r, res) => res.send({}),
+    });
+    const gen = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    });
+    const spec = gen.generate();
+    const body = spec.paths['/upload-size']?.post?.requestBody;
+    const schema = body.content['multipart/form-data'].schema;
+    expect(schema.properties.attachment.description).toBe(
+      'Max size: 5000 bytes',
+    );
+  });
+
+  it('generates schema description, route tags, and file details without maxSize', () => {
+    const { Axiomify } = require('@axiomify/core');
+    const app = new Axiomify();
+    app.route({
+      method: 'POST',
+      path: '/upload-desc',
+      schema: {
+        description: 'Test description',
+        tags: ['test'],
+        files: {
+          doc: { description: 'A document file' },
+        },
+      } as any,
+      handler: async (_r, res) => res.send({}),
+    });
+    const gen = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    });
+    const spec = gen.generate();
+    const op = spec.paths['/upload-desc']?.post;
+    expect(op.description).toBe('Test description');
+    expect(op.tags).toEqual(['test']);
+
+    const body = op.requestBody;
+    const schema = body.content['multipart/form-data'].schema;
+    expect(schema.properties.doc.description).toBe('A document file');
+  });
+});
