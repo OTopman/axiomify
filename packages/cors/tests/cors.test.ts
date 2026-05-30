@@ -70,7 +70,7 @@ describe('useCors — preflight OPTIONS response', () => {
 
     const app = new Axiomify();
     useCors(app, {
-      origin: 'https://app\\.example-cors\\.com',
+      origin: 'https://localhost',
       methods: ['GET', 'POST', 'PUT', 'DELETE'],
       allowedHeaders: ['Content-Type', 'Authorization'],
       maxAge: 86400,
@@ -90,7 +90,7 @@ describe('useCors — preflight OPTIONS response', () => {
       path: '/api/users',
       url: '/api/users',
       headers: {
-        origin: 'https://app.example-cors.com',
+        origin: 'https://localhost',
         'access-control-request-method': 'POST',
         'access-control-request-headers': 'content-type, authorization',
       },
@@ -117,7 +117,7 @@ describe('useCors — preflight OPTIONS response', () => {
     }
 
     // CORS headers must be set
-    expect(capturedHeaders['access-control-allow-origin']).toBe('https://app.example-cors.com');
+    expect(capturedHeaders['access-control-allow-origin']).toBe('https://localhost');
     expect(capturedHeaders['access-control-allow-methods']).toMatch(/POST/);
     expect(capturedHeaders['access-control-allow-headers']).toMatch(/content-type/i);
     expect(capturedHeaders['access-control-max-age']).toBe('86400');
