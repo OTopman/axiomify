@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
 import { Axiomify } from '@axiomify/core';
+import { describe, expect, it, vi } from 'vitest';
 import { useCors } from '../src/index';
 
 describe('CORS Plugin', () => {
