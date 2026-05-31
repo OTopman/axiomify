@@ -1,24 +1,32 @@
 import { AxiomifyError } from './errors';
+import type { RequestState } from './types';
 
-export class RequestStateImpl {
+export class RequestStateImpl implements RequestState {
   private readonly _data = new Map<string, any>();
+  [key: string]: any;
+
+  public get(key: string): any {
+    return this._data.get(key);
+  }
+
+  public set(key: string, value: any): void {
+    if (this._data.has(key)) {
+      throw new AxiomifyError(`AxiomifyError: State key "${key}" is immutable once set.`);
+    }
+    if (key === 'user' && value && typeof value === 'object') {
+      Object.freeze(value);
+    }
+    this._data.set(key, value);
+  }
 
   constructor() {
     return new Proxy(this, {
       get(target, prop, receiver) {
         if (prop === 'get') {
-          return (key: string) => target._data.get(key);
+          return (key: string) => target.get(key);
         }
         if (prop === 'set') {
-          return (key: string, value: any) => {
-            if (target._data.has(key)) {
-              throw new AxiomifyError(`AxiomifyError: State key "${key}" is immutable once set.`);
-            }
-            if (key === 'user' && value && typeof value === 'object') {
-              Object.freeze(value);
-            }
-            target._data.set(key, value);
-          };
+          return (key: string, value: any) => target.set(key, value);
         }
         if (typeof prop === 'string') {
           return target._data.get(prop);
