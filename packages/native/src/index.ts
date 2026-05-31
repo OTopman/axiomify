@@ -4,7 +4,7 @@ import type {
   HttpMethod,
   SerializerInput,
 } from '@axiomify/core';
-import { ADAPTER_LOCK_TOKEN, makeSerialize } from '@axiomify/core';
+import { ADAPTER_LOCK_TOKEN, makeSerialize, AxiomifyError } from '@axiomify/core';
 import cluster from 'cluster';
 import { cpus } from 'node:os';
 import { availableParallelism } from 'os';
@@ -107,6 +107,7 @@ export interface NativeAdapterOptions {
    * @default false
    */
   trustProxy?: boolean;
+  proxyIpValidator?: (ip: string) => boolean;
   /**
    * WebSocket endpoint configuration. Omit to disable WebSocket support.
    * Set to `false` to explicitly disable.
@@ -157,6 +158,7 @@ export class NativeAdapter {
   private readonly _server: TemplatedApp;
   private readonly _maxBodySize: number;
   private readonly _trustProxy: boolean;
+  private readonly _proxyIpValidator?: (ip: string) => boolean;
   private readonly _workers: number;
   private readonly _allowUserspaceProxy: boolean;
   private readonly _logger: NonNullable<NativeAdapterOptions['logger']>;
@@ -177,14 +179,23 @@ export class NativeAdapter {
     this._app = app;
     this._app.lockRoutes(ADAPTER_LOCK_TOKEN, '@axiomify/native');
     this._port = options.port ?? 3000;
-    this._maxBodySize = options.maxBodySize ?? 1_048_576;
-    this._trustProxy = options.trustProxy ?? false;
-    this._workers = options.workers ?? availableParallelism();
-    this._allowUserspaceProxy = options.allowUserspaceProxy ?? false;
     this._logger = options.logger ?? {
       warn: (msg, meta) => console.warn(msg, meta ?? ''),
       error: (msg, meta) => console.error(msg, meta ?? ''),
     };
+    this._maxBodySize = options.maxBodySize ?? 1_048_576;
+    this._trustProxy = options.trustProxy ?? false;
+    this._proxyIpValidator = options.proxyIpValidator;
+    if (this._trustProxy && !this._proxyIpValidator) {
+      const msg = 'trustProxy is enabled without a proxyIpValidator. Provide proxyIpValidator to secure IP extraction.';
+      if (this._app.strictSchema) {
+        throw new AxiomifyError(msg);
+      } else {
+        this._logger.warn('[Axiomify] ' + msg);
+      }
+    }
+    this._workers = options.workers ?? availableParallelism();
+    this._allowUserspaceProxy = options.allowUserspaceProxy ?? false;
     this._serialize = makeSerialize(this._app.serializer);
 
     // Per-adapter error envelope cache. setSerializer is locked by core
@@ -224,6 +235,22 @@ export class NativeAdapter {
   // -------------------------------------------------------------------------
 
   private _registerRoutes(): void {
+    const normalizedPaths = new Map<string, string>();
+    for (const route of this._app.registeredRoutes) {
+      const norm = route.method + ' ' + route.path.split('/').map(s => s.startsWith(':') ? ':*' : s).join('/');
+      const existing = normalizedPaths.get(norm);
+      if (existing && existing !== route.path) {
+        const msg = `AxiomifyError: Conflicting parameterized routes: "${existing}" and "${route.path}" resolve ambiguously. Use distinct path structures.`;
+        if (this._app.routeConflict === 'throw') {
+          throw new AxiomifyError(msg);
+        } else {
+          this._logger.warn(msg);
+        }
+      } else {
+        normalizedPaths.set(norm, route.path);
+      }
+    }
+
     // Aggregate registered methods per path so we can register per-path
     // catch-alls for the unregistered methods. Without this, a request to
     // POST /resource where only GET is registered falls through to the
@@ -294,29 +321,95 @@ export class NativeAdapter {
         methods.add('OPTIONS');
       }
 
-      const allow = Array.from(methods).sort().join(', ');
-      this._server.any(path, (res: UWSResponse, _req: UWSRequest) => {
-        res.onAborted(() => {});
-        res.cork(() => {
-          res.writeStatus(statusLine(405));
-          res.writeHeader('Allow', allow);
-          res.writeHeader('Content-Type', 'application/json');
-          res.end(cached405Body);
-        });
+      this._server.any(path, (res: UWSResponse, req: UWSRequest) => {
+        this._handleFallback(res, req);
       });
     }
   }
 
   private _registerFallback(): void {
-    const cached404 = this._errorCache.cached404;
-    this._server.any('/*', (res: UWSResponse, _req: UWSRequest) => {
-      res.onAborted(() => {});
-      res.cork(() => {
-        res.writeStatus(cached404.statusLine);
-        res.writeHeader('Content-Type', 'application/json');
-        res.end(cached404.body);
-      });
+    this._server.any('/*', (res: UWSResponse, req: UWSRequest) => {
+      this._handleFallback(res, req);
     });
+  }
+
+  private _extractIp(res: UWSResponse): string {
+    const remoteIp = _ipDecoder.decode(res.getRemoteAddressAsText());
+    if (this._trustProxy) {
+      if (this._proxyIpValidator) {
+        if (this._proxyIpValidator(remoteIp)) {
+          return _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) || remoteIp;
+        }
+      }
+    }
+    return remoteIp;
+  }
+
+  private _handleFallback(res: UWSResponse, req: UWSRequest): void {
+    let aborted = false;
+    res.onAborted(() => {
+      aborted = true;
+    });
+
+    const method = req.getMethod().toUpperCase() as HttpMethod;
+    const url = req.getUrl();
+    const headers = collectHeaders(req);
+    const queryStr = req.getQuery();
+    const ip = this._extractIp(res);
+
+    const axiomifyReq = new NativeRequest(
+      method,
+      url,
+      ip,
+      headers,
+      queryStr,
+      undefined,
+    );
+    axiomifyReq.params = Object.create(null);
+
+    const axiomifyRes = new NativeResponse(
+      res,
+      this._app,
+      axiomifyReq,
+      method,
+      this._serialize,
+      this._errorCache,
+    );
+
+    this._inflight++;
+    (async () => {
+      if (aborted) return;
+      axiomifyRes.aborted = aborted;
+      await this._app.handle(axiomifyReq, axiomifyRes);
+    })()
+      .catch((err: unknown) => {
+        if (!aborted && !axiomifyRes.headersSent) {
+          try {
+            const anyErr = err as Record<string, unknown>;
+            const errStatus =
+              typeof anyErr.statusCode === 'number'
+                ? anyErr.statusCode
+                : typeof anyErr.status === 'number'
+                ? anyErr.status
+                : 500;
+            const errMsg =
+              typeof anyErr.message === 'string'
+                ? anyErr.message
+                : 'Internal Server Error';
+            axiomifyRes.status(errStatus).send(null, errMsg);
+          } catch {
+            // ignore
+          }
+        }
+      })
+      .finally(() => {
+        this._inflight--;
+        if (this._inflight === 0 && this._drainResolvers.length > 0) {
+          const resolvers = this._drainResolvers;
+          this._drainResolvers = [];
+          for (const r of resolvers) r();
+        }
+      });
   }
 
   // -------------------------------------------------------------------------
@@ -364,10 +457,7 @@ export class NativeAdapter {
       const queryStr = req.getQuery();
       const ctRaw = headers['content-type'];
       const contentType = (Array.isArray(ctRaw) ? ctRaw[0] : ctRaw) ?? '';
-      const ip = trustProxy
-        ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
-          _ipDecoder.decode(res.getRemoteAddressAsText())
-        : _ipDecoder.decode(res.getRemoteAddressAsText());
+      const ip = adapter._extractIp(res);
 
       // Construct request and response objects.
       const axiomifyReq = new NativeRequest(
@@ -566,10 +656,7 @@ export class NativeAdapter {
 
           const url = req.getUrl();
           const queryStr = req.getQuery();
-          const ip = trustProxy
-            ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
-              _ipDecoder.decode(res.getRemoteAddressAsText())
-            : _ipDecoder.decode(res.getRemoteAddressAsText());
+          const ip = this._extractIp(res);
 
           // WS handshake headers MUST be single-valued per RFC 6455 §4.1.
           // If a client somehow sent multiples, take the first to match the

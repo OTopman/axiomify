@@ -14,6 +14,7 @@
  * a room with 1.
  */
 import type { RoomClient } from './types';
+import { wsClientMap } from './room-manager';
 
 /** Metadata stored per-client inside a Room. */
 export interface RoomMember {
@@ -101,10 +102,11 @@ export class Room {
         ? data
         : JSON.stringify(data);
 
-    const client = firstMember.value.client as any;
-    if (client._wsClient) {
+    const client = firstMember.value.client;
+    const wsClient = wsClientMap.get(client);
+    if (wsClient) {
       // Native O(1) publish to all other room members
-      client._wsClient.publish(this.name, payload, isBinary);
+      wsClient.publish(this.name, payload, isBinary);
       // Send to the publisher client itself since native publish excludes it
       client.send(payload, isBinary);
     } else {
@@ -133,10 +135,11 @@ export class Room {
         : JSON.stringify(data);
 
     const excludedMember = this._members.get(excludeClientId);
-    const client = excludedMember?.client as any;
-    if (client && client._wsClient) {
+    const client = excludedMember?.client;
+    const wsClient = client ? wsClientMap.get(client) : undefined;
+    if (wsClient) {
       // Native O(1) publish excludes the publisher automatically
-      client._wsClient.publish(this.name, payload, isBinary);
+      wsClient.publish(this.name, payload, isBinary);
     } else {
       // Fallback: loop individually
       for (const [clientId, member] of this._members) {

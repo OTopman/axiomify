@@ -1,4 +1,5 @@
 import { RequestDispatcher } from './dispatcher';
+import { AxiomifyError } from './errors';
 import { ADAPTER_LOCK_TOKEN, AdapterLockToken, AxiomifyLogger, defaultLogger } from './internal';
 import { HookHandlerMap, HookManager } from './lifecycle';
 import { RouteRegistry } from './registry';
@@ -7,6 +8,7 @@ import type {
   AppConfigurator,
   AppContext,
   AppModule,
+  AxiomifyOptions,
   AxiomifyRequest,
   AxiomifyResponse,
   HookType,
@@ -17,23 +19,12 @@ import type {
   RouteSchema,
   SerializerFn,
   SerializerInput,
-  WsRouteDefinition,
+  WsRouteDefinition
 } from './types';
 
 export type { AppConfigurator, AppContext, AppModule };
 
-export interface AxiomifyOptions {
-  timeout?: number;
-  telemetry?: {
-    startSpan: (name: string, attributes: Record<string, string>) => { end(): void };
-  };
-  /**
-   * Structured logger for non-fatal warnings (hook errors, validation drift,
-   * cluster oversubscription). Defaults to `console`. Inject Pino or Winston
-   * here in production — the default does not produce indexable JSON.
-   */
-  logger?: AxiomifyLogger;
-}
+// AxiomifyOptions/AxiomifyConfig are now defined in types.ts
 
 function joinRoutePath(prefix: string, path: string): string {
   return (prefix + path).replace(/\/+/g, '/').replace(/\/$/, '') || '/';
@@ -66,6 +57,9 @@ export class Axiomify {
   private readonly _modules = new Set<string>();
   private _routesLocked = false;
   private _routesLockedReason?: string;
+  private _bootstrapped = false;
+  public readonly routeConflict: 'throw' | 'warn';
+  public readonly strictSchema: boolean;
   private _serializer: SerializerFn = ({ data, message, statusCode, isError }: SerializerInput) => ({
     status: isError || (statusCode && statusCode >= 400) ? 'failed' : 'success',
     message:
@@ -111,11 +105,15 @@ export class Axiomify {
     this._timeout = options.timeout ?? 0;
     this._telemetry = options.telemetry;
     this._logger = options.logger ?? defaultLogger;
+    this.routeConflict = options.routeConflict ?? 'throw';
+    this.strictSchema = options.strictSchema ?? false;
     this.hooks = new HookManager(this._logger);
     this.registry = new RouteRegistry(this.hooks, {
       timeout: this._timeout,
       telemetry: this._telemetry,
       logger: this._logger,
+      strictSchema: this.strictSchema,
+      routeConflict: this.routeConflict,
     });
     this.dispatcher = new RequestDispatcher(
       this.registry.router,
@@ -163,6 +161,12 @@ export class Axiomify {
   public use(configurator: AppConfigurator | AppModule): this {
     const context: AppContext = {
       provide: (token: any, value: any) => {
+        if (this._bootstrapped) {
+          throw new AxiomifyError('AxiomifyError: DI container is sealed. Services cannot be registered after bootstrap.');
+        }
+        if (this._services.has(token)) {
+          throw new AxiomifyError(`AxiomifyError: Service token "${String(token)}" is already registered. Use a unique token.`);
+        }
         this._services.set(token, value);
       },
       resolve: (token: any) => {
@@ -320,6 +324,20 @@ export class Axiomify {
    * app.lockRoutes(ADAPTER_LOCK_TOKEN, '@my/adapter');
    * ```
    */
+  public forceProvide(token: any, value: any): void {
+    this._services.set(token, value);
+  }
+
+  public listen(...args: any[]): this {
+    this._bootstrapped = true;
+    return this;
+  }
+
+  public build(): this {
+    this._bootstrapped = true;
+    return this;
+  }
+
   public lockRoutes(token: AdapterLockToken, reason?: string): this {
     if (token !== ADAPTER_LOCK_TOKEN) {
       throw new Error(
@@ -329,6 +347,7 @@ export class Axiomify {
     }
     this._routesLocked = true;
     this._routesLockedReason = reason;
+    this._bootstrapped = true;
     return this;
   }
 
@@ -443,6 +462,16 @@ export class Axiomify {
 
   public async handle(req: AxiomifyRequest, res: AxiomifyResponse): Promise<void> {
     return this.dispatcher.handle(req, res);
+  }
+
+  public setNotFoundHandler(handler: (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void>): this {
+    this.dispatcher.setNotFoundHandler(handler);
+    return this;
+  }
+
+  public setMethodNotAllowedHandler(handler: (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void>): this {
+    this.dispatcher.setMethodNotAllowedHandler(handler);
+    return this;
   }
 
   /**

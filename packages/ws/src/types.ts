@@ -4,7 +4,7 @@
  * This file defines the public-facing types for the native pub/sub room
  * utility. Every type here is part of the stable API surface.
  */
-import type { RouteMiddleware } from '@axiomify/core';
+import type { RouteMiddleware, WsClient } from '@axiomify/core';
 import type { ZodTypeAny } from 'zod';
 
 // ---------------------------------------------------------------------------
@@ -179,6 +179,19 @@ export interface WsRoomOptions {
    * handler never sees them.
    */
   schema?: ZodTypeAny;
+
+  /**
+   * Optional authorization check to run before a client joins a room.
+   * Return true to allow, false or throw to reject.
+   */
+  beforeJoin?: (client: WsClient, roomName: string) => boolean | Promise<boolean>;
+
+  /**
+   * Optional allowlist pattern for room names.
+   * If beforeJoin is not registered, only rooms matching this pattern are allowed.
+   * By default (no beforeJoin, no allowlist), all joins are denied.
+   */
+  allowlist?: RegExp;
 
   /**
    * Called when a client connects (after successful upgrade).

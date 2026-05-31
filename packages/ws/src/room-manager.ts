@@ -98,6 +98,9 @@ try {
 // RoomManager
 // ---------------------------------------------------------------------------
 
+export const wsClientMap = new WeakMap<RoomClient, WsClient<RequestState>>();
+const wsInternals = new WeakMap<object, { clientId: string; wsClient: WsClient<RequestState> }>();
+
 export class RoomManager extends TypedEmitter {
   /** All active rooms, keyed by room name. */
   private readonly _rooms = new Map<string, Room>();
@@ -121,11 +124,15 @@ export class RoomManager extends TypedEmitter {
   /** Presence heartbeat timer handle. */
   private _presenceTimer: ReturnType<typeof setInterval> | null = null;
   private readonly _presenceIntervalMs: number;
+  private readonly _beforeJoin?: WsRoomOptions['beforeJoin'];
+  private readonly _allowlist?: RegExp;
 
   constructor(options: WsRoomOptions = {}) {
     super();
     this._maxRoomsPerClient = options.maxRoomsPerClient ?? 50;
     this._presenceIntervalMs = options.presenceIntervalMs ?? 30_000;
+    this._beforeJoin = options.beforeJoin;
+    this._allowlist = options.allowlist;
   }
 
   // -------------------------------------------------------------------------
@@ -284,14 +291,14 @@ export class RoomManager extends TypedEmitter {
         // getBufferedAmount() is available on the raw uWS WebSocket
         // but not on the WsClient wrapper. Access it via the internal ref.
         try {
-          return (wsClient as any).getBufferedAmount?.() ?? 0;
+          return (wsClient as WsClient<RequestState> & { getBufferedAmount?: () => number }).getBufferedAmount?.() ?? 0;
         } catch {
           return 0;
         }
       },
     };
 
-    (roomClient as any)._wsClient = wsClient;
+    wsClientMap.set(roomClient, wsClient);
     this._clients.set(clientId, roomClient);
 
     return roomClient;
@@ -341,16 +348,45 @@ export class RoomManager extends TypedEmitter {
           client.send({ event: 'error', message: 'Invalid room name', code: 'INVALID_ROOM' });
           return true;
         }
-        try {
-          client.join(action.room);
-          client.send({ event: 'joined', room: action.room });
-        } catch (err: unknown) {
-          client.send({
-            event: 'error',
-            message: (err as Error).message,
-            code: 'JOIN_FAILED',
-          });
-        }
+        
+        const room = action.room as string;
+        
+        const runJoin = async () => {
+          try {
+            const wsClient = this._wsClients.get(clientId);
+            if (!wsClient) throw new Error('Client not found');
+
+            let allowed = false;
+            try {
+              if (this._beforeJoin) {
+                allowed = await this._beforeJoin(wsClient, room);
+              } else if (this._allowlist) {
+                allowed = this._allowlist.test(room);
+              } else {
+                allowed = false;
+              }
+            } catch (authErr) {
+              client.send({ error: 'Unauthorized', code: 'ROOM_JOIN_FORBIDDEN' });
+              return;
+            }
+
+            if (!allowed) {
+              client.send({ error: 'Unauthorized', code: 'ROOM_JOIN_FORBIDDEN' });
+              return;
+            }
+
+            try {
+              this._joinRoom(clientId, room);
+              client.send({ event: 'joined', room });
+            } catch (err: any) {
+              client.send({ event: 'error', message: err.message, code: 'JOIN_FAILED' });
+            }
+          } catch (err: any) {
+            client.send({ event: 'error', message: err.message, code: 'JOIN_FAILED' });
+          }
+        };
+
+        runJoin();
         return true;
       }
 
@@ -388,7 +424,7 @@ export class RoomManager extends TypedEmitter {
             from: client.id,
             data: action.data,
           };
-          wsClient.publish(action.room, payload as any);
+          wsClient.publish(action.room, payload);
           // Send it back to the sender since uWS publish excludes the publisher
           client.send(payload);
         }
@@ -581,14 +617,15 @@ export function wsRooms(app: Axiomify, options: WsRoomOptions = {}): RoomManager
     open(wsClient: WsClient<RequestState>, req: AxiomifyRequest): void {
       const roomClient = manager._onOpen(wsClient);
 
-      // Store the client ID on the WS state so we can find it later.
-      (wsClient.state as any)[CLIENT_ID_KEY] = roomClient.id;
+      // Store the client ID and wsClient in the WeakMap.
+      wsInternals.set(wsClient.state, { clientId: roomClient.id, wsClient });
 
       options.onConnect?.(roomClient);
     },
 
     message(wsClient: WsClient<RequestState>, data: unknown): void {
-      const clientId = (wsClient.state as any)[CLIENT_ID_KEY] as string;
+      const internals = wsInternals.get(wsClient.state);
+      const clientId = internals?.clientId;
       if (!clientId) return;
 
       // Try to process as a wire-protocol action first.
@@ -603,7 +640,8 @@ export function wsRooms(app: Axiomify, options: WsRoomOptions = {}): RoomManager
     },
 
     close(wsClient: WsClient<RequestState>, code: number, reason: string): void {
-      const clientId = (wsClient.state as any)[CLIENT_ID_KEY] as string;
+      const internals = wsInternals.get(wsClient.state);
+      const clientId = internals?.clientId;
       if (!clientId) return;
 
       const client = manager.client(clientId);

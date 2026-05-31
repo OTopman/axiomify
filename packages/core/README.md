@@ -61,3 +61,24 @@ See [docs/packages/core.md](https://github.com/OTopman/axiomify/blob/main/docs/p
 - `route.meta` → `route.openapi` (deprecated alias kept through 5.x, removed in 6.0). Field shape mirrors the OAS 3.1.0 Operation Object — see [openapi docs](https://github.com/OTopman/axiomify/blob/main/docs/packages/openapi.md)
 - `RouteMeta` type was renamed to `OpenApiOperation` in 5.0 (alias kept through 5.x, removed in 6.0); in 6.0 the alias is removed
 - `AppPlugin` type alias removed (the 1-arg `(app) => void` shape still works at runtime as an `AppConfigurator`)
+
+## Validation Execution Order
+
+When a request is dispatched, validation and hooks are executed in the following strict order:
+1. **`onRequest` hooks**: Run immediately after request initialization.
+2. **Route Matching & Extraction**: Path, query, and headers are parsed and matched.
+3. **`onPreHandler` hooks**: Run before route-specific validation is performed.
+4. **Input Validation**: `params`, `query`, `headers`, and `body` are validated using Zod/AJV schemas in that order. If validation fails, a `ValidationError` is thrown and processed via `onError` hooks.
+5. **Route Handler**: The route-specific handler function is executed.
+6. **`onPostHandler` hooks**: Run after the route handler successfully completes.
+7. **Response Validation**: If a response schema is defined, the outgoing payload is validated. In development, a mismatch throws a `ValidationError`; in production, it is logged as an error and allowed to continue.
+8. **`onError` hooks**: Run if any error is thrown during dispatch.
+9. **`onClose` hooks**: Run after response headers are sent and connection/stream closes.
+
+## Request State Immutability API
+
+To prevent privilege escalation and coordinate data safely across hooks, `req.state` is a wrapped immutable object implementing the following methods:
+- `req.state.set(key, value)`: Stores a value under the given key. Throws an error if the key has already been set (write-once immutability).
+- `req.state.get(key)`: Retrieves the value associated with the key.
+- If the key is `'user'`, the stored object is recursively frozen via `Object.freeze` to prevent downstream mutations.
+- Direct property access (e.g., `req.state.key = value` and `req.state.key`) is proxied to the write-once set/get APIs for backwards compatibility.

@@ -160,12 +160,9 @@ describe('Auth — option branch coverage', () => {
     }
   });
 
-  it('warns in development when secret is too short', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('throws in development when secret is too short', async () => {
     const { createAuthPlugin } = await import('../src/index');
-    createAuthPlugin({ secret: 'short' });
-    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/bytes.*256 bits/));
-    warn.mockRestore();
+    expect(() => createAuthPlugin({ secret: 'short' })).toThrow(/requires at least 32 bytes/);
   });
 
   it('issuer/audience options are passed through', async () => {

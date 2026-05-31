@@ -2,6 +2,7 @@ import { compiledStates } from './compiled';
 import { defaultLogger, type AxiomifyLogger } from './internal';
 import type { HookManager } from './lifecycle';
 import { Router } from './router';
+import { AxiomifyError } from './errors';
 
 import type {
   AxiomifyRequest,
@@ -18,6 +19,8 @@ interface RegistryOptions {
     startSpan: (name: string, attributes: Record<string, string>) => { end(): void };
   };
   logger?: AxiomifyLogger;
+  strictSchema?: boolean;
+  routeConflict?: 'throw' | 'warn';
 }
 
 function createTimeoutError(): Error & { statusCode: number } {
@@ -32,16 +35,31 @@ function rejectOnAbort(signal: AbortSignal, error: Error & { statusCode: number 
 }
 
 export class RouteRegistry {
-  public readonly router = new Router();
+  public readonly router: Router;
   public readonly validator: ValidationCompiler;
   private readonly routes: RouteDefinition[] = [];
   private readonly wsRoutes: WsRouteDefinition<any, any>[] = [];
+  private _schemaLessRoutes: string[] = [];
+  private _warningScheduled = false;
 
   constructor(
     private readonly hooks: HookManager,
     private readonly options: RegistryOptions,
   ) {
     this.validator = new ValidationCompiler(options.logger ?? defaultLogger);
+    this.router = new Router({ routeConflict: options.routeConflict });
+  }
+
+  private _scheduleWarning() {
+    if (this._warningScheduled) return;
+    this._warningScheduled = true;
+    process.nextTick(() => {
+      if (this._schemaLessRoutes.length > 0) {
+        console.warn(`[Axiomify] Warning: The following routes are schema-less: ${this._schemaLessRoutes.join(', ')}`);
+        this._schemaLessRoutes = [];
+      }
+      this._warningScheduled = false;
+    });
   }
 
   public get registeredRoutes(): readonly RouteDefinition[] {
@@ -53,6 +71,17 @@ export class RouteRegistry {
   }
 
   public register<S extends RouteSchema>(definition: RouteDefinition<S>): void {
+    const hasSchema = !!definition.schema;
+    const hasIgnore = definition.handler.toString().includes('@axiomify-ignore-schema');
+    if (!hasSchema && !hasIgnore) {
+      if (this.options.strictSchema) {
+        throw new AxiomifyError(`AxiomifyError: Route "${definition.method} ${definition.path}" has a typed handler but no schema defined. Enable a schema or set strictSchema: false to suppress.`);
+      } else {
+        this._schemaLessRoutes.push(`${definition.method} ${definition.path}`);
+        this._scheduleWarning();
+      }
+    }
+
     const routeId = `${definition.method}:${definition.path}`;
     if (definition.schema) this.validator.compile(routeId, definition.schema);
 
