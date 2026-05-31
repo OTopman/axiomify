@@ -1,5 +1,57 @@
 # Changelog
 
+## 6.2.0
+ 
+### ✨ New Features
+ 
+#### `@axiomify/core` — Route Safety, DI Hardening & Error Masking
+ 
+- **Route conflict detection** (`routeConflict: 'throw' | 'warn'`): parametrized path conflicts are now detected at route registration time. Defaults to `'throw'` — surfacing bugs at startup instead of silently misbehaving at runtime. Pass `'warn'` to restore previous permissive behavior while you resolve conflicts.
+- **Strict schema guard** (`strictSchema: boolean`): throws `AxiomifyError` when a typed handler is registered without a Zod schema. Per-route `@axiomify-ignore-schema` inline override supported.
+- **`setNotFoundHandler()` / `setMethodNotAllowedHandler()`**: first-class APIs on both `Axiomify` and `NativeAdapter` with full `onRequest` / `onClose` hook lifecycle integration.
+- **`forceProvide()`**: test-only escape hatch for overriding sealed DI services without restarting the app instance.
+#### `@axiomify/ws` — Room Authorization & Message Sanitization
+ 
+- **`beforeJoin` hook** (`WsRoomOptions.beforeJoin`): async per-join authorization callback. Return `false` or throw to reject with `ROOM_JOIN_FORBIDDEN` (distinct from `JOIN_FAILED` which covers join-limit exhaustion).
+- **`allowlist` pattern** (`WsRoomOptions.allowlist`): `RegExp` applied when no `beforeJoin` is registered. Default-deny posture — rooms not matching the pattern are rejected outright.
+- **`sanitize` option** (`WsRoomOptions.sanitize`): opt-in sanitization of incoming WebSocket messages for XSS, prototype pollution, and null-byte payloads via `@axiomify/security`. Individually configurable per protection type.
+#### `@axiomify/upload` — Automatic Temp-File Cleanup
+ 
+- **`useUpload(app, { autoCleanup: true })`**: registers an `onPostHandler` hook that deletes all temp files written during the request after the handler completes. Prevents disk accumulation on busy servers.
+- **`req.cleanup()`**: explicit async cleanup callable from handlers or error hooks. Idempotent — safe to call multiple times.
+- **`req.uploadedFiles: string[]`**: typed array tracking all temp paths written in the current request lifecycle.
+#### `@axiomify/cli` — AsyncAPI SDK Ingestion
+ 
+- **`axiomify sdk generate`** now accepts AsyncAPI 2.x specs as input. Format is auto-detected by the presence of the `asyncapi` key in the parsed spec — no new flags required. Diff, validate, and migrate sub-commands updated to handle AsyncAPI-sourced IR.
+---
+ 
+### 🔒 Security & Correctness Fixes
+ 
+#### `@axiomify/core`
+- **DI container sealed after `bootstrap()`**: calling `provide()` post-bootstrap now throws `AxiomifyError`. Duplicate token registration also throws. Both were previously silent data hazards.
+- **Production error masking**: non-validation errors in `NODE_ENV=production` are now returned as `{ error: 'Internal Server Error', code: 'INTERNAL_ERROR' }` — DB schema details and stack traces are never sent to clients. `ValidationError` responses retain structured field-level detail.
+- **`req.state` immutability**: `RequestStateImpl` enforces write-once semantics via a proxy wrapper. The `user` credential object is frozen on assignment — mutations after auth throw at runtime.
+- `RequestDispatcher` now appends `OPTIONS` to the `Allow` header on 405 responses.
+- `NativeAdapter` constructor logger assignment order corrected — logger is available before any adapter lifecycle events fire.
+#### `@axiomify/auth`
+- HS256 secret minimum enforced at 32 bytes (256 bits) per RFC 7518 §3.2, measured as UTF-8 encoded byte length (not character count). Secrets below this threshold throw at plugin registration instead of silently failing at token verification time.
+#### `@axiomify/security`
+- NoSQL injection pattern set extended with `$elemMatch`, `$slice`, `$pull`, and `$lookup` MongoDB operators.
+- `replaceUntilStable()` iteration capped at 10 to prevent O(n²) ReDoS from adversarial nested bypass payloads.
+- `prototypePollutionProtection` now documents in JSDoc that `__proto__`, `prototype`, and `constructor` keys are silently stripped from request body, query, and params.
+#### `@axiomify/native`
+- `trustProxy: true` without a `proxyIpValidator` now emits a startup warning instead of silently trusting all forwarded IPs — prevents IP spoofing via unvalidated `X-Forwarded-For` headers.
+#### `@axiomify/ws`
+- Client tracking migrated to module-scoped `WeakMap` structures — eliminates `any` casts and prevents state collision between concurrent clients.
+- Room auth teardown correctly calls `.close()` — eliminates open-handle warnings in CI.
+---
+ 
+### 🏗️ Infrastructure
+ 
+- npm package provenance enabled on all published packages — releases are now signed with OIDC-attested GitHub Actions build provenance.
+- ESLint and Prettier configurations codified at repo root.
+---
+
 ## [6.1.0]
 
 ### ✨ New features
