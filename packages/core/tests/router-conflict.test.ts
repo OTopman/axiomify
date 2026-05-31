@@ -20,14 +20,18 @@ describe('Router conflicts & Strict checks', () => {
     app.route({
       method: 'GET',
       path: '/users/:userId',
-      handler: () => { '@axiomify-ignore-schema'; }
+      handler: () => {
+        '@axiomify-ignore-schema';
+      },
     });
 
     expect(() => {
       app.route({
         method: 'GET',
         path: '/users/:id',
-        handler: () => { '@axiomify-ignore-schema'; }
+        handler: () => {
+          '@axiomify-ignore-schema';
+        },
       });
     }).toThrow(/Conflicting parameterized routes/);
   });
@@ -37,17 +41,23 @@ describe('Router conflicts & Strict checks', () => {
     app.route({
       method: 'GET',
       path: '/users/:userId',
-      handler: () => { '@axiomify-ignore-schema'; }
+      handler: () => {
+        '@axiomify-ignore-schema';
+      },
     });
 
     app.route({
       method: 'GET',
       path: '/users/:id',
-      handler: () => { '@axiomify-ignore-schema'; }
+      handler: () => {
+        '@axiomify-ignore-schema';
+      },
     });
 
     expect(consoleWarnSpy).toHaveBeenCalled();
-    expect(consoleWarnSpy.mock.calls[0][0]).toContain('Conflicting parameterized routes');
+    expect(consoleWarnSpy.mock.calls[0][0]).toContain(
+      'Conflicting parameterized routes',
+    );
   });
 
   it('does not throw/warn for non-conflicting routes', () => {
@@ -55,14 +65,18 @@ describe('Router conflicts & Strict checks', () => {
     app.route({
       method: 'GET',
       path: '/users/:userId/profile',
-      handler: () => { '@axiomify-ignore-schema'; }
+      handler: () => {
+        '@axiomify-ignore-schema';
+      },
     });
 
     expect(() => {
       app.route({
         method: 'GET',
         path: '/users/:userId/posts',
-        handler: () => { '@axiomify-ignore-schema'; }
+        handler: () => {
+          '@axiomify-ignore-schema';
+        },
       });
     }).not.toThrow();
   });
@@ -73,7 +87,7 @@ describe('Router conflicts & Strict checks', () => {
       app.route({
         method: 'GET',
         path: '/test',
-        handler: () => {}
+        handler: () => {},
       });
     }).toThrow(/has a typed handler but no schema defined/);
   });
@@ -86,7 +100,7 @@ describe('Router conflicts & Strict checks', () => {
         path: '/test',
         handler: () => {
           '@axiomify-ignore-schema';
-        }
+        },
       });
     }).not.toThrow();
   });
@@ -97,14 +111,16 @@ describe('Router conflicts & Strict checks', () => {
     app.route({
       method: 'GET',
       path: '/test-warn',
-      handler: () => {}
+      handler: () => {},
     });
 
     // Wait for the next tick warning
     await new Promise((resolve) => process.nextTick(resolve));
 
     expect(consoleWarnSpy).toHaveBeenCalled();
-    expect(consoleWarnSpy.mock.calls[0][0]).toContain('The following routes are schema-less: GET /test-warn');
+    expect(consoleWarnSpy.mock.calls[0][0]).toContain(
+      'The following routes are schema-less: GET /test-warn',
+    );
   });
 
   it('does not warn on next tick on schema-less route with ignore comment when strictSchema is false', async () => {
@@ -115,7 +131,7 @@ describe('Router conflicts & Strict checks', () => {
       path: '/test-warn-ignored',
       handler: () => {
         '@axiomify-ignore-schema';
-      }
+      },
     });
 
     await new Promise((resolve) => process.nextTick(resolve));
@@ -215,6 +231,24 @@ describe('Request State Immutability', () => {
       userObj.name = 'Bob';
     }).toThrow();
   });
+
+  it('freezes the user object when set via direct property access', () => {
+    const state = new RequestStateImpl();
+    const userObj = { name: 'Alice', roles: ['admin'] };
+    state.user = userObj;
+
+    expect(Object.isFrozen(userObj)).toBe(true);
+    expect(() => {
+      userObj.name = 'Bob';
+    }).toThrow();
+  });
+
+  it('supports symbol properties via Reflect fallback', () => {
+    const state = new RequestStateImpl();
+    const sym = Symbol('test');
+    (state as any)[sym] = 'symbolValue';
+    expect((state as any)[sym]).toBe('symbolValue');
+  });
 });
 
 describe('404 & 405 Custom Handlers', () => {
@@ -252,7 +286,9 @@ describe('404 & 405 Custom Handlers', () => {
     app.route({
       method: 'POST',
       path: '/only-post',
-      handler: () => { '@axiomify-ignore-schema'; }
+      handler: () => {
+        '@axiomify-ignore-schema';
+      },
     });
 
     let called = false;

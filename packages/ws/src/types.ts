@@ -184,7 +184,10 @@ export interface WsRoomOptions {
    * Optional authorization check to run before a client joins a room.
    * Return true to allow, false or throw to reject.
    */
-  beforeJoin?: (client: WsClient, roomName: string) => boolean | Promise<boolean>;
+  beforeJoin?: (
+    client: WsClient,
+    roomName: string,
+  ) => boolean | Promise<boolean>;
 
   /**
    * Optional allowlist pattern for room names.

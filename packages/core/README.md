@@ -66,6 +66,7 @@ See [docs/packages/core.md](https://github.com/OTopman/axiomify/blob/main/docs/p
 ## Validation Execution Order
 
 When a request is dispatched, validation and hooks are executed in the following strict order:
+
 1. **`onRequest` hooks**: Run immediately after request initialization.
 2. **Route Matching & Extraction**: Path, query, and headers are parsed and matched.
 3. **`onPreHandler` hooks**: Run before route-specific validation is performed.
@@ -79,7 +80,56 @@ When a request is dispatched, validation and hooks are executed in the following
 ## Request State Immutability API
 
 To prevent privilege escalation and coordinate data safely across hooks, `req.state` is a wrapped immutable object implementing the following methods:
+
 - `req.state.set(key, value)`: Stores a value under the given key. Throws an error if the key has already been set (write-once immutability).
 - `req.state.get(key)`: Retrieves the value associated with the key.
 - If the key is `'user'`, the stored object is recursively frozen via `Object.freeze` to prevent downstream mutations.
 - Direct property access (e.g., `req.state.key = value` and `req.state.key`) is proxied to the write-once set/get APIs for backwards compatibility.
+
+## Core Configuration Options
+
+When creating an `Axiomify` instance, you can configure these options:
+
+- `strictSchema` (`boolean`, default: `false`): If `true`, throws a startup error when registering a route that has a typed handler but no schema definition. You can ignore this on specific routes by adding a `@axiomify-ignore-schema` comment.
+- `routeConflict` (`'throw' | 'warn'`, default: `'throw'`): Determines whether to throw an error or emit a warning when registering conflicting parameterized route paths (e.g. `/users/:id` and `/users/:userId`).
+
+## Custom Fallback Handlers
+
+Use `app.setNotFoundHandler` and `app.setMethodNotAllowedHandler` to customize responses for missing routes and mismatched methods:
+
+```typescript
+app.setNotFoundHandler((req, res) => {
+  res.status(404).send({ error: 'NotFound' }, 'Resource not found');
+});
+
+app.setMethodNotAllowedHandler((req, res) => {
+  res.status(405).send({ error: 'MethodNotAllowed' }, 'Method not supported');
+});
+```
+
+## Service Container Sealing
+
+The dependency injection container is sealed after bootstrap (`app.listen()` or `app.build()`). Calling `provide` on the `AppContext` post-bootstrap throws an error. Use `app.forceProvide(token, value)` in tests to bypass the seal guard.
+
+## Global Error Sanitization
+
+In production, all database or internal system errors are masked as a generic 500 server error to prevent sensitive data leaks. You can use the exported `createErrorSanitizer` helper to safely map database driver errors (Prisma, MongoDB, Sequelize, etc.) to API errors in an `onError` hook:
+
+```typescript
+import { createErrorSanitizer } from '@axiomify/core';
+
+const sanitizeError = createErrorSanitizer({ logger: app.logger });
+
+app.addHook('onError', async (err, req, res) => {
+  const sanitized = sanitizeError(err);
+  if (sanitized) {
+    res.status(sanitized.statusCode).send(
+      {
+        error: sanitized.message,
+        data: sanitized.data,
+      },
+      sanitized.message,
+    );
+  }
+});
+```

@@ -4,7 +4,12 @@ import type {
   HttpMethod,
   SerializerInput,
 } from '@axiomify/core';
-import { ADAPTER_LOCK_TOKEN, makeSerialize, compiledStates, AxiomifyError } from '@axiomify/core';
+import {
+  ADAPTER_LOCK_TOKEN,
+  makeSerialize,
+  compiledStates,
+  AxiomifyError,
+} from '@axiomify/core';
 import cluster from 'cluster';
 import { cpus } from 'node:os';
 import { availableParallelism } from 'os';
@@ -258,7 +263,13 @@ export class NativeAdapter {
   private _registerRoutes(): void {
     const normalizedPaths = new Map<string, string>();
     for (const route of this._app.registeredRoutes) {
-      const norm = route.method + ' ' + route.path.split('/').map(s => s.startsWith(':') ? ':*' : s).join('/');
+      const norm =
+        route.method +
+        ' ' +
+        route.path
+          .split('/')
+          .map((s) => (s.startsWith(':') ? ':*' : s))
+          .join('/');
       const existing = normalizedPaths.get(norm);
       if (existing && existing !== route.path) {
         const msg = `AxiomifyError: Conflicting parameterized routes: "${existing}" and "${route.path}" resolve ambiguously. Use distinct path structures.`;
@@ -372,7 +383,9 @@ export class NativeAdapter {
     if (this._trustProxy) {
       if (this._proxyIpValidator) {
         if (this._proxyIpValidator(remoteIp)) {
-          return _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) || remoteIp;
+          return (
+            _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) || remoteIp
+          );
         }
       }
     }

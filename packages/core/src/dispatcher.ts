@@ -1,27 +1,43 @@
 import { getCompiledState } from './compiled';
 import type { HookManager } from './lifecycle';
 import type { Router } from './router';
-import type { AxiomifyRequest, AxiomifyResponse, RouteDefinition } from './types';
+import type {
+  AxiomifyRequest,
+  AxiomifyResponse,
+  RouteDefinition,
+} from './types';
 import { ValidationError } from './validation';
 import type { ValidationCompiler } from './validation';
 
 export class RequestDispatcher {
-  private _notFoundHandler: (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void> = (req, res) => {
+  private _notFoundHandler: (
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+  ) => void | Promise<void> = (req, res) => {
     res.status(404).send(null, 'Route not found');
   };
 
-  private _methodNotAllowedHandler: (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void> = (req, res) => {
+  private _methodNotAllowedHandler: (
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+  ) => void | Promise<void> = (req, res) => {
     res.status(405).send(null, 'Method Not Allowed');
   };
 
   public setNotFoundHandler(
-    handler: (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void>,
+    handler: (
+      req: AxiomifyRequest,
+      res: AxiomifyResponse,
+    ) => void | Promise<void>,
   ): void {
     this._notFoundHandler = handler;
   }
 
   public setMethodNotAllowedHandler(
-    handler: (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void>,
+    handler: (
+      req: AxiomifyRequest,
+      res: AxiomifyResponse,
+    ) => void | Promise<void>,
   ): void {
     this._methodNotAllowedHandler = handler;
   }
@@ -30,7 +46,7 @@ export class RequestDispatcher {
     private readonly router: Router,
     private readonly hooks: HookManager,
     private readonly validator: ValidationCompiler,
-  ) { }
+  ) {}
 
   public async handle(
     req: AxiomifyRequest,
@@ -175,9 +191,16 @@ export class RequestDispatcher {
     const isProduction = process.env.NODE_ENV === 'production';
     if (isProduction) {
       if (err instanceof ValidationError) {
-        res.status(err.statusCode || 400).send(err.errors || (err as any).issues, err.message);
+        res
+          .status(err.statusCode || 400)
+          .send(err.errors || (err as any).issues, err.message);
       } else {
-        res.status(500).send({ error: 'Internal Server Error', code: 'INTERNAL_ERROR' }, 'Internal Server Error');
+        res
+          .status(500)
+          .send(
+            { error: 'Internal Server Error', code: 'INTERNAL_ERROR' },
+            'Internal Server Error',
+          );
       }
       return;
     }
@@ -193,10 +216,10 @@ export class RequestDispatcher {
       typeof anyErr.message === 'string'
         ? anyErr.message
         : 'Internal Server Error';
-    const errorData =
-      anyErr.issues ??
-      anyErr.errors ??
-      { stack: typeof anyErr.stack === 'string' ? anyErr.stack : undefined };
+    const errorData = anyErr.issues ??
+      anyErr.errors ?? {
+        stack: typeof anyErr.stack === 'string' ? anyErr.stack : undefined,
+      };
     res.status(statusCode).send(errorData, message);
   }
 }

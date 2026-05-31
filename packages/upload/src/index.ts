@@ -170,7 +170,10 @@ async function validateFileContent(
  * Validates multipart part MIME headers as a fast pre-check, then verifies the
  * saved file's magic bytes for known content types before route handlers run.
  */
-export function useUpload(app: Axiomify, options: { autoCleanup?: boolean } = {}): void {
+export function useUpload(
+  app: Axiomify,
+  options: { autoCleanup?: boolean } = {},
+): void {
   app.addHook(
     'onPreHandler',
     async (req: AxiomifyRequest, _res: AxiomifyResponse, match: any) => {
@@ -188,7 +191,9 @@ export function useUpload(app: Axiomify, options: { autoCleanup?: boolean } = {}
         mutableReq.cleanup = async () => {
           if (mutableReq.uploadedFiles.length > 0) {
             await Promise.allSettled(
-              mutableReq.uploadedFiles.map((p: string) => unlink(p).catch(() => {}))
+              mutableReq.uploadedFiles.map((p: string) =>
+                unlink(p).catch(() => {}),
+              ),
             );
             mutableReq.uploadedFiles = [];
           }
@@ -354,14 +359,11 @@ export function useUpload(app: Axiomify, options: { autoCleanup?: boolean } = {}
   );
 
   if (options.autoCleanup) {
-    app.addHook(
-      'onPostHandler',
-      async (req: AxiomifyRequest) => {
-        if (req.cleanup) {
-          await req.cleanup();
-        }
-      },
-    );
+    app.addHook('onPostHandler', async (req: AxiomifyRequest) => {
+      if (req.cleanup) {
+        await req.cleanup();
+      }
+    });
   }
 
   app.addHook(

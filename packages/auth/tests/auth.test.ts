@@ -127,6 +127,30 @@ describe('createAuthPlugin — access token revocation via store', () => {
     expect(req.state.user.id).toBe('user-1');
   });
 
+  it('populates auth user in request state using state.set when available', async () => {
+    const jti = 'test-jti-set-method';
+    const { sign } = await import('jsonwebtoken');
+    const token = sign({ id: 'user-set', jti }, secret, { expiresIn: 60 });
+
+    await store.save(jti, 60);
+
+    const plugin = createAuthPlugin({ secret, store });
+    const mockSet = vi.fn();
+    const req: any = {
+      headers: { authorization: `Bearer ${token}` },
+      state: { set: mockSet },
+    };
+    const res: any = { status: vi.fn().mockReturnThis(), send: vi.fn() };
+
+    await plugin(req, res);
+
+    expect(res.status).not.toHaveBeenCalled();
+    expect(mockSet).toHaveBeenCalledWith(
+      'user',
+      expect.objectContaining({ id: 'user-set' }),
+    );
+  });
+
   it('rejects a token whose jti was revoked from the store', async () => {
     const jti = 'test-jti-revoked';
     const { sign } = await import('jsonwebtoken');

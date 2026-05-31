@@ -110,7 +110,10 @@ try {
 // RoomManager
 // ---------------------------------------------------------------------------
 
-const wsInternals = new WeakMap<object, { clientId: string; wsClient: WsClient<RequestState> }>();
+const wsInternals = new WeakMap<
+  object,
+  { clientId: string; wsClient: WsClient<RequestState> }
+>();
 
 export class RoomManager extends TypedEmitter {
   /** All active rooms, keyed by room name. */
@@ -314,7 +317,13 @@ export class RoomManager extends TypedEmitter {
         // getBufferedAmount() is available on the raw uWS WebSocket
         // but not on the WsClient wrapper. Access it via the internal ref.
         try {
-          return (wsClient as WsClient<RequestState> & { getBufferedAmount?: () => number }).getBufferedAmount?.() ?? 0;
+          return (
+            (
+              wsClient as WsClient<RequestState> & {
+                getBufferedAmount?: () => number;
+              }
+            ).getBufferedAmount?.() ?? 0
+          );
         } catch {
           return 0;
         }
@@ -377,9 +386,9 @@ export class RoomManager extends TypedEmitter {
           });
           return true;
         }
-        
+
         const room = action.room as string;
-        
+
         const runJoin = async () => {
           try {
             const wsClient = this._wsClients.get(clientId);
@@ -395,12 +404,18 @@ export class RoomManager extends TypedEmitter {
                 allowed = false;
               }
             } catch (authErr) {
-              client.send({ error: 'Unauthorized', code: 'ROOM_JOIN_FORBIDDEN' });
+              client.send({
+                error: 'Unauthorized',
+                code: 'ROOM_JOIN_FORBIDDEN',
+              });
               return;
             }
 
             if (!allowed) {
-              client.send({ error: 'Unauthorized', code: 'ROOM_JOIN_FORBIDDEN' });
+              client.send({
+                error: 'Unauthorized',
+                code: 'ROOM_JOIN_FORBIDDEN',
+              });
               return;
             }
 
@@ -408,10 +423,18 @@ export class RoomManager extends TypedEmitter {
               this._joinRoom(clientId, room);
               client.send({ event: 'joined', room });
             } catch (err: any) {
-              client.send({ event: 'error', message: err.message, code: 'JOIN_FAILED' });
+              client.send({
+                event: 'error',
+                message: err.message,
+                code: 'JOIN_FAILED',
+              });
             }
           } catch (err: any) {
-            client.send({ event: 'error', message: err.message, code: 'JOIN_FAILED' });
+            client.send({
+              event: 'error',
+              message: err.message,
+              code: 'JOIN_FAILED',
+            });
           }
         };
 
@@ -707,7 +730,11 @@ export function wsRooms(
       }
     },
 
-    close(wsClient: WsClient<RequestState>, code: number, reason: string): void {
+    close(
+      wsClient: WsClient<RequestState>,
+      code: number,
+      reason: string,
+    ): void {
       const internals = wsInternals.get(wsClient.state);
       const clientId = internals?.clientId;
       if (!clientId) return;

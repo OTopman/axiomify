@@ -227,6 +227,81 @@ describe('Dispatcher — ValidatingResponse and error dev stack', () => {
     }
   });
 
+  it('error in development mode handles non-string messages and missing stack', async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+    try {
+      const app = new Axiomify();
+      app.route({
+        method: 'GET',
+        path: '/no-msg-err',
+        handler: async () => {
+          throw { statusCode: 400 }; // object with no message and no stack
+        },
+      });
+      const [res] = makeAxiomifyResPair();
+      const req = makeAxiomifyReq({ path: '/no-msg-err' });
+      await app.handle(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.send).toHaveBeenCalledWith(
+        { stack: undefined },
+        'Internal Server Error',
+      );
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+    }
+  });
+
+  it('error in development mode preserves issues and errors arrays', async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+    try {
+      const app = new Axiomify();
+      app.route({
+        method: 'GET',
+        path: '/issues-err',
+        handler: async () => {
+          throw {
+            statusCode: 422,
+            message: 'Invalid entity',
+            issues: [{ path: ['field'], message: 'too short' }],
+          };
+        },
+      });
+      const [res] = makeAxiomifyResPair();
+      const req = makeAxiomifyReq({ path: '/issues-err' });
+      await app.handle(req, res);
+      expect(res.status).toHaveBeenCalledWith(422);
+      expect(res.send).toHaveBeenCalledWith(
+        [{ path: ['field'], message: 'too short' }],
+        'Invalid entity',
+      );
+
+      const app2 = new Axiomify();
+      app2.route({
+        method: 'GET',
+        path: '/errors-err',
+        handler: async () => {
+          throw {
+            statusCode: 422,
+            message: 'Invalid entity',
+            errors: [{ path: ['field2'], message: 'too long' }],
+          };
+        },
+      });
+      const [res2] = makeAxiomifyResPair();
+      const req2 = makeAxiomifyReq({ path: '/errors-err' });
+      await app2.handle(req2, res2);
+      expect(res2.status).toHaveBeenCalledWith(422);
+      expect(res2.send).toHaveBeenCalledWith(
+        [{ path: ['field2'], message: 'too long' }],
+        'Invalid entity',
+      );
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+    }
+  });
+
   it('ValidatingResponse.sendRaw() delegates to inner', async () => {
     const app = new Axiomify();
     const { z } = await import('zod');
@@ -551,7 +626,10 @@ describe('Dispatcher — ValidatingResponse and error dev stack', () => {
       const [res] = makeAxiomifyResPair();
       await app.handle(makeAxiomifyReq({ path: '/no-msg-err' }), res);
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.send).toHaveBeenCalledWith({ stack: undefined }, 'Internal Server Error');
+      expect(res.send).toHaveBeenCalledWith(
+        { stack: undefined },
+        'Internal Server Error',
+      );
     });
   });
 

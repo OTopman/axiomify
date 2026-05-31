@@ -184,7 +184,9 @@ describe('Auth — option branch coverage', () => {
 
   it('throws in development when secret is too short', async () => {
     const { createAuthPlugin } = await import('../src/index');
-    expect(() => createAuthPlugin({ secret: 'short' })).toThrow(/requires at least 32 bytes/);
+    expect(() => createAuthPlugin({ secret: 'short' })).toThrow(
+      /requires at least 32 bytes/,
+    );
   });
 
   it('issuer/audience options are passed through', async () => {

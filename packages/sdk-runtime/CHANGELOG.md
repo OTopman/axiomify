@@ -7,7 +7,6 @@
 - 0e5ffdb: **Enterprise Type-Safe SDK Generation Platform**
 
   This release introduces the highly anticipated SDK Generation Platform, allowing you to generate multi-language client SDKs directly from your Axiomify backend, OpenAPI specs, or GraphQL schemas.
-
   - **`axiomify sdk generate`**: Generate fully-typed SDKs for TypeScript, Python, Go, Swift, Kotlin, and Dart using our novel `TypeGraph` AST compiler.
   - **`axiomify sdk diff`**: CI/CD tooling to compare API schemas and prevent breaking changes from reaching production.
   - **`axiomify sdk validate`**: Strict syntactic and semantic validations for your schemas.

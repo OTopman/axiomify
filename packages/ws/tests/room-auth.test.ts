@@ -20,7 +20,9 @@ function connectWs(
   headers?: Record<string, string>,
 ): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://localhost:${port}${path}`, { headers }) as TestWebSocket;
+    const ws = new WebSocket(`ws://localhost:${port}${path}`, {
+      headers,
+    }) as TestWebSocket;
     ws.queue = [];
     ws.resolvers = [];
 
@@ -111,15 +113,18 @@ describe.skipIf(!uwsSupported)('@axiomify/ws - Room Authorization', () => {
       allowlist: /^public-.*$/,
     });
     const ws = await connectWs(PORT, '/ws');
-    
+
     // public-1 matches and should succeed
     const res1 = await sendAction(ws, { action: 'join', room: 'public-1' });
     expect(res1).toEqual({ event: 'joined', room: 'public-1' });
 
     // private-1 does not match and should fail
     const res2 = await sendAction(ws, { action: 'join', room: 'private-1' });
-    expect(res2).toEqual({ error: 'Unauthorized', code: 'ROOM_JOIN_FORBIDDEN' });
-    
+    expect(res2).toEqual({
+      error: 'Unauthorized',
+      code: 'ROOM_JOIN_FORBIDDEN',
+    });
+
     await closeWs(ws);
   });
 
@@ -135,7 +140,10 @@ describe.skipIf(!uwsSupported)('@axiomify/ws - Room Authorization', () => {
     expect(res1).toEqual({ event: 'joined', room: 'allowed-room' });
 
     const res2 = await sendAction(ws, { action: 'join', room: 'denied-room' });
-    expect(res2).toEqual({ error: 'Unauthorized', code: 'ROOM_JOIN_FORBIDDEN' });
+    expect(res2).toEqual({
+      error: 'Unauthorized',
+      code: 'ROOM_JOIN_FORBIDDEN',
+    });
 
     await closeWs(ws);
   });
@@ -153,7 +161,10 @@ describe.skipIf(!uwsSupported)('@axiomify/ws - Room Authorization', () => {
     expect(res1).toEqual({ event: 'joined', room: 'async-ok' });
 
     const res2 = await sendAction(ws, { action: 'join', room: 'async-fail' });
-    expect(res2).toEqual({ error: 'Unauthorized', code: 'ROOM_JOIN_FORBIDDEN' });
+    expect(res2).toEqual({
+      error: 'Unauthorized',
+      code: 'ROOM_JOIN_FORBIDDEN',
+    });
 
     await closeWs(ws);
   });

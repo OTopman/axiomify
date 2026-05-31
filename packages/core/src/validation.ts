@@ -58,7 +58,11 @@ export class ValidationError extends Error {
     statusCode = 400,
   ) {
     let finalMessage = message;
-    if ((message === 'Request validation failed' || message === 'Response validation failed') && errors) {
+    if (
+      (message === 'Request validation failed' ||
+        message === 'Response validation failed') &&
+      errors
+    ) {
       const parts: string[] = [];
       for (const [location, fieldErrors] of Object.entries(errors)) {
         if (fieldErrors && typeof fieldErrors === 'object') {
@@ -354,17 +358,24 @@ export class ValidationCompiler {
 
 export function createErrorSanitizer(options: { logger?: any } = {}) {
   const logger = options.logger || console;
-  return (err: unknown): { statusCode: number; message: string; data?: any } | null => {
+  return (
+    err: unknown,
+  ): { statusCode: number; message: string; data?: any } | null => {
     if (!err || typeof err !== 'object') return null;
     const anyErr = err as any;
     const name = anyErr.name || anyErr.constructor?.name || '';
-    
-    if (name.includes('PrismaClientKnownRequestError') || anyErr.code?.startsWith('P20')) {
+
+    if (
+      name.includes('PrismaClientKnownRequestError') ||
+      anyErr.code?.startsWith('P20')
+    ) {
       if (anyErr.code === 'P2002') {
         return {
           statusCode: 409,
           message: 'Conflict: Unique constraint failed',
-          data: anyErr.meta?.target ? { target: anyErr.meta.target } : undefined,
+          data: anyErr.meta?.target
+            ? { target: anyErr.meta.target }
+            : undefined,
         };
       }
       if (anyErr.code === 'P2025') {
@@ -379,8 +390,15 @@ export function createErrorSanitizer(options: { logger?: any } = {}) {
       };
     }
 
-    if (name.includes('QueryFailedError') || name.includes('SequelizeDatabaseError') || name.includes('MongoError')) {
-      if (anyErr.code === '11000' || anyErr.message?.includes('duplicate key')) {
+    if (
+      name.includes('QueryFailedError') ||
+      name.includes('SequelizeDatabaseError') ||
+      name.includes('MongoError')
+    ) {
+      if (
+        anyErr.code === '11000' ||
+        anyErr.message?.includes('duplicate key')
+      ) {
         return {
           statusCode: 409,
           message: 'Conflict: Unique constraint failed',

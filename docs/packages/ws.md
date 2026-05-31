@@ -194,6 +194,15 @@ _Queries the server for the current presence list in the specified room._
 }
 ```
 
+Or for unauthorized room join attempts (default-deny when no allowlist matches):
+
+```json
+{
+  "error": "Unauthorized",
+  "code": "ROOM_JOIN_FORBIDDEN"
+}
+```
+
 ---
 
 ## API Reference
@@ -204,19 +213,21 @@ Registers a WebSocket route and returns a `RoomManager` instance.
 
 #### Options
 
-| Option               | Type                             | Default             | Description                                                 |
-| -------------------- | -------------------------------- | ------------------- | ----------------------------------------------------------- |
-| `path`               | `string`                         | `'/ws'`             | WebSocket upgrade endpoint.                                 |
-| `maxRoomsPerClient`  | `number`                         | `50`                | Max rooms a single client can join to prevent memory abuse. |
-| `presenceIntervalMs` | `number`                         | `30000`             | Heartbeat interval. Use `0` to disable.                     |
-| `maxPayloadLength`   | `number`                         | `262144`            | Max payload size in bytes (256 KB).                         |
-| `compression`        | `number`                         | `SHARED_COMPRESSOR` | Compression behavior.                                       |
-| `idleTimeout`        | `number`                         | `120`               | uWS connection idle timeout in seconds.                     |
-| `plugins`            | `RouteMiddleware[]`              | `[]`                | Axiomify upgrade-level plugins (e.g. for authentication).   |
-| `schema`             | `ZodTypeAny`                     | `undefined`         | Zod schema for automatic incoming frame validation.         |
-| `onConnect`          | `(client) => void`               | `undefined`         | Callback fired when a new client connects.                  |
-| `onDisconnect`       | `(client, code, reason) => void` | `undefined`         | Callback fired when a client disconnects.                   |
-| `onMessage`          | `(client, data) => void`         | `undefined`         | Callback fired on every validated incoming frame.           |
+| Option               | Type                                                    | Default             | Description                                                                                                                                |
+| -------------------- | ------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `path`               | `string`                                                | `'/ws'`             | WebSocket upgrade endpoint.                                                                                                                |
+| `maxRoomsPerClient`  | `number`                                                | `50`                | Max rooms a single client can join to prevent memory abuse.                                                                                |
+| `presenceIntervalMs` | `number`                                                | `30000`             | Heartbeat interval. Use `0` to disable.                                                                                                    |
+| `maxPayloadLength`   | `number`                                                | `262144`            | Max payload size in bytes (256 KB).                                                                                                        |
+| `compression`        | `number`                                                | `SHARED_COMPRESSOR` | Compression behavior.                                                                                                                      |
+| `idleTimeout`        | `number`                                                | `120`               | uWS connection idle timeout in seconds.                                                                                                    |
+| `plugins`            | `RouteMiddleware[]`                                     | `[]`                | Axiomify upgrade-level plugins (e.g. for authentication).                                                                                  |
+| `schema`             | `ZodTypeAny`                                            | `undefined`         | Zod schema for automatic incoming frame validation.                                                                                        |
+| `beforeJoin`         | `(client, room: string) => boolean \| Promise<boolean>` | `undefined`         | Optional authorization check before joining a room. Return true to allow, false/throw to deny.                                             |
+| `allowlist`          | `RegExp`                                                | `undefined`         | Optional room name allowlist pattern (used if `beforeJoin` is not registered). By default, all joins are denied if neither option matches. |
+| `onConnect`          | `(client) => void`                                      | `undefined`         | Callback fired when a new client connects.                                                                                                 |
+| `onDisconnect`       | `(client, code, reason) => void`                        | `undefined`         | Callback fired when a client disconnects.                                                                                                  |
+| `onMessage`          | `(client, data) => void`                                | `undefined`         | Callback fired on every validated incoming frame.                                                                                          |
 
 ---
 

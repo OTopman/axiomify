@@ -162,8 +162,8 @@ function validateSecret(secret: string, context: string): void {
   if (byteLength < 32) {
     throw new AxiomifyError(
       `[axiomify/auth] ${context} is ${byteLength} bytes; ` +
-      `the JWA spec (RFC 7518 §3.2) requires at least 32 bytes (256 bits) for HS256. ` +
-      `Generate one with: node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`
+        `the JWA spec (RFC 7518 §3.2) requires at least 32 bytes (256 bits) for HS256. ` +
+        `Generate one with: node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`,
     );
   }
 }

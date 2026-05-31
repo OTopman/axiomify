@@ -57,7 +57,10 @@ export interface RequestState {
 export interface AxiomifyConfig {
   timeout?: number;
   telemetry?: {
-    startSpan: (name: string, attributes: Record<string, string>) => { end(): void };
+    startSpan: (
+      name: string,
+      attributes: Record<string, string>,
+    ) => { end(): void };
   };
   logger?: any;
   routeConflict?: 'throw' | 'warn';

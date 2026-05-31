@@ -11,7 +11,9 @@ export class RequestStateImpl implements RequestState {
 
   public set(key: string, value: any): void {
     if (this._data.has(key)) {
-      throw new AxiomifyError(`AxiomifyError: State key "${key}" is immutable once set.`);
+      throw new AxiomifyError(
+        `AxiomifyError: State key "${key}" is immutable once set.`,
+      );
     }
     if (key === 'user' && value && typeof value === 'object') {
       Object.freeze(value);
@@ -36,7 +38,9 @@ export class RequestStateImpl implements RequestState {
       set(target, prop, value, receiver) {
         if (typeof prop === 'string') {
           if (target._data.has(prop)) {
-            throw new AxiomifyError(`AxiomifyError: State key "${prop}" is immutable once set.`);
+            throw new AxiomifyError(
+              `AxiomifyError: State key "${prop}" is immutable once set.`,
+            );
           }
           if (prop === 'user' && value && typeof value === 'object') {
             Object.freeze(value);
@@ -45,7 +49,7 @@ export class RequestStateImpl implements RequestState {
           return true;
         }
         return Reflect.set(target, prop, value, receiver);
-      }
+      },
     }) as any;
   }
 }

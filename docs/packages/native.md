@@ -20,15 +20,19 @@ Node.js ≥ 18, < 23. uWS is a pre-compiled native binary — check the [uWebSoc
 
 ## Options
 
-| Option                | Type              | Default                     | Description                                                        |
-| --------------------- | ----------------- | --------------------------- | ------------------------------------------------------------------ |
-| `port`                | `number`          | `3000`                      | Listen port                                                        |
-| `maxBodySize`         | `number`          | `1048576`                   | Max request body (1 MB)                                            |
-| `trustProxy`          | `boolean`         | `false`                     | Trust `X-Forwarded-For` for `req.ip`                               |
-| `workers`             | `number`          | `os.availableParallelism()` | Worker count for `listenClustered()`                               |
-| `allowUserspaceProxy` | `boolean`         | `false`                     | See [Clustering on macOS / Windows](#clustering-on-macos--windows) |
-| `logger`              | `AxiomifyLogger`  | `console`                   | Structured logger for adapter-level warnings                       |
-| `ws`                  | `NativeWsOptions` | —                           | Built-in fallback uWS WebSocket options (Legacy)                   |
+| Option                | Type                      | Default                     | Description                                                        |
+| --------------------- | ------------------------- | --------------------------- | ------------------------------------------------------------------ |
+| `port`                | `number`                  | `3000`                      | Listen port                                                        |
+| `maxBodySize`         | `number`                  | `1048576`                   | Max request body (1 MB)                                            |
+| `trustProxy`          | `boolean`                 | `false`                     | Trust `X-Forwarded-For` for `req.ip` (requires `proxyIpValidator`) |
+| `proxyIpValidator`    | `(ip: string) => boolean` | `undefined`                 | Function to validate trusted proxy IPs. Protects against spoofing. |
+| `workers`             | `number`                  | `os.availableParallelism()` | Worker count for `listenClustered()`                               |
+| `allowUserspaceProxy` | `boolean`                 | `false`                     | See [Clustering on macOS / Windows](#clustering-on-macos--windows) |
+| `logger`              | `AxiomifyLogger`          | `console`                   | Structured logger for adapter-level warnings                       |
+| `ws`                  | `NativeWsOptions`         | —                           | Built-in fallback uWS WebSocket options (Legacy)                   |
+
+> [!WARNING]
+> **Proxy IP Spoofing Guard:** Enabling `trustProxy: true` without providing a `proxyIpValidator` callback triggers a console warning in development. If `strictSchema` is enabled on the app instance, constructing the adapter will throw a validation error. You must provide a validator function to verify the proxy IP (e.g., using a CIDR check).
 
 ## Usage
 

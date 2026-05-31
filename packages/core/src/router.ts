@@ -61,7 +61,13 @@ export class Router {
   // ── Registration ────────────────────────────────────────────────────────────
 
   public register(route: RouteDefinition): void {
-    const norm = route.method + ' ' + route.path.split('/').map(s => s.startsWith(':') ? ':*' : s).join('/');
+    const norm =
+      route.method +
+      ' ' +
+      route.path
+        .split('/')
+        .map((s) => (s.startsWith(':') ? ':*' : s))
+        .join('/');
     const existing = this._normalizedPaths.get(norm);
     if (existing && existing !== route.path) {
       const msg = `AxiomifyError: Conflicting parameterized routes: "${existing}" and "${route.path}" resolve ambiguously. Use distinct path structures.`;

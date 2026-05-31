@@ -92,6 +92,14 @@ const rooms = wsRooms(app, {
     // Optional Zod validation
     text: z.string(),
   }),
+  // Optional authorization check before joining a room.
+  // Return true to allow, false or throw to reject.
+  beforeJoin: (client, roomName) => {
+    return client.state.user?.isAdmin || roomName.startsWith('public-');
+  },
+  // Optional room name allowlist pattern (checked if beforeJoin is not registered).
+  // By default (no beforeJoin, no allowlist), all room joins are denied.
+  allowlist: /^public-.*$/,
   onConnect(client) {
     /* ... */
   },
@@ -187,6 +195,7 @@ This is **optional** — you can also use `onMessage` + programmatic
 { "event": "message",  "room": "lobby", "from": "client-uuid", "data": { "text": "hello" } }
 { "event": "presence", "room": "lobby", "clients": [{ "id": "...", "state": {}, "joinedAt": 1716843600000 }] }
 { "event": "error",    "message": "Room limit exceeded", "code": "JOIN_FAILED" }
+{ "error": "Unauthorized", "code": "ROOM_JOIN_FORBIDDEN" }
 ```
 
 ## Backpressure

@@ -61,7 +61,9 @@ export class RouteRegistry {
     this._warningScheduled = true;
     process.nextTick(() => {
       if (this._schemaLessRoutes.length > 0) {
-        console.warn(`[Axiomify] Warning: The following routes are schema-less: ${this._schemaLessRoutes.join(', ')}`);
+        console.warn(
+          `[Axiomify] Warning: The following routes are schema-less: ${this._schemaLessRoutes.join(', ')}`,
+        );
         this._schemaLessRoutes = [];
       }
       this._warningScheduled = false;
@@ -78,10 +80,14 @@ export class RouteRegistry {
 
   public register<S extends RouteSchema>(definition: RouteDefinition<S>): void {
     const hasSchema = !!definition.schema;
-    const hasIgnore = definition.handler.toString().includes('@axiomify-ignore-schema');
+    const hasIgnore = definition.handler
+      .toString()
+      .includes('@axiomify-ignore-schema');
     if (!hasSchema && !hasIgnore) {
       if (this.options.strictSchema) {
-        throw new AxiomifyError(`AxiomifyError: Route "${definition.method} ${definition.path}" has a typed handler but no schema defined. Enable a schema or set strictSchema: false to suppress.`);
+        throw new AxiomifyError(
+          `AxiomifyError: Route "${definition.method} ${definition.path}" has a typed handler but no schema defined. Enable a schema or set strictSchema: false to suppress.`,
+        );
       } else {
         this._schemaLessRoutes.push(`${definition.method} ${definition.path}`);
         this._scheduleWarning();

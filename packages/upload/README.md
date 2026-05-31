@@ -56,13 +56,14 @@ app.route({
 
 ## Options — `useUpload(app, options?)`
 
-| Option             | Default       | Description                                                        |
-| ------------------ | ------------- | ------------------------------------------------------------------ |
-| `dest`             | `os.tmpdir()` | Default save directory for files without `autoSaveTo`.             |
-| `limits.fileSize`  | `10 MiB`      | Global max file size in bytes. Per-field `maxSize` overrides this. |
-| `limits.files`     | `10`          | Max number of files per request.                                   |
-| `limits.fields`    | `50`          | Max number of text fields per request.                             |
-| `limits.fieldSize` | `1 MiB`       | Max text field value size in bytes.                                |
+| Option             | Default       | Description                                                                   |
+| ------------------ | ------------- | ----------------------------------------------------------------------------- |
+| `dest`             | `os.tmpdir()` | Default save directory for files without `autoSaveTo`.                        |
+| `autoCleanup`      | `false`       | Automatically delete all uploaded temporary files after the handler finishes. |
+| `limits.fileSize`  | `10 MiB`      | Global max file size in bytes. Per-field `maxSize` overrides this.            |
+| `limits.files`     | `10`          | Max number of files per request.                                              |
+| `limits.fields`    | `50`          | Max number of text fields per request.                                        |
+| `limits.fieldSize` | `1 MiB`       | Max text field value size in bytes.                                           |
 
 ## Per-field `files` schema
 
@@ -112,6 +113,32 @@ handler: async (req, res) => {
   res.send({ count: files.length, paths: files.map(f => f.path) });
 },
 ```
+
+## File Cleanup
+
+If the request handler throws an error, validation fails, or the client disconnects before completion, any partially written files are automatically deleted via the `@axiomify/upload` `onError` hook.
+
+For successful requests, you can clean up files automatically or manually:
+
+1. **Automatic Cleanup**: Pass `autoCleanup: true` when registering `useUpload`. This deletes all successfully uploaded temporary files after the route handler finishes execution:
+
+   ```typescript
+   useUpload(app, { autoCleanup: true });
+   ```
+
+2. **Manual Cleanup**: Call `req.cleanup()` within your route handler after you have processed the files (e.g. after uploading them to S3 or copying them):
+
+   ```typescript
+   handler: async (req, res) => {
+     const file = req.files!.avatar;
+     await uploadToS3(file.path);
+
+     // Delete the local temporary file
+     await req.cleanup?.();
+
+     res.send({ status: 'uploaded' });
+   };
+   ```
 
 ## Graceful shutdown
 

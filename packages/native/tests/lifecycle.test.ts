@@ -222,7 +222,9 @@ describe('NativeAdapter — trustProxy config guard', () => {
     const { NativeAdapter } = await import('../src/index');
     new NativeAdapter(new Axiomify(), { trustProxy: true });
     expect(spy).toHaveBeenCalledWith(
-      expect.stringContaining('X-Forwarded-For can be spoofed to bypass rate limiting'),
+      expect.stringContaining(
+        'X-Forwarded-For can be spoofed to bypass rate limiting',
+      ),
       expect.any(String),
     );
     spy.mockRestore();

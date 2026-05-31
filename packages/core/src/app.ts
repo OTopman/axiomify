@@ -1,6 +1,11 @@
 import { RequestDispatcher } from './dispatcher';
 import { AxiomifyError } from './errors';
-import { ADAPTER_LOCK_TOKEN, AdapterLockToken, AxiomifyLogger, defaultLogger } from './internal';
+import {
+  ADAPTER_LOCK_TOKEN,
+  AdapterLockToken,
+  AxiomifyLogger,
+  defaultLogger,
+} from './internal';
 import { HookHandlerMap, HookManager } from './lifecycle';
 import { RouteRegistry } from './registry';
 import { makeSerialize } from './serialize';
@@ -19,11 +24,10 @@ import type {
   RouteSchema,
   SerializerFn,
   SerializerInput,
-  WsRouteDefinition
+  WsRouteDefinition,
 } from './types';
 
 export type { AppConfigurator, AppContext, AppModule };
-
 
 function joinRoutePath(prefix: string, path: string): string {
   return (prefix + path).replace(/\/+/g, '/').replace(/\/$/, '') || '/';
@@ -59,7 +63,12 @@ export class Axiomify {
   private _bootstrapped = false;
   public readonly routeConflict: 'throw' | 'warn';
   public readonly strictSchema: boolean;
-  private _serializer: SerializerFn = ({ data, message, statusCode, isError }: SerializerInput) => ({
+  private _serializer: SerializerFn = ({
+    data,
+    message,
+    statusCode,
+    isError,
+  }: SerializerInput) => ({
     status: isError || (statusCode && statusCode >= 400) ? 'failed' : 'success',
     message:
       message ||
@@ -170,10 +179,14 @@ export class Axiomify {
     const context: AppContext = {
       provide: (token: any, value: any) => {
         if (this._bootstrapped) {
-          throw new AxiomifyError('AxiomifyError: DI container is sealed. Services cannot be registered after bootstrap.');
+          throw new AxiomifyError(
+            'AxiomifyError: DI container is sealed. Services cannot be registered after bootstrap.',
+          );
         }
         if (this._services.has(token)) {
-          throw new AxiomifyError(`AxiomifyError: Service token "${String(token)}" is already registered. Use a unique token.`);
+          throw new AxiomifyError(
+            `AxiomifyError: Service token "${String(token)}" is already registered. Use a unique token.`,
+          );
         }
         this._services.set(token, value);
       },
@@ -356,7 +369,9 @@ export class Axiomify {
   }
 
   public lockRoutes(token: any, reason?: string): this {
-    const isNativeLock = typeof token === 'symbol' && token.toString() === 'Symbol(axiomify.native.lock)';
+    const isNativeLock =
+      typeof token === 'symbol' &&
+      token.toString() === 'Symbol(axiomify.native.lock)';
     if (token !== ADAPTER_LOCK_TOKEN && !isNativeLock) {
       throw new Error(
         '[Axiomify] lockRoutes() is reserved for adapter use. ' +
@@ -524,12 +539,22 @@ export class Axiomify {
     return this.dispatcher.handle(req, res);
   }
 
-  public setNotFoundHandler(handler: (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void>): this {
+  public setNotFoundHandler(
+    handler: (
+      req: AxiomifyRequest,
+      res: AxiomifyResponse,
+    ) => void | Promise<void>,
+  ): this {
     this.dispatcher.setNotFoundHandler(handler);
     return this;
   }
 
-  public setMethodNotAllowedHandler(handler: (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void>): this {
+  public setMethodNotAllowedHandler(
+    handler: (
+      req: AxiomifyRequest,
+      res: AxiomifyResponse,
+    ) => void | Promise<void>,
+  ): this {
     this.dispatcher.setMethodNotAllowedHandler(handler);
     return this;
   }
