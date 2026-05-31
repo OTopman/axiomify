@@ -17,6 +17,8 @@ import pino from 'pino';
 const app = new Axiomify({
   timeout: 30_000, // request timeout in ms, 0 = disabled (default)
   logger: pino(), // injectable structured logger — strongly recommended in production
+  strictSchema: false, // warn (false) or throw (true) on schema-less routes (default: false)
+  routeConflict: 'throw', // 'throw' or 'warn' on registering conflicting parameterized paths (default: 'throw')
   telemetry: {
     // optional OpenTelemetry integration
     startSpan: (name, attrs) => tracer.startSpan(name, attrs),
@@ -124,6 +126,22 @@ app.use({
 });
 ```
 
+## `app.setNotFoundHandler(handler)` & `app.setMethodNotAllowedHandler(handler)`
+
+Configure custom callbacks for 404 (Not Found) and 405 (Method Not Allowed) routes:
+
+```typescript
+app.setNotFoundHandler((req, res) => {
+  res
+    .status(404)
+    .send({ error: 'NotFound', path: req.path }, 'Resource not found');
+});
+
+app.setMethodNotAllowedHandler((req, res) => {
+  res.status(405).send({ error: 'MethodNotAllowed' }, 'Method not supported');
+});
+```
+
 ## `app.setSerializer(fn)`
 
 Replace the default `{ status, message, data }` envelope:
@@ -168,6 +186,42 @@ await app.handleMatchedRoute(ADAPTER_LOCK_TOKEN, req, res, route, params);
 ```
 
 Both methods throw with a clear error if called without the token.
+
+## Service Container Sealing
+
+To prevent runtime state manipulation, the application's service container is sealed post-bootstrap (when `app.listen()` or `app.build()` is called). Attempting to register new services on `AppContext` via `provide()` after bootstrap throws a sealed container error.
+
+For testing or plugin setup scenarios where services must be force-registered post-bootstrap, use:
+
+```typescript
+app.forceProvide('my-service', mockService);
+```
+
+## Global Error Handling & Sanitization
+
+In production (`NODE_ENV=production`), non-validation errors (such as database credentials or table schema leaks) are automatically masked and returned as a generic 500 Internal Server Error.
+
+To securely format common database driver errors (Prisma, TypeORM, Sequelize, or MongoDB) into user-safe responses before they trigger 500 fallbacks, use the exported `createErrorSanitizer` helper in an `onError` hook:
+
+```typescript
+import { createErrorSanitizer } from '@axiomify/core';
+
+const sanitizeError = createErrorSanitizer({ logger: app.logger });
+
+app.addHook('onError', async (err, req, res) => {
+  const sanitized = sanitizeError(err);
+  if (sanitized) {
+    res.status(sanitized.statusCode).send(
+      {
+        error: sanitized.message,
+        data: sanitized.data,
+      },
+      sanitized.message,
+    );
+  }
+  // Otherwise, let the error fall back to default masking
+});
+```
 
 ## Validation internals
 

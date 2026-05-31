@@ -6,9 +6,42 @@ import type {
   AxiomifyResponse,
   RouteDefinition,
 } from './types';
+import { ValidationError } from './validation';
 import type { ValidationCompiler } from './validation';
 
 export class RequestDispatcher {
+  private _notFoundHandler: (
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+  ) => void | Promise<void> = (req, res) => {
+    res.status(404).send(null, 'Route not found');
+  };
+
+  private _methodNotAllowedHandler: (
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+  ) => void | Promise<void> = (req, res) => {
+    res.status(405).send(null, 'Method Not Allowed');
+  };
+
+  public setNotFoundHandler(
+    handler: (
+      req: AxiomifyRequest,
+      res: AxiomifyResponse,
+    ) => void | Promise<void>,
+  ): void {
+    this._notFoundHandler = handler;
+  }
+
+  public setMethodNotAllowedHandler(
+    handler: (
+      req: AxiomifyRequest,
+      res: AxiomifyResponse,
+    ) => void | Promise<void>,
+  ): void {
+    this._methodNotAllowedHandler = handler;
+  }
+
   constructor(
     private readonly router: Router,
     private readonly hooks: HookManager,
@@ -26,10 +59,18 @@ export class RequestDispatcher {
 
       const reqParams = req.params as Record<string, string>;
       const match = this.router.lookup(req.method, req.path, reqParams);
-      if (!match) return res.status(404).send(null, 'Route not found');
+      if (!match) {
+        await this._notFoundHandler(req, res);
+        return;
+      }
       if ('error' in match) {
-        res.header('Allow', match.allowed.join(', '));
-        return res.status(405).send(null, 'Method Not Allowed');
+        const allowed = [...match.allowed];
+        if (!allowed.includes('OPTIONS')) {
+          allowed.push('OPTIONS');
+        }
+        res.header('Allow', allowed.join(', '));
+        await this._methodNotAllowedHandler(req, res);
+        return;
       }
 
       await this.executeMatchedRoute(req, res, match.route, reqParams);
@@ -146,6 +187,24 @@ export class RequestDispatcher {
     const onErrorRet = this.hooks.runSafe('onError', err, req, res);
     if (onErrorRet) await onErrorRet;
     if (res.headersSent) return;
+
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (isProduction) {
+      if (err instanceof ValidationError) {
+        res
+          .status(err.statusCode || 400)
+          .send(err.errors || (err as any).issues, err.message);
+      } else {
+        res
+          .status(500)
+          .send(
+            { error: 'Internal Server Error', code: 'INTERNAL_ERROR' },
+            'Internal Server Error',
+          );
+      }
+      return;
+    }
+
     const anyErr = err as Record<string, unknown>;
     const statusCode =
       typeof anyErr.statusCode === 'number'
@@ -157,12 +216,10 @@ export class RequestDispatcher {
       typeof anyErr.message === 'string'
         ? anyErr.message
         : 'Internal Server Error';
-    const errorData =
-      anyErr.issues ??
-      anyErr.errors ??
-      (process.env.NODE_ENV === 'development'
-        ? { stack: typeof anyErr.stack === 'string' ? anyErr.stack : undefined }
-        : null);
+    const errorData = anyErr.issues ??
+      anyErr.errors ?? {
+        stack: typeof anyErr.stack === 'string' ? anyErr.stack : undefined,
+      };
     res.status(statusCode).send(errorData, message);
   }
 }

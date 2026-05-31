@@ -1,5 +1,11 @@
 # @axiomify/graphql
 
+## 6.1.0
+
+### Patch Changes
+
+- @axiomify/core@6.1.0
+
 ## 6.0.0
 
 ### Major Changes

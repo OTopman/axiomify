@@ -1,7 +1,8 @@
-import type {
+import {
   AxiomifyRequest,
   AxiomifyResponse,
   RouteMiddleware,
+  AxiomifyError,
 } from '@axiomify/core';
 import { randomUUID } from 'crypto';
 import type {
@@ -157,18 +158,13 @@ function buildGetToken(options: AuthOptions) {
   );
 }
 function validateSecret(secret: string, context: string): void {
-  // RFC 7518 §3.2 requires HS256 keys to be at least 256 bits (32 bytes).
-  // We measure UTF-8 byte length, not character count: a 32-character base64
-  // string is only 24 bytes (192 bits), well below spec. Counting characters
-  // would silently accept under-strength keys.
   const byteLength = Buffer.byteLength(secret, 'utf8');
   if (byteLength < 32) {
-    const msg =
+    throw new AxiomifyError(
       `[axiomify/auth] ${context} is ${byteLength} bytes; ` +
-      `the JWA spec (RFC 7518 §3.2) requires at least 32 bytes (256 bits) for HS256. ` +
-      `Generate one with: node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`;
-    if (process.env.NODE_ENV === 'production') throw new Error(msg);
-    console.warn(msg);
+        `the JWA spec (RFC 7518 §3.2) requires at least 32 bytes (256 bits) for HS256. ` +
+        `Generate one with: node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`,
+    );
   }
 }
 function tokenOptions(
@@ -352,7 +348,11 @@ export function createAuthPlugin(options: AuthOptions): RouteMiddleware {
             .status(401)
             .send(null, 'Unauthorized: Token has been revoked');
       }
-      req.state.user = decoded;
+      if (typeof req.state.set === 'function') {
+        req.state.set('user', decoded);
+      } else {
+        req.state.user = decoded;
+      }
     } catch (err) {
       // Only treat JWT errors as 401; re-throw infra errors
       const name = (err as Error)?.name ?? '';

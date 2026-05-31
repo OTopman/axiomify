@@ -103,6 +103,7 @@ describe.skipIf(!uwsSupported)('@axiomify/ws - Room Manager', () => {
     rooms = wsRooms(app, {
       path: '/chat',
       maxRoomsPerClient: 3,
+      allowlist: /.*/,
       presenceIntervalMs: 0, // disable for tests
       plugins: [
         async (req, res) => {

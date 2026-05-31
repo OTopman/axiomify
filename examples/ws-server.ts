@@ -28,6 +28,7 @@ app.route({
 // Configure the Room Manager at '/chat'
 const rooms = wsRooms(app, {
   path: '/chat',
+  allowlist: /.*/, // Allow joining any room (default is default-deny)
   maxRoomsPerClient: 5,
   presenceIntervalMs: 15000, // Presence update interval (heartbeat)
   schema: z.object({

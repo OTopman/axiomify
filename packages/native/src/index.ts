@@ -8,6 +8,7 @@ import {
   ADAPTER_LOCK_TOKEN,
   makeSerialize,
   compiledStates,
+  AxiomifyError,
 } from '@axiomify/core';
 import cluster from 'cluster';
 import { cpus } from 'node:os';
@@ -111,6 +112,7 @@ export interface NativeAdapterOptions {
    * @default false
    */
   trustProxy?: boolean;
+  proxyIpValidator?: (ip: string) => boolean;
   /**
    * WebSocket endpoint configuration. Omit to disable WebSocket support.
    * Set to `false` to explicitly disable.
@@ -174,6 +176,7 @@ export class NativeAdapter {
   private readonly _server: TemplatedApp;
   private readonly _maxBodySize: number;
   private readonly _trustProxy: boolean;
+  private readonly _proxyIpValidator?: (ip: string) => boolean;
   private readonly _workers: number;
   private readonly _allowUserspaceProxy: boolean;
   private readonly _logger: NonNullable<NativeAdapterOptions['logger']>;
@@ -199,20 +202,25 @@ export class NativeAdapter {
     this._port = options.port ?? 3000;
     this._maxBodySize = options.maxBodySize ?? 1_048_576;
     this._trustProxy = options.trustProxy ?? false;
-    this._workers = options.workers ?? availableParallelism();
-    this._allowUserspaceProxy = options.allowUserspaceProxy ?? false;
+    this._proxyIpValidator = options.proxyIpValidator;
     this._requestTimeout = options.requestTimeout ?? 0;
     this._restartParallelism = options.restartParallelism ?? 1;
+    this._workers = options.workers ?? availableParallelism();
+    this._allowUserspaceProxy = options.allowUserspaceProxy ?? false;
     this._logger = options.logger ?? {
       warn: (msg, meta) => console.warn(msg, meta ?? ''),
       error: (msg, meta) => console.error(msg, meta ?? ''),
     };
-    if (!this._trustProxy) {
-      this._logger.warn(
-        '[Axiomify/native] trustProxy is disabled. Behind a reverse proxy (e.g. Nginx, ALB, Cloudflare), ' +
-          "all requests will appear to come from the proxy's IP address, which makes rate limiting ineffective. " +
-          'Set trustProxy: true only if you are behind a trusted proxy.',
-      );
+    if (this._trustProxy && !this._proxyIpValidator) {
+      const msg =
+        'AxiomifyWarning: trustProxy is enabled but no proxyIpValidator is configured. ' +
+        'X-Forwarded-For can be spoofed to bypass rate limiting. ' +
+        'Configure a CIDR allowlist for trusted proxy IPs.';
+      if (this._app.strictSchema) {
+        throw new AxiomifyError(msg);
+      } else {
+        this._logger.warn(msg);
+      }
     }
     this._serialize = makeSerialize(this._app.serializer);
 
@@ -253,6 +261,28 @@ export class NativeAdapter {
   // -------------------------------------------------------------------------
 
   private _registerRoutes(): void {
+    const normalizedPaths = new Map<string, string>();
+    for (const route of this._app.registeredRoutes) {
+      const norm =
+        route.method +
+        ' ' +
+        route.path
+          .split('/')
+          .map((s) => (s.startsWith(':') ? ':*' : s))
+          .join('/');
+      const existing = normalizedPaths.get(norm);
+      if (existing && existing !== route.path) {
+        const msg = `AxiomifyError: Conflicting parameterized routes: "${existing}" and "${route.path}" resolve ambiguously. Use distinct path structures.`;
+        if (this._app.routeConflict === 'throw') {
+          throw new AxiomifyError(msg);
+        } else {
+          this._logger.warn(msg);
+        }
+      } else {
+        normalizedPaths.set(norm, route.path);
+      }
+    }
+
     // Aggregate registered methods per path so we can register per-path
     // catch-alls for the unregistered methods. Without this, a request to
     // POST /resource where only GET is registered falls through to the
@@ -324,151 +354,42 @@ export class NativeAdapter {
       }
 
       const allow = Array.from(methods).sort().join(', ');
-      const app = this._app;
-      const serialize = this._serialize;
-      const errorCache = this._errorCache;
-      const trustProxy = this._trustProxy;
-
-      this._server.any(path, (res: UWSResponse, req: UWSRequest) => {
-        const method = req.getMethod().toUpperCase() as HttpMethod;
-        const url = req.getUrl();
-        const queryStr = req.getQuery();
-        const ip = trustProxy
-          ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
-            _ipDecoder.decode(res.getRemoteAddressAsText())
-          : _ipDecoder.decode(res.getRemoteAddressAsText());
-        const headers = collectHeaders(req);
-
-        let aborted = false;
-        res.onAborted(() => {
-          aborted = true;
+      this._server.any(path, (res: UWSResponse, _req: UWSRequest) => {
+        res.onAborted(() => {});
+        res.cork(() => {
+          res.writeStatus(statusLine(405));
+          res.writeHeader('Allow', allow);
+          res.writeHeader('Content-Type', 'application/json');
+          res.end(cached405Body);
         });
-
-        const axiomifyReq = new NativeRequest(
-          method,
-          url,
-          ip,
-          headers,
-          queryStr,
-          undefined,
-        );
-
-        const axiomifyRes = new NativeResponse(
-          res,
-          app,
-          axiomifyReq,
-          method,
-          serialize,
-          errorCache,
-        );
-
-        const dummyRoute = {
-          method,
-          path,
-          handler: (_req: any, r: any) => {
-            r.header('Allow', allow);
-            r.status(405).send(null, 'Method Not Allowed');
-          },
-        } as any;
-
-        compiledStates.set(dummyRoute, {
-          pipeline: [dummyRoute.handler],
-          hasResponseSchema: false,
-        });
-
-        app
-          .handleMatchedRoute(
-            this._lockToken,
-            axiomifyReq,
-            axiomifyRes,
-            dummyRoute,
-            {},
-          )
-          .catch(() => {
-            if (!aborted) {
-              res.cork(() => {
-                res.writeStatus(statusLine(405));
-                res.writeHeader('Allow', allow);
-                res.writeHeader('Content-Type', 'application/json');
-                res.end(cached405Body);
-              });
-            }
-          });
       });
     }
   }
 
   private _registerFallback(): void {
     const cached404 = this._errorCache.cached404;
-    const app = this._app;
-    const serialize = this._serialize;
-    const errorCache = this._errorCache;
-    const trustProxy = this._trustProxy;
-
-    this._server.any('/*', (res: UWSResponse, req: UWSRequest) => {
-      const method = req.getMethod().toUpperCase() as HttpMethod;
-      const url = req.getUrl();
-      const queryStr = req.getQuery();
-      const ip = trustProxy
-        ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
-          _ipDecoder.decode(res.getRemoteAddressAsText())
-        : _ipDecoder.decode(res.getRemoteAddressAsText());
-      const headers = collectHeaders(req);
-
-      let aborted = false;
-      res.onAborted(() => {
-        aborted = true;
+    this._server.any('/*', (res: UWSResponse, _req: UWSRequest) => {
+      res.onAborted(() => {});
+      res.cork(() => {
+        res.writeStatus(cached404.statusLine);
+        res.writeHeader('Content-Type', 'application/json');
+        res.end(cached404.body);
       });
-
-      const axiomifyReq = new NativeRequest(
-        method,
-        url,
-        ip,
-        headers,
-        queryStr,
-        undefined,
-      );
-
-      const axiomifyRes = new NativeResponse(
-        res,
-        app,
-        axiomifyReq,
-        method,
-        serialize,
-        errorCache,
-      );
-
-      const dummyRoute = {
-        method,
-        path: '/*',
-        handler: (_req: any, r: any) => {
-          r.status(404).send(null, 'Route not found');
-        },
-      } as any;
-
-      compiledStates.set(dummyRoute, {
-        pipeline: [dummyRoute.handler],
-        hasResponseSchema: false,
-      });
-
-      app
-        .handleMatchedRoute(
-          this._lockToken,
-          axiomifyReq,
-          axiomifyRes,
-          dummyRoute,
-          {},
-        )
-        .catch(() => {
-          if (!aborted) {
-            res.cork(() => {
-              res.writeStatus(cached404.statusLine);
-              res.writeHeader('Content-Type', 'application/json');
-              res.end(cached404.body);
-            });
-          }
-        });
     });
+  }
+
+  private _extractIp(res: UWSResponse): string {
+    const remoteIp = _ipDecoder.decode(res.getRemoteAddressAsText());
+    if (this._trustProxy) {
+      if (this._proxyIpValidator) {
+        if (this._proxyIpValidator(remoteIp)) {
+          return (
+            _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) || remoteIp
+          );
+        }
+      }
+    }
+    return remoteIp;
   }
 
   // -------------------------------------------------------------------------
@@ -516,10 +437,7 @@ export class NativeAdapter {
       const queryStr = req.getQuery();
       const ctRaw = headers['content-type'];
       const contentType = (Array.isArray(ctRaw) ? ctRaw[0] : ctRaw) ?? '';
-      const ip = trustProxy
-        ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
-          _ipDecoder.decode(res.getRemoteAddressAsText())
-        : _ipDecoder.decode(res.getRemoteAddressAsText());
+      const ip = adapter._extractIp(res);
 
       // Construct request and response objects.
       const axiomifyReq = new NativeRequest(
@@ -773,10 +691,7 @@ export class NativeAdapter {
 
           const url = req.getUrl();
           const queryStr = req.getQuery();
-          const ip = trustProxy
-            ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
-              _ipDecoder.decode(res.getRemoteAddressAsText())
-            : _ipDecoder.decode(res.getRemoteAddressAsText());
+          const ip = this._extractIp(res);
 
           // WS handshake headers MUST be single-valued per RFC 6455 §4.1.
           // If a client somehow sent multiples, take the first to match the
@@ -874,17 +789,43 @@ export class NativeAdapter {
                 typeof message === 'string' || Buffer.isBuffer(message)
                   ? message
                   : JSON.stringify(message);
-              ws.send(data, isBinary);
+              try {
+                ws.send(data, isBinary);
+              } catch (err: any) {
+                if (!err.message?.includes('closed uWS')) throw err;
+              }
             },
-            close: () => ws.close(),
-            subscribe: (topic: string) => ws.subscribe(topic),
-            unsubscribe: (topic: string) => ws.unsubscribe(topic),
+            close: () => {
+              try {
+                ws.close();
+              } catch (err: any) {
+                if (!err.message?.includes('closed uWS')) throw err;
+              }
+            },
+            subscribe: (topic: string) => {
+              try {
+                ws.subscribe(topic);
+              } catch (err: any) {
+                if (!err.message?.includes('closed uWS')) throw err;
+              }
+            },
+            unsubscribe: (topic: string) => {
+              try {
+                ws.unsubscribe(topic);
+              } catch (err: any) {
+                if (!err.message?.includes('closed uWS')) throw err;
+              }
+            },
             publish: (topic: string, message: any, isBinary?: boolean) => {
               const data =
                 typeof message === 'string' || Buffer.isBuffer(message)
                   ? message
                   : JSON.stringify(message);
-              ws.publish(topic, data, isBinary);
+              try {
+                ws.publish(topic, data, isBinary);
+              } catch (err: any) {
+                if (!err.message?.includes('closed uWS')) throw err;
+              }
             },
           };
           ws.client = client;

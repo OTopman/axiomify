@@ -1,4 +1,5 @@
 import type { HttpMethod, RouteDefinition } from './types';
+import { AxiomifyError } from './errors';
 
 interface RoutePayload {
   definition: RouteDefinition;
@@ -50,10 +51,34 @@ export class Router {
   private root = new TrieNode();
   // Allocate exactly ONCE per router instance
   private readonly _sharedAccum = makeParamAccum(16);
+  private readonly _routeConflict: 'throw' | 'warn';
+  private readonly _normalizedPaths = new Map<string, string>();
+
+  constructor(options: { routeConflict?: 'throw' | 'warn' } = {}) {
+    this._routeConflict = options.routeConflict ?? 'throw';
+  }
 
   // ── Registration ────────────────────────────────────────────────────────────
 
   public register(route: RouteDefinition): void {
+    const norm =
+      route.method +
+      ' ' +
+      route.path
+        .split('/')
+        .map((s) => (s.startsWith(':') ? ':*' : s))
+        .join('/');
+    const existing = this._normalizedPaths.get(norm);
+    if (existing && existing !== route.path) {
+      const msg = `AxiomifyError: Conflicting parameterized routes: "${existing}" and "${route.path}" resolve ambiguously. Use distinct path structures.`;
+      if (this._routeConflict === 'throw') {
+        throw new AxiomifyError(msg);
+      } else {
+        console.warn(msg);
+      }
+    } else {
+      this._normalizedPaths.set(norm, route.path);
+    }
     let node = this.root;
     let start = route.path.startsWith('/') ? 1 : 0;
     const path = route.path;

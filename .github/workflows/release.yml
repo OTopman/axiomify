@@ -21,6 +21,7 @@ jobs:
     permissions:
       contents: write       # create GitHub Releases, push version bump commits
       pull-requests: write  # open/update the changesets "Version Packages" PR
+      id-token: write       # required for npm package provenance / signing
     steps:
       - name: Checkout Repo
         # Pin to SHA — equivalent to actions/checkout@v4.2.2

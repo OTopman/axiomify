@@ -48,9 +48,26 @@ export interface SerializerInput {
 export type SerializerFn = (input: SerializerInput) => unknown;
 
 export interface RequestState {
+  get(key: string): any;
+  set(key: string, value: unknown): void;
   startTime?: bigint;
   [key: string]: any;
 }
+
+export interface AxiomifyConfig {
+  timeout?: number;
+  telemetry?: {
+    startSpan: (
+      name: string,
+      attributes: Record<string, string>,
+    ) => { end(): void };
+  };
+  logger?: any;
+  routeConflict?: 'throw' | 'warn';
+  strictSchema?: boolean;
+}
+
+export type AxiomifyOptions = AxiomifyConfig;
 
 export interface AxiomifyRequest<
   Body = unknown,

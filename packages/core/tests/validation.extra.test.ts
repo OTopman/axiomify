@@ -396,4 +396,39 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
       }
     }
   });
+
+  it('falls back to zod-to-json-schema when toJSONSchema is missing', () => {
+    const compiler = new ValidationCompiler();
+    const schemaWithoutToJSON = z.object({
+      id: z.string(),
+    });
+    // Delete toJSONSchema to force the fallback require('zod-to-json-schema')
+    delete (schemaWithoutToJSON as any).toJSONSchema;
+
+    compiler.compile('POST:/fallback-json-schema', {
+      body: schemaWithoutToJSON,
+    });
+
+    const req = makeReq({ method: 'POST', body: { id: 'test-id' } });
+    expect(() =>
+      compiler.execute('POST:/fallback-json-schema', req),
+    ).not.toThrow();
+  });
+
+  it('falls back to Zod validator when zod-to-json-schema fails / catch block is triggered', () => {
+    const compiler = new ValidationCompiler();
+    // A mock schema with no toJSONSchema and invalid def structure that makes zod-to-json-schema throw
+    const badSchema: any = {
+      _def: { typeName: 'ZodInvalid' },
+      parse: (x: any) => x,
+      safeParse: (x: any) => ({ success: true, data: x }),
+    };
+
+    compiler.compile('POST:/fallback-catch', {
+      body: badSchema,
+    });
+
+    const req = makeReq({ method: 'POST', body: { id: 'test-id' } });
+    expect(() => compiler.execute('POST:/fallback-catch', req)).not.toThrow();
+  });
 });
