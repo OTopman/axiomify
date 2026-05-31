@@ -32,6 +32,12 @@ export interface GraphQLPluginOptions<TContext = Record<string, unknown>> {
   playgroundPath?: string;
   maxDepth?: number;
   maxAliases?: number;
+  /**
+   * Maximum allowed field count in a query.
+   * Prevents wide query attacks.
+   * @default 100 in production, undefined in development
+   */
+  maxFields?: number;
   validationRules?: ReadonlyArray<never>;
   /**
    * Disables GraphQL introspection queries (__schema, __type).
@@ -79,6 +85,17 @@ function countAliases(node: Record<string, unknown>): number {
   return count;
 }
 
+function countFields(node: Record<string, unknown>): number {
+  let count = node.kind === 'Field' ? 1 : 0;
+  if (node.selectionSet) {
+    const children = (
+      node.selectionSet as { selections: Record<string, unknown>[] }
+    ).selections;
+    count += children.reduce((sum: number, s) => sum + countFields(s), 0);
+  }
+  return count;
+}
+
 function getQueryDepth(doc: DocumentNode): number {
   return doc.definitions.reduce(
     (max, def) =>
@@ -90,6 +107,13 @@ function getQueryDepth(doc: DocumentNode): number {
 function getQueryAliases(doc: DocumentNode): number {
   return doc.definitions.reduce(
     (sum, def) => sum + countAliases(def as unknown as Record<string, unknown>),
+    0,
+  );
+}
+
+function getQueryFields(doc: DocumentNode): number {
+  return doc.definitions.reduce(
+    (sum, def) => sum + countFields(def as unknown as Record<string, unknown>),
     0,
   );
 }
@@ -112,7 +136,11 @@ function escapeHtml(s: string): string {
 }
 
 function escapeJsString(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return JSON.stringify(s)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
 }
 
 function buildPlaygroundHtml(graphqlPath: string): string {
@@ -153,11 +181,11 @@ function buildPlaygroundHtml(graphqlPath: string): string {
       is the actual control surface. If you need stricter guarantees,
       vendor the assets locally and host them yourself.
     -->
-    <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/graphiql@3.8.3/graphiql.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1"></script>
+    <script crossorigin src="https://unpkg.com/graphiql@3.8.3/graphiql.min.js" integrity="sha384-HbRVEFG0JGJZeAHCJ9Xm2+tpknBQ7QZmNlO/DgZtkZ0aJSypT96YYGRNod99l9Ie"></script>
     <script>
-      const fetcher = GraphiQL.createFetcher({ url: '${jsPath}' });
+      const fetcher = GraphiQL.createFetcher({ url: ${jsPath} });
       ReactDOM.createRoot(document.getElementById('graphiql')).render(
         React.createElement(GraphiQL, { fetcher })
       );
@@ -179,13 +207,13 @@ export function useGraphQL<TContext = Record<string, unknown>>(
     playgroundPath: rawPlaygroundPath,
     maxDepth = isProduction ? 12 : undefined,
     maxAliases = isProduction ? 15 : undefined,
+    maxFields = isProduction ? 100 : undefined,
     validationRules = [],
   } = options;
 
   // Default: disable introspection in production, enable in dev/test.
   // Explicit option always wins so callers can override in either direction.
-  const disableIntrospection =
-    options.disableIntrospection ?? isProduction;
+  const disableIntrospection = options.disableIntrospection ?? isProduction;
 
   const gqlPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
   const pgPath =
@@ -287,6 +315,22 @@ export function useGraphQL<TContext = Record<string, unknown>>(
       }
     }
 
+    if (maxFields !== undefined) {
+      const fields = getQueryFields(document);
+      if (fields > maxFields) {
+        return res.status(400).sendRaw(
+          JSON.stringify({
+            errors: [
+              {
+                message: `Query has ${fields} fields, exceeding maximum of ${maxFields}.`,
+              },
+            ],
+          }),
+          'application/json',
+        );
+      }
+    }
+
     const validationErrors = validate(schema, document, allRules);
     if (validationErrors.length > 0) {
       return res
@@ -305,7 +349,12 @@ export function useGraphQL<TContext = Record<string, unknown>>(
         return res.status(500).sendRaw(
           JSON.stringify({
             errors: [
-              { message: (ctxErr as Error)?.message ?? 'Context error.' },
+              {
+                message:
+                  process.env.NODE_ENV === 'production'
+                    ? 'Context error.'
+                    : ((ctxErr as Error)?.message ?? 'Context error.'),
+              },
             ],
           }),
           'application/json',
@@ -339,7 +388,12 @@ export function useGraphQL<TContext = Record<string, unknown>>(
       return res.status(500).sendRaw(
         JSON.stringify({
           errors: [
-            { message: (execErr as Error)?.message ?? 'Execution error.' },
+            {
+              message:
+                process.env.NODE_ENV === 'production'
+                  ? 'Execution error.'
+                  : ((execErr as Error)?.message ?? 'Execution error.'),
+            },
           ],
         }),
         'application/json',

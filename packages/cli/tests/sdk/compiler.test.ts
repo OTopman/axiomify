@@ -20,8 +20,8 @@ describe('CompilerPipeline', () => {
               name: 'limit',
               in: 'query',
               required: false,
-              schema: { kind: 'primitive', name: 'number', description: '' }
-            }
+              schema: { kind: 'primitive', name: 'number', description: '' },
+            },
           ],
           pathParams: [],
           queryParams: [],
@@ -30,15 +30,15 @@ describe('CompilerPipeline', () => {
           responses: [
             {
               statusCode: 200,
-              schema: { 
-                kind: 'array', 
+              schema: {
+                kind: 'array',
                 items: { kind: 'primitive', name: 'string', description: '' },
-                description: '' 
-              }
-            }
-          ]
-        }
-      ]
+                description: '',
+              },
+            },
+          ],
+        },
+      ],
     };
 
     // Add an unused type to test dead-code elimination (optimizer)
@@ -46,9 +46,14 @@ describe('CompilerPipeline', () => {
       kind: 'object',
       name: 'UnusedType',
       fields: [
-        { name: 'id', type: { kind: 'primitive', name: 'string', description: '' }, required: true, description: '' }
+        {
+          name: 'id',
+          type: { kind: 'primitive', name: 'string', description: '' },
+          required: true,
+          description: '',
+        },
       ],
-      description: 'This should be removed'
+      description: 'This should be removed',
     });
 
     const pipeline = new CompilerPipeline();
@@ -58,13 +63,15 @@ describe('CompilerPipeline', () => {
 
     // 3. Assert
     expect(result.hasErrors).toBe(false);
-    const errors = result.diagnostics.filter((d: any) => d.severity === 'error');
+    const errors = result.diagnostics.filter(
+      (d: any) => d.severity === 'error',
+    );
     expect(errors).toHaveLength(0);
 
     const compiledSchema = result.schema;
     expect(compiledSchema.info.title).toBe('Test API');
     expect(compiledSchema.endpoints).toHaveLength(1);
-    
+
     // Check normalization (e.g. valid operationId check)
     expect(compiledSchema.endpoints[0].operationId).toBe('getUsers');
 
@@ -87,9 +94,9 @@ describe('CompilerPipeline', () => {
           pathParams: [],
           queryParams: [],
           headerParams: [],
-          responses: []
-        }
-      ]
+          responses: [],
+        },
+      ],
     };
 
     const pipeline = new CompilerPipeline();

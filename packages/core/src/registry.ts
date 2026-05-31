@@ -16,7 +16,10 @@ import { ValidationCompiler } from './validation';
 interface RegistryOptions {
   timeout: number;
   telemetry?: {
-    startSpan: (name: string, attributes: Record<string, string>) => { end(): void };
+    startSpan: (
+      name: string,
+      attributes: Record<string, string>,
+    ) => { end(): void };
   };
   logger?: AxiomifyLogger;
   strictSchema?: boolean;
@@ -27,7 +30,10 @@ function createTimeoutError(): Error & { statusCode: number } {
   return Object.assign(new Error('Request timed out'), { statusCode: 408 });
 }
 
-function rejectOnAbort(signal: AbortSignal, error: Error & { statusCode: number }): Promise<never> {
+function rejectOnAbort(
+  signal: AbortSignal,
+  error: Error & { statusCode: number },
+): Promise<never> {
   return new Promise((_, reject) => {
     if (signal.aborted) return reject(error);
     signal.addEventListener('abort', () => reject(error), { once: true });
@@ -85,8 +91,9 @@ export class RouteRegistry {
     const routeId = `${definition.method}:${definition.path}`;
     if (definition.schema) this.validator.compile(routeId, definition.schema);
 
-    const pipeline: Array<(req: AxiomifyRequest, res: AxiomifyResponse) => Promise<void> | void> =
-      [];
+    const pipeline: Array<
+      (req: AxiomifyRequest, res: AxiomifyResponse) => Promise<void> | void
+    > = [];
 
     // onPreHandler hooks are NOT baked into the per-route pipeline.
     // The dispatcher runs them directly before entering the pipeline so that:
@@ -110,14 +117,16 @@ export class RouteRegistry {
         const timeoutSignal = AbortSignal.timeout(effectiveTimeout);
         let span: { end(): void } | undefined;
         if (telemetry) {
-          span = telemetry.startSpan('http.request', { method: req.method, path: definition.path });
+          span = telemetry.startSpan('http.request', {
+            method: req.method,
+            path: definition.path,
+          });
         }
         try {
           await Promise.race([
             definition.handler(req as never, res),
             rejectOnAbort(timeoutSignal, timeoutError),
           ]);
-
         } finally {
           span?.end();
         }
@@ -138,7 +147,9 @@ export class RouteRegistry {
     this.routes.push(definition as RouteDefinition);
   }
 
-  public registerWs<S extends RouteSchema, M = any>(definition: WsRouteDefinition<S, M>): void {
+  public registerWs<S extends RouteSchema, M = any>(
+    definition: WsRouteDefinition<S, M>,
+  ): void {
     const routeId = `WS:${definition.path}`;
     if (definition.schema?.message) {
       // The ValidationCompiler is a request-shape validator (body / query /

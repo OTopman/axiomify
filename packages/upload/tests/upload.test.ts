@@ -134,7 +134,6 @@ describe('useUpload Plugin', () => {
   });
 });
 
-
 // ─── Rejection path tests ─────────────────────────────────────────────────────
 
 describe('Upload handler — rejection paths', () => {
@@ -161,9 +160,14 @@ describe('Upload handler — rejection paths', () => {
       params: {},
     };
     const res: any = {
-      status(c: number) { sentStatus = c; return this; },
+      status(c: number) {
+        sentStatus = c;
+        return this;
+      },
       send() {},
-      header() { return this; },
+      header() {
+        return this;
+      },
       headersSent: false,
     };
 
@@ -173,7 +177,8 @@ describe('Upload handler — rejection paths', () => {
       // handler may throw if stream is null — that's acceptable
     }
     // Either a 400 is sent or an error is thrown — either proves non-multipart is rejected
-    const rejected = sentStatus === 400 || sentStatus === 500 || sentStatus === undefined;
+    const rejected =
+      sentStatus === 400 || sentStatus === 500 || sentStatus === undefined;
     expect(rejected).toBe(true);
   });
 });

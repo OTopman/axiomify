@@ -160,12 +160,49 @@ export class Room {
    * the client's upgrade handshake — typically contains `user` data
    * set by the auth plugin.
    */
-  getPresence(): Array<{ id: string; state: Record<string, any>; joinedAt: number }> {
-    const result: Array<{ id: string; state: Record<string, any>; joinedAt: number }> = [];
+  getPresence(): Array<{
+    id: string;
+    state: Record<string, any>;
+    joinedAt: number;
+  }> {
+    const sanitizeState = (val: any): any => {
+      if (val === null || typeof val !== 'object') {
+        return val;
+      }
+      if (Array.isArray(val)) {
+        return val.map(sanitizeState);
+      }
+      const clean: Record<string, any> = {};
+      for (const key of Object.keys(val)) {
+        const lowerKey = key.toLowerCase();
+        if (
+          lowerKey.includes('token') ||
+          lowerKey.includes('secret') ||
+          lowerKey.includes('password') ||
+          lowerKey.includes('cookie') ||
+          lowerKey.includes('session') ||
+          lowerKey.includes('auth') ||
+          lowerKey.includes('jti') ||
+          lowerKey === 'iat' ||
+          lowerKey === 'exp' ||
+          lowerKey === 'nbf'
+        ) {
+          continue;
+        }
+        clean[key] = sanitizeState(val[key]);
+      }
+      return clean;
+    };
+
+    const result: Array<{
+      id: string;
+      state: Record<string, any>;
+      joinedAt: number;
+    }> = [];
     for (const member of this._members.values()) {
       result.push({
         id: member.client.id,
-        state: { ...member.client.state },
+        state: sanitizeState(member.client.state),
         joinedAt: member.joinedAt,
       });
     }

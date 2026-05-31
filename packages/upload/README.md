@@ -1,6 +1,5 @@
 # @axiomify/upload
 
-
 [![npm version](https://img.shields.io/npm/v/@axiomify/upload.svg)](https://npmjs.com/package/@axiomify/upload)
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
@@ -31,12 +30,12 @@ app.route({
   method: 'POST',
   path: '/avatar',
   schema: {
-    body: z.object({ userId: z.string() }),  // text fields
+    body: z.object({ userId: z.string() }), // text fields
     files: {
       avatar: {
         autoSaveTo: './uploads/avatars',
         accept: ['image/jpeg', 'image/png', 'image/webp'],
-        maxSize: 5 * 1024 * 1024,  // 5 MB per file
+        maxSize: 5 * 1024 * 1024, // 5 MB per file
       },
     },
   },
@@ -57,13 +56,13 @@ app.route({
 
 ## Options — `useUpload(app, options?)`
 
-| Option | Default | Description |
-|---|---|---|
-| `dest` | `os.tmpdir()` | Default save directory for files without `autoSaveTo`. |
-| `limits.fileSize` | `10 MiB` | Global max file size in bytes. Per-field `maxSize` overrides this. |
-| `limits.files` | `10` | Max number of files per request. |
-| `limits.fields` | `50` | Max number of text fields per request. |
-| `limits.fieldSize` | `1 MiB` | Max text field value size in bytes. |
+| Option             | Default       | Description                                                        |
+| ------------------ | ------------- | ------------------------------------------------------------------ |
+| `dest`             | `os.tmpdir()` | Default save directory for files without `autoSaveTo`.             |
+| `limits.fileSize`  | `10 MiB`      | Global max file size in bytes. Per-field `maxSize` overrides this. |
+| `limits.files`     | `10`          | Max number of files per request.                                   |
+| `limits.fields`    | `50`          | Max number of text fields per request.                             |
+| `limits.fieldSize` | `1 MiB`       | Max text field value size in bytes.                                |
 
 ## Per-field `files` schema
 
@@ -113,6 +112,7 @@ handler: async (req, res) => {
   res.send({ count: files.length, paths: files.map(f => f.path) });
 },
 ```
+
 ## Graceful shutdown
 
 Files in progress when the server shuts down may be partially written. Call `adapter.close()` with a timeout to drain in-flight requests before exit:

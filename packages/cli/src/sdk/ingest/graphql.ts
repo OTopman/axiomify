@@ -43,12 +43,21 @@ export async function ingestGraphQL(
   } catch {
     throw new Error(
       '`graphql` package is required for GraphQL schema ingestion. ' +
-      'Install it: npm install graphql',
+        'Install it: npm install graphql',
     );
   }
 
-  const { buildSchema, isObjectType, isInputObjectType, isEnumType, isUnionType,
-    isScalarType, isNonNullType, isListType, isInterfaceType } = graphqlMod;
+  const {
+    buildSchema,
+    isObjectType,
+    isInputObjectType,
+    isEnumType,
+    isUnionType,
+    isScalarType,
+    isNonNullType,
+    isListType,
+    isInterfaceType,
+  } = graphqlMod;
 
   const diagnostics: IRDiagnostic[] = [];
   const types = new Map<string, IRType>();
@@ -59,15 +68,24 @@ export async function ingestGraphQL(
     gqlSchema = buildSchema(sdl);
   } catch (err) {
     diagnostics.push({
-      severity: 'error', code: 'GRAPHQL_PARSE_ERROR',
+      severity: 'error',
+      code: 'GRAPHQL_PARSE_ERROR',
       message: `Failed to parse GraphQL SDL: ${(err as Error).message}`,
     });
     return {
       schema: {
-        info: { title: options.title ?? 'GraphQL API', version: options.version ?? '1.0.0',
-          sourceFormat: 'graphql' },
-        types, endpoints, securitySchemes: new Map(), servers: [], globalSecurity: [],
-        events: [], reactiveContracts: [],
+        info: {
+          title: options.title ?? 'GraphQL API',
+          version: options.version ?? '1.0.0',
+          sourceFormat: 'graphql',
+        },
+        types,
+        endpoints,
+        securitySchemes: new Map(),
+        servers: [],
+        globalSecurity: [],
+        events: [],
+        reactiveContracts: [],
       },
       diagnostics,
     };
@@ -91,11 +109,17 @@ export async function ingestGraphQL(
 
     // Built-in scalars → inline IR scalars
     const scalarMap: Record<string, IRScalar> = {
-      String: 'string', Int: 'integer', Float: 'number',
-      Boolean: 'boolean', ID: 'string',
+      String: 'string',
+      Int: 'integer',
+      Float: 'number',
+      Boolean: 'boolean',
+      ID: 'string',
     };
     if (scalarMap[name]) {
-      return { inline: { id: name, kind: 'scalar', scalar: scalarMap[name] }, nullable: true };
+      return {
+        inline: { id: name, kind: 'scalar', scalar: scalarMap[name] },
+        nullable: true,
+      };
     }
 
     return { ref: name, nullable: true };
@@ -108,29 +132,43 @@ export async function ingestGraphQL(
     if (name.startsWith('__')) continue;
     if (['String', 'Int', 'Float', 'Boolean', 'ID'].includes(name)) continue;
 
-    if (isObjectType(gqlType) || isInputObjectType(gqlType) || isInterfaceType(gqlType)) {
+    if (
+      isObjectType(gqlType) ||
+      isInputObjectType(gqlType) ||
+      isInterfaceType(gqlType)
+    ) {
       const gqlFields = gqlType.getFields();
-      const fields: IRField[] = Object.entries(gqlFields).map(([fieldName, field]) => {
-        const typeRef = gqlTypeToRef(field.type);
-        return {
-          name: fieldName,
-          type: typeRef,
-          required: !typeRef.nullable,
-          description: field.description ?? undefined,
-          deprecated: !!(field as { deprecationReason?: string }).deprecationReason,
-          deprecationReason: (field as { deprecationReason?: string }).deprecationReason ?? undefined,
-        };
-      });
+      const fields: IRField[] = Object.entries(gqlFields).map(
+        ([fieldName, field]) => {
+          const typeRef = gqlTypeToRef(field.type);
+          return {
+            name: fieldName,
+            type: typeRef,
+            required: !typeRef.nullable,
+            description: field.description ?? undefined,
+            deprecated: !!(field as { deprecationReason?: string })
+              .deprecationReason,
+            deprecationReason:
+              (field as { deprecationReason?: string }).deprecationReason ??
+              undefined,
+          };
+        },
+      );
       const irType: IRObjectType = {
-        id: name, kind: 'object', fields,
+        id: name,
+        kind: 'object',
+        fields,
         description: gqlType.description ?? undefined,
       };
       types.set(name, irType);
     } else if (isEnumType(gqlType)) {
       const irType: IREnumType = {
-        id: name, kind: 'enum', valueType: 'string',
+        id: name,
+        kind: 'enum',
+        valueType: 'string',
         values: gqlType.getValues().map((v) => ({
-          name: v.name, value: v.value as string,
+          name: v.name,
+          value: v.value as string,
           description: v.description ?? undefined,
           deprecated: (v as any).isDeprecated,
         })),
@@ -139,14 +177,17 @@ export async function ingestGraphQL(
       types.set(name, irType);
     } else if (isUnionType(gqlType)) {
       const irType: IRUnionType = {
-        id: name, kind: 'union',
+        id: name,
+        kind: 'union',
         members: gqlType.getTypes().map((t) => ({ ref: t.name })),
         description: gqlType.description ?? undefined,
       };
       types.set(name, irType);
     } else if (isScalarType(gqlType)) {
       const irType: IRScalarType = {
-        id: name, kind: 'scalar', scalar: 'string',
+        id: name,
+        kind: 'scalar',
+        scalar: 'string',
         description: gqlType.description ?? undefined,
       };
       types.set(name, irType);
@@ -209,9 +250,13 @@ export async function ingestGraphQL(
         version: options.version ?? '1.0.0',
         sourceFormat: 'graphql',
       },
-      types, endpoints, securitySchemes: new Map(),
-      servers: [], globalSecurity: [],
-      events: [], reactiveContracts: [],
+      types,
+      endpoints,
+      securitySchemes: new Map(),
+      servers: [],
+      globalSecurity: [],
+      events: [],
+      reactiveContracts: [],
     },
     diagnostics,
   };

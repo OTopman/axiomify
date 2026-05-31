@@ -41,11 +41,11 @@ In v5 it is opt-in:
 
 ```ts
 // v4
-const app = new Axiomify();   // X-Request-Id injected on every response
+const app = new Axiomify(); // X-Request-Id injected on every response
 
 // v5
 const app = new Axiomify();
-app.enableRequestId();        // explicit
+app.enableRequestId(); // explicit
 ```
 
 **Why:** every app paid the per-request closure allocation cost,
@@ -60,10 +60,16 @@ adapter-construction time on multi-arg functions:
 
 ```ts
 // v4 — removed in 5.0
-app.setSerializer((data, message, statusCode, isError, req) => ({ data, ok: !isError }));
+app.setSerializer((data, message, statusCode, isError, req) => ({
+  data,
+  ok: !isError,
+}));
 
 // v5
-app.setSerializer(({ data, message, statusCode, isError, req }) => ({ data, ok: !isError }));
+app.setSerializer(({ data, message, statusCode, isError, req }) => ({
+  data,
+  ok: !isError,
+}));
 ```
 
 Async serializers also now throw at construction (they'd corrupt every
@@ -85,7 +91,7 @@ configured serializer, and a late swap would produce inconsistent shapes:
 ```ts
 // Throws in 5.0
 const adapter = new NativeAdapter(app);
-app.setSerializer(/* ... */);   // Error: adapter already locked
+app.setSerializer(/* ... */); // Error: adapter already locked
 ```
 
 Call `setSerializer` before adapter construction.
@@ -94,10 +100,14 @@ Call `setSerializer` before adapter construction.
 
 ```ts
 // v4 (removed in 5.0)
-const myPlugin: AppPlugin = (app) => { /* ... */ };
+const myPlugin: AppPlugin = (app) => {
+  /* ... */
+};
 
 // v5
-const myPlugin: AppConfigurator = (app) => { /* ... */ };
+const myPlugin: AppConfigurator = (app) => {
+  /* ... */
+};
 // or drop the annotation entirely — 1-arg functions are inferred.
 ```
 
@@ -110,14 +120,18 @@ In v5 the `meta:` field (type `RouteMeta`) is the dedicated location for
 OpenAPI metadata (`tags`, `summary`, `description`, `security`).
 
 ```ts
-app.route({ method: 'GET', path: '/u', meta: { tags: ['U'], summary: 'Get user' }, handler });
+app.route({
+  method: 'GET',
+  path: '/u',
+  meta: { tags: ['U'], summary: 'Get user' },
+  handler,
+});
 ```
 
 In **v6**, `meta:` is removed and its fields move into `schema:` with
 full OAS 3.1.0 coverage. See [migration-v5-to-v6.md](migration-v5-to-v6.md).
 
 The `RouteMeta` type is available through v5. It is removed in v6.
-
 
 #### `app.lockRoutes` requires a token
 
@@ -138,9 +152,9 @@ This is adapter-author surface — most apps never call this directly.
 #### Hook arrays are snapshotted before iteration
 
 If a hook called `app.addHook(type, ...)` of its own type during
-execution, the added hook used to run for the *current* request. In v5
+execution, the added hook used to run for the _current_ request. In v5
 the array is snapshotted before iteration, so added hooks take effect
-on the *next* request. This matches Express / Fastify / Koa convention.
+on the _next_ request. This matches Express / Fastify / Koa convention.
 
 **Action:** none for most apps. Code that relied on the old in-flight
 mutation behaviour (rare) needs to defer registration to startup.
@@ -161,7 +175,9 @@ const adapter = new NativeAdapter(app, {
   // On macOS / Windows, this is REQUIRED for listenClustered():
   // allowUserspaceProxy: true,
 });
-adapter.listenClustered({ /* ... */ });
+adapter.listenClustered({
+  /* ... */
+});
 ```
 
 On non-Linux without the flag, `listenClustered()` throws at the call
@@ -250,7 +266,7 @@ below spec. v5 measures bytes:
 
 ```ts
 // v5 throws in production / warns in development:
-createAuthPlugin({ secret: 'short-secret' });   // < 32 bytes
+createAuthPlugin({ secret: 'short-secret' }); // < 32 bytes
 
 // Generate a real one:
 //   node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"
@@ -264,14 +280,14 @@ old token destroyed, the new token never persisted.
 
 v5 saves the new `jti` first, then revokes:
 
-| Step | v4 | v5 |
-|------|----|-----|
-| 1 | verify old refresh | verify old refresh |
-| 2 | check store.exists | check store.exists |
-| 3 | **revoke old** | sign new tokens |
-| 4 | sign new | **save new jti** |
-| 5 | save new jti | respond to client |
-| 6 | respond | revoke old (soft-fail) |
+| Step | v4                 | v5                     |
+| ---- | ------------------ | ---------------------- |
+| 1    | verify old refresh | verify old refresh     |
+| 2    | check store.exists | check store.exists     |
+| 3    | **revoke old**     | sign new tokens        |
+| 4    | sign new           | **save new jti**       |
+| 5    | save new jti       | respond to client      |
+| 6    | respond            | revoke old (soft-fail) |
 
 Store errors during the new-token save → **503** (was: silently 401 in
 4.x). Store errors during the final revoke → swallowed (client already
@@ -291,10 +307,10 @@ positives on legitimate JSON containing the strings `union select` /
 
 ```ts
 // v4
-useSecurity(app, { sqlInjectionProtection: true });  // would 403 on attack patterns
+useSecurity(app, { sqlInjectionProtection: true }); // would 403 on attack patterns
 
 // v5
-useSecurity(app, { sqlInjectionProtection: true });  // warns + no-op
+useSecurity(app, { sqlInjectionProtection: true }); // warns + no-op
 ```
 
 The option is still accepted to avoid breaking existing config; it now
@@ -325,7 +341,6 @@ useOpenAPI(app, { info, routePrefix: '/docs' });
 useOpenAPI(app, { info, prefix: '/docs' });
 ```
 
-
 #### `OpenApiGenerator` is now publicly exported
 
 For client-codegen pipelines you can now `import { OpenApiGenerator }
@@ -354,11 +369,11 @@ change; pure perf win.
 
 Three new commands gained in 5.0:
 
-| Command | Purpose |
-|---|---|
+| Command                    | Purpose                                    |
+| -------------------------- | ------------------------------------------ |
 | `axiomify openapi [entry]` | Generate the OpenAPI spec to stdout / file |
-| `axiomify check [entry]` | Static production-readiness audit |
-| `axiomify doctor` | Diagnose the host environment |
+| `axiomify check [entry]`   | Static production-readiness audit          |
+| `axiomify doctor`          | Diagnose the host environment              |
 
 The `axiomify routes` output was overhauled: Unicode-bordered table,
 colour-coded methods, WebSocket routes shown alongside HTTP routes

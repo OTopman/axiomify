@@ -1,6 +1,4 @@
-import type {
-  HttpResponse as UWSResponse,
-} from 'uWebSockets.js';
+import type { HttpResponse as UWSResponse } from 'uWebSockets.js';
 import { fastParseQuery } from './query';
 
 // ---------------------------------------------------------------------------

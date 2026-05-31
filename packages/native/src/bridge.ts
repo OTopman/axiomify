@@ -10,7 +10,9 @@ import type { AxiomifyRequest, AxiomifyResponse } from '@axiomify/core';
  * This stub satisfies those contracts so standard middleware can run inside
  * the native adapter via `adaptMiddleware`.
  */
-export function createNodeReqPolyfill(req: AxiomifyRequest): Record<string, unknown> {
+export function createNodeReqPolyfill(
+  req: AxiomifyRequest,
+): Record<string, unknown> {
   return {
     headers: req.headers,
     method: req.method,
@@ -37,7 +39,9 @@ export function createNodeReqPolyfill(req: AxiomifyRequest): Record<string, unkn
  * Express / Connect middleware typically reads or writes:
  *   res.statusCode, res.setHeader, res.getHeader, res.removeHeader, res.end
  */
-export function createNodeResPolyfill(res: AxiomifyResponse): Record<string, unknown> {
+export function createNodeResPolyfill(
+  res: AxiomifyResponse,
+): Record<string, unknown> {
   return {
     get statusCode() {
       return res.statusCode;
@@ -125,10 +129,35 @@ export function createNodeResPolyfill(res: AxiomifyResponse): Record<string, unk
  *   handler: async (req, res) => res.send({ ok: true }),
  * });
  */
+const UNSAFE_MIDDLEWARE_NAMES = new Set([
+  'jsonParser',
+  'urlencodedParser',
+  'bodyParser',
+  'multer',
+  'compression',
+]);
+
 /* v8 ignore start -- express middleware bridge requires live uWS context */
 export function adaptMiddleware(
-  middleware: (req: unknown, res: unknown, next: (err?: unknown) => void) => void,
+  middleware: (
+    req: unknown,
+    res: unknown,
+    next: (err?: unknown) => void,
+  ) => void,
 ) {
+  const name = middleware.name || '';
+  if (
+    UNSAFE_MIDDLEWARE_NAMES.has(name) ||
+    name.toLowerCase().includes('bodyparser')
+  ) {
+    console.warn(
+      `[axiomify/native] Warning: Bridging middleware "${name}" may be unsafe. ` +
+        `Body parsers, file uploaders, and compression middleware from Express ` +
+        `can interfere with Axiomify's native request lifecycle or uWebSockets.js stream handling. ` +
+        `Use Axiomify's native plugins instead (e.g. @axiomify/upload).`,
+    );
+  }
+
   return (req: AxiomifyRequest, res: AxiomifyResponse): Promise<void> => {
     return new Promise<void>((resolve, reject) => {
       const nodeReq = createNodeReqPolyfill(req);

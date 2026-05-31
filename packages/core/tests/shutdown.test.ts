@@ -6,7 +6,9 @@ function makeFakeServer() {
   const emitter = new EventEmitter();
   let closeCallback: ((err?: Error) => void) | null = null;
   const server = Object.assign(emitter, {
-    close: vi.fn((cb?: (err?: Error) => void) => { closeCallback = cb ?? null; }),
+    close: vi.fn((cb?: (err?: Error) => void) => {
+      closeCallback = cb ?? null;
+    }),
     closeIdleConnections: vi.fn(),
     closeAllConnections: vi.fn(),
     listening: true,
@@ -102,7 +104,9 @@ describe('gracefulShutdown', () => {
 describe('gracefulShutdown — onShutdown error path', () => {
   let localExitSpy: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
-    localExitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
+    localExitSpy = vi
+      .spyOn(process, 'exit')
+      .mockImplementation((() => {}) as any);
   });
   afterEach(() => {
     localExitSpy.mockRestore();
@@ -135,7 +139,9 @@ describe('gracefulShutdown — onShutdown error path', () => {
   it('exits(1) when onShutdown callback throws', async () => {
     const server = makeFakeServer();
     gracefulShutdown(server as any, {
-      onShutdown: async () => { throw new Error('shutdown error'); },
+      onShutdown: async () => {
+        throw new Error('shutdown error');
+      },
     });
     process.emit('SIGTERM');
     await Promise.resolve();

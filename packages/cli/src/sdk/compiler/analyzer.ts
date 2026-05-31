@@ -28,9 +28,9 @@ const MAX_SCHEMA_DEPTH = 64;
 
 /** Patterns that indicate a potential ReDoS vulnerability. */
 const REDOS_PATTERNS = [
-  /(\(.*\+\))\1/,  // Nested quantifiers
-  /\(.*\|.*\)\+/,  // Alternation with quantifier
-  /\(.*\)\{.+\}\{.+\}/,  // Multiple bounded quantifiers
+  /(\(.*\+\))\1/, // Nested quantifiers
+  /\(.*\|.*\)\+/, // Alternation with quantifier
+  /\(.*\)\{.+\}\{.+\}/, // Multiple bounded quantifiers
 ];
 
 export class Analyzer {
@@ -79,15 +79,19 @@ export class Analyzer {
 
     for (const ep of this.schema.endpoints) {
       const ctx = `endpoint ${ep.operationId}`;
-      for (const p of ep.pathParams || []) checkRef(p.type, `${ctx} path param ${p.name}`);
-      for (const p of ep.queryParams || []) checkRef(p.type, `${ctx} query param ${p.name}`);
-      for (const p of ep.headerParams || []) checkRef(p.type, `${ctx} header param ${p.name}`);
+      for (const p of ep.pathParams || [])
+        checkRef(p.type, `${ctx} path param ${p.name}`);
+      for (const p of ep.queryParams || [])
+        checkRef(p.type, `${ctx} query param ${p.name}`);
+      for (const p of ep.headerParams || [])
+        checkRef(p.type, `${ctx} header param ${p.name}`);
       if (ep.requestBody) checkRef(ep.requestBody.type, `${ctx} request body`);
       for (const [sc, resp] of Object.entries(ep.responses || {})) {
         checkRef(resp.type, `${ctx} response ${sc}`);
       }
       // Streaming contract refs
-      if (ep.streaming?.itemType) checkRef(ep.streaming.itemType, `${ctx} streaming item`);
+      if (ep.streaming?.itemType)
+        checkRef(ep.streaming.itemType, `${ctx} streaming item`);
       if (ep.streaming?.eventTypes) {
         for (const [evt, ref] of Object.entries(ep.streaming.eventTypes)) {
           checkRef(ref, `${ctx} streaming event ${evt}`);
@@ -126,8 +130,15 @@ export class Analyzer {
             seen.add(ln);
           }
         }
-        if (typeof type.additionalProperties === 'object' && 'ref' in type.additionalProperties) {
-          this.checkFieldRef(type.additionalProperties as IRTypeRef, `${ctx}.additionalProperties`, depth + 1);
+        if (
+          typeof type.additionalProperties === 'object' &&
+          'ref' in type.additionalProperties
+        ) {
+          this.checkFieldRef(
+            type.additionalProperties as IRTypeRef,
+            `${ctx}.additionalProperties`,
+            depth + 1,
+          );
         }
         break;
 
@@ -174,8 +185,18 @@ export class Analyzer {
       case 'generic':
         this.checkFieldRef(type.baseType, `${ctx}.base`, depth + 1);
         for (const tp of type.typeParameters) {
-          if (tp.constraint) this.checkFieldRef(tp.constraint, `${ctx}.${tp.name}.constraint`, depth + 1);
-          if (tp.defaultType) this.checkFieldRef(tp.defaultType, `${ctx}.${tp.name}.default`, depth + 1);
+          if (tp.constraint)
+            this.checkFieldRef(
+              tp.constraint,
+              `${ctx}.${tp.name}.constraint`,
+              depth + 1,
+            );
+          if (tp.defaultType)
+            this.checkFieldRef(
+              tp.defaultType,
+              `${ctx}.${tp.name}.default`,
+              depth + 1,
+            );
         }
         break;
 
@@ -231,7 +252,10 @@ export class Analyzer {
       }
 
       // Warn on endpoints with no responses
-      if (Object.keys(ep.responses || {}).length === 0 && ep.transport === 'rest') {
+      if (
+        Object.keys(ep.responses || {}).length === 0 &&
+        ep.transport === 'rest'
+      ) {
         this.diagnostics.push({
           severity: 'warning',
           code: 'NO_RESPONSES',
@@ -240,8 +264,13 @@ export class Analyzer {
       }
 
       // Warn on endpoints with no success response
-      if (ep.transport === 'rest' && Object.keys(ep.responses || {}).length > 0) {
-        const hasSuccess = Object.keys(ep.responses || {}).some((c) => c.startsWith('2'));
+      if (
+        ep.transport === 'rest' &&
+        Object.keys(ep.responses || {}).length > 0
+      ) {
+        const hasSuccess = Object.keys(ep.responses || {}).some((c) =>
+          c.startsWith('2'),
+        );
         if (!hasSuccess) {
           this.diagnostics.push({
             severity: 'warning',
@@ -253,8 +282,12 @@ export class Analyzer {
 
       // Check path params match route pattern
       if (ep.path) {
-        const pathParamNames = [...ep.path.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]);
-        const declaredParams = new Set((ep.pathParams || []).map((p) => p.name));
+        const pathParamNames = [...ep.path.matchAll(/\{([^}]+)\}/g)].map(
+          (m) => m[1],
+        );
+        const declaredParams = new Set(
+          (ep.pathParams || []).map((p) => p.name),
+        );
         for (const name of pathParamNames) {
           if (!declaredParams.has(name)) {
             this.diagnostics.push({
@@ -302,9 +335,13 @@ export class Analyzer {
         const disc = type.discriminator;
         // Validate each member has the discriminator property
         for (const member of type.members) {
-          const resolved = member.ref ? this.schema.types.get(member.ref) : member.inline;
+          const resolved = member.ref
+            ? this.schema.types.get(member.ref)
+            : member.inline;
           if (resolved?.kind === 'object') {
-            const hasField = resolved.fields.some((f) => f.name === disc.propertyName);
+            const hasField = resolved.fields.some(
+              (f) => f.name === disc.propertyName,
+            );
             if (!hasField) {
               this.diagnostics.push({
                 severity: 'warning',
@@ -353,7 +390,11 @@ export class Analyzer {
     }
   }
 
-  private measureDepth(typeId: string, visited: Set<string>, depth: number): void {
+  private measureDepth(
+    typeId: string,
+    visited: Set<string>,
+    depth: number,
+  ): void {
     if (depth > MAX_SCHEMA_DEPTH) {
       this.diagnostics.push({
         severity: 'error',
@@ -382,7 +423,10 @@ export class Analyzer {
       if (type.kind === 'object') {
         for (const field of type.fields) {
           if (field.constraints?.pattern) {
-            this.checkRegexSafety(field.constraints.pattern, `${id}.${field.name}`);
+            this.checkRegexSafety(
+              field.constraints.pattern,
+              `${id}.${field.name}`,
+            );
           }
         }
       }
@@ -456,7 +500,10 @@ export class Analyzer {
           message: `Event "${event.name}" references payload type "${event.payload.ref}" which does not exist.`,
         });
       }
-      if (event.ackPayload?.ref && !this.schema.types.has(event.ackPayload.ref)) {
+      if (
+        event.ackPayload?.ref &&
+        !this.schema.types.has(event.ackPayload.ref)
+      ) {
         this.diagnostics.push({
           severity: 'error',
           code: 'BROKEN_EVENT_ACK_REF',

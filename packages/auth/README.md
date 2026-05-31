@@ -1,6 +1,5 @@
 # @axiomify/auth
 
-
 [![npm version](https://img.shields.io/npm/v/@axiomify/auth.svg)](https://npmjs.com/package/@axiomify/auth)
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
@@ -18,23 +17,27 @@ npm install --save-dev @types/jsonwebtoken
 ## Quick start
 
 ```typescript
-import { createAuthPlugin, createRefreshHandler, MemoryTokenStore } from '@axiomify/auth';
+import {
+  createAuthPlugin,
+  createRefreshHandler,
+  MemoryTokenStore,
+} from '@axiomify/auth';
 
 // Use Redis in production — MemoryTokenStore is per-process and breaks across workers.
 const tokenStore = new MemoryTokenStore();
 
 // Auth plugin — attach to any route that requires a valid JWT
 const requireAuth = createAuthPlugin({
-  secret: process.env.JWT_SECRET!,   // ≥ 32 bytes (256 bits, RFC 7518 §3.2)
+  secret: process.env.JWT_SECRET!, // ≥ 32 bytes (256 bits, RFC 7518 §3.2)
   algorithms: ['HS256'],
-  store: tokenStore,  // optional: enables access token revocation
+  store: tokenStore, // optional: enables access token revocation
 });
 
 // Refresh handler — issues a new access token from a valid refresh token
 const refreshTokens = createRefreshHandler({
   secret: process.env.JWT_SECRET!,
   refreshSecret: process.env.JWT_REFRESH_SECRET!,
-  accessTokenTtl: 900,        // 15 minutes
+  accessTokenTtl: 900, // 15 minutes
   refreshTokenTtl: 2_592_000, // 30 days
   store: tokenStore,
 });
@@ -57,14 +60,14 @@ app.route({
 
 ### `createAuthPlugin(options)`
 
-| Option | Type | Description |
-|---|---|---|
-| `secret` | `string` | JWT signing secret. Minimum **32 bytes** (256 bits) per RFC 7518 §3.2. Throws in production / warns in development for shorter values. |
-| `algorithms` | `Algorithm[]` | Accepted algorithms. Default: `['HS256']`. Never include `'none'`. |
-| `getToken` | `(req) => string \| null` | Custom token extractor. Default: `Authorization: Bearer <token>`. |
-| `issuer` | `string` | Validates the `iss` claim. |
-| `audience` | `string \| string[]` | Validates the `aud` claim. |
-| `store` | `TokenStore` | **Access token revocation store.** When set, every request checks `store.exists(jti)`. Rejected if false. |
+| Option       | Type                      | Description                                                                                                                            |
+| ------------ | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `secret`     | `string`                  | JWT signing secret. Minimum **32 bytes** (256 bits) per RFC 7518 §3.2. Throws in production / warns in development for shorter values. |
+| `algorithms` | `Algorithm[]`             | Accepted algorithms. Default: `['HS256']`. Never include `'none'`.                                                                     |
+| `getToken`   | `(req) => string \| null` | Custom token extractor. Default: `Authorization: Bearer <token>`.                                                                      |
+| `issuer`     | `string`                  | Validates the `iss` claim.                                                                                                             |
+| `audience`   | `string \| string[]`      | Validates the `aud` claim.                                                                                                             |
+| `store`      | `TokenStore`              | **Access token revocation store.** When set, every request checks `store.exists(jti)`. Rejected if false.                              |
 
 ### Access token revocation with `store`
 
@@ -86,14 +89,14 @@ await tokenStore.revoke(jti);
 
 ### `createRefreshHandler(options)`
 
-| Option | Type | Description |
-|---|---|---|
-| `secret` | `string` | Access token secret. |
-| `refreshSecret` | `string` | Separate secret for refresh tokens. |
-| `accessTokenTtl` | `number` | Access token TTL in seconds. Default: `900` (15 min). |
-| `refreshTokenTtl` | `number` | Refresh token TTL in seconds. Default: `604800` (7 days). |
-| `store` | `TokenStore` | Refresh token revocation store. Strongly recommended. Without it, stolen refresh tokens cannot be revoked. |
-| `algorithms` | `Algorithm[]` | Algorithms. Default: `['HS256']`. |
+| Option            | Type          | Description                                                                                                |
+| ----------------- | ------------- | ---------------------------------------------------------------------------------------------------------- |
+| `secret`          | `string`      | Access token secret.                                                                                       |
+| `refreshSecret`   | `string`      | Separate secret for refresh tokens.                                                                        |
+| `accessTokenTtl`  | `number`      | Access token TTL in seconds. Default: `900` (15 min).                                                      |
+| `refreshTokenTtl` | `number`      | Refresh token TTL in seconds. Default: `604800` (7 days).                                                  |
+| `store`           | `TokenStore`  | Refresh token revocation store. Strongly recommended. Without it, stolen refresh tokens cannot be revoked. |
+| `algorithms`      | `Algorithm[]` | Algorithms. Default: `['HS256']`.                                                                          |
 
 ## TokenStore interface
 
@@ -117,9 +120,10 @@ const redis = createClient();
 await redis.connect();
 
 const redisStore: TokenStore = {
-  save:   (jti, ttl) => redis.set(`jwt:${jti}`, '1', { EX: ttl }).then(() => undefined),
-  exists: (jti)      => redis.get(`jwt:${jti}`).then(v => v === '1'),
-  revoke: (jti)      => redis.del(`jwt:${jti}`).then(() => undefined),
+  save: (jti, ttl) =>
+    redis.set(`jwt:${jti}`, '1', { EX: ttl }).then(() => undefined),
+  exists: (jti) => redis.get(`jwt:${jti}`).then((v) => v === '1'),
+  revoke: (jti) => redis.del(`jwt:${jti}`).then(() => undefined),
 };
 ```
 

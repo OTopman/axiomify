@@ -15,18 +15,18 @@ same major version as the rest of your `@axiomify/*` packages — recommended.
 
 ## Commands
 
-| Command | Purpose |
-|---|---|
-| `axiomify init [directory]` | Bootstrap a new project |
-| `axiomify dev [entry]` | Dev server with hot-reload |
-| `axiomify build [entry]` | Compile a production bundle |
-| `axiomify routes [entry]` | Inspect every registered HTTP + WebSocket route |
-| `axiomify openapi [entry]` | Generate the OpenAPI spec to stdout or file |
-| `axiomify check [entry]` | Static production-readiness audit |
-| `axiomify doctor` | Diagnose the host environment |
-| `axiomify scaffold route <method> <path>` | Generate a new route file under `src/routes/` |
-| `axiomify migrate` | v4 → v5 codemod (rename `meta`→`openapi`, `useSwagger`→`useOpenAPI`, etc.) |
-| `axiomify sdk <subcommand>` | Generate, validate, and diff multi-language type-safe SDKs |
+| Command                                   | Purpose                                                                    |
+| ----------------------------------------- | -------------------------------------------------------------------------- |
+| `axiomify init [directory]`               | Bootstrap a new project                                                    |
+| `axiomify dev [entry]`                    | Dev server with hot-reload                                                 |
+| `axiomify build [entry]`                  | Compile a production bundle                                                |
+| `axiomify routes [entry]`                 | Inspect every registered HTTP + WebSocket route                            |
+| `axiomify openapi [entry]`                | Generate the OpenAPI spec to stdout or file                                |
+| `axiomify check [entry]`                  | Static production-readiness audit                                          |
+| `axiomify doctor`                         | Diagnose the host environment                                              |
+| `axiomify scaffold route <method> <path>` | Generate a new route file under `src/routes/`                              |
+| `axiomify migrate`                        | v4 → v5 codemod (rename `meta`→`openapi`, `useSwagger`→`useOpenAPI`, etc.) |
+| `axiomify sdk <subcommand>`               | Generate, validate, and diff multi-language type-safe SDKs                 |
 
 `[entry]` defaults to `src/index.ts` in every command that takes one.
 
@@ -62,8 +62,8 @@ user's `gracefulShutdown` hooks can drain), with a SIGKILL fallback after
 
 ### Flags
 
-| Flag | Description |
-|---|---|
+| Flag                     | Description                                                                                                      |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | `--watch-sdk <langs...>` | Continuously rebuild SDKs for the specified languages in the background upon successful application compilation. |
 
 ## `axiomify build`
@@ -83,7 +83,7 @@ your `package.json`'s `dependencies` / `devDependencies` plus
 axiomify routes
 ```
 
-Inspects the user's app *without* booting a listener and prints a
+Inspects the user's app _without_ booting a listener and prints a
 Unicode-bordered table of every HTTP and WebSocket route, colour-coded by
 method, with validation badges, OpenAPI tags, `operationId`, plugin
 count, timeout, and deprecation marker:
@@ -105,12 +105,12 @@ count, timeout, and deprecation marker:
 
 ### Flags
 
-| Flag | Description |
-|---|---|
-| `--json` | Emit machine-readable JSON instead of the table — pipe into `jq` for tooling |
-| `-m, --method <list>` | Comma-separated method filter: `--method GET,POST,WS` |
-| `-f, --filter <pattern>` | Path filter — substring match or glob with `*`: `--filter "/api/v1/*"` |
-| `-s, --sort <by>` | `path` (default) or `method` |
+| Flag                     | Description                                                                  |
+| ------------------------ | ---------------------------------------------------------------------------- |
+| `--json`                 | Emit machine-readable JSON instead of the table — pipe into `jq` for tooling |
+| `-m, --method <list>`    | Comma-separated method filter: `--method GET,POST,WS`                        |
+| `-f, --filter <pattern>` | Path filter — substring match or glob with `*`: `--filter "/api/v1/*"`       |
+| `-s, --sort <by>`        | `path` (default) or `method`                                                 |
 
 ### Requirements
 
@@ -143,13 +143,13 @@ for client codegen (`openapi-typescript`, `openapi-generator`,
 
 ### Flags
 
-| Flag | Description |
-|---|---|
-| `-o, --output <file>` | Write to this file path instead of stdout |
-| `--format <fmt>` | `json` (default) or `yaml` |
-| `--minify` | Single-line JSON (ignored for yaml) |
-| `--title <title>` | Override `info.title` in the generated spec |
-| `--spec-version <version>` | Override `info.version` |
+| Flag                       | Description                                 |
+| -------------------------- | ------------------------------------------- |
+| `-o, --output <file>`      | Write to this file path instead of stdout   |
+| `--format <fmt>`           | `json` (default) or `yaml`                  |
+| `--minify`                 | Single-line JSON (ignored for yaml)         |
+| `--title <title>`          | Override `info.title` in the generated spec |
+| `--spec-version <version>` | Override `info.version`                     |
 
 > `--spec-version` is named that way (rather than `--version`) to avoid
 > colliding with `commander`'s global `--version` flag.
@@ -199,13 +199,13 @@ an `openapi:` block scaffolded with sensible defaults.
 
 ### Flags
 
-| Flag | Description |
-|---|---|
-| `--auth` | Include `requireAuth` plugin and the corresponding import |
+| Flag           | Description                                                                                             |
+| -------------- | ------------------------------------------------------------------------------------------------------- |
+| `--auth`       | Include `requireAuth` plugin and the corresponding import                                               |
 | `--rate-limit` | Include a default `createRateLimitPlugin` with `MemoryStore` (replace with `RedisStore` for production) |
-| `--dry-run` | Print the would-be source to stdout instead of writing |
-| `--force` | Overwrite an existing file at the target path |
-| `--dir <dir>` | Output directory (default `src/routes`) |
+| `--dry-run`    | Print the would-be source to stdout instead of writing                                                  |
+| `--force`      | Overwrite an existing file at the target path                                                           |
+| `--dir <dir>`  | Output directory (default `src/routes`)                                                                 |
 
 ### Output shape
 
@@ -233,13 +233,13 @@ Automated v4 → v5 codemod. Recursively scans `.ts` / `.tsx` / `.js` /
 `.mjs` / `.cjs` files under `src/` (or `--dir`) and applies five
 mechanical renames:
 
-| Rule | What it does |
-|---|---|
-| `meta-to-schema` | Flags `meta: { ... }` with a TODO comment for manual merge into `schema:` | `meta: {` → `openapi: {` on route definitions |
-| `useSwagger-import` | `useSwagger` → `useOpenAPI` |
-| `routePrefix-option` | `routePrefix:` → `prefix:` inside `useOpenAPI()` calls |
-| `RouteMeta-type` | `RouteMeta` type references → `RouteSchema` | `RouteMeta` type references → `RouteSchema` | `RouteMeta` type references → `RouteSchema` | `RouteMeta` type references → `OpenApiOperation` |
-| `AppPlugin-type` | `AppPlugin` type references → `AppConfigurator` |
+| Rule                 | What it does                                                              |
+| -------------------- | ------------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------- | ------------------------------------------------ |
+| `meta-to-schema`     | Flags `meta: { ... }` with a TODO comment for manual merge into `schema:` | `meta: {` → `openapi: {` on route definitions |
+| `useSwagger-import`  | `useSwagger` → `useOpenAPI`                                               |
+| `routePrefix-option` | `routePrefix:` → `prefix:` inside `useOpenAPI()` calls                    |
+| `RouteMeta-type`     | `RouteMeta` type references → `RouteSchema`                               | `RouteMeta` type references → `RouteSchema`   | `RouteMeta` type references → `RouteSchema` | `RouteMeta` type references → `OpenApiOperation` |
+| `AppPlugin-type`     | `AppPlugin` type references → `AppConfigurator`                           |
 
 **What it does NOT do** (flagged in the post-run hint for manual review):
 
@@ -264,7 +264,7 @@ axiomify check
 axiomify doctor
 ```
 
-Diagnoses the *host* environment. Run on a fresh clone or a new CI
+Diagnoses the _host_ environment. Run on a fresh clone or a new CI
 runner to confirm the box can actually run Axiomify before chasing test
 failures that turn out to be Node-version mismatches.
 
@@ -295,15 +295,15 @@ axiomify sdk generate src/index.ts -t swift            # parse directly from an 
 
 #### Flags
 
-| Flag | Description |
-|---|---|
+| Flag                      | Description                                                                                          |
+| ------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `-t, --target <langs...>` | **(Required)** Target languages. Supported: `typescript`, `python`, `go`, `swift`, `kotlin`, `dart`. |
-| `-o, --output <dir>` | Output directory (default: `generated-sdks`) |
-| `-n, --name <name>` | Package name (e.g. `my-api-sdk`) |
-| `-v, --version <version>` | Package version (e.g. `1.0.0`) |
-| `--dry-run` | Print files to stdout instead of disk |
+| `-o, --output <dir>`      | Output directory (default: `generated-sdks`)                                                         |
+| `-n, --name <name>`       | Package name (e.g. `my-api-sdk`)                                                                     |
+| `-v, --version <version>` | Package version (e.g. `1.0.0`)                                                                       |
+| `--dry-run`               | Print files to stdout instead of disk                                                                |
 
-*Note: The generated code relies on `@axiomify/sdk-runtime`, a zero-dependency HTTP runtime. See [SDK Runtime](./sdk-runtime.md) for details.*
+_Note: The generated code relies on `@axiomify/sdk-runtime`, a zero-dependency HTTP runtime. See [SDK Runtime](./sdk-runtime.md) for details._
 
 ### `axiomify sdk build`
 
@@ -351,6 +351,7 @@ axiomify sdk watch openapi.json -t typescript python -o ./sdks
 ### `axiomify sdk doctor`
 
 Verifies and diagnoses the host system for availability of target toolchains required to compile and build target SDK packages. It checks for:
+
 - Node.js (TypeScript/JavaScript)
 - Python 3 (Python)
 - Go compiler (Go)
@@ -418,8 +419,8 @@ production.
 
 ## Output
 
-| File | Produced by | Purpose |
-|---|---|---|
-| `dist/index.js` | `axiomify build` | Production bundle |
-| `.axiomify/dev.js` | `axiomify dev` | Watch-mode build (auto-cleaned on exit) |
-| `.axiomify/inspect.cjs` | `routes` / `openapi` / `check` | Temp inspection bundle (auto-cleaned) |
+| File                    | Produced by                    | Purpose                                 |
+| ----------------------- | ------------------------------ | --------------------------------------- |
+| `dist/index.js`         | `axiomify build`               | Production bundle                       |
+| `.axiomify/dev.js`      | `axiomify dev`                 | Watch-mode build (auto-cleaned on exit) |
+| `.axiomify/inspect.cjs` | `routes` / `openapi` / `check` | Temp inspection bundle (auto-cleaned)   |

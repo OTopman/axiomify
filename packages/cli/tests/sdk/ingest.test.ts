@@ -13,12 +13,12 @@ describe('OpenAPI Ingestor', () => {
             summary: 'List users',
             responses: {
               '200': {
-                description: 'Success'
-              }
-            }
-          }
-        }
-      }
+                description: 'Success',
+              },
+            },
+          },
+        },
+      },
     };
 
     const result = ingestOpenApi(rawOpenApi, {});
@@ -26,7 +26,7 @@ describe('OpenAPI Ingestor', () => {
     expect(result.diagnostics).toHaveLength(0);
     expect(result.schema.info.title).toBe('Test API');
     expect(result.schema.info.version).toBe('1.2.3');
-    
+
     expect(result.schema.endpoints).toHaveLength(1);
     expect(result.schema.endpoints[0].operationId).toBe('listUsers');
     expect(result.schema.endpoints[0].method).toBe('GET');
@@ -41,11 +41,11 @@ describe('OpenAPI Ingestor', () => {
         '/auto-id': {
           post: {
             responses: {
-              '200': { description: 'Success' }
-            }
-          }
-        }
-      }
+              '200': { description: 'Success' },
+            },
+          },
+        },
+      },
     };
 
     const result = ingestOpenApi(rawOpenApi, {});

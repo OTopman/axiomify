@@ -7,7 +7,10 @@ import { Emitter } from '../../emitter';
 import type { IREndpoint, IRSchema, IRTypeRef } from '../../../ir/types';
 
 export class JsClientEmitter {
-  constructor(private schema: IRSchema, private className: string = 'ApiClient') {}
+  constructor(
+    private schema: IRSchema,
+    private className: string = 'ApiClient',
+  ) {}
 
   emitAll(): string {
     const emitter = new Emitter();
@@ -22,7 +25,9 @@ export class JsClientEmitter {
     emitter.line(' */');
     emitter.block(`class ${this.className} extends BaseClient {`, `}`, () => {
       emitter.line('/**');
-      emitter.line(' * @param {import("@axiomify/sdk-runtime").ClientConfig} config');
+      emitter.line(
+        ' * @param {import("@axiomify/sdk-runtime").ClientConfig} config',
+      );
       emitter.line(' */');
       emitter.block(`constructor(config) {`, `}`, () => {
         emitter.line(`super(config);`);
@@ -64,16 +69,19 @@ export class JsClientEmitter {
       const method = ep.method?.toUpperCase() || 'GET';
       const pathTemplate = ep.path || '/';
 
-      let pathExpr = `\`${pathTemplate.replace(/\{([^}]+)\}/g, '${request.$1}')}\``;
+      const pathExpr = `\`${pathTemplate.replace(/\{([^}]+)\}/g, '${request.$1}')}\``;
       let reqOpts = `method: '${method}', path: ${pathExpr}`;
 
-      const isValidJSIdentifier = (name: string) => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name);
+      const isValidJSIdentifier = (name: string) =>
+        /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name);
 
       if (ep.queryParams.length > 0) {
         reqOpts += `, query: {`;
         for (const q of ep.queryParams) {
           const propStr = isValidJSIdentifier(q.name) ? q.name : `'${q.name}'`;
-          const accessStr = isValidJSIdentifier(q.name) ? `.${q.name}` : `['${q.name}']`;
+          const accessStr = isValidJSIdentifier(q.name)
+            ? `.${q.name}`
+            : `['${q.name}']`;
           reqOpts += ` ${propStr}: request${accessStr},`;
         }
         reqOpts += ` }`;
@@ -89,14 +97,26 @@ export class JsClientEmitter {
 
   private buildRequestType(ep: IREndpoint): string | null {
     const props: string[] = [];
-    const formatProp = (name: string) => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : `'${name}'`;
+    const formatProp = (name: string) =>
+      /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : `'${name}'`;
 
-    for (const p of ep.pathParams) props.push(`${formatProp(p.name)}${p.required ? '' : '?'}: ${this.renderTypeRef(p.type)}`);
-    for (const p of ep.queryParams) props.push(`${formatProp(p.name)}${p.required ? '' : '?'}: ${this.renderTypeRef(p.type)}`);
-    for (const p of ep.headerParams) props.push(`${formatProp(p.name)}${p.required ? '' : '?'}: ${this.renderTypeRef(p.type)}`);
+    for (const p of ep.pathParams)
+      props.push(
+        `${formatProp(p.name)}${p.required ? '' : '?'}: ${this.renderTypeRef(p.type)}`,
+      );
+    for (const p of ep.queryParams)
+      props.push(
+        `${formatProp(p.name)}${p.required ? '' : '?'}: ${this.renderTypeRef(p.type)}`,
+      );
+    for (const p of ep.headerParams)
+      props.push(
+        `${formatProp(p.name)}${p.required ? '' : '?'}: ${this.renderTypeRef(p.type)}`,
+      );
 
     if (ep.requestBody) {
-      props.push(`body${ep.requestBody.required ? '' : '?'}: ${this.renderTypeRef(ep.requestBody.type)}`);
+      props.push(
+        `body${ep.requestBody.required ? '' : '?'}: ${this.renderTypeRef(ep.requestBody.type)}`,
+      );
     }
 
     if (props.length === 0) return null;
@@ -117,7 +137,8 @@ export class JsClientEmitter {
     if (ref.ref) t = `import("./types").${ref.ref}`;
     else if (ref.inline) {
       if (ref.inline.kind === 'scalar') {
-        if (ref.inline.scalar === 'integer' || ref.inline.scalar === 'number') t = 'number';
+        if (ref.inline.scalar === 'integer' || ref.inline.scalar === 'number')
+          t = 'number';
         else if (ref.inline.scalar === 'boolean') t = 'boolean';
         else t = 'string';
       } else if (ref.inline.kind === 'array') {

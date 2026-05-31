@@ -15,7 +15,10 @@ try {
 /**
  * Helper: HTTPS GET request trusting the custom CA
  */
-function fetchHttps(url: string, ca: Buffer): Promise<{ status: number; json: () => Promise<any> }> {
+function fetchHttps(
+  url: string,
+  ca: Buffer,
+): Promise<{ status: number; json: () => Promise<any> }> {
   return new Promise((resolve, reject) => {
     const req = https.request(
       url,
@@ -34,7 +37,7 @@ function fetchHttps(url: string, ca: Buffer): Promise<{ status: number; json: ()
             json: async () => JSON.parse(body),
           });
         });
-      }
+      },
     );
     req.on('error', reject);
     req.end();
@@ -56,7 +59,7 @@ describe.skipIf(!uwsSupported)('NativeAdapter TLS/HTTPS', () => {
     execSync(
       `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" ` +
         `-sha256 -days 365 -nodes -subj "/CN=localhost"`,
-      { stdio: 'ignore' }
+      { stdio: 'ignore' },
     );
 
     const { Axiomify } = await import('@axiomify/core');

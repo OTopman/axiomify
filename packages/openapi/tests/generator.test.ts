@@ -136,7 +136,9 @@ describe('OpenApiGenerator', () => {
 describe('OpenApiGenerator — Zod v4 schema output', () => {
   const gen = (routes: ReturnType<typeof makeApp>['registeredRoutes']) => {
     const mockApp = { registeredRoutes: routes } as unknown as Axiomify;
-    return new OpenApiGenerator(mockApp, { info: { title: 'Test', version: '1' } }).generate();
+    return new OpenApiGenerator(mockApp, {
+      info: { title: 'Test', version: '1' },
+    }).generate();
   };
 
   function makeApp() {
@@ -154,7 +156,9 @@ describe('OpenApiGenerator — Zod v4 schema output', () => {
       },
     ] as unknown as ReturnType<typeof makeApp>['registeredRoutes'];
     const spec = gen(routes);
-    const schema = (spec.paths as any)['/users']['post'].requestBody.content['application/json'].schema;
+    const schema = (spec.paths as any)['/users']['post'].requestBody.content[
+      'application/json'
+    ].schema;
     expect(schema.type).toBe('object');
     expect(schema.properties).toBeDefined();
     expect(Object.keys(schema.properties)).toContain('name');
@@ -171,7 +175,8 @@ describe('OpenApiGenerator — Zod v4 schema output', () => {
       },
     ] as unknown as ReturnType<typeof makeApp>['registeredRoutes'];
     const spec = gen(routes);
-    const params = (spec.paths as any)['/users/{id}']['get'].parameters as Array<{ name: string; in: string; required: boolean }>;
+    const params = (spec.paths as any)['/users/{id}']['get']
+      .parameters as Array<{ name: string; in: string; required: boolean }>;
     expect(params).toHaveLength(1);
     expect(params[0].name).toBe('id');
     expect(params[0].in).toBe('path');
@@ -190,7 +195,10 @@ describe('OpenApiGenerator — Zod v4 schema output', () => {
       },
     ] as unknown as ReturnType<typeof makeApp>['registeredRoutes'];
     const spec = gen(routes);
-    const params = (spec.paths as any)['/search']['get'].parameters as Array<{ name: string; required: boolean }>;
+    const params = (spec.paths as any)['/search']['get'].parameters as Array<{
+      name: string;
+      required: boolean;
+    }>;
     const q = params.find((p) => p.name === 'q');
     const page = params.find((p) => p.name === 'page');
     expect(q?.required).toBe(true);
@@ -226,7 +234,9 @@ describe('OpenApiGenerator — Zod v4 schema output', () => {
     const mockApp = { registeredRoutes: routes } as unknown as Axiomify;
     const spec = new OpenApiGenerator(mockApp, {
       info: { title: 'Test', version: '1' },
-      components: { securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer' } } },
+      components: {
+        securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer' } },
+      },
       security: [{ bearerAuth: [] }],
     }).generate();
     expect((spec.components as any)?.securitySchemes?.bearerAuth).toBeDefined();
@@ -237,8 +247,12 @@ describe('OpenApiGenerator — Zod v4 schema output', () => {
 
   it('formatPath converts Axiomify :param syntax to OpenAPI {param} syntax', () => {
     const mockApp = { registeredRoutes: [] } as unknown as Axiomify;
-    const generator = new OpenApiGenerator(mockApp, { info: { title: 'T', version: '1' } });
-    expect(generator.formatPath('/users/:id/posts/:postId')).toBe('/users/{id}/posts/{postId}');
+    const generator = new OpenApiGenerator(mockApp, {
+      info: { title: 'T', version: '1' },
+    });
+    expect(generator.formatPath('/users/:id/posts/:postId')).toBe(
+      '/users/{id}/posts/{postId}',
+    );
     expect(generator.formatPath('/plain')).toBe('/plain');
     expect(generator.formatPath('/')).toBe('/');
   });
@@ -265,7 +279,9 @@ describe('OpenApiGenerator — extended coverage', () => {
       handler: async (_r, res) => res.send({ id: '1' }),
     });
 
-    const gen = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } });
+    const gen = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    });
     const spec = gen.generate();
     expect(spec.paths['/users']?.post?.responses?.['201']).toBeDefined();
     expect(spec.paths['/users']?.post?.responses?.['400']).toBeDefined();
@@ -280,10 +296,14 @@ describe('OpenApiGenerator — extended coverage', () => {
       handler: async (_r, res) => res.send({ id: '1' }),
     });
 
-    const gen = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } });
+    const gen = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    });
     const spec = gen.generate();
     const params = spec.paths['/users/{id}']?.get?.parameters ?? [];
-    expect(params.some((p: any) => p.name === 'id' && p.in === 'path')).toBe(true);
+    expect(params.some((p: any) => p.name === 'id' && p.in === 'path')).toBe(
+      true,
+    );
   });
 
   it('generates file upload schema when route.schema.files is defined', () => {
@@ -297,7 +317,9 @@ describe('OpenApiGenerator — extended coverage', () => {
       handler: async (_r, res) => res.send({ ok: true }),
     });
 
-    const gen = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } });
+    const gen = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    });
     const spec = gen.generate();
     const requestBody = spec.paths['/upload']?.post?.requestBody;
     expect(requestBody).toBeDefined();
@@ -308,14 +330,20 @@ describe('OpenApiGenerator — extended coverage', () => {
     app.route({
       method: 'GET',
       path: '/search',
-      schema: { query: z.object({ q: z.string(), page: z.coerce.number().optional() }) },
+      schema: {
+        query: z.object({ q: z.string(), page: z.coerce.number().optional() }),
+      },
       handler: async (_r, res) => res.send([]),
     });
 
-    const gen = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } });
+    const gen = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    });
     const spec = gen.generate();
     const params = spec.paths['/search']?.get?.parameters ?? [];
-    expect(params.some((p: any) => p.name === 'q' && p.in === 'query')).toBe(true);
+    expect(params.some((p: any) => p.name === 'q' && p.in === 'query')).toBe(
+      true,
+    );
   });
 });
 
@@ -331,8 +359,12 @@ describe('OpenApiGenerator — operation metadata', () => {
       schema: { operationId: 'createUser' },
       handler: async (_r, res) => res.send({}),
     });
-    const gen = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } });
-    expect(gen.generate().paths['/users']?.post?.operationId).toBe('createUser');
+    const gen = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    });
+    expect(gen.generate().paths['/users']?.post?.operationId).toBe(
+      'createUser',
+    );
   });
 
   it('synthesises operationId from method+path when not supplied', () => {
@@ -342,25 +374,32 @@ describe('OpenApiGenerator — operation metadata', () => {
       path: '/users/:id/posts/:postId',
       handler: async (_r, res) => res.send({}),
     });
-    const gen = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } });
+    const gen = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    });
     // Stable, deterministic id derived from the path so codegen output
     // doesn't drift between releases unless the route itself changes.
-    expect(gen.generate().paths['/users/{id}/posts/{postId}']?.get?.operationId)
-      .toBe('getUsersByIdPostsByPostId');
+    expect(
+      gen.generate().paths['/users/{id}/posts/{postId}']?.get?.operationId,
+    ).toBe('getUsersByIdPostsByPostId');
   });
 
   it('emits deprecated:true only when schema.deprecated is set', () => {
     const app = new Axiomify();
     app.route({
-      method: 'GET', path: '/old',
+      method: 'GET',
+      path: '/old',
       schema: { deprecated: true },
       handler: async (_r, res) => res.send({}),
     });
     app.route({
-      method: 'GET', path: '/new',
+      method: 'GET',
+      path: '/new',
       handler: async (_r, res) => res.send({}),
     });
-    const spec = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } }).generate();
+    const spec = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    }).generate();
     expect(spec.paths['/old']?.get?.deprecated).toBe(true);
     // Active routes should NOT have a deprecated key at all (omitted, not false).
     expect(spec.paths['/new']?.get).not.toHaveProperty('deprecated');
@@ -370,18 +409,22 @@ describe('OpenApiGenerator — operation metadata', () => {
     const app = new Axiomify();
     const ext = { url: 'https://example.com/docs', description: 'API guide' };
     app.route({
-      method: 'GET', path: '/x',
+      method: 'GET',
+      path: '/x',
       schema: { externalDocs: ext },
       handler: async (_r, res) => res.send({}),
     });
-    const spec = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } }).generate();
+    const spec = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    }).generate();
     expect(spec.paths['/x']?.get?.externalDocs).toEqual(ext);
   });
 
   it('emits empty security array (opt-out of global security)', () => {
     const app = new Axiomify();
     app.route({
-      method: 'GET', path: '/public',
+      method: 'GET',
+      path: '/public',
       schema: { security: [] },
       handler: async (_r, res) => res.send({}),
     });
@@ -398,22 +441,27 @@ describe('OpenApiGenerator — operation metadata', () => {
   it('overrides requestBody description', () => {
     const app = new Axiomify();
     app.route({
-      method: 'POST', path: '/users',
+      method: 'POST',
+      path: '/users',
       schema: {
         body: z.object({ name: z.string() }),
         requestBodyDescription: 'Profile data for the new user',
       },
       handler: async (_r, res) => res.send({}),
     });
-    const spec = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } }).generate();
-    expect(spec.paths['/users']?.post?.requestBody?.description)
-      .toBe('Profile data for the new user');
+    const spec = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    }).generate();
+    expect(spec.paths['/users']?.post?.requestBody?.description).toBe(
+      'Profile data for the new user',
+    );
   });
 
   it('overrides per-status response descriptions', () => {
     const app = new Axiomify();
     app.route({
-      method: 'GET', path: '/users/:id',
+      method: 'GET',
+      path: '/users/:id',
       schema: {
         response: {
           200: z.object({ id: z.string(), name: z.string() }),
@@ -426,17 +474,20 @@ describe('OpenApiGenerator — operation metadata', () => {
       },
       handler: async (_r, res) => res.send({}),
     });
-    const responses = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } })
-      .generate()
-      .paths['/users/{id}']?.get?.responses;
+    const responses = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    }).generate().paths['/users/{id}']?.get?.responses;
     expect(responses?.['200']?.description).toBe('User profile');
-    expect(responses?.['404']?.description).toBe('No user with the supplied id');
+    expect(responses?.['404']?.description).toBe(
+      'No user with the supplied id',
+    );
   });
 
   it('falls back to generator defaults when a status has no override', () => {
     const app = new Axiomify();
     app.route({
-      method: 'GET', path: '/half',
+      method: 'GET',
+      path: '/half',
       schema: {
         response: {
           200: z.object({ a: z.string() }),
@@ -446,9 +497,9 @@ describe('OpenApiGenerator — operation metadata', () => {
       },
       handler: async (_r, res) => res.send({}),
     });
-    const responses = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } })
-      .generate()
-      .paths['/half']?.get?.responses;
+    const responses = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    }).generate().paths['/half']?.get?.responses;
     expect(responses?.['200']?.description).toBe('Custom 200 description');
     // Untouched status falls back to the generator default.
     expect(responses?.['500']?.description).toBe('Response 500');
@@ -461,11 +512,14 @@ describe('OpenApiGenerator — operation metadata', () => {
       { url: 'https://api.example.com' },
     ];
     app.route({
-      method: 'PUT', path: '/assets/:id',
+      method: 'PUT',
+      path: '/assets/:id',
       schema: { servers },
       handler: async (_r, res) => res.send({}),
     });
-    const spec = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } }).generate();
+    const spec = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    }).generate();
     expect(spec.paths['/assets/{id}']?.put?.servers).toEqual(servers);
   });
 
@@ -487,11 +541,14 @@ describe('OpenApiGenerator — operation metadata', () => {
       },
     };
     app.route({
-      method: 'POST', path: '/jobs',
+      method: 'POST',
+      path: '/jobs',
       schema: { callbacks },
       handler: async (_r, res) => res.send({}),
     });
-    const spec = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } }).generate();
+    const spec = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    }).generate();
     // Pass-through: framework does NOT validate or transform the callback
     // body — it's the user's responsibility to match the spec shape.
     expect(spec.paths['/jobs']?.post?.callbacks).toEqual(callbacks);
@@ -507,18 +564,89 @@ describe('OpenApiGenerator — `meta:` field removed in 6.0', () => {
   it('does NOT read from route.meta (the field was removed in 6.0)', () => {
     const app = new Axiomify();
     app.route({
-      method: 'GET', path: '/legacy',
+      method: 'GET',
+      path: '/legacy',
       // Cast away the type check — `meta:` is no longer in the public
       // RouteDefinition shape, but we want to prove the generator
       // ignores it if user code still has it during migration.
       ...({ meta: { tags: ['Legacy'], operationId: 'legacyOp' } } as any),
       handler: async (_r, res) => res.send({}),
     });
-    const op = new OpenApiGenerator(app as any, { info: { title: 'T', version: '1' } })
-      .generate().paths['/legacy']?.get;
+    const op = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    }).generate().paths['/legacy']?.get;
     // With no `openapi:` field, the generator falls back to its defaults:
     // a synthesised operationId (`getLegacy`) and no tags array.
     expect(op?.tags).toBeUndefined();
     expect(op?.operationId).toBe('getLegacy');
+  });
+});
+
+describe('OpenApiGenerator — additional coverage', () => {
+  it('synthesises operationId with "All" when path contains wildcard segment *', () => {
+    const { Axiomify } = require('@axiomify/core');
+    const app = new Axiomify();
+    app.route({
+      method: 'GET',
+      path: '/files/*',
+      handler: async (_r, res) => res.send({}),
+    });
+    const gen = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    });
+    const spec = gen.generate();
+    expect(spec.paths['/files/*']?.get?.operationId).toBe('getFilesAll');
+  });
+
+  it('generates binary format with max size description for upload files with config.maxSize', () => {
+    const { Axiomify } = require('@axiomify/core');
+    const app = new Axiomify();
+    app.route({
+      method: 'POST',
+      path: '/upload-size',
+      schema: {
+        files: {
+          attachment: { maxSize: 5000 },
+        },
+      } as any,
+      handler: async (_r, res) => res.send({}),
+    });
+    const gen = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    });
+    const spec = gen.generate();
+    const body = spec.paths['/upload-size']?.post?.requestBody;
+    const schema = body.content['multipart/form-data'].schema;
+    expect(schema.properties.attachment.description).toBe(
+      'Max size: 5000 bytes',
+    );
+  });
+
+  it('generates schema description, route tags, and file details without maxSize', () => {
+    const { Axiomify } = require('@axiomify/core');
+    const app = new Axiomify();
+    app.route({
+      method: 'POST',
+      path: '/upload-desc',
+      schema: {
+        description: 'Test description',
+        tags: ['test'],
+        files: {
+          doc: { description: 'A document file' },
+        },
+      } as any,
+      handler: async (_r, res) => res.send({}),
+    });
+    const gen = new OpenApiGenerator(app as any, {
+      info: { title: 'T', version: '1' },
+    });
+    const spec = gen.generate();
+    const op = spec.paths['/upload-desc']?.post;
+    expect(op.description).toBe('Test description');
+    expect(op.tags).toEqual(['test']);
+
+    const body = op.requestBody;
+    const schema = body.content['multipart/form-data'].schema;
+    expect(schema.properties.doc.description).toBe('A document file');
   });
 });

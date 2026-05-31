@@ -26,13 +26,13 @@ npx axiomify check     # exits 1 on any remaining v5 patterns
 
 ### Adapters removed — `@axiomify/native` is the only adapter
 
-| Removed package | Replacement |
-|---|---|
-| `@axiomify/express` | `@axiomify/native` |
-| `@axiomify/fastify` | `@axiomify/native` |
-| `@axiomify/hapi` | `@axiomify/native` |
-| `@axiomify/http` | `@axiomify/native` |
-| `@axiomify/ws` | `app.ws()` built into `@axiomify/native` |
+| Removed package     | Replacement                              |
+| ------------------- | ---------------------------------------- |
+| `@axiomify/express` | `@axiomify/native`                       |
+| `@axiomify/fastify` | `@axiomify/native`                       |
+| `@axiomify/hapi`    | `@axiomify/native`                       |
+| `@axiomify/http`    | `@axiomify/native`                       |
+| `@axiomify/ws`      | `app.ws()` built into `@axiomify/native` |
 
 ```ts
 // v5
@@ -56,10 +56,12 @@ useWebSocket(app, { path: '/chat' });
 app.ws({
   path: '/chat/:room',
   schema: {
-    params:  z.object({ room: z.string() }),
+    params: z.object({ room: z.string() }),
     message: z.object({ text: z.string() }),
   },
-  handler: (ws) => { ws.on('message', (raw) => ws.send(raw)); },
+  handler: (ws) => {
+    ws.on('message', (raw) => ws.send(raw));
+  },
 });
 ```
 
@@ -78,16 +80,18 @@ app.route({
   method: 'GET',
   path: '/users/:id',
   schema: {
-    params:   z.object({ id: z.string().uuid() }),
+    params: z.object({ id: z.string().uuid() }),
     response: z.object({ id: z.string(), name: z.string() }),
   },
   meta: {
-    tags:        ['Users'],
-    summary:     'Get user by id',
+    tags: ['Users'],
+    summary: 'Get user by id',
     description: 'Returns the public user profile.',
-    security:    [{ bearerAuth: [] }],
+    security: [{ bearerAuth: [] }],
   },
-  handler: async (req, res) => { /* ... */ },
+  handler: async (req, res) => {
+    /* ... */
+  },
 });
 
 // v6.0.0
@@ -95,33 +99,35 @@ app.route({
   method: 'GET',
   path: '/users/:id',
   schema: {
-    params:      z.object({ id: z.string().uuid() }),
-    response:    z.object({ id: z.string(), name: z.string() }),
-    tags:        ['Users'],
-    summary:     'Get user by id',
+    params: z.object({ id: z.string().uuid() }),
+    response: z.object({ id: z.string(), name: z.string() }),
+    tags: ['Users'],
+    summary: 'Get user by id',
     description: 'Returns the public user profile.',
-    security:    [{ bearerAuth: [] }],
-    operationId: 'getUserById',    // new in v6 — not in v5 RouteMeta
+    security: [{ bearerAuth: [] }],
+    operationId: 'getUserById', // new in v6 — not in v5 RouteMeta
   },
-  handler: async (req, res) => { /* ... */ },
+  handler: async (req, res) => {
+    /* ... */
+  },
 });
 ```
 
 **Metadata fields — v5 vs v6:**
 
-| Field | v5 `RouteMeta` | v6 `RouteSchema` | OAS § |
-|---|---|---|---|
-| `tags` | ✅ | ✅ | 4.8.10.1 |
-| `summary` | ✅ | ✅ | 4.8.10.2 |
-| `description` | ✅ | ✅ | 4.8.10.3 |
-| `security` | ✅ | ✅ | 4.8.10.10 |
-| `operationId` | ❌ | ✅ new | 4.8.10.5 |
-| `deprecated` | ❌ | ✅ new | 4.8.10.9 |
-| `externalDocs` | ❌ | ✅ new | 4.8.10.4 |
-| `servers` | ❌ | ✅ new | 4.8.10.11 |
-| `callbacks` | ❌ | ✅ new | 4.8.10.8 |
-| `requestBodyDescription` | ❌ | ✅ new | — |
-| `responseDescriptions` | ❌ | ✅ new | — |
+| Field                    | v5 `RouteMeta` | v6 `RouteSchema` | OAS §     |
+| ------------------------ | -------------- | ---------------- | --------- |
+| `tags`                   | ✅             | ✅               | 4.8.10.1  |
+| `summary`                | ✅             | ✅               | 4.8.10.2  |
+| `description`            | ✅             | ✅               | 4.8.10.3  |
+| `security`               | ✅             | ✅               | 4.8.10.10 |
+| `operationId`            | ❌             | ✅ new           | 4.8.10.5  |
+| `deprecated`             | ❌             | ✅ new           | 4.8.10.9  |
+| `externalDocs`           | ❌             | ✅ new           | 4.8.10.4  |
+| `servers`                | ❌             | ✅ new           | 4.8.10.11 |
+| `callbacks`              | ❌             | ✅ new           | 4.8.10.8  |
+| `requestBodyDescription` | ❌             | ✅ new           | —         |
+| `responseDescriptions`   | ❌             | ✅ new           | —         |
 
 ---
 
@@ -151,7 +157,7 @@ Update tooling: Swagger UI 5.x, Redoc 2.x, openapi-typescript v7+.
 
 ```ts
 useOpenAPI(app, { info, routePrefix: '/docs' }); // v5 warned — now removed
-useOpenAPI(app, { info, prefix: '/docs' });       // v6
+useOpenAPI(app, { info, prefix: '/docs' }); // v6
 ```
 
 ---
@@ -160,8 +166,12 @@ useOpenAPI(app, { info, prefix: '/docs' });       // v6
 
 ```ts
 useSecurity(app, { sqlInjectionProtection: true }); // v5 warned — now removed
-useSecurity(app, { /* other valid options */ });     // v6
-const user = await db.query('SELECT * FROM users WHERE id = $1', [req.params.id]);
+useSecurity(app, {
+  /* other valid options */
+}); // v6
+const user = await db.query('SELECT * FROM users WHERE id = $1', [
+  req.params.id,
+]);
 ```
 
 Exports `DEFAULT_SQL_PATTERNS` and `detectSqlInjection` also removed.
@@ -171,8 +181,8 @@ Exports `DEFAULT_SQL_PATTERNS` and `detectSqlInjection` also removed.
 ### `AxiomifyResponse.error()` removed
 
 ```ts
-res.error(err);                                              // v5 — removed
-res.status(err.statusCode ?? 500).send(null, err.message);  // v6
+res.error(err); // v5 — removed
+res.status(err.statusCode ?? 500).send(null, err.message); // v6
 ```
 
 ---
@@ -181,7 +191,7 @@ res.status(err.statusCode ?? 500).send(null, err.message);  // v6
 
 ```ts
 app.setSerializer((data, message, statusCode, isError, req) => ({ data })); // ❌ throws in v6
-app.setSerializer(({ data, message, statusCode, isError }) => ({ data }));  // ✅
+app.setSerializer(({ data, message, statusCode, isError }) => ({ data })); // ✅
 ```
 
 ---
@@ -189,7 +199,7 @@ app.setSerializer(({ data, message, statusCode, isError }) => ({ data }));  // �
 ### `AppPlugin` type removed
 
 ```ts
-const plugin: AppPlugin = (app) => {};       // v5 @deprecated — removed in v6
+const plugin: AppPlugin = (app) => {}; // v5 @deprecated — removed in v6
 const plugin: AppConfigurator = (app) => {}; // v6
 ```
 
@@ -224,12 +234,12 @@ npx axiomify migrate             # apply renames
 npx axiomify check               # gate CI (exits 1 on remaining issues)
 ```
 
-| Rule | What it does |
-|---|---|
-| `meta-to-schema` | Flags `meta: { ... }` with TODO comment for manual merge into `schema:` |
-| `routePrefix-option` | `routePrefix:` → `prefix:` in `useOpenAPI()` calls |
-| `RouteMeta-type` | `RouteMeta` → `RouteSchema` |
-| `AppPlugin-type` | `AppPlugin` → `AppConfigurator` |
+| Rule                 | What it does                                                            |
+| -------------------- | ----------------------------------------------------------------------- |
+| `meta-to-schema`     | Flags `meta: { ... }` with TODO comment for manual merge into `schema:` |
+| `routePrefix-option` | `routePrefix:` → `prefix:` in `useOpenAPI()` calls                      |
+| `RouteMeta-type`     | `RouteMeta` → `RouteSchema`                                             |
+| `AppPlugin-type`     | `AppPlugin` → `AppConfigurator`                                         |
 
 **Manual review required:** merging `meta:` into `schema:`, `res.error()` calls,
 `sqlInjectionProtection` removal, adapter swap to `@axiomify/native`.

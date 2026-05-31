@@ -1,6 +1,5 @@
 # @axiomify/cors
 
-
 [![npm version](https://img.shields.io/npm/v/@axiomify/cors.svg)](https://npmjs.com/package/@axiomify/cors)
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
@@ -30,19 +29,19 @@ useCors(app, {
 
 ## Options
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `origin` | `boolean \| string \| RegExp \| Array \| Function` | `false` | Allowed origins. `true` = reflect all, `false` = block all, string = exact match, function = async custom logic. |
-| `methods` | `string[]` | `['GET','HEAD','PUT','PATCH','POST','DELETE']` | Allowed HTTP methods. |
-| `allowedHeaders` | `string[]` | Reflects `Access-Control-Request-Headers` | Allowed request headers. |
-| `exposedHeaders` | `string[]` | `[]` | Headers exposed to the browser. |
-| `credentials` | `boolean` | `false` | Send `Access-Control-Allow-Credentials: true`. |
-| `maxAge` | `number` | `0` | Preflight cache duration in seconds (`Access-Control-Max-Age`). |
-| `optionsSuccessStatus` | `number` | `204` | Status code for preflight responses. |
-| `preflightContinue` | `boolean` | `false` | Pass preflight to the next handler instead of responding. |
-| `allowPrivateNetwork` | `boolean` | `false` | Emit `Access-Control-Allow-Private-Network: true` for private network access. |
-| `varyOnRequestHeaders` | `boolean` | `true` | Append `Access-Control-Request-Headers` to `Vary`. |
-| `strictPreflight` | `boolean` | `false` | Reject preflights missing `Access-Control-Request-Method`. |
+| Option                 | Type                                               | Default                                        | Description                                                                                                      |
+| ---------------------- | -------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `origin`               | `boolean \| string \| RegExp \| Array \| Function` | `false`                                        | Allowed origins. `true` = reflect all, `false` = block all, string = exact match, function = async custom logic. |
+| `methods`              | `string[]`                                         | `['GET','HEAD','PUT','PATCH','POST','DELETE']` | Allowed HTTP methods.                                                                                            |
+| `allowedHeaders`       | `string[]`                                         | Reflects `Access-Control-Request-Headers`      | Allowed request headers.                                                                                         |
+| `exposedHeaders`       | `string[]`                                         | `[]`                                           | Headers exposed to the browser.                                                                                  |
+| `credentials`          | `boolean`                                          | `false`                                        | Send `Access-Control-Allow-Credentials: true`.                                                                   |
+| `maxAge`               | `number`                                           | `0`                                            | Preflight cache duration in seconds (`Access-Control-Max-Age`).                                                  |
+| `optionsSuccessStatus` | `number`                                           | `204`                                          | Status code for preflight responses.                                                                             |
+| `preflightContinue`    | `boolean`                                          | `false`                                        | Pass preflight to the next handler instead of responding.                                                        |
+| `allowPrivateNetwork`  | `boolean`                                          | `false`                                        | Emit `Access-Control-Allow-Private-Network: true` for private network access.                                    |
+| `varyOnRequestHeaders` | `boolean`                                          | `true`                                         | Append `Access-Control-Request-Headers` to `Vary`.                                                               |
+| `strictPreflight`      | `boolean`                                          | `false`                                        | Reject preflights missing `Access-Control-Request-Method`.                                                       |
 
 ## Dynamic origin
 

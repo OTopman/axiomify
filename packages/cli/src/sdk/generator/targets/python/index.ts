@@ -7,7 +7,7 @@ import { GeneratorRegistry } from '../../registry';
 export class PythonGenerator extends Generator {
   async generate(): Promise<GeneratedFile[]> {
     const graph = TypeGraph.fromSchema(this.schema);
-    
+
     // 1. Generate types.py
     const typeEmitter = new PythonTypeEmitter(this.schema, graph);
     this.addFile('types.py', typeEmitter.emitAll());
@@ -17,10 +17,15 @@ export class PythonGenerator extends Generator {
     this.addFile('client.py', clientEmitter.emitAll());
 
     // 3. Generate __init__.py
-    this.addFile('__init__.py', `from .types import *\nfrom .client import ApiClient\n`);
+    this.addFile(
+      '__init__.py',
+      `from .types import *\nfrom .client import ApiClient\n`,
+    );
 
     // 4. Generate setup.py
-    this.addFile('setup.py', `from setuptools import setup, find_packages
+    this.addFile(
+      'setup.py',
+      `from setuptools import setup, find_packages
 
 setup(
     name="${this.options.packageName}",
@@ -32,7 +37,8 @@ setup(
     ],
     python_requires=">=3.8",
 )
-`);
+`,
+    );
 
     return this.files;
   }

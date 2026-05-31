@@ -8,8 +8,14 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('uWebSockets.js', () => ({
   default: {
     App: () => ({
-      get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(),
-      del: vi.fn(), options: vi.fn(), head: vi.fn(), any: vi.fn(),
+      get: vi.fn(),
+      post: vi.fn(),
+      put: vi.fn(),
+      patch: vi.fn(),
+      del: vi.fn(),
+      options: vi.fn(),
+      head: vi.fn(),
+      any: vi.fn(),
       ws: vi.fn(),
       listen: vi.fn((_p: number, cb: (t: unknown) => void) => cb({})),
     }),
@@ -28,19 +34,24 @@ describe('fastParseQuery', () => {
   it('parses multiple pairs', async () => {
     const { __internal } = await import('../src/index');
     expect(__internal.fastParseQuery('a=1&b=2&c=3')).toEqual({
-      a: '1', b: '2', c: '3',
+      a: '1',
+      b: '2',
+      c: '3',
     });
   });
 
   it('decodes percent-encoded keys and values', async () => {
     const { __internal } = await import('../src/index');
-    expect(__internal.fastParseQuery('name=Ada%20Lovelace&email=ada%40example.com'))
-      .toEqual({ name: 'Ada Lovelace', email: 'ada@example.com' });
+    expect(
+      __internal.fastParseQuery('name=Ada%20Lovelace&email=ada%40example.com'),
+    ).toEqual({ name: 'Ada Lovelace', email: 'ada@example.com' });
   });
 
   it('replaces "+" with " " (form encoding)', async () => {
     const { __internal } = await import('../src/index');
-    expect(__internal.fastParseQuery('q=hello+world')).toEqual({ q: 'hello world' });
+    expect(__internal.fastParseQuery('q=hello+world')).toEqual({
+      q: 'hello world',
+    });
   });
 
   it('groups repeated keys into an array', async () => {
@@ -53,7 +64,8 @@ describe('fastParseQuery', () => {
   it('treats key without value as empty string', async () => {
     const { __internal } = await import('../src/index');
     expect(__internal.fastParseQuery('flag&name=ada')).toEqual({
-      flag: '', name: 'ada',
+      flag: '',
+      name: 'ada',
     });
   });
 
@@ -88,6 +100,8 @@ describe('fastParseQuery', () => {
     expect(__internal.safeDecodeURIComponent('%E0')).toBe('%E0');
     expect(__internal.safeDecodeURIComponent('%XY')).toBe('%XY');
     // Valid input is still decoded normally.
-    expect(__internal.safeDecodeURIComponent('hello%20world')).toBe('hello world');
+    expect(__internal.safeDecodeURIComponent('hello%20world')).toBe(
+      'hello world',
+    );
   });
 });

@@ -15,10 +15,18 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('uWebSockets.js', () => ({
   default: {
     App: () => ({
-      get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(),
-      del: vi.fn(), options: vi.fn(), head: vi.fn(), any: vi.fn(),
+      get: vi.fn(),
+      post: vi.fn(),
+      put: vi.fn(),
+      patch: vi.fn(),
+      del: vi.fn(),
+      options: vi.fn(),
+      head: vi.fn(),
+      any: vi.fn(),
       ws: vi.fn(),
-      listen: vi.fn((_host: string, _p: number, cb: (t: unknown) => void) => cb({})),
+      listen: vi.fn((_host: string, _p: number, cb: (t: unknown) => void) =>
+        cb({}),
+      ),
     }),
     SHARED_COMPRESSOR: 0,
     us_listen_socket_close: vi.fn(),
@@ -37,14 +45,17 @@ function makeResponse() {
     app.route({
       method: 'GET',
       path: '/h',
-      handler: (_req, res) => { captured = res; res.send({}); },
+      handler: (_req, res) => {
+        captured = res;
+      },
     });
     const adapter = new NativeAdapter(app, { port: 0 });
     adapter.listen();
     // Pull the registered uWS callback and invoke it with a fake req/res.
     const uWS = (await import('uWebSockets.js')).default as any;
-    const lastServer = (uWS.App as any).mock?.results?.slice(-1)?.[0]?.value
-      ?? (adapter as any)._server;
+    const lastServer =
+      (uWS.App as any).mock?.results?.slice(-1)?.[0]?.value ??
+      (adapter as any)._server;
     const getRegistered = lastServer.get.mock.calls[0]?.[1];
     if (!getRegistered) throw new Error('handler not registered');
     const fakeReq = {
@@ -74,32 +85,37 @@ function makeResponse() {
 describe('NativeResponse.header() — header injection prevention', () => {
   it('throws when header VALUE contains CR', async () => {
     const { res } = await makeResponse();
-    expect(() => res.header('X-Foo', 'bar\rSet-Cookie: pwned=1'))
-      .toThrow(/response splitting/i);
+    expect(() => res.header('X-Foo', 'bar\rSet-Cookie: pwned=1')).toThrow(
+      /response splitting/i,
+    );
   });
 
   it('throws when header VALUE contains LF', async () => {
     const { res } = await makeResponse();
-    expect(() => res.header('X-Foo', 'bar\nSet-Cookie: pwned=1'))
-      .toThrow(/response splitting/i);
+    expect(() => res.header('X-Foo', 'bar\nSet-Cookie: pwned=1')).toThrow(
+      /response splitting/i,
+    );
   });
 
   it('throws when header VALUE contains CRLF', async () => {
     const { res } = await makeResponse();
-    expect(() => res.header('X-Foo', 'bar\r\nSet-Cookie: pwned=1'))
-      .toThrow(/response splitting/i);
+    expect(() => res.header('X-Foo', 'bar\r\nSet-Cookie: pwned=1')).toThrow(
+      /response splitting/i,
+    );
   });
 
   it('throws when header VALUE contains NUL', async () => {
     const { res } = await makeResponse();
-    expect(() => res.header('X-Foo', 'bar\0baz'))
-      .toThrow(/response splitting/i);
+    expect(() => res.header('X-Foo', 'bar\0baz')).toThrow(
+      /response splitting/i,
+    );
   });
 
   it('throws when header KEY contains CRLF', async () => {
     const { res } = await makeResponse();
-    expect(() => res.header('X-Foo\r\nEvil', 'bar'))
-      .toThrow(/response splitting/i);
+    expect(() => res.header('X-Foo\r\nEvil', 'bar')).toThrow(
+      /response splitting/i,
+    );
   });
 
   it('accepts normal header values unchanged', async () => {
@@ -110,6 +126,23 @@ describe('NativeResponse.header() — header injection prevention', () => {
 
   it('accepts values with tabs and printable ASCII (RFC 9110 field-vchar)', async () => {
     const { res } = await makeResponse();
-    expect(() => res.header('X-Foo', 'multi word value\twith tab')).not.toThrow();
+    expect(() =>
+      res.header('X-Foo', 'multi word value\twith tab'),
+    ).not.toThrow();
+  });
+
+  it('throws when sendRaw() contentType contains CRLF', async () => {
+    const { res } = await makeResponse();
+    expect(() =>
+      res.sendRaw('body', 'text/html\r\nSet-Cookie: pwned=1'),
+    ).toThrow(/response splitting/i);
+  });
+
+  it('throws when stream() contentType contains CRLF', async () => {
+    const { res } = await makeResponse();
+    const { Readable } = require('node:stream');
+    expect(() =>
+      res.stream(Readable.from([]), 'text/html\r\nSet-Cookie: pwned=1'),
+    ).toThrow(/response splitting/i);
   });
 });

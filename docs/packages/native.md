@@ -20,15 +20,15 @@ Node.js ≥ 18, < 23. uWS is a pre-compiled native binary — check the [uWebSoc
 
 ## Options
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `port` | `number` | `3000` | Listen port |
-| `maxBodySize` | `number` | `1048576` | Max request body (1 MB) |
-| `trustProxy` | `boolean` | `false` | Trust `X-Forwarded-For` for `req.ip` |
-| `workers` | `number` | `os.availableParallelism()` | Worker count for `listenClustered()` |
-| `allowUserspaceProxy` | `boolean` | `false` | See [Clustering on macOS / Windows](#clustering-on-macos--windows) |
-| `logger` | `AxiomifyLogger` | `console` | Structured logger for adapter-level warnings |
-| `ws` | `NativeWsOptions` | — | Built-in fallback uWS WebSocket options (Legacy) |
+| Option                | Type              | Default                     | Description                                                        |
+| --------------------- | ----------------- | --------------------------- | ------------------------------------------------------------------ |
+| `port`                | `number`          | `3000`                      | Listen port                                                        |
+| `maxBodySize`         | `number`          | `1048576`                   | Max request body (1 MB)                                            |
+| `trustProxy`          | `boolean`         | `false`                     | Trust `X-Forwarded-For` for `req.ip`                               |
+| `workers`             | `number`          | `os.availableParallelism()` | Worker count for `listenClustered()`                               |
+| `allowUserspaceProxy` | `boolean`         | `false`                     | See [Clustering on macOS / Windows](#clustering-on-macos--windows) |
+| `logger`              | `AxiomifyLogger`  | `console`                   | Structured logger for adapter-level warnings                       |
+| `ws`                  | `NativeWsOptions` | —                           | Built-in fallback uWS WebSocket options (Legacy)                   |
 
 ## Usage
 
@@ -66,8 +66,8 @@ const adapter = new NativeAdapter(app, { port: 3000 });
 
 adapter.listenClustered({
   onWorkerReady: () => console.log(`[${process.pid}] ready`),
-  onPrimary:     (pids) => console.log(`Primary managing ${pids.length} workers`),
-  onWorkerExit:  (pid, code) => console.error(`Worker ${pid} exited (${code})`),
+  onPrimary: (pids) => console.log(`Primary managing ${pids.length} workers`),
+  onWorkerExit: (pid, code) => console.error(`Worker ${pid} exited (${code})`),
   gracefulTimeoutMs: 10_000,
 });
 ```
@@ -85,7 +85,9 @@ const adapter = new NativeAdapter(app, {
   port: 3000,
   allowUserspaceProxy: true, // acknowledge the perf cliff
 });
-adapter.listenClustered({ /* ... */ });
+adapter.listenClustered({
+  /* ... */
+});
 ```
 
 When the userspace proxy activates, the adapter emits a structured `logger.warn` so the degradation is visible in your log pipeline. For production, deploy on Linux or run a single process via `listen()`.
@@ -113,7 +115,7 @@ adapter.gracefulShutdown({
 });
 ```
 
-`gracefulShutdown()` is safe to call before *or* after `listen()` — it detaches the synchronous crash-guard signal handlers that `listen()` installs by default, so only one drain runs per signal.
+`gracefulShutdown()` is safe to call before _or_ after `listen()` — it detaches the synchronous crash-guard signal handlers that `listen()` installs by default, so only one drain runs per signal.
 
 > **Do not** call `gracefulShutdown()` from `@axiomify/core` against a `NativeAdapter`. That core helper expects a Node.js `http.Server` and will not understand uWS's listen socket. Use `adapter.gracefulShutdown()` instead.
 
@@ -126,11 +128,11 @@ app.ws({
   path: '/chat',
   schema: { message: z.object({ text: z.string() }) },
   onPreHandler: async (req, res) => {
-     // authenticate
+    // authenticate
   },
   message: (client, data) => {
     client.publish('room', data);
-  }
+  },
 });
 ```
 
@@ -160,16 +162,16 @@ app.route({
   handler: (req, res) => {
     res.sseInit(15000); // optional heartbeat
     res.sseSend({ hello: 'world' }, 'greet');
-  }
+  },
 });
 ```
 
 ## Benchmarks (8-core machine, autocannon 100 conns, pipelining 10, 12 s)
 
-| Scenario | Req/s | Avg lat | p99 |
-|---|---:|---:|---:|
-| GET /ping (no body, no params) | 73,511 | 13 ms | 26 ms |
-| GET /users/:id/posts/:postId (2 params) | 83,947 | 11 ms | 20 ms |
-| POST /echo (JSON body parse + echo) | 54,720 | 18 ms | 30 ms |
+| Scenario                                |  Req/s | Avg lat |   p99 |
+| --------------------------------------- | -----: | ------: | ----: |
+| GET /ping (no body, no params)          | 73,511 |   13 ms | 26 ms |
+| GET /users/:id/posts/:postId (2 params) | 83,947 |   11 ms | 20 ms |
+| POST /echo (JSON body parse + echo)     | 54,720 |   18 ms | 30 ms |
 
 The param route outperforms ping because the router optimisation (caller-provided `paramsOut`) eliminates the intermediate object allocation — better cache locality than the no-param path under sustained load.

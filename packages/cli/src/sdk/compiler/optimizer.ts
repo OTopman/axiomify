@@ -7,7 +7,16 @@
  *   - Merge intersections of objects into single unified object types
  */
 import { TypeGraph } from '../ir/type-graph';
-import type { IRDiagnostic, IRIntersectionType, IRObjectType, IRScalarType, IRSchema, IRType, IRTypeRef, IRUnionType } from '../ir/types';
+import type {
+  IRDiagnostic,
+  IRIntersectionType,
+  IRObjectType,
+  IRScalarType,
+  IRSchema,
+  IRType,
+  IRTypeRef,
+  IRUnionType,
+} from '../ir/types';
 
 export class Optimizer {
   private schema!: IRSchema;
@@ -101,7 +110,8 @@ export class Optimizer {
       if (resolved && resolved.kind === 'scalar') {
         const scalarType = resolved as IRScalarType;
         if (scalarType.scalar === 'string') hasStringScalar = true;
-        if (scalarType.scalar === 'number' || scalarType.scalar === 'integer') hasNumberScalar = true;
+        if (scalarType.scalar === 'number' || scalarType.scalar === 'integer')
+          hasNumberScalar = true;
         if (scalarType.scalar === 'boolean') hasBooleanScalar = true;
       }
     }
@@ -114,21 +124,35 @@ export class Optimizer {
 
       if (resolved) {
         // If wide string type exists, skip string literal members
-        if (resolved.kind === 'literal' && typeof resolved.value === 'string' && hasStringScalar) {
+        if (
+          resolved.kind === 'literal' &&
+          typeof resolved.value === 'string' &&
+          hasStringScalar
+        ) {
           continue;
         }
         // If wide number type exists, skip number literal members
-        if (resolved.kind === 'literal' && typeof resolved.value === 'number' && hasNumberScalar) {
+        if (
+          resolved.kind === 'literal' &&
+          typeof resolved.value === 'number' &&
+          hasNumberScalar
+        ) {
           continue;
         }
         // If wide boolean type exists, skip boolean literal members
-        if (resolved.kind === 'literal' && typeof resolved.value === 'boolean' && hasBooleanScalar) {
+        if (
+          resolved.kind === 'literal' &&
+          typeof resolved.value === 'boolean' &&
+          hasBooleanScalar
+        ) {
           continue;
         }
       }
 
       // Quick stringification for identity check
-      const key = ref.ref ? `ref:${ref.ref}` : `inline:${JSON.stringify(ref.inline)}`;
+      const key = ref.ref
+        ? `ref:${ref.ref}`
+        : `inline:${JSON.stringify(ref.inline)}`;
       if (!seenRefs.has(key)) {
         seenRefs.add(key);
         uniqueRefs.push(ref);

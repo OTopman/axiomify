@@ -12,7 +12,10 @@ export class SseClient {
   private retries = 0;
   private active = false;
 
-  constructor(private url: string, private options: SseOptions = {}) {}
+  constructor(
+    private url: string,
+    private options: SseOptions = {},
+  ) {}
 
   connect(): void {
     if (this.active) return;
@@ -40,10 +43,10 @@ export class SseClient {
       try {
         const response = await fetch(this.url, {
           headers: {
-            'Accept': 'text/event-stream',
-            ...(this.options.headers || {})
+            Accept: 'text/event-stream',
+            ...(this.options.headers || {}),
           },
-          signal
+          signal,
         });
 
         if (!response.ok) {
@@ -108,13 +111,15 @@ export class SseClient {
         this.retries++;
         if (this.retries > maxRetries) {
           this.active = false;
-          this.options.onError?.(new Error('Max SSE reconnection retries reached'));
+          this.options.onError?.(
+            new Error('Max SSE reconnection retries reached'),
+          );
           break;
         }
 
         // Delay with backoff
         const delay = baseDelay * Math.pow(2, this.retries - 1);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
   }

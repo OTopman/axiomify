@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { colourMethod, visibleLength, pluralise, symbols } from '../src/utils/format';
+import {
+  colourMethod,
+  visibleLength,
+  pluralise,
+  symbols,
+} from '../src/utils/format';
 import pc from 'picocolors';
 
 describe('CLI Utilities', () => {

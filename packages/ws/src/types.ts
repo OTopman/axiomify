@@ -194,6 +194,20 @@ export interface WsRoomOptions {
   allowlist?: RegExp;
 
   /**
+   * Enable security sanitization (XSS, Prototype Pollution, Null Byte) on incoming messages.
+   * Requires `@axiomify/security` to be installed.
+   * @default true
+   */
+  sanitize?:
+    | boolean
+    | {
+        xssProtection?: boolean;
+        prototypePollutionProtection?: boolean;
+        nullByteProtection?: boolean;
+        maxDepth?: number;
+      };
+
+  /**
    * Called when a client connects (after successful upgrade).
    * Equivalent to listening for the `open` event on `app.ws()`.
    */
@@ -231,5 +245,13 @@ export type ServerEvent =
   | { event: 'joined'; room: string }
   | { event: 'left'; room: string }
   | { event: 'message'; room: string; from: string; data: unknown }
-  | { event: 'presence'; room: string; clients: Array<{ id: string; state: Record<string, any>; joinedAt: number }> }
+  | {
+      event: 'presence';
+      room: string;
+      clients: Array<{
+        id: string;
+        state: Record<string, any>;
+        joinedAt: number;
+      }>;
+    }
   | { event: 'error'; message: string; code?: string };

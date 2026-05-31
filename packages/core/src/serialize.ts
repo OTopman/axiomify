@@ -28,10 +28,10 @@ export function makeSerialize(
   if (fn.length > 1) {
     throw new Error(
       '[Axiomify] SerializerFn must accept a single SerializerInput argument. ' +
-      'The 5-argument positional form (data, message, statusCode, isError, req) ' +
-      'was removed in v5.0.0. Migrate to:\n' +
-      '  ({ data, message, statusCode, isError, req }) => ...\n' +
-      'See CHANGELOG.md → 5.0.0 → Breaking changes.',
+        'The 5-argument positional form (data, message, statusCode, isError, req) ' +
+        'was removed in v5.0.0. Migrate to:\n' +
+        '  ({ data, message, statusCode, isError, req }) => ...\n' +
+        'See CHANGELOG.md → 5.0.0 → Breaking changes.',
     );
   }
 
@@ -51,9 +51,9 @@ export function makeSerialize(
   if (probe && typeof (probe as { then?: unknown }).then === 'function') {
     throw new Error(
       '[Axiomify] SerializerFn must be synchronous. The configured serializer ' +
-      'returned a Promise — async serialization would corrupt response bodies ' +
-      'because JSON.stringify cannot serialize Promises. If you need to perform ' +
-      'async work, do it in a route handler or onPostHandler hook before send().',
+        'returned a Promise — async serialization would corrupt response bodies ' +
+        'because JSON.stringify cannot serialize Promises. If you need to perform ' +
+        'async work, do it in a route handler or onPostHandler hook before send().',
     );
   }
 

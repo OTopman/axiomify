@@ -42,6 +42,7 @@ onError hooks → onClose hooks
 ```
 
 **Key points:**
+
 - `onPreHandler` runs at dispatch time (not compiled into the per-route pipeline), so hooks added after route registration still execute
 - `onClose` always runs — use it for cleanup (metrics, logging) regardless of outcome
 - `onError` does NOT prevent `onClose` from running — both are called with `runSafe()` (errors swallowed and logged)
@@ -52,12 +53,12 @@ onError hooks → onClose hooks
 
 ```ts
 const ret = hooks.run('onRequest', req, res);
-if (ret) await ret;  // only allocates a microtask when there are hooks
+if (ret) await ret; // only allocates a microtask when there are hooks
 ```
 
 Zero Promise allocation in the zero-hook fast path. Single-handler lists call the handler directly without a loop.
 
-Multi-handler lists are **snapshotted before iteration**, so a hook that calls `app.addHook(type, ...)` of its own type during execution does NOT mutate the in-progress iteration — added hooks take effect on the *next* request. This matches the convention used by Express / Fastify / Koa.
+Multi-handler lists are **snapshotted before iteration**, so a hook that calls `app.addHook(type, ...)` of its own type during execution does NOT mutate the in-progress iteration — added hooks take effect on the _next_ request. This matches the convention used by Express / Fastify / Koa.
 
 ## Global hooks
 
@@ -102,7 +103,7 @@ const limiter = createRateLimitPlugin({ max: 100, windowMs: 60_000, store });
 app.route({
   method: 'POST',
   path: '/api/jobs',
-  plugins: [requireAuth, limiter],  // run in order, before handler
+  plugins: [requireAuth, limiter], // run in order, before handler
   handler: async (_req, res) => {
     res.send({ ok: true });
   },
@@ -120,39 +121,43 @@ app.group('/api/private', { plugins: [requireAuth] }, (group) => {
 
   // Nested group — inherits requireAuth + adds requireAdmin
   group.group('/admin', { plugins: [requireAdmin] }, (admin) => {
-    admin.route({ method: 'DELETE', path: '/users/:id', handler: deleteUserHandler });
+    admin.route({
+      method: 'DELETE',
+      path: '/users/:id',
+      handler: deleteUserHandler,
+    });
   });
 });
 ```
 
 ## When to use hooks vs plugins
 
-| Concern | Hook | Plugin |
-|---|---|---|
-| Request ID injection | `onRequest` ✓ | |
-| CORS headers | `onRequest` ✓ | |
-| Auth token extraction (store in `req.state`) | `onRequest` ✓ | |
-| Rate limit (global, all routes) | `onPreHandler` ✓ | |
-| Rate limit (specific routes) | | Plugin ✓ |
-| Role check (reads `route.openapi?.tags` / `route.meta?.tags`) | `onPreHandler` ✓ | |
-| Auth enforcement (specific routes) | | Plugin ✓ |
-| Response logging | `onPostHandler` ✓ | |
-| Error alerting | `onError` ✓ | |
-| Request cleanup | `onClose` ✓ | |
+| Concern                                                       | Hook              | Plugin   |
+| ------------------------------------------------------------- | ----------------- | -------- |
+| Request ID injection                                          | `onRequest` ✓     |          |
+| CORS headers                                                  | `onRequest` ✓     |          |
+| Auth token extraction (store in `req.state`)                  | `onRequest` ✓     |          |
+| Rate limit (global, all routes)                               | `onPreHandler` ✓  |          |
+| Rate limit (specific routes)                                  |                   | Plugin ✓ |
+| Role check (reads `route.openapi?.tags` / `route.meta?.tags`) | `onPreHandler` ✓  |          |
+| Auth enforcement (specific routes)                            |                   | Plugin ✓ |
+| Response logging                                              | `onPostHandler` ✓ |          |
+| Error alerting                                                | `onError` ✓       |          |
+| Request cleanup                                               | `onClose` ✓       |          |
 
 ## Global plugin installers
 
 Many packages expose `useX(app, options)` helpers that register hooks and/or routes:
 
 ```typescript
-import { useCors }      from '@axiomify/cors';
-import { useHelmet }    from '@axiomify/helmet';
-import { useLogger }    from '@axiomify/logger';
-import { useMetrics }   from '@axiomify/metrics';
-import { useOpenAPI }   from '@axiomify/openapi';
+import { useCors } from '@axiomify/cors';
+import { useHelmet } from '@axiomify/helmet';
+import { useLogger } from '@axiomify/logger';
+import { useMetrics } from '@axiomify/metrics';
+import { useOpenAPI } from '@axiomify/openapi';
 import { useRateLimit } from '@axiomify/rate-limit';
-import { useSecurity }  from '@axiomify/security';
-import { useGraphQL }   from '@axiomify/graphql';
+import { useSecurity } from '@axiomify/security';
+import { useGraphQL } from '@axiomify/graphql';
 
 // Call before adapter.listen() — hooks are registered in order
 useCors(app, { origin: ['https://example.com'], credentials: true });
@@ -177,7 +182,7 @@ app.use({
 
 app.use({
   name: 'auth',
-  dependencies: ['database'],   // resolved before 'auth' regardless of call order
+  dependencies: ['database'], // resolved before 'auth' regardless of call order
   register: (app, ctx) => {
     const db = ctx.resolve<Pool>('database');
     app.addHook('onRequest', createAuthMiddleware(db));

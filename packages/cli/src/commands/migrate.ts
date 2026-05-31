@@ -54,23 +54,28 @@ interface Rewrite {
 const RULES: Rewrite[] = [
   {
     id: 'meta-to-schema',
-    description: '`meta:` route field removed — metadata now lives inside `schema:` alongside Zod fields',
+    description:
+      '`meta:` route field removed — metadata now lives inside `schema:` alongside Zod fields',
     // NOTE: This rule renames `meta:` → a comment directing the dev to merge
     // contents into schema:. A full structural AST merge is out of scope for
     // the regex codemod; flag it for manual review instead (see report).
     match: /^(\s*)meta:(\s*\{)/gm,
-    replace: '$1/* TODO(axiomify-migrate): merge meta fields into schema: */ openapi_REMOVE:$2',
+    replace:
+      '$1/* TODO(axiomify-migrate): merge meta fields into schema: */ openapi_REMOVE:$2',
   },
   {
     id: 'openapi-field-to-schema',
-    description: '`openapi:` top-level route field → contents merged into `schema:` (removed in 6.1)',
+    description:
+      '`openapi:` top-level route field → contents merged into `schema:` (removed in 6.1)',
     // Same conservative approach: flag for manual review via TODO comment.
     match: /^(\s*)openapi:(\s*\{)/gm,
-    replace: '$1/* TODO(axiomify-migrate): merge openapi fields into schema: */ openapi_REMOVE:$2',
+    replace:
+      '$1/* TODO(axiomify-migrate): merge openapi fields into schema: */ openapi_REMOVE:$2',
   },
   {
     id: 'useSwagger-import',
-    description: '`useSwagger` import → `useOpenAPI` (the function was never named `useSwagger` in shipped code — docs were wrong)',
+    description:
+      '`useSwagger` import → `useOpenAPI` (the function was never named `useSwagger` in shipped code — docs were wrong)',
     match: /\buseSwagger\b/g,
     replace: 'useOpenAPI',
   },
@@ -94,7 +99,8 @@ const RULES: Rewrite[] = [
   },
   {
     id: 'AppPlugin-type',
-    description: '`AppPlugin` type alias → `AppConfigurator` (removed in 5.0; runtime accepts 1-arg fns identically)',
+    description:
+      '`AppPlugin` type alias → `AppConfigurator` (removed in 5.0; runtime accepts 1-arg fns identically)',
     match: /(:\s*|<\s*|\bas\s+)AppPlugin\b/g,
     replace: '$1AppConfigurator',
   },
@@ -110,11 +116,20 @@ interface FileResult {
 
 async function listSourceFiles(rootAbs: string): Promise<string[]> {
   const out: string[] = [];
-  const skip = new Set(['node_modules', '.git', 'dist', 'build', '.axiomify', 'coverage']);
+  const skip = new Set([
+    'node_modules',
+    '.git',
+    'dist',
+    'build',
+    '.axiomify',
+    'coverage',
+  ]);
   const walk = async (dir: string) => {
     let entries: import('fs').Dirent[];
     try {
-      entries = (await fs.readdir(dir, { withFileTypes: true })) as import('fs').Dirent[];
+      entries = (await fs.readdir(dir, {
+        withFileTypes: true,
+      })) as import('fs').Dirent[];
     } catch {
       return;
     }
@@ -134,7 +149,10 @@ async function listSourceFiles(rootAbs: string): Promise<string[]> {
   return out;
 }
 
-function applyRules(src: string): { updated: string; counts: Record<string, number> } {
+function applyRules(src: string): {
+  updated: string;
+  counts: Record<string, number>;
+} {
   let updated = src;
   const counts: Record<string, number> = {};
   for (const rule of RULES) {
@@ -153,7 +171,11 @@ function applyRules(src: string): { updated: string; counts: Record<string, numb
   return { updated, counts };
 }
 
-function renderUnifiedDiff(file: string, original: string, updated: string): string {
+function renderUnifiedDiff(
+  file: string,
+  original: string,
+  updated: string,
+): string {
   if (original === updated) return '';
   const origLines = original.split('\n');
   const updatedLines = updated.split('\n');
@@ -212,7 +234,9 @@ export async function runMigrate(opts: MigrateOptions = {}): Promise<void> {
   );
 
   if (results.length === 0) {
-    console.log(`  ${symbols.ok} Nothing to migrate — all patterns look up to date.`);
+    console.log(
+      `  ${symbols.ok} Nothing to migrate — all patterns look up to date.`,
+    );
     console.log();
     return;
   }
@@ -227,9 +251,7 @@ export async function runMigrate(opts: MigrateOptions = {}): Promise<void> {
   for (const rule of RULES) {
     const count = totalsByRule[rule.id];
     if (!count) continue;
-    console.log(
-      `  ${pc.cyan(rule.id)} ${pc.dim('—')} ${rule.description}`,
-    );
+    console.log(`  ${pc.cyan(rule.id)} ${pc.dim('—')} ${rule.description}`);
     console.log(
       `    ${symbols.bullet} ${pluralise(count, 'change')} across ${pluralise(
         results.filter((r) => r.counts[rule.id]).length,
@@ -263,7 +285,9 @@ export async function runMigrate(opts: MigrateOptions = {}): Promise<void> {
   // ─── Apply ─────────────────────────────────────────────────────────────
   for (const r of results) {
     await fs.writeFile(r.file, r.updated, 'utf8');
-    console.log(`  ${symbols.ok} ${pc.green('Updated')} ${path.relative(process.cwd(), r.file)}`);
+    console.log(
+      `  ${symbols.ok} ${pc.green('Updated')} ${path.relative(process.cwd(), r.file)}`,
+    );
   }
   console.log();
   console.log(
@@ -308,8 +332,11 @@ export async function runMigrate(opts: MigrateOptions = {}): Promise<void> {
   console.log();
   console.log(
     `  See ${pc.cyan('docs/migration-v4-to-v5.md')} for the full guide and ` +
-      pc.cyan('axiomify check') + ' to verify the migrated app.\n' +
-        pc.yellow('  Note: `openapi:` / `meta:` merges into `schema:` require manual review — check TODO comments.'),
+      pc.cyan('axiomify check') +
+      ' to verify the migrated app.\n' +
+      pc.yellow(
+        '  Note: `openapi:` / `meta:` merges into `schema:` require manual review — check TODO comments.',
+      ),
   );
   console.log();
 }

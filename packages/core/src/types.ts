@@ -66,7 +66,11 @@ export interface AxiomifyConfig {
 
 export type AxiomifyOptions = AxiomifyConfig;
 
-export interface AxiomifyRequest<Body = unknown, Query = unknown, Params = unknown> {
+export interface AxiomifyRequest<
+  Body = unknown,
+  Query = unknown,
+  Params = unknown,
+> {
   readonly id: string;
   readonly method: HttpMethod;
   readonly url: string;
@@ -335,7 +339,6 @@ export interface OpenApiOperation {
   responseDescriptions?: Record<string, string>;
 }
 
-
 export interface UploadedFile {
   originalName: string;
   savedName: string;
@@ -356,7 +359,10 @@ export type RouteHandler<
   res: AxiomifyResponse,
 ) => Promise<void> | void;
 
-export type RouteMiddleware = (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void>;
+export type RouteMiddleware = (
+  req: AxiomifyRequest,
+  res: AxiomifyResponse,
+) => void | Promise<void>;
 
 export interface RouteGroupOptions {
   plugins?: RouteMiddleware[];
@@ -365,7 +371,11 @@ export interface RouteGroupOptions {
 export interface RouteGroup {
   route<S extends RouteSchema>(definition: RouteDefinition<S>): this;
   ws<S extends RouteSchema, M = any>(definition: WsRouteDefinition<S, M>): this;
-  group(prefix: string, options: RouteGroupOptions, callback: (group: RouteGroup) => void): this;
+  group(
+    prefix: string,
+    options: RouteGroupOptions,
+    callback: (group: RouteGroup) => void,
+  ): this;
   group(prefix: string, callback: (group: RouteGroup) => void): this;
 }
 
@@ -406,7 +416,11 @@ export interface WsClient<State = Record<string, any>> {
   close(): void;
   subscribe(topic: string): void;
   unsubscribe(topic: string): void;
-  publish(topic: string, message: string | Buffer | object, isBinary?: boolean): void;
+  publish(
+    topic: string,
+    message: string | Buffer | object,
+    isBinary?: boolean,
+  ): void;
 }
 
 export interface WsRouteDefinition<
@@ -421,7 +435,11 @@ export interface WsRouteDefinition<
   idleTimeout?: number;
   open?: (client: WsClient<RequestState>, req: AxiomifyRequest) => void;
   message?: (client: WsClient<RequestState>, data: M) => void;
-  close?: (client: WsClient<RequestState>, code: number, reason: string) => void;
+  close?: (
+    client: WsClient<RequestState>,
+    code: number,
+    reason: string,
+  ) => void;
   drain?: (client: WsClient<RequestState>) => void;
 }
 

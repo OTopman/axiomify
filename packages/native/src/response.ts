@@ -5,9 +5,7 @@ import type {
   ResponseCapabilities,
   SerializerInput,
 } from '@axiomify/core';
-import type {
-  HttpResponse as UWSResponse,
-} from 'uWebSockets.js';
+import type { HttpResponse as UWSResponse } from 'uWebSockets.js';
 import { ErrorCache, statusLine } from './error-cache';
 import { HEADER_INJECTION_PATTERN } from './headers';
 import type { NativeRequest } from './request';
@@ -64,6 +62,8 @@ export class NativeResponse implements AxiomifyResponse {
   private _pendingSseBytes = 0;
   private _flushingSse = false;
 
+  private readonly _onHeadersSent?: () => void;
+
   constructor(
     res: UWSResponse,
     app: Axiomify,
@@ -71,6 +71,7 @@ export class NativeResponse implements AxiomifyResponse {
     method: HttpMethod,
     serialize: (input: SerializerInput) => unknown,
     errorCache: ErrorCache,
+    onHeadersSent?: () => void,
   ) {
     this.raw = res;
     this._app = app;
@@ -78,6 +79,7 @@ export class NativeResponse implements AxiomifyResponse {
     this._method = method;
     this._serialize = serialize;
     this._errorCache = errorCache;
+    this._onHeadersSent = onHeadersSent;
     this._serializeInput = {
       data: undefined,
       message: undefined,
@@ -102,7 +104,10 @@ export class NativeResponse implements AxiomifyResponse {
     // would split the response and inject an attacker-controlled cookie.
     // Throwing here is correct per RFC 9110 §5.5 — invalid characters MUST
     // NOT appear in field values.
-    if (HEADER_INJECTION_PATTERN.test(key) || HEADER_INJECTION_PATTERN.test(value)) {
+    if (
+      HEADER_INJECTION_PATTERN.test(key) ||
+      HEADER_INJECTION_PATTERN.test(value)
+    ) {
       throw new Error(
         `[Axiomify/native] header() rejected CR/LF in name or value ` +
           `(response splitting prevention). Strip control characters before ` +
@@ -125,6 +130,7 @@ export class NativeResponse implements AxiomifyResponse {
   send<T>(data: T, message?: string): void {
     if (this.headersSent || this.aborted) return;
     this.headersSent = true;
+    this._onHeadersSent?.();
 
     // Mutate the pre-allocated input bag rather than allocating a new
     // object. _serialize is synchronous-by-contract.
@@ -156,14 +162,20 @@ export class NativeResponse implements AxiomifyResponse {
 
   sendRaw(payload: unknown, contentType = 'text/plain'): void {
     if (this.headersSent || this.aborted) return;
+    if (HEADER_INJECTION_PATTERN.test(contentType)) {
+      throw new Error(
+        `[Axiomify/native] sendRaw() rejected CR/LF in contentType (response splitting prevention).`,
+      );
+    }
     this.headersSent = true;
+    this._onHeadersSent?.();
 
     const body =
       typeof payload === 'string'
         ? payload
         : Buffer.isBuffer(payload)
-        ? payload
-        : String(payload);
+          ? payload
+          : String(payload);
     const sl = statusLine(this.statusCode);
     const headers = this._headers;
 
@@ -182,7 +194,13 @@ export class NativeResponse implements AxiomifyResponse {
     contentType = 'application/octet-stream',
   ): void {
     if (this.headersSent || this.aborted) return;
+    if (HEADER_INJECTION_PATTERN.test(contentType)) {
+      throw new Error(
+        `[Axiomify/native] stream() rejected CR/LF in contentType (response splitting prevention).`,
+      );
+    }
     this.headersSent = true;
+    this._onHeadersSent?.();
     this.isStreaming = true;
 
     const sl = statusLine(this.statusCode);
@@ -295,6 +313,7 @@ export class NativeResponse implements AxiomifyResponse {
   sseInit(sseHeartbeatMs?: number): void {
     if (this.headersSent || this.aborted) return;
     this.headersSent = true;
+    this._onHeadersSent?.();
 
     const sl = statusLine(this.statusCode);
     const headers = this._headers;
@@ -370,12 +389,19 @@ export class NativeResponse implements AxiomifyResponse {
     parts.push('\n');
     const payload = parts.join('');
 
-    if (this._pendingSseBytes + payload.length > NativeResponse.SSE_PENDING_BYTE_CAP) {
+    if (
+      this._pendingSseBytes + payload.length >
+      NativeResponse.SSE_PENDING_BYTE_CAP
+    ) {
       // Slow consumer: a client that doesn't drain its TCP buffer would let
       // _pendingSse grow without bound. EventSource spec mandates client
       // auto-reconnect with Last-Event-ID, so closing here is recoverable.
       this.aborted = true;
-      try { this.raw.cork(() => this.raw.end()); } catch { /* already ended */ }
+      try {
+        this.raw.cork(() => this.raw.end());
+      } catch {
+        /* already ended */
+      }
       return;
     }
 

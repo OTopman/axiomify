@@ -15,14 +15,14 @@
 
 ## Why not `ws`?
 
-| Dimension | Generic `ws` | `@axiomify/ws` |
-|---|---|---|
-| **Broadcast** | `for...of` loop over every socket | O(1) uWS topic publish (C++ kernel) |
-| **Memory/conn** | ~8 KB | ~0.5 KB |
-| **Rooms** | DIY `Map<string, Set<WebSocket>>` | Built-in, topic-backed |
-| **Pub/Sub** | Not included | Native, zero-copy |
-| **Backpressure** | Silent buffer bloat | `getBufferedAmount()` |
-| **Presence** | DIY heartbeat + tracking | Built-in with configurable interval |
+| Dimension        | Generic `ws`                      | `@axiomify/ws`                      |
+| ---------------- | --------------------------------- | ----------------------------------- |
+| **Broadcast**    | `for...of` loop over every socket | O(1) uWS topic publish (C++ kernel) |
+| **Memory/conn**  | ~8 KB                             | ~0.5 KB                             |
+| **Rooms**        | DIY `Map<string, Set<WebSocket>>` | Built-in, topic-backed              |
+| **Pub/Sub**      | Not included                      | Native, zero-copy                   |
+| **Backpressure** | Silent buffer bloat               | `getBufferedAmount()`               |
+| **Presence**     | DIY heartbeat + tracking          | Built-in with configurable interval |
 
 ## Install
 
@@ -82,18 +82,25 @@ and returns a `RoomManager`.
 
 ```ts
 const rooms = wsRooms(app, {
-  path: '/ws',                // WebSocket endpoint (default: '/ws')
-  maxRoomsPerClient: 50,      // Room limit per client (default: 50)
+  path: '/ws', // WebSocket endpoint (default: '/ws')
+  maxRoomsPerClient: 50, // Room limit per client (default: 50)
   presenceIntervalMs: 30_000, // Heartbeat interval (default: 30s, 0 to disable)
   maxPayloadLength: 256 * 1024,
   idleTimeout: 120,
-  plugins: [authPlugin],      // Axiomify plugins run on upgrade
-  messageSchema: z.object({   // Optional Zod validation
+  plugins: [authPlugin], // Axiomify plugins run on upgrade
+  schema: z.object({
+    // Optional Zod validation
     text: z.string(),
   }),
-  onConnect(client) { /* ... */ },
-  onDisconnect(client, code, reason) { /* ... */ },
-  onMessage(client, data) { /* ... */ },
+  onConnect(client) {
+    /* ... */
+  },
+  onDisconnect(client, code, reason) {
+    /* ... */
+  },
+  onMessage(client, data) {
+    /* ... */
+  },
 });
 ```
 
@@ -101,61 +108,61 @@ const rooms = wsRooms(app, {
 
 The object returned by `wsRooms()`.
 
-| Method / Property | Description |
-|---|---|
-| `room(name)` | Get a room by name (or `undefined`) |
-| `getOrCreateRoom(name)` | Get or create a room |
-| `roomNames` | All active room names |
-| `roomCount` | Number of active rooms |
-| `client(id)` | Get a connected client by ID |
-| `clientCount` | Number of connected clients |
-| `clientIds` | All connected client IDs |
-| `broadcastAll(data)` | Broadcast to every connected client |
-| `close()` | Disconnect all clients, clear all rooms |
-| `on(event, handler)` | Listen for room events |
-| `off(event, handler)` | Remove an event listener |
+| Method / Property       | Description                             |
+| ----------------------- | --------------------------------------- |
+| `room(name)`            | Get a room by name (or `undefined`)     |
+| `getOrCreateRoom(name)` | Get or create a room                    |
+| `roomNames`             | All active room names                   |
+| `roomCount`             | Number of active rooms                  |
+| `client(id)`            | Get a connected client by ID            |
+| `clientCount`           | Number of connected clients             |
+| `clientIds`             | All connected client IDs                |
+| `broadcastAll(data)`    | Broadcast to every connected client     |
+| `close()`               | Disconnect all clients, clear all rooms |
+| `on(event, handler)`    | Listen for room events                  |
+| `off(event, handler)`   | Remove an event listener                |
 
 #### Events
 
-| Event | Handler Signature |
-|---|---|
-| `join` | `(roomName: string, client: RoomClient) => void` |
-| `leave` | `(roomName: string, client: RoomClient) => void` |
-| `message` | `(client: RoomClient, data: unknown) => void` |
-| `roomCreate` | `(roomName: string) => void` |
-| `roomDelete` | `(roomName: string) => void` |
-| `error` | `(error: Error, client?: RoomClient) => void` |
+| Event        | Handler Signature                                |
+| ------------ | ------------------------------------------------ |
+| `join`       | `(roomName: string, client: RoomClient) => void` |
+| `leave`      | `(roomName: string, client: RoomClient) => void` |
+| `message`    | `(client: RoomClient, data: unknown) => void`    |
+| `roomCreate` | `(roomName: string) => void`                     |
+| `roomDelete` | `(roomName: string) => void`                     |
+| `error`      | `(error: Error, client?: RoomClient) => void`    |
 
 ### `Room`
 
 Represents a named room backed by a uWS topic.
 
-| Method / Property | Description |
-|---|---|
-| `name` | Room name |
-| `size` | Number of members |
-| `has(clientId)` | Check membership |
-| `broadcast(data)` | O(1) broadcast to all members |
-| `broadcastExcept(clientId, data)` | Broadcast excluding one client |
-| `getPresence()` | Array of `{ id, state, joinedAt }` |
-| `kick(clientId, reason?, disconnect?)` | Remove a client from the room |
-| `members` | Iterator over all room members |
+| Method / Property                      | Description                        |
+| -------------------------------------- | ---------------------------------- |
+| `name`                                 | Room name                          |
+| `size`                                 | Number of members                  |
+| `has(clientId)`                        | Check membership                   |
+| `broadcast(data)`                      | O(1) broadcast to all members      |
+| `broadcastExcept(clientId, data)`      | Broadcast excluding one client     |
+| `getPresence()`                        | Array of `{ id, state, joinedAt }` |
+| `kick(clientId, reason?, disconnect?)` | Remove a client from the room      |
+| `members`                              | Iterator over all room members     |
 
 ### `RoomClient`
 
 Represents a connected WebSocket client with room capabilities.
 
-| Method / Property | Description |
-|---|---|
-| `id` | Unique client ID (UUID) |
-| `state` | Shared state from the upgrade (auth data, etc) |
-| `rooms` | `ReadonlySet<string>` of current rooms |
-| `send(data)` | Send to this specific client |
-| `join(room)` | Join a room |
-| `leave(room)` | Leave a room |
-| `leaveAll()` | Leave all rooms |
-| `disconnect()` | Close the connection |
-| `getBufferedAmount()` | Bytes queued (backpressure check) |
+| Method / Property     | Description                                    |
+| --------------------- | ---------------------------------------------- |
+| `id`                  | Unique client ID (UUID)                        |
+| `state`               | Shared state from the upgrade (auth data, etc) |
+| `rooms`               | `ReadonlySet<string>` of current rooms         |
+| `send(data)`          | Send to this specific client                   |
+| `join(room)`          | Join a room                                    |
+| `leave(room)`         | Leave a room                                   |
+| `leaveAll()`          | Leave all rooms                                |
+| `disconnect()`        | Close the connection                           |
+| `getBufferedAmount()` | Bytes queued (backpressure check)              |
 
 ## Wire Protocol
 
@@ -216,6 +223,7 @@ const online = lobby?.getPresence();
 ```
 
 Clients can also request presence via the wire protocol:
+
 ```json
 { "action": "presence", "room": "lobby" }
 ```
@@ -234,9 +242,7 @@ import { createAuthPlugin } from '@axiomify/auth';
 
 const rooms = wsRooms(app, {
   path: '/chat',
-  plugins: [
-    createAuthPlugin({ secret: process.env.JWT_SECRET! }),
-  ],
+  plugins: [createAuthPlugin({ secret: process.env.JWT_SECRET! })],
   onConnect(client) {
     // client.state.user is populated by the auth plugin
     console.log(`Authenticated user: ${client.state.user.name}`);
@@ -262,23 +268,23 @@ uWebSockets.js's C++ event loop:
 
 ### Benchmarks (indicative, single-core)
 
-| Scenario | Generic `ws` | `@axiomify/ws` |
-|---|---|---|
-| 10k clients, 1 room broadcast | ~12ms | <1ms |
-| 100k clients, 1 room broadcast | ~120ms | <1ms |
-| Memory per connection | ~8 KB | ~0.5 KB |
+| Scenario                       | Generic `ws` | `@axiomify/ws` |
+| ------------------------------ | ------------ | -------------- |
+| 10k clients, 1 room broadcast  | ~12ms        | <1ms           |
+| 100k clients, 1 room broadcast | ~120ms       | <1ms           |
+| Memory per connection          | ~8 KB        | ~0.5 KB        |
 
 ## vs `@axiomify/socket.io`
 
-| Feature | `@axiomify/ws` | `@axiomify/socket.io` |
-|---|---|---|
-| **Protocol** | Raw WebSocket + optional JSON | Socket.IO (HTTP polling fallback) |
-| **Dependencies** | Zero | `socket.io` (~200 KB) |
-| **Reconnection** | Client-side only | Built-in with backoff |
-| **Rooms** | Native uWS topics | Socket.IO adapter |
-| **Namespaces** | N/A (use room prefixes) | Built-in |
-| **Binary** | Native | Supported |
-| **Browser compat** | Modern only (no fallback) | Universal (polling fallback) |
+| Feature            | `@axiomify/ws`                | `@axiomify/socket.io`             |
+| ------------------ | ----------------------------- | --------------------------------- |
+| **Protocol**       | Raw WebSocket + optional JSON | Socket.IO (HTTP polling fallback) |
+| **Dependencies**   | Zero                          | `socket.io` (~200 KB)             |
+| **Reconnection**   | Client-side only              | Built-in with backoff             |
+| **Rooms**          | Native uWS topics             | Socket.IO adapter                 |
+| **Namespaces**     | N/A (use room prefixes)       | Built-in                          |
+| **Binary**         | Native                        | Supported                         |
+| **Browser compat** | Modern only (no fallback)     | Universal (polling fallback)      |
 
 **Use `@axiomify/ws`** when you control both client and server, need
 maximum performance, and don't need HTTP long-polling fallback.
@@ -307,7 +313,7 @@ exhausting memory:
 
 ```ts
 const rooms = wsRooms(app, {
-  maxRoomsPerClient: 100,  // Override the default
+  maxRoomsPerClient: 100, // Override the default
 });
 ```
 

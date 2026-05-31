@@ -4,19 +4,35 @@ import { useLogger } from '../src/index';
 
 function makeReq(overrides: any = {}) {
   return {
-    id: 'req_1', method: 'GET', url: '/', path: '/', ip: '127.0.0.1',
+    id: 'req_1',
+    method: 'GET',
+    url: '/',
+    path: '/',
+    ip: '127.0.0.1',
     headers: { authorization: 'Bearer secret' },
-    body: undefined, query: {}, params: {}, state: {}, raw: {}, stream: null,
+    body: undefined,
+    query: {},
+    params: {},
+    state: {},
+    raw: {},
+    stream: null,
     ...overrides,
   } as any;
 }
 
 function makeRes(overrides: any = {}) {
   return {
-    statusCode: 200, raw: {}, headersSent: false,
-    status: vi.fn().mockReturnThis(), header: vi.fn().mockReturnThis(),
-    getHeader: vi.fn(), removeHeader: vi.fn(),
-    send: vi.fn(), sendRaw: vi.fn(), error: vi.fn(), stream: vi.fn(),
+    statusCode: 200,
+    raw: {},
+    headersSent: false,
+    status: vi.fn().mockReturnThis(),
+    header: vi.fn().mockReturnThis(),
+    getHeader: vi.fn(),
+    removeHeader: vi.fn(),
+    send: vi.fn(),
+    sendRaw: vi.fn(),
+    error: vi.fn(),
+    stream: vi.fn(),
     capabilities: { sse: false, streaming: false },
     ...overrides,
   } as any;
@@ -42,14 +58,23 @@ describe('useLogger — extended coverage', () => {
     const app = new Axiomify();
     useLogger(app, { beautify: false });
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    await expect(runHooks(app, 'onRequest', makeReq(), makeRes())).resolves.toBeUndefined();
+    await expect(
+      runHooks(app, 'onRequest', makeReq(), makeRes()),
+    ).resolves.toBeUndefined();
   });
 
   it('masks sensitive fields when includeHeaders is true', async () => {
     const lines: string[] = [];
-    vi.spyOn(process.stdout, 'write').mockImplementation((s: any) => { lines.push(String(s)); return true; });
+    vi.spyOn(process.stdout, 'write').mockImplementation((s: any) => {
+      lines.push(String(s));
+      return true;
+    });
     const app = new Axiomify();
-    useLogger(app, { sensitiveFields: ['authorization'], includeHeaders: true, beautify: false });
+    useLogger(app, {
+      sensitiveFields: ['authorization'],
+      includeHeaders: true,
+      beautify: false,
+    });
     await runHooks(app, 'onRequest', makeReq(), makeRes());
     expect(lines.join('')).not.toContain('Bearer secret');
   });
@@ -61,7 +86,10 @@ describe('useLogger — extended coverage', () => {
     const req = makeReq();
     req.state.startTime = process.hrtime.bigint();
     await expect(
-      runHooks(app, 'onPostHandler', req, makeRes({ statusCode: 201 }), { route: {} as any, params: {} }),
+      runHooks(app, 'onPostHandler', req, makeRes({ statusCode: 201 }), {
+        route: {} as any,
+        params: {},
+      }),
     ).resolves.toBeUndefined();
   });
 
@@ -100,14 +128,19 @@ describe('useLogger — extended coverage', () => {
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const req = makeReq(); // no startTime
     await expect(
-      runHooks(app, 'onPostHandler', req, makeRes(), { route: {} as any, params: {} }),
+      runHooks(app, 'onPostHandler', req, makeRes(), {
+        route: {} as any,
+        params: {},
+      }),
     ).resolves.toBeUndefined();
   });
 
   it('filters out info logs when level is set to fatal', async () => {
     const app = new Axiomify();
     useLogger(app, { level: 'fatal', beautify: false });
-    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
     await runHooks(app, 'onRequest', makeReq(), makeRes());
     expect(writeSpy).not.toHaveBeenCalled();
   });
@@ -115,7 +148,9 @@ describe('useLogger — extended coverage', () => {
   it('outputs info logs when level is set to trace', async () => {
     const app = new Axiomify();
     useLogger(app, { level: 'trace', beautify: false });
-    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const writeSpy = vi
+      .spyOn(process.stdout, 'write')
+      .mockImplementation(() => true);
     await runHooks(app, 'onRequest', makeReq(), makeRes());
     expect(writeSpy).toHaveBeenCalled();
   });

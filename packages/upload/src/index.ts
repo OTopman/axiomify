@@ -176,7 +176,7 @@ export function useUpload(app: Axiomify, options: { autoCleanup?: boolean } = {}
     async (req: AxiomifyRequest, _res: AxiomifyResponse, match: any) => {
       const fileSchema = match?.route?.schema?.files;
       /* v8 ignore next -- multipart processing requires real Busboy stream */
-    const contentType = req.headers['content-type'] || '';
+      const contentType = req.headers['content-type'] || '';
 
       if (!fileSchema || !contentType.includes('multipart/form-data')) return;
 
@@ -304,7 +304,10 @@ export function useUpload(app: Axiomify, options: { autoCleanup?: boolean } = {}
                 }
               });
 
-              await pipeline(file, createWriteStream(savePath, { flags: 'wx' }));
+              await pipeline(
+                file,
+                createWriteStream(savePath, { flags: 'wx' }),
+              );
               mutableReq.files[fieldname].size = byteCount;
               mutableReq.uploadedFiles.push(savePath);
 

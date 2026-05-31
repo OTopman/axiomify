@@ -62,8 +62,7 @@ function checkNodeVersion(findings: Finding[]): void {
       severity: 'fail',
       area: 'node',
       message: `Node ${process.versions.node} is below the supported minimum`,
-      hint:
-        'Axiomify requires Node 18 or later. Upgrade via nvm: `nvm install 22 && nvm use 22`.',
+      hint: 'Axiomify requires Node 18 or later. Upgrade via nvm: `nvm install 22 && nvm use 22`.',
     });
   } else if (major > 22) {
     add(findings, {
@@ -131,7 +130,9 @@ function checkDependencyDrift(findings: Finding[]): void {
     }
     // Group by version-ish (strip leading ^/~).
     const versions = new Set(
-      axiomifyDeps.map(([, v]) => v.replace(/^[\^~]/, '').replace(/^\*$/, 'workspace')),
+      axiomifyDeps.map(([, v]) =>
+        v.replace(/^[\^~]/, '').replace(/^\*$/, 'workspace'),
+      ),
     );
     if (versions.size > 1) {
       add(findings, {
@@ -189,8 +190,7 @@ function checkUwsLoads(findings: Finding[]): void {
         severity: 'fail',
         area: 'uws',
         message: 'uWebSockets.js native binding failed to load',
-        hint:
-          msg.length > 200 ? msg.slice(0, 200) + '…' : msg,
+        hint: msg.length > 200 ? msg.slice(0, 200) + '…' : msg,
       });
     }
   }
@@ -279,7 +279,10 @@ export async function runDoctor(): Promise<void> {
     const tag = pc.dim(`[${f.area}]`);
     console.log(`  ${sym[f.severity]} ${tag} ${f.message}`);
     if (f.hint && f.severity !== 'ok') {
-      const wrapped = f.hint.replace(/(.{1,80})(\s+|$)/g, '\n      ' + pc.dim('$1'));
+      const wrapped = f.hint.replace(
+        /(.{1,80})(\s+|$)/g,
+        '\n      ' + pc.dim('$1'),
+      );
       console.log(wrapped);
     }
   }
@@ -292,9 +295,13 @@ export async function runDoctor(): Promise<void> {
   console.log(
     `  ${symbols.ok} ${pluralise(oks, 'pass', 'passes')}` +
       pc.dim('  ·  ') +
-      (warns > 0 ? `${symbols.warn} ${pluralise(warns, 'warning')}` : pc.dim('0 warnings')) +
+      (warns > 0
+        ? `${symbols.warn} ${pluralise(warns, 'warning')}`
+        : pc.dim('0 warnings')) +
       pc.dim('  ·  ') +
-      (fails > 0 ? `${symbols.fail} ${pluralise(fails, 'failure')}` : pc.dim('0 failures')),
+      (fails > 0
+        ? `${symbols.fail} ${pluralise(fails, 'failure')}`
+        : pc.dim('0 failures')),
   );
   console.log();
 

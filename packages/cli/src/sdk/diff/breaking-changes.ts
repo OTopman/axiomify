@@ -29,13 +29,13 @@ export class BreakingChangeAnalyzer {
         issues.push({
           severity: 'breaking',
           description: `Endpoint "${id}" was removed.`,
-          path: `endpoints.${id}`
+          path: `endpoints.${id}`,
         });
       } else if (epDiff.type === 'added') {
         issues.push({
           severity: 'additive',
           description: `New endpoint "${id}" was added.`,
-          path: `endpoints.${id}`
+          path: `endpoints.${id}`,
         });
       } else if (epDiff.type === 'modified') {
         for (const change of epDiff.changes) {
@@ -50,13 +50,13 @@ export class BreakingChangeAnalyzer {
         issues.push({
           severity: 'breaking',
           description: `Type "${id}" was removed.`,
-          path: `types.${id}`
+          path: `types.${id}`,
         });
       } else if (typeDiff.type === 'added') {
         issues.push({
           severity: 'additive',
           description: `New type "${id}" was added.`,
-          path: `types.${id}`
+          path: `types.${id}`,
         });
       } else if (typeDiff.type === 'modified') {
         for (const change of typeDiff.changes) {
@@ -66,19 +66,23 @@ export class BreakingChangeAnalyzer {
     }
 
     return {
-      isBreaking: issues.some(i => i.severity === 'breaking'),
+      isBreaking: issues.some((i) => i.severity === 'breaking'),
       issues,
     };
   }
 
-  private analyzeEndpointChange(endpointId: string, change: FieldChange, issues: BreakingChangeIssue[]): void {
+  private analyzeEndpointChange(
+    endpointId: string,
+    change: FieldChange,
+    issues: BreakingChangeIssue[],
+  ): void {
     const path = `endpoints.${endpointId}.${change.path}`;
 
     if (change.path === 'method') {
       issues.push({
         severity: 'breaking',
         description: `HTTP method changed from "${change.oldValue}" to "${change.newValue}" on endpoint "${endpointId}".`,
-        path
+        path,
       });
       return;
     }
@@ -87,46 +91,50 @@ export class BreakingChangeAnalyzer {
       issues.push({
         severity: 'minor',
         description: `Endpoint route path changed from "${change.oldValue}" to "${change.newValue}".`,
-        path
+        path,
       });
       return;
     }
 
     // Added/removed query/header/path params
-    if (change.path.startsWith('queryParams.') || change.path.startsWith('headerParams.') || change.path.startsWith('pathParams.')) {
+    if (
+      change.path.startsWith('queryParams.') ||
+      change.path.startsWith('headerParams.') ||
+      change.path.startsWith('pathParams.')
+    ) {
       if (change.type === 'added') {
         const param = change.newValue as any;
         if (param?.required) {
           issues.push({
             severity: 'breaking',
             description: `Required parameter "${param.name}" was added to endpoint "${endpointId}".`,
-            path
+            path,
           });
         } else {
           issues.push({
             severity: 'additive',
             description: `Optional parameter "${param?.name || ''}" was added to endpoint "${endpointId}".`,
-            path
+            path,
           });
         }
       } else if (change.type === 'removed') {
         issues.push({
           severity: 'breaking',
           description: `Parameter was removed from endpoint "${endpointId}".`,
-          path
+          path,
         });
       } else if (change.type === 'modified') {
         if (change.path.endsWith('.required') && change.newValue === true) {
           issues.push({
             severity: 'breaking',
             description: `Parameter on endpoint "${endpointId}" changed from optional to required.`,
-            path
+            path,
           });
         } else if (change.path.endsWith('.type')) {
           issues.push({
             severity: 'breaking',
             description: `Type of parameter on endpoint "${endpointId}" was modified.`,
-            path
+            path,
           });
         }
       }
@@ -139,7 +147,7 @@ export class BreakingChangeAnalyzer {
         issues.push({
           severity: 'minor',
           description: `RequestBody removed from endpoint "${endpointId}".`,
-          path
+          path,
         });
       } else if (change.type === 'added') {
         const reqBody = change.newValue as any;
@@ -147,7 +155,7 @@ export class BreakingChangeAnalyzer {
           issues.push({
             severity: 'breaking',
             description: `Required RequestBody added to endpoint "${endpointId}".`,
-            path
+            path,
           });
         }
       }
@@ -158,7 +166,7 @@ export class BreakingChangeAnalyzer {
       issues.push({
         severity: 'breaking',
         description: `RequestBody on endpoint "${endpointId}" changed from optional to required.`,
-        path
+        path,
       });
       return;
     }
@@ -167,7 +175,7 @@ export class BreakingChangeAnalyzer {
       issues.push({
         severity: 'breaking',
         description: `RequestBody type on endpoint "${endpointId}" was modified.`,
-        path
+        path,
       });
       return;
     }
@@ -176,11 +184,15 @@ export class BreakingChangeAnalyzer {
     issues.push({
       severity: 'minor',
       description: `Endpoint "${endpointId}" field "${change.path}" modified.`,
-      path
+      path,
     });
   }
 
-  private analyzeTypeChange(typeId: string, change: FieldChange, issues: BreakingChangeIssue[]): void {
+  private analyzeTypeChange(
+    typeId: string,
+    change: FieldChange,
+    issues: BreakingChangeIssue[],
+  ): void {
     const path = `types.${typeId}.${change.path}`;
 
     if (change.path.startsWith('fields.')) {
@@ -188,7 +200,7 @@ export class BreakingChangeAnalyzer {
         issues.push({
           severity: 'breaking',
           description: `Field "${change.path.split('.').pop()}" was removed from type "${typeId}".`,
-          path
+          path,
         });
       } else if (change.type === 'added') {
         const field = change.newValue as any;
@@ -196,13 +208,13 @@ export class BreakingChangeAnalyzer {
           issues.push({
             severity: 'breaking',
             description: `Required field "${field.name}" was added to type "${typeId}".`,
-            path
+            path,
           });
         } else {
           issues.push({
             severity: 'additive',
             description: `Optional field "${field?.name || ''}" was added to type "${typeId}".`,
-            path
+            path,
           });
         }
       } else if (change.type === 'modified') {
@@ -210,13 +222,13 @@ export class BreakingChangeAnalyzer {
           issues.push({
             severity: 'breaking',
             description: `Field on type "${typeId}" changed from optional to required.`,
-            path
+            path,
           });
         } else if (change.path.endsWith('.type')) {
           issues.push({
             severity: 'breaking',
             description: `Type of field on type "${typeId}" was modified.`,
-            path
+            path,
           });
         }
       }
@@ -228,13 +240,13 @@ export class BreakingChangeAnalyzer {
         issues.push({
           severity: 'breaking',
           description: `Enum value "${change.oldValue}" was removed from enum "${typeId}".`,
-          path
+          path,
         });
       } else if (change.type === 'added') {
         issues.push({
           severity: 'additive',
           description: `Enum value "${change.newValue}" was added to enum "${typeId}".`,
-          path
+          path,
         });
       }
       return;
@@ -243,7 +255,7 @@ export class BreakingChangeAnalyzer {
     issues.push({
       severity: 'minor',
       description: `Type "${typeId}" field "${change.path}" modified.`,
-      path
+      path,
     });
   }
 }

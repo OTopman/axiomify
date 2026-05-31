@@ -25,10 +25,8 @@ export interface SwaggerPluginOptions extends OpenApiOptions {
   allowPublicInProduction?: boolean;
 }
 
-
 const DOCS_CSP =
   "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: https://validator.swagger.io; worker-src 'self' blob:;";
-
 
 function escapeHtml(s: string): string {
   return s
@@ -40,7 +38,11 @@ function escapeHtml(s: string): string {
 }
 
 function escapeJsString(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return JSON.stringify(s)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
 }
 
 export function defineSecuritySchemes<const T extends Record<string, unknown>>(
@@ -108,8 +110,8 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
     normalizedPrefix === '/'
       ? '/'
       : normalizedPrefix.endsWith('/')
-      ? normalizedPrefix.slice(0, -1)
-      : normalizedPrefix;
+        ? normalizedPrefix.slice(0, -1)
+        : normalizedPrefix;
   const docsPaths = prefix === '/' ? ['/'] : [prefix, `${prefix}/`];
   const docsPathSet = new Set(docsPaths);
   const specPath = prefix === '/' ? '/openapi.json' : `${prefix}/openapi.json`;
@@ -227,7 +229,7 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
           <script>
             window.onload = () => {
               window.ui = SwaggerUIBundle({
-                url: '${escapeJsString(specUrl)}',
+                url: ${escapeJsString(specUrl)},
                 dom_id: '#swagger-ui',
               });
             };

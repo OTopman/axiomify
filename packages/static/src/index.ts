@@ -145,10 +145,14 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
           const indexPath = path.join(realPath, 'index.html');
           try {
             const idxStat = await fs.promises.stat(indexPath);
-            if (!idxStat.isFile()) return res.status(404).send(null, 'File not found');
+            if (!idxStat.isFile())
+              return res.status(404).send(null, 'File not found');
             res.header('Cache-Control', cacheControl);
             res.header('Content-Length', String(idxStat.size));
-            res.stream(fs.createReadStream(indexPath), 'text/html; charset=utf-8');
+            res.stream(
+              fs.createReadStream(indexPath),
+              'text/html; charset=utf-8',
+            );
           } catch {
             res.status(404).send(null, 'File not found');
           }
@@ -159,7 +163,8 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
           return res.status(404).send(null, 'File not found');
         }
 
-        const etag = `W/"${stat.size.toString(16)}-${stat.mtime.getTime().toString(16)}"`;
+        const ino = stat.ino ?? 0;
+        const etag = `W/"${ino.toString(16)}-${stat.size.toString(16)}-${stat.mtime.getTime().toString(16)}"`;
         res.header('ETag', etag);
 
         if (req.headers['if-none-match'] === etag) {
@@ -171,6 +176,7 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
 
         res.header('Cache-Control', cacheControl);
         res.header('Content-Length', String(stat.size));
+        res.header('X-Content-Type-Options', 'nosniff');
 
         // Force download for executable content types. SVG and HTML served
         // inline can execute JavaScript via <script> tags or event handlers.
@@ -182,7 +188,6 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
             'Content-Disposition',
             `attachment; filename="${filename.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`,
           );
-          res.header('X-Content-Type-Options', 'nosniff');
         }
 
         const stream = fs.createReadStream(realPath);

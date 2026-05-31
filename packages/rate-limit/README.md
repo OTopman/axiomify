@@ -1,6 +1,5 @@
 # @axiomify/rate-limit
 
-
 [![npm version](https://img.shields.io/npm/v/@axiomify/rate-limit.svg)](https://npmjs.com/package/@axiomify/rate-limit)
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
@@ -15,6 +14,7 @@ npm install @axiomify/rate-limit
 ```
 
 For Redis support, install your preferred client:
+
 ```bash
 npm install ioredis   # or: npm install redis
 ```
@@ -30,8 +30,8 @@ const redis = new Redis(process.env.REDIS_URL);
 const store = new RedisStore(redis);
 
 useRateLimit(app, {
-  windowMs: 60_000,  // 1-minute sliding window
-  max: 100,          // 100 requests per IP per window
+  windowMs: 60_000, // 1-minute sliding window
+  max: 100, // 100 requests per IP per window
   store,
 });
 ```
@@ -52,21 +52,23 @@ app.route({
   method: 'POST',
   path: '/auth/login',
   plugins: [loginRateLimit],
-  handler: async (req, res) => { /* ... */ },
+  handler: async (req, res) => {
+    /* ... */
+  },
 });
 ```
 
 ## Options
 
-| Option | Default | Description |
-|---|---|---|
-| `windowMs` | `60000` (1 min) | Sliding window duration in milliseconds. |
-| `max` | `100` | Maximum requests allowed per key per window. |
-| `store` | auto | `RateLimitStore` to use. Defaults to `MemoryStore` (dev only). |
-| `keyGenerator` | `req.ip` | Function to derive the rate-limit key per request. |
-| `skip` | — | Return `true` to skip rate limiting for a request (e.g., internal IPs). |
-| `allowMemoryStoreInProduction` | `false` | Must be `true` to use `MemoryStore` in `NODE_ENV=production`. |
-| `memoryStoreMaxKeys` | `50000` | Maximum unique keys in `MemoryStore` before pruning. |
+| Option                         | Default         | Description                                                             |
+| ------------------------------ | --------------- | ----------------------------------------------------------------------- |
+| `windowMs`                     | `60000` (1 min) | Sliding window duration in milliseconds.                                |
+| `max`                          | `100`           | Maximum requests allowed per key per window.                            |
+| `store`                        | auto            | `RateLimitStore` to use. Defaults to `MemoryStore` (dev only).          |
+| `keyGenerator`                 | `req.ip`        | Function to derive the rate-limit key per request.                      |
+| `skip`                         | —               | Return `true` to skip rate limiting for a request (e.g., internal IPs). |
+| `allowMemoryStoreInProduction` | `false`         | Must be `true` to use `MemoryStore` in `NODE_ENV=production`.           |
+| `memoryStoreMaxKeys`           | `50000`         | Maximum unique keys in `MemoryStore` before pruning.                    |
 
 ## RedisStore — EVALSHA caching
 
@@ -100,12 +102,12 @@ const store = new RedisStore(redis as any);
 
 Every rate-limited response includes:
 
-| Header | Value |
-|---|---|
-| `X-RateLimit-Limit` | Maximum requests allowed per window |
+| Header                  | Value                                    |
+| ----------------------- | ---------------------------------------- |
+| `X-RateLimit-Limit`     | Maximum requests allowed per window      |
 | `X-RateLimit-Remaining` | Requests remaining in the current window |
-| `X-RateLimit-Reset` | Unix timestamp when the window resets |
-| `Retry-After` | Seconds to wait (only on 429 responses) |
+| `X-RateLimit-Reset`     | Unix timestamp when the window resets    |
+| `Retry-After`           | Seconds to wait (only on 429 responses)  |
 
 ## MemoryStore
 
