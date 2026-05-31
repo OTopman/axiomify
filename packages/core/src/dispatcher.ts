@@ -2,6 +2,7 @@ import { getCompiledState } from './compiled';
 import type { HookManager } from './lifecycle';
 import type { Router } from './router';
 import type { AxiomifyRequest, AxiomifyResponse, RouteDefinition } from './types';
+import { ValidationError } from './validation';
 import type { ValidationCompiler } from './validation';
 
 export class RequestDispatcher {
@@ -12,6 +13,18 @@ export class RequestDispatcher {
   private _methodNotAllowedHandler: (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void> = (req, res) => {
     res.status(405).send(null, 'Method Not Allowed');
   };
+
+  public setNotFoundHandler(
+    handler: (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void>,
+  ): void {
+    this._notFoundHandler = handler;
+  }
+
+  public setMethodNotAllowedHandler(
+    handler: (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void>,
+  ): void {
+    this._methodNotAllowedHandler = handler;
+  }
 
   constructor(
     private readonly router: Router,

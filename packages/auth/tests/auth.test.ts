@@ -11,13 +11,10 @@ import {
 describe('Auth Plugin & Refresh', () => {
   const secret = 'super-secret-key-that-is-at-least-32-chars-long!';
 
-  it('warns on short secret', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    createAuthPlugin({ secret: 'short' });
-    expect(spy).toHaveBeenCalledWith(
-      expect.stringMatching(/bytes.*256 bits/),
+  it('throws on short secret', () => {
+    expect(() => createAuthPlugin({ secret: 'short' })).toThrow(
+      /JWT secret is 5 bytes.*requires at least 32 bytes/,
     );
-    spy.mockRestore();
   });
 
   it('uses custom getToken', async () => {

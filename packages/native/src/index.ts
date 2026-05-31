@@ -4,7 +4,7 @@ import type {
   HttpMethod,
   SerializerInput,
 } from '@axiomify/core';
-import { ADAPTER_LOCK_TOKEN, makeSerialize } from '@axiomify/core';
+import { ADAPTER_LOCK_TOKEN, makeSerialize, compiledStates, AxiomifyError } from '@axiomify/core';
 import cluster from 'cluster';
 import { cpus } from 'node:os';
 import { availableParallelism } from 'os';
@@ -197,12 +197,26 @@ export class NativeAdapter {
     this._port = options.port ?? 3000;
     this._maxBodySize = options.maxBodySize ?? 1_048_576;
     this._trustProxy = options.trustProxy ?? false;
+    this._proxyIpValidator = options.proxyIpValidator;
+    this._requestTimeout = options.requestTimeout ?? 0;
+    this._restartParallelism = options.restartParallelism ?? 1;
     this._workers = options.workers ?? availableParallelism();
     this._allowUserspaceProxy = options.allowUserspaceProxy ?? false;
     this._logger = options.logger ?? {
       warn: (msg, meta) => console.warn(msg, meta ?? ''),
       error: (msg, meta) => console.error(msg, meta ?? ''),
     };
+    if (this._trustProxy && !this._proxyIpValidator) {
+      const msg =
+        'AxiomifyWarning: trustProxy is enabled but no proxyIpValidator is configured. ' +
+        'X-Forwarded-For can be spoofed to bypass rate limiting. ' +
+        'Configure a CIDR allowlist for trusted proxy IPs.';
+      if (this._app.strictSchema) {
+        throw new AxiomifyError(msg);
+      } else {
+        this._logger.warn(msg);
+      }
+    }
     this._serialize = makeSerialize(this._app.serializer);
 
     // Per-adapter error envelope cache. setSerializer is locked by core
@@ -351,6 +365,18 @@ export class NativeAdapter {
         res.end(cached404.body);
       });
     });
+  }
+
+  private _extractIp(res: UWSResponse): string {
+    const remoteIp = _ipDecoder.decode(res.getRemoteAddressAsText());
+    if (this._trustProxy) {
+      if (this._proxyIpValidator) {
+        if (this._proxyIpValidator(remoteIp)) {
+          return _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) || remoteIp;
+        }
+      }
+    }
+    return remoteIp;
   }
 
   // -------------------------------------------------------------------------
@@ -750,17 +776,43 @@ export class NativeAdapter {
                 typeof message === 'string' || Buffer.isBuffer(message)
                   ? message
                   : JSON.stringify(message);
-              ws.send(data, isBinary);
+              try {
+                ws.send(data, isBinary);
+              } catch (err: any) {
+                if (!err.message?.includes('closed uWS')) throw err;
+              }
             },
-            close: () => ws.close(),
-            subscribe: (topic: string) => ws.subscribe(topic),
-            unsubscribe: (topic: string) => ws.unsubscribe(topic),
+            close: () => {
+              try {
+                ws.close();
+              } catch (err: any) {
+                if (!err.message?.includes('closed uWS')) throw err;
+              }
+            },
+            subscribe: (topic: string) => {
+              try {
+                ws.subscribe(topic);
+              } catch (err: any) {
+                if (!err.message?.includes('closed uWS')) throw err;
+              }
+            },
+            unsubscribe: (topic: string) => {
+              try {
+                ws.unsubscribe(topic);
+              } catch (err: any) {
+                if (!err.message?.includes('closed uWS')) throw err;
+              }
+            },
             publish: (topic: string, message: any, isBinary?: boolean) => {
               const data =
                 typeof message === 'string' || Buffer.isBuffer(message)
                   ? message
                   : JSON.stringify(message);
-              ws.publish(topic, data, isBinary);
+              try {
+                ws.publish(topic, data, isBinary);
+              } catch (err: any) {
+                if (!err.message?.includes('closed uWS')) throw err;
+              }
             },
           };
           ws.client = client;

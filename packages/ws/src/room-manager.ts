@@ -110,7 +110,6 @@ try {
 // RoomManager
 // ---------------------------------------------------------------------------
 
-export const wsClientMap = new WeakMap<RoomClient, WsClient<RequestState>>();
 const wsInternals = new WeakMap<object, { clientId: string; wsClient: WsClient<RequestState> }>();
 
 export class RoomManager extends TypedEmitter {
@@ -709,7 +708,8 @@ export function wsRooms(
     },
 
     close(wsClient: WsClient<RequestState>, code: number, reason: string): void {
-      const clientId = (wsClient.state as any)[CLIENT_ID_KEY] as string;
+      const internals = wsInternals.get(wsClient.state);
+      const clientId = internals?.clientId;
       if (!clientId) return;
 
       const client = manager.client(clientId);

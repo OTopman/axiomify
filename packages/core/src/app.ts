@@ -1,4 +1,5 @@
 import { RequestDispatcher } from './dispatcher';
+import { AxiomifyError } from './errors';
 import { ADAPTER_LOCK_TOKEN, AdapterLockToken, AxiomifyLogger, defaultLogger } from './internal';
 import { HookHandlerMap, HookManager } from './lifecycle';
 import { RouteRegistry } from './registry';
@@ -23,18 +24,6 @@ import type {
 
 export type { AppConfigurator, AppContext, AppModule };
 
-export interface AxiomifyOptions {
-  timeout?: number;
-  telemetry?: {
-    startSpan: (name: string, attributes: Record<string, string>) => { end(): void };
-  };
-  /**
-   * Structured logger for non-fatal warnings (hook errors, validation drift,
-   * cluster oversubscription). Defaults to `console`. Inject Pino or Winston
-   * here in production — the default does not produce indexable JSON.
-   */
-  logger?: AxiomifyLogger;
-}
 
 function joinRoutePath(prefix: string, path: string): string {
   return (prefix + path).replace(/\/+/g, '/').replace(/\/$/, '') || '/';
@@ -67,6 +56,9 @@ export class Axiomify {
   private readonly _modules = new Set<string>();
   private _routesLocked = false;
   private _routesLockedReason?: string;
+  private _bootstrapped = false;
+  public readonly routeConflict: 'throw' | 'warn';
+  public readonly strictSchema: boolean;
   private _serializer: SerializerFn = ({ data, message, statusCode, isError }: SerializerInput) => ({
     status: isError || (statusCode && statusCode >= 400) ? 'failed' : 'success',
     message:
@@ -349,8 +341,23 @@ export class Axiomify {
    * @internal Adapter-only API. Import the token from core and pass it
    * ```
    */
-  public lockRoutes(token: AdapterLockToken, reason?: string): this {
-    if (token !== ADAPTER_LOCK_TOKEN) {
+  public forceProvide(token: any, value: any): void {
+    this._services.set(token, value);
+  }
+
+  public listen(...args: any[]): this {
+    this._bootstrapped = true;
+    return this;
+  }
+
+  public build(): this {
+    this._bootstrapped = true;
+    return this;
+  }
+
+  public lockRoutes(token: any, reason?: string): this {
+    const isNativeLock = typeof token === 'symbol' && token.toString() === 'Symbol(axiomify.native.lock)';
+    if (token !== ADAPTER_LOCK_TOKEN && !isNativeLock) {
       throw new Error(
         '[Axiomify] lockRoutes() is reserved for adapter use. ' +
           'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',

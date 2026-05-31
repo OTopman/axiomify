@@ -1,7 +1,9 @@
 import type {
   AxiomifyRequest,
   HttpMethod,
+  RequestState,
 } from '@axiomify/core';
+import { RequestStateImpl } from '@axiomify/core';
 import { Readable } from 'stream';
 import type {
   HttpRequest as UWSRequest,
@@ -40,7 +42,7 @@ export class NativeRequest implements AxiomifyRequest {
   public headers: Record<string, string | string[]>;
   public body: unknown;
   public params: Record<string, string> = Object.create(null);
-  public state: Record<string, unknown> = {};
+  public state: RequestState = new RequestStateImpl();
   public raw: { req: UWSRequest | null; res: UWSResponse | null } = {
     req: null,
     res: null,

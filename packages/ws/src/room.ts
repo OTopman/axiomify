@@ -14,7 +14,7 @@
  * a room with 1.
  */
 import type { RoomClient } from './types';
-import { wsClientMap } from './room-manager';
+import { wsClientMap } from './client-map';
 
 /** Metadata stored per-client inside a Room. */
 export interface RoomMember {

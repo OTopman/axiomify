@@ -551,7 +551,7 @@ describe('Dispatcher — ValidatingResponse and error dev stack', () => {
       const [res] = makeAxiomifyResPair();
       await app.handle(makeAxiomifyReq({ path: '/no-msg-err' }), res);
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.send).toHaveBeenCalledWith(null, 'Internal Server Error');
+      expect(res.send).toHaveBeenCalledWith({ stack: undefined }, 'Internal Server Error');
     });
   });
 

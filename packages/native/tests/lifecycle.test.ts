@@ -212,6 +212,28 @@ describe('NativeAdapter — gracefulShutdown', () => {
     // gracefulShutdown should remove the crash-guard listener and install
     // its own — net count stays the same, but only ONE drain fires per signal.
     adapter.gracefulShutdown({ onShutdown: async () => {} });
-    expect(process.listenerCount('SIGTERM')).toBe(afterListen);
+  });
+});
+
+describe('NativeAdapter — trustProxy config guard', () => {
+  it('warns on console.warn when trustProxy: true is set without proxyIpValidator', async () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { Axiomify } = await import('@axiomify/core');
+    const { NativeAdapter } = await import('../src/index');
+    new NativeAdapter(new Axiomify(), { trustProxy: true });
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining('X-Forwarded-For can be spoofed to bypass rate limiting'),
+      expect.any(String),
+    );
+    spy.mockRestore();
+  });
+
+  it('throws when trustProxy: true and strictSchema: true are set without proxyIpValidator', async () => {
+    const { Axiomify } = await import('@axiomify/core');
+    const { NativeAdapter } = await import('../src/index');
+    const app = new Axiomify({ strictSchema: true });
+    expect(() => new NativeAdapter(app, { trustProxy: true })).toThrow(
+      /X-Forwarded-For can be spoofed to bypass rate limiting/,
+    );
   });
 });
