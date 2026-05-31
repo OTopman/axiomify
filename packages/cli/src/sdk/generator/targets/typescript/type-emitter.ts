@@ -8,7 +8,10 @@ import { TypeGraph } from '../../../ir/type-graph';
 import { Emitter } from '../../emitter';
 
 export class TsTypeEmitter {
-  constructor(private schema: IRSchema, private graph: TypeGraph) {}
+  constructor(
+    private schema: IRSchema,
+    private graph: TypeGraph,
+  ) {}
 
   emitAll(): string {
     const emitter = new Emitter();
@@ -30,22 +33,28 @@ export class TsTypeEmitter {
   }
 
   private emitType(emitter: Emitter, type: IRType): void {
-    if (type.description) this.emitDoc(emitter, type.description, type.deprecated);
+    if (type.description)
+      this.emitDoc(emitter, type.description, type.deprecated);
 
     switch (type.kind) {
       case 'object':
         emitter.block(`export interface ${type.id} {`, `}`, () => {
-          const formatProp = (name: string) => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : `'${name}'`;
+          const formatProp = (name: string) =>
+            /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : `'${name}'`;
           for (const field of type.fields) {
-            if (field.description) this.emitDoc(emitter, field.description, field.deprecated);
+            if (field.description)
+              this.emitDoc(emitter, field.description, field.deprecated);
             const q = field.required ? '' : '?';
             const ro = field.readOnly ? 'readonly ' : '';
-            emitter.line(`${ro}${formatProp(field.name)}${q}: ${this.renderTypeRef(field.type)};`);
+            emitter.line(
+              `${ro}${formatProp(field.name)}${q}: ${this.renderTypeRef(field.type)};`,
+            );
           }
           if (type.additionalProperties) {
-            const valType = typeof type.additionalProperties === 'boolean'
-              ? 'any'
-              : this.renderTypeRef(type.additionalProperties);
+            const valType =
+              typeof type.additionalProperties === 'boolean'
+                ? 'any'
+                : this.renderTypeRef(type.additionalProperties);
             emitter.line(`[key: string]: ${valType};`);
           }
         });
@@ -53,53 +62,72 @@ export class TsTypeEmitter {
 
       case 'enum':
         if (type.valueType === 'number') {
-           // TypeScript enums with numeric values
-           emitter.block(`export enum ${type.id} {`, `}`, () => {
-              const formatProp = (name: string) => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : `'${name}'`;
-              for (const v of type.values) {
-                 if (v.description) this.emitDoc(emitter, v.description, v.deprecated);
-                 emitter.line(`${formatProp(v.name)} = ${v.value},`);
-              }
-           });
+          // TypeScript enums with numeric values
+          emitter.block(`export enum ${type.id} {`, `}`, () => {
+            const formatProp = (name: string) =>
+              /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : `'${name}'`;
+            for (const v of type.values) {
+              if (v.description)
+                this.emitDoc(emitter, v.description, v.deprecated);
+              emitter.line(`${formatProp(v.name)} = ${v.value},`);
+            }
+          });
         } else {
-           // For string enums, union of string literals is often preferred in TS
-           // for better compatibility with JSON, but `enum` works too.
-           emitter.block(`export enum ${type.id} {`, `}`, () => {
-              const formatProp = (name: string) => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : `'${name}'`;
-              for (const v of type.values) {
-                 if (v.description) this.emitDoc(emitter, v.description, v.deprecated);
-                 emitter.line(`${formatProp(v.name)} = "${v.value}",`);
-              }
-           });
+          // For string enums, union of string literals is often preferred in TS
+          // for better compatibility with JSON, but `enum` works too.
+          emitter.block(`export enum ${type.id} {`, `}`, () => {
+            const formatProp = (name: string) =>
+              /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : `'${name}'`;
+            for (const v of type.values) {
+              if (v.description)
+                this.emitDoc(emitter, v.description, v.deprecated);
+              emitter.line(`${formatProp(v.name)} = "${v.value}",`);
+            }
+          });
         }
         break;
 
       case 'union':
-        emitter.line(`export type ${type.id} = ${type.members.map(m => this.renderTypeRef(m)).join(' | ')};`);
+        emitter.line(
+          `export type ${type.id} = ${type.members.map((m) => this.renderTypeRef(m)).join(' | ')};`,
+        );
         break;
 
       case 'intersection':
-        emitter.line(`export type ${type.id} = ${type.members.map(m => this.renderTypeRef(m)).join(' & ')};`);
+        emitter.line(
+          `export type ${type.id} = ${type.members.map((m) => this.renderTypeRef(m)).join(' & ')};`,
+        );
         break;
-        
+
       case 'array':
-        emitter.line(`export type ${type.id} = ${this.renderTypeRef(type.items)}[];`);
+        emitter.line(
+          `export type ${type.id} = ${this.renderTypeRef(type.items)}[];`,
+        );
         break;
 
       case 'scalar':
-        emitter.line(`export type ${type.id} = ${this.renderScalar(type.scalar)};`);
+        emitter.line(
+          `export type ${type.id} = ${this.renderScalar(type.scalar)};`,
+        );
         break;
-        
+
       case 'map':
-        emitter.line(`export type ${type.id} = Record<string, ${this.renderTypeRef(type.valueType)}>;`);
+        emitter.line(
+          `export type ${type.id} = Record<string, ${this.renderTypeRef(type.valueType)}>;`,
+        );
         break;
 
       case 'tuple':
-        emitter.line(`export type ${type.id} = [${type.elements.map(e => this.renderTypeRef(e)).join(', ')}];`);
+        emitter.line(
+          `export type ${type.id} = [${type.elements.map((e) => this.renderTypeRef(e)).join(', ')}];`,
+        );
         break;
 
       case 'literal':
-        const val = typeof type.value === 'string' ? `"${type.value}"` : String(type.value);
+        const val =
+          typeof type.value === 'string'
+            ? `"${type.value}"`
+            : String(type.value);
         emitter.line(`export type ${type.id} = ${val};`);
         break;
     }
@@ -109,33 +137,43 @@ export class TsTypeEmitter {
     let t = 'any';
     if (ref.ref) t = ref.ref;
     else if (ref.inline) {
-      if (ref.inline.kind === 'scalar') t = this.renderScalar(ref.inline.scalar);
-      else if (ref.inline.kind === 'array') t = `${this.renderTypeRef(ref.inline.items)}[]`;
+      if (ref.inline.kind === 'scalar')
+        t = this.renderScalar(ref.inline.scalar);
+      else if (ref.inline.kind === 'array')
+        t = `${this.renderTypeRef(ref.inline.items)}[]`;
       // Other inlines should have been named by the normalizer, or we render them inline here.
       // For simplicity, fallback to any if not handled.
     }
-    
+
     if (ref.isArray) t = `${t}[]`;
     if (ref.nullable) t = `${t} | null`;
     return t;
   }
 
   private renderScalar(s: string): string {
-    switch(s) {
+    switch (s) {
       case 'integer':
-      case 'number': return 'number';
-      case 'boolean': return 'boolean';
-      case 'null': return 'null';
+      case 'number':
+        return 'number';
+      case 'boolean':
+        return 'boolean';
+      case 'null':
+        return 'null';
       case 'date':
       case 'datetime':
       case 'uuid':
       case 'uri':
       case 'email':
-      case 'string': return 'string';
-      case 'binary': return 'Blob'; // Or Uint8Array depending on runtime choice
-      case 'bigint': return 'bigint';
-      case 'void': return 'void';
-      default: return 'any';
+      case 'string':
+        return 'string';
+      case 'binary':
+        return 'Blob'; // Or Uint8Array depending on runtime choice
+      case 'bigint':
+        return 'bigint';
+      case 'void':
+        return 'void';
+      default:
+        return 'any';
     }
   }
 

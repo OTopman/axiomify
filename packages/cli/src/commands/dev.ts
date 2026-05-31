@@ -8,7 +8,10 @@ export interface DevOptions {
   watchSdk?: string[];
 }
 
-export async function devServer(entry: string, options: DevOptions = {}): Promise<void> {
+export async function devServer(
+  entry: string,
+  options: DevOptions = {},
+): Promise<void> {
   const entryPath = path.resolve(process.cwd(), entry);
   const outPath = path.resolve(process.cwd(), '.axiomify/dev.js');
 
@@ -77,8 +80,8 @@ export async function devServer(entry: string, options: DevOptions = {}): Promis
               input: entryPath,
               target: options.watchSdk,
               output: 'generated-sdks',
-              exitOnError: false
-            }).catch(e => {
+              exitOnError: false,
+            }).catch((e) => {
               console.error('❌ SDK Generation threw an unexpected error:', e);
             });
           }

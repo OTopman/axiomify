@@ -40,15 +40,18 @@ describe.skipIf(!uwsSupported)('useOpenAPI plugin routes', () => {
 
   const request = (path: string) =>
     new Promise<{ status: number; body: string }>((resolve) => {
-      const req = http.request({ port, path, method: 'GET', agent: false }, (res) => {
-        let body = '';
-        res.on('data', (chunk) => {
-          body += chunk;
-        });
-        res.on('end', () => {
-          resolve({ status: res.statusCode ?? 0, body });
-        });
-      });
+      const req = http.request(
+        { port, path, method: 'GET', agent: false },
+        (res) => {
+          let body = '';
+          res.on('data', (chunk) => {
+            body += chunk;
+          });
+          res.on('end', () => {
+            resolve({ status: res.statusCode ?? 0, body });
+          });
+        },
+      );
       req.end();
     });
 
@@ -65,98 +68,104 @@ describe.skipIf(!uwsSupported)('useOpenAPI plugin routes', () => {
   });
 });
 
-describe.skipIf(!uwsSupported)('useOpenAPI plugin guards and root prefix', () => {
-  const originalNodeEnv = process.env.NODE_ENV;
+describe.skipIf(!uwsSupported)(
+  'useOpenAPI plugin guards and root prefix',
+  () => {
+    const originalNodeEnv = process.env.NODE_ENV;
 
-  afterAll(() => {
-    process.env.NODE_ENV = originalNodeEnv;
-  });
-
-  const startServer = async (setup: (app: Axiomify) => void) => {
-    const app = new Axiomify();
-    app.route({
-      method: 'GET',
-      path: '/ping',
-      handler: async (_req, res) => res.send({ ok: true }),
-    });
-    setup(app);
-    const port = 4002;
-    const { NativeAdapter } = await import('../../native/src');
-    const adapter = new NativeAdapter(app, { port });
-    return new Promise<{ adapter: any; port: number }>((resolve) => {
-      adapter.listen(() => resolve({ adapter, port }));
-    });
-  };
-
-  const request = (port: number, path: string) =>
-    new Promise<{ status: number; body: string }>((resolve) => {
-      const req = http.request({ port, path, method: 'GET', agent: false }, (res) => {
-        let body = '';
-        res.on('data', (chunk) => {
-          body += chunk;
-        });
-        res.on('end', () => {
-          resolve({ status: res.statusCode ?? 0, body });
-        });
-      });
-      req.end();
-    });
-
-  it('supports root prefix "/"', async () => {
-    const { adapter, port } = await startServer((app) => {
-      useOpenAPI(app, {
-        prefix: '/',
-        info: { title: 'Root Docs', version: '1.0.0' },
-      });
-    });
-
-    try {
-      const docsRes = await request(port, '/');
-      const specRes = await request(port, '/openapi.json');
-      expect(docsRes.status).toBe(200);
-      expect(docsRes.body).toContain('SwaggerUIBundle');
-      expect(specRes.status).toBe(200);
-    } finally {
-      adapter.close();
-    }
-  });
-
-  it('returns 403 when protect callback denies access', async () => {
-    const { adapter, port } = await startServer((app) => {
-      useOpenAPI(app, {
-        prefix: '/docs',
-        info: { title: 'Protected Docs', version: '1.0.0' },
-        protect: async () => false,
-      });
-    });
-
-    try {
-      const docsRes = await request(port, '/docs');
-      const specRes = await request(port, '/docs/openapi.json');
-      expect(docsRes.status).toBe(403);
-      expect(specRes.status).toBe(403);
-    } finally {
-      adapter.close();
-    }
-  });
-
-  it('denies unprotected docs in production by default', async () => {
-    process.env.NODE_ENV = 'production';
-    const { adapter, port } = await startServer((app) => {
-      useOpenAPI(app, {
-        prefix: '/docs',
-        info: { title: 'Prod Docs', version: '1.0.0' },
-      });
-    });
-
-    try {
-      const docsRes = await request(port, '/docs');
-      const specRes = await request(port, '/docs/openapi.json');
-      expect(docsRes.status).toBe(403);
-      expect(specRes.status).toBe(403);
-    } finally {
-      adapter.close();
+    afterAll(() => {
       process.env.NODE_ENV = originalNodeEnv;
-    }
-  });
-});
+    });
+
+    const startServer = async (setup: (app: Axiomify) => void) => {
+      const app = new Axiomify();
+      app.route({
+        method: 'GET',
+        path: '/ping',
+        handler: async (_req, res) => res.send({ ok: true }),
+      });
+      setup(app);
+      const port = 4002;
+      const { NativeAdapter } = await import('../../native/src');
+      const adapter = new NativeAdapter(app, { port });
+      return new Promise<{ adapter: any; port: number }>((resolve) => {
+        adapter.listen(() => resolve({ adapter, port }));
+      });
+    };
+
+    const request = (port: number, path: string) =>
+      new Promise<{ status: number; body: string }>((resolve) => {
+        const req = http.request(
+          { port, path, method: 'GET', agent: false },
+          (res) => {
+            let body = '';
+            res.on('data', (chunk) => {
+              body += chunk;
+            });
+            res.on('end', () => {
+              resolve({ status: res.statusCode ?? 0, body });
+            });
+          },
+        );
+        req.end();
+      });
+
+    it('supports root prefix "/"', async () => {
+      const { adapter, port } = await startServer((app) => {
+        useOpenAPI(app, {
+          prefix: '/',
+          info: { title: 'Root Docs', version: '1.0.0' },
+        });
+      });
+
+      try {
+        const docsRes = await request(port, '/');
+        const specRes = await request(port, '/openapi.json');
+        expect(docsRes.status).toBe(200);
+        expect(docsRes.body).toContain('SwaggerUIBundle');
+        expect(specRes.status).toBe(200);
+      } finally {
+        adapter.close();
+      }
+    });
+
+    it('returns 403 when protect callback denies access', async () => {
+      const { adapter, port } = await startServer((app) => {
+        useOpenAPI(app, {
+          prefix: '/docs',
+          info: { title: 'Protected Docs', version: '1.0.0' },
+          protect: async () => false,
+        });
+      });
+
+      try {
+        const docsRes = await request(port, '/docs');
+        const specRes = await request(port, '/docs/openapi.json');
+        expect(docsRes.status).toBe(403);
+        expect(specRes.status).toBe(403);
+      } finally {
+        adapter.close();
+      }
+    });
+
+    it('denies unprotected docs in production by default', async () => {
+      process.env.NODE_ENV = 'production';
+      const { adapter, port } = await startServer((app) => {
+        useOpenAPI(app, {
+          prefix: '/docs',
+          info: { title: 'Prod Docs', version: '1.0.0' },
+        });
+      });
+
+      try {
+        const docsRes = await request(port, '/docs');
+        const specRes = await request(port, '/docs/openapi.json');
+        expect(docsRes.status).toBe(403);
+        expect(specRes.status).toBe(403);
+      } finally {
+        adapter.close();
+        process.env.NODE_ENV = originalNodeEnv;
+      }
+    });
+  },
+);

@@ -1,6 +1,5 @@
 # @axiomify/native
 
-
 [![npm version](https://img.shields.io/npm/v/@axiomify/native.svg)](https://npmjs.com/package/@axiomify/native)
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
@@ -40,21 +39,21 @@ adapter.listen(() => console.log('Ready on :3000'));
 // Multi-core (production)
 adapter.listenClustered({
   onWorkerReady: () => console.log(`[${process.pid}] ready`),
-  onPrimary:     (pids) => console.log('Workers:', pids),
-  onWorkerExit:  (pid, code) => console.error(`Worker ${pid} exited (${code})`),
+  onPrimary: (pids) => console.log('Workers:', pids),
+  onWorkerExit: (pid, code) => console.error(`Worker ${pid} exited (${code})`),
 });
 // Zero-downtime reload: kill -USR2 <primary-pid>
 ```
 
 ## Benchmarks
 
-| Scenario | Req/s | p99 |
-|---|---:|---:|
+| Scenario                     |  Req/s |   p99 |
+| ---------------------------- | -----: | ----: |
 | GET /users/:id/posts/:postId | 83,947 | 20 ms |
-| GET /ping | 73,511 | 26 ms |
-| POST /echo (JSON body) | 54,720 | 30 ms |
+| GET /ping                    | 73,511 | 26 ms |
+| POST /echo (JSON body)       | 54,720 | 30 ms |
 
-*8-core machine, autocannon 100 conns, pipelining 10, 12 s.*
+_8-core machine, autocannon 100 conns, pipelining 10, 12 s._
 
 ## Documentation
 

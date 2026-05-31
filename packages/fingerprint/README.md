@@ -1,6 +1,5 @@
 # @axiomify/fingerprint
 
-
 [![npm version](https://img.shields.io/npm/v/@axiomify/fingerprint.svg)](https://npmjs.com/package/@axiomify/fingerprint)
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
@@ -23,40 +22,40 @@ import { useFingerprint } from '@axiomify/fingerprint';
 
 useFingerprint(app, {
   includeIp: true,
-  includePath: false,          // false = fingerprint is path-agnostic (good for session tracking)
+  includePath: false, // false = fingerprint is path-agnostic (good for session tracking)
   additionalHeaders: ['x-device-id', 'x-app-version'],
-  trustProxyHeaders: true,     // use X-Forwarded-For when behind a proxy
+  trustProxyHeaders: true, // use X-Forwarded-For when behind a proxy
 });
 ```
 
 After this hook runs, every request has:
 
 ```typescript
-req.state.fingerprint          // string  — SHA-256 hex digest
-req.state.fingerprintData      // object  — inputs that produced the hash
-req.state.fingerprintConfidence // number — 0–98 weighted confidence score
+req.state.fingerprint; // string  — SHA-256 hex digest
+req.state.fingerprintData; // object  — inputs that produced the hash
+req.state.fingerprintConfidence; // number — 0–98 weighted confidence score
 ```
 
 ## Options
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `algorithm` | `string` | `'sha256'` | Hash algorithm (`'sha256'`, `'sha512'`, `'md5'`). |
-| `salt` | `string` | `''` | HMAC salt — set this to a stable secret to prevent pre-image attacks. |
-| `includeIp` | `boolean` | `true` | Include client IP in the hash. |
-| `includePath` | `boolean` | `false` | Include request path. Disable for cross-path session correlation. |
-| `additionalHeaders` | `string[]` | `[]` | Extra request headers to include in the hash (lowercase). |
-| `trustProxyHeaders` | `boolean` | `false` | Use `X-Forwarded-For` for IP extraction behind a proxy. |
+| Option              | Type       | Default    | Description                                                           |
+| ------------------- | ---------- | ---------- | --------------------------------------------------------------------- |
+| `algorithm`         | `string`   | `'sha256'` | Hash algorithm (`'sha256'`, `'sha512'`, `'md5'`).                     |
+| `salt`              | `string`   | `''`       | HMAC salt — set this to a stable secret to prevent pre-image attacks. |
+| `includeIp`         | `boolean`  | `true`     | Include client IP in the hash.                                        |
+| `includePath`       | `boolean`  | `false`    | Include request path. Disable for cross-path session correlation.     |
+| `additionalHeaders` | `string[]` | `[]`       | Extra request headers to include in the hash (lowercase).             |
+| `trustProxyHeaders` | `boolean`  | `false`    | Use `X-Forwarded-For` for IP extraction behind a proxy.               |
 
 ## Confidence score
 
 The confidence score (0–98) estimates how stable the fingerprint is across requests from the same client:
 
-| Score range | Meaning |
-|---|---|
-| 80–98 | High confidence — IP + multiple headers matched |
-| 50–79 | Medium — some headers missing or dynamic |
-| 0–49 | Low — only 1–2 signals available |
+| Score range | Meaning                                         |
+| ----------- | ----------------------------------------------- |
+| 80–98       | High confidence — IP + multiple headers matched |
+| 50–79       | Medium — some headers missing or dynamic        |
+| 0–49        | Low — only 1–2 signals available                |
 
 ## Usage in rate limiting and bot detection
 
@@ -88,7 +87,11 @@ app.route({
       // Very low confidence — unusual client, may want extra verification
     }
 
-    await auditLog.write({ fingerprint, userId: req.body.email, event: 'login' });
+    await auditLog.write({
+      fingerprint,
+      userId: req.body.email,
+      event: 'login',
+    });
     res.send({ ok: true });
   },
 });

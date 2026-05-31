@@ -4,7 +4,7 @@
  * This file defines the public-facing types for the native pub/sub room
  * utility. Every type here is part of the stable API surface.
  */
-import type { RouteMiddleware } from '@axiomify/core';
+import type { RouteMiddleware, WsClient } from '@axiomify/core';
 import type { ZodTypeAny } from 'zod';
 
 // ---------------------------------------------------------------------------
@@ -181,6 +181,36 @@ export interface WsRoomOptions {
   schema?: ZodTypeAny;
 
   /**
+   * Optional authorization check to run before a client joins a room.
+   * Return true to allow, false or throw to reject.
+   */
+  beforeJoin?: (
+    client: WsClient,
+    roomName: string,
+  ) => boolean | Promise<boolean>;
+
+  /**
+   * Optional allowlist pattern for room names.
+   * If beforeJoin is not registered, only rooms matching this pattern are allowed.
+   * By default (no beforeJoin, no allowlist), all joins are denied.
+   */
+  allowlist?: RegExp;
+
+  /**
+   * Enable security sanitization (XSS, Prototype Pollution, Null Byte) on incoming messages.
+   * Requires `@axiomify/security` to be installed.
+   * @default true
+   */
+  sanitize?:
+    | boolean
+    | {
+        xssProtection?: boolean;
+        prototypePollutionProtection?: boolean;
+        nullByteProtection?: boolean;
+        maxDepth?: number;
+      };
+
+  /**
    * Called when a client connects (after successful upgrade).
    * Equivalent to listening for the `open` event on `app.ws()`.
    */
@@ -218,5 +248,13 @@ export type ServerEvent =
   | { event: 'joined'; room: string }
   | { event: 'left'; room: string }
   | { event: 'message'; room: string; from: string; data: unknown }
-  | { event: 'presence'; room: string; clients: Array<{ id: string; state: Record<string, any>; joinedAt: number }> }
+  | {
+      event: 'presence';
+      room: string;
+      clients: Array<{
+        id: string;
+        state: Record<string, any>;
+        joinedAt: number;
+      }>;
+    }
   | { event: 'error'; message: string; code?: string };

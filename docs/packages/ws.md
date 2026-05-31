@@ -1,6 +1,6 @@
 # @axiomify/ws
 
-A native, zero-dependency pub/sub room and presence utility for `@axiomify/native`. 
+A native, zero-dependency pub/sub room and presence utility for `@axiomify/native`.
 
 > [!IMPORTANT]
 > **This is NOT a wrapper for the standard `ws` npm package.** It is a high-level room/presence abstraction that builds on top of `@axiomify/native`'s existing WebSocket engine, leveraging uWebSockets.js's native C++ topic pub/sub for O(1) broadcast performance.
@@ -10,15 +10,18 @@ A native, zero-dependency pub/sub room and presence utility for `@axiomify/nativ
 ## Why Use This?
 
 In traditional Node.js WebSocket frameworks, broadcasting a message to a room requires a JavaScript loop:
+
 ```js
 // Traditional O(N) JavaScript loop:
 for (const client of room.clients) {
   client.send(message);
 }
 ```
+
 If a room has 50,000 users, Node.js must loop, serialize, queue, and push 50,000 frames individually in JavaScript, locking up the single-threaded event loop.
 
 `@axiomify/ws` delegates this entirely to the kernel/C++ layer of `uWebSockets.js` using native topic pub/sub. Broadcasting to a room of 50,000 users runs at O(1) complexity relative to the JavaScript thread:
+
 ```ts
 // Native O(1) C++ broadcast:
 room.broadcast(message);
@@ -85,24 +88,29 @@ adapter.listen(() => console.log('WebSocket Room Server listening on :3000'));
 ### Client Actions (Client → Server)
 
 #### Join a Room
+
 ```json
 {
   "action": "join",
   "room": "gaming"
 }
 ```
-*Triggers the `join` event and subscribes the client socket to the `gaming` topic.*
+
+_Triggers the `join` event and subscribes the client socket to the `gaming` topic._
 
 #### Leave a Room
+
 ```json
 {
   "action": "leave",
   "room": "gaming"
 }
 ```
-*Triggers the `leave` event and unsubscribes the client.*
+
+_Triggers the `leave` event and unsubscribes the client._
 
 #### Send a Room Message
+
 ```json
 {
   "action": "message",
@@ -112,20 +120,24 @@ adapter.listen(() => console.log('WebSocket Room Server listening on :3000'));
   }
 }
 ```
-*Broadcasts the message natively to all members of the `gaming` room (excluding the publisher at the C++ level, and loop-backed to the publisher client via JS).*
+
+_Broadcasts the message natively to all members of the `gaming` room (excluding the publisher at the C++ level, and loop-backed to the publisher client via JS)._
 
 #### Query Room Presence
+
 ```json
 {
   "action": "presence",
   "room": "gaming"
 }
 ```
-*Queries the server for the current presence list in the specified room.*
+
+_Queries the server for the current presence list in the specified room._
 
 ### Server Events (Server → Client)
 
 #### Joined Room
+
 ```json
 {
   "event": "joined",
@@ -134,6 +146,7 @@ adapter.listen(() => console.log('WebSocket Room Server listening on :3000'));
 ```
 
 #### Left Room
+
 ```json
 {
   "event": "left",
@@ -142,6 +155,7 @@ adapter.listen(() => console.log('WebSocket Room Server listening on :3000'));
 ```
 
 #### Message Received
+
 ```json
 {
   "event": "message",
@@ -154,18 +168,24 @@ adapter.listen(() => console.log('WebSocket Room Server listening on :3000'));
 ```
 
 #### Room Presence List
+
 ```json
 {
   "event": "presence",
   "room": "gaming",
   "clients": [
-    { "id": "client-1", "state": { "user": "Alice" }, "joinedAt": 1716847200000 },
+    {
+      "id": "client-1",
+      "state": { "user": "Alice" },
+      "joinedAt": 1716847200000
+    },
     { "id": "client-2", "state": { "user": "Bob" }, "joinedAt": 1716847215000 }
   ]
 }
 ```
 
 #### Error Frame
+
 ```json
 {
   "event": "error",
@@ -174,83 +194,103 @@ adapter.listen(() => console.log('WebSocket Room Server listening on :3000'));
 }
 ```
 
+Or for unauthorized room join attempts (default-deny when no allowlist matches):
+
+```json
+{
+  "error": "Unauthorized",
+  "code": "ROOM_JOIN_FORBIDDEN"
+}
+```
+
 ---
 
 ## API Reference
 
 ### `wsRooms(app, options)`
+
 Registers a WebSocket route and returns a `RoomManager` instance.
 
 #### Options
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `path` | `string` | `'/ws'` | WebSocket upgrade endpoint. |
-| `maxRoomsPerClient` | `number` | `50` | Max rooms a single client can join to prevent memory abuse. |
-| `presenceIntervalMs` | `number` | `30000` | Heartbeat interval. Use `0` to disable. |
-| `maxPayloadLength` | `number` | `262144` | Max payload size in bytes (256 KB). |
-| `compression` | `number` | `SHARED_COMPRESSOR` | Compression behavior. |
-| `idleTimeout` | `number` | `120` | uWS connection idle timeout in seconds. |
-| `plugins` | `RouteMiddleware[]` | `[]` | Axiomify upgrade-level plugins (e.g. for authentication). |
-| `schema` | `ZodTypeAny` | `undefined` | Zod schema for automatic incoming frame validation. |
-| `onConnect` | `(client) => void` | `undefined` | Callback fired when a new client connects. |
-| `onDisconnect` | `(client, code, reason) => void` | `undefined` | Callback fired when a client disconnects. |
-| `onMessage` | `(client, data) => void` | `undefined` | Callback fired on every validated incoming frame. |
+
+| Option               | Type                                                    | Default             | Description                                                                                                                                |
+| -------------------- | ------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `path`               | `string`                                                | `'/ws'`             | WebSocket upgrade endpoint.                                                                                                                |
+| `maxRoomsPerClient`  | `number`                                                | `50`                | Max rooms a single client can join to prevent memory abuse.                                                                                |
+| `presenceIntervalMs` | `number`                                                | `30000`             | Heartbeat interval. Use `0` to disable.                                                                                                    |
+| `maxPayloadLength`   | `number`                                                | `262144`            | Max payload size in bytes (256 KB).                                                                                                        |
+| `compression`        | `number`                                                | `SHARED_COMPRESSOR` | Compression behavior.                                                                                                                      |
+| `idleTimeout`        | `number`                                                | `120`               | uWS connection idle timeout in seconds.                                                                                                    |
+| `plugins`            | `RouteMiddleware[]`                                     | `[]`                | Axiomify upgrade-level plugins (e.g. for authentication).                                                                                  |
+| `schema`             | `ZodTypeAny`                                            | `undefined`         | Zod schema for automatic incoming frame validation.                                                                                        |
+| `beforeJoin`         | `(client, room: string) => boolean \| Promise<boolean>` | `undefined`         | Optional authorization check before joining a room. Return true to allow, false/throw to deny.                                             |
+| `allowlist`          | `RegExp`                                                | `undefined`         | Optional room name allowlist pattern (used if `beforeJoin` is not registered). By default, all joins are denied if neither option matches. |
+| `onConnect`          | `(client) => void`                                      | `undefined`         | Callback fired when a new client connects.                                                                                                 |
+| `onDisconnect`       | `(client, code, reason) => void`                        | `undefined`         | Callback fired when a client disconnects.                                                                                                  |
+| `onMessage`          | `(client, data) => void`                                | `undefined`         | Callback fired on every validated incoming frame.                                                                                          |
 
 ---
 
 ### `RoomManager`
 
 #### Properties
-*   `roomCount: number` — Total number of active rooms.
-*   `roomNames: string[]` — Array of all active room names.
-*   `clientCount: number` — Total number of connected clients.
-*   `clientIds: string[]` — Array of all connected client IDs.
+
+- `roomCount: number` — Total number of active rooms.
+- `roomNames: string[]` — Array of all active room names.
+- `clientCount: number` — Total number of connected clients.
+- `clientIds: string[]` — Array of all connected client IDs.
 
 #### Methods
-*   `room(name: string): Room | undefined` — Get an active room.
-*   `getOrCreateRoom(name: string): Room` — Get or create a room instance.
-*   `client(id: string): RoomClient | undefined` — Get a connected client by ID.
-*   `broadcastAll(data: string | Buffer | object, isBinary?: boolean): void` — Send a message to every connected client on the server.
-*   `close(): void` — Shut down the room manager, disconnecting all clients.
+
+- `room(name: string): Room | undefined` — Get an active room.
+- `getOrCreateRoom(name: string): Room` — Get or create a room instance.
+- `client(id: string): RoomClient | undefined` — Get a connected client by ID.
+- `broadcastAll(data: string | Buffer | object, isBinary?: boolean): void` — Send a message to every connected client on the server.
+- `close(): void` — Shut down the room manager, disconnecting all clients.
 
 #### Events
-*   `'join'` `(roomName: string, client: RoomClient) => void` — Fired when a client joins a room.
-*   `'leave'` `(roomName: string, client: RoomClient) => void` — Fired when a client leaves a room.
-*   `'message'` `(client: RoomClient, data: unknown) => void` — Fired when a message is received from a client.
-*   `'roomCreate'` `(roomName: string) => void` — Fired when a new room is created.
-*   `'roomDelete'` `(roomName: string) => void` — Fired when a room is destroyed (empty).
-*   `'error'` `(err: Error, client?: RoomClient) => void` — Fired on protocol or middleware errors.
+
+- `'join'` `(roomName: string, client: RoomClient) => void` — Fired when a client joins a room.
+- `'leave'` `(roomName: string, client: RoomClient) => void` — Fired when a client leaves a room.
+- `'message'` `(client: RoomClient, data: unknown) => void` — Fired when a message is received from a client.
+- `'roomCreate'` `(roomName: string) => void` — Fired when a new room is created.
+- `'roomDelete'` `(roomName: string) => void` — Fired when a room is destroyed (empty).
+- `'error'` `(err: Error, client?: RoomClient) => void` — Fired on protocol or middleware errors.
 
 ---
 
 ### `Room`
 
 #### Properties
-*   `name: string` — The room name / topic name.
-*   `size: number` — Count of clients in the room.
-*   `createdAt: number` — Creation timestamp (ms).
-*   `clientIds: string[]` — Client IDs in this room.
+
+- `name: string` — The room name / topic name.
+- `size: number` — Count of clients in the room.
+- `createdAt: number` — Creation timestamp (ms).
+- `clientIds: string[]` — Client IDs in this room.
 
 #### Methods
-*   `broadcast(data: string | Buffer | object, isBinary?: boolean): void` — Broadcasts natively to all room members (O(1) complexity).
-*   `broadcastExcept(excludeClientId: string, data: string | Buffer | object, isBinary?: boolean): void` — Broadcasts natively to everyone in the room except the excluded client.
-*   `has(clientId: string): boolean` — Membership check.
-*   `getPresence(): Presence[]` — Returns presence metadata.
-*   `kick(clientId: string, reason?: string): void` — Forcefully evict a client from the room.
+
+- `broadcast(data: string | Buffer | object, isBinary?: boolean): void` — Broadcasts natively to all room members (O(1) complexity).
+- `broadcastExcept(excludeClientId: string, data: string | Buffer | object, isBinary?: boolean): void` — Broadcasts natively to everyone in the room except the excluded client.
+- `has(clientId: string): boolean` — Membership check.
+- `getPresence(): Presence[]` — Returns presence metadata.
+- `kick(clientId: string, reason?: string, disconnect?: boolean): boolean` — Forcefully evict a client from the room. Returns `true` if the client was found and evicted.
 
 ---
 
 ### `RoomClient`
 
 #### Properties
-*   `id: string` — Unique UUID v4 client ID.
-*   `state: Record<string, any>` — Mutable state carried from the upgrade handshake (e.g. `client.state.user`).
-*   `rooms: ReadonlySet<string>` — Read-only set of room names this client is a member of.
+
+- `id: string` — Unique UUID v4 client ID.
+- `state: Record<string, any>` — Mutable state carried from the upgrade handshake (e.g. `client.state.user`).
+- `rooms: ReadonlySet<string>` — Read-only set of room names this client is a member of.
 
 #### Methods
-*   `send(data: string | Buffer | object, isBinary?: boolean): boolean` — Send a message to this specific client.
-*   `join(roomName: string): void` — Join a room.
-*   `leave(roomName: string): void` — Leave a room.
-*   `leaveAll(): void` — Leave all rooms.
-*   `disconnect(): void` — Gracefully disconnect the socket connection.
-*   `getBufferedAmount(): number` — Bytes currently buffered in the native send queue (useful for backpressure management).
+
+- `send(data: string | Buffer | object, isBinary?: boolean): boolean` — Send a message to this specific client.
+- `join(roomName: string): void` — Join a room.
+- `leave(roomName: string): void` — Leave a room.
+- `leaveAll(): void` — Leave all rooms.
+- `disconnect(): void` — Gracefully disconnect the socket connection.
+- `getBufferedAmount(): number` — Bytes currently buffered in the native send queue (useful for backpressure management).

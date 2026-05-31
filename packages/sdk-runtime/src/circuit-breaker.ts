@@ -17,17 +17,21 @@ export class CircuitBreaker {
   private lastStateChange: number = Date.now();
   private halfOpenSuccessfulRequests = 0;
 
-  constructor(private config: CircuitBreakerConfig = {
-    failureThreshold: 5,
-    cooldownPeriodMs: 10000,
-    halfOpenMaxProbeRequests: 3
-  }) {}
+  constructor(
+    private config: CircuitBreakerConfig = {
+      failureThreshold: 5,
+      cooldownPeriodMs: 10000,
+      halfOpenMaxProbeRequests: 3,
+    },
+  ) {}
 
   async run<T>(fn: () => Promise<T>): Promise<T> {
     this.checkState();
 
     if (this.state === 'OPEN') {
-      throw new CircuitBreakerError('Circuit breaker is OPEN. Requests blocked.');
+      throw new CircuitBreakerError(
+        'Circuit breaker is OPEN. Requests blocked.',
+      );
     }
 
     try {
@@ -52,7 +56,9 @@ export class CircuitBreaker {
   private onSuccess(): void {
     if (this.state === 'HALF_OPEN') {
       this.halfOpenSuccessfulRequests++;
-      if (this.halfOpenSuccessfulRequests >= this.config.halfOpenMaxProbeRequests) {
+      if (
+        this.halfOpenSuccessfulRequests >= this.config.halfOpenMaxProbeRequests
+      ) {
         this.transitionTo('CLOSED');
       }
     } else if (this.state === 'CLOSED') {
@@ -62,7 +68,10 @@ export class CircuitBreaker {
 
   private onFailure(): void {
     this.failures++;
-    if (this.state === 'HALF_OPEN' || this.failures >= this.config.failureThreshold) {
+    if (
+      this.state === 'HALF_OPEN' ||
+      this.failures >= this.config.failureThreshold
+    ) {
       this.transitionTo('OPEN');
     }
   }

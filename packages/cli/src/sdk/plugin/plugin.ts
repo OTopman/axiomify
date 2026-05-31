@@ -7,8 +7,14 @@ import type { IRDiagnostic, IRSchema } from '../ir/types';
 export interface AxiomifySdkPlugin {
   name: string;
   version: string;
-  onBeforeCompile?: (schema: IRSchema, diagnostics: IRDiagnostic[]) => void | Promise<void>;
-  onAfterCompile?: (schema: IRSchema, diagnostics: IRDiagnostic[]) => void | Promise<void>;
+  onBeforeCompile?: (
+    schema: IRSchema,
+    diagnostics: IRDiagnostic[],
+  ) => void | Promise<void>;
+  onAfterCompile?: (
+    schema: IRSchema,
+    diagnostics: IRDiagnostic[],
+  ) => void | Promise<void>;
   onBeforeGenerate?: (target: string, schema: IRSchema) => void | Promise<void>;
 }
 
@@ -16,7 +22,7 @@ export class PluginRegistry {
   private static plugins: AxiomifySdkPlugin[] = [];
 
   static register(plugin: AxiomifySdkPlugin): void {
-    if (this.plugins.some(p => p.name === plugin.name)) {
+    if (this.plugins.some((p) => p.name === plugin.name)) {
       throw new Error(`Plugin "${plugin.name}" is already registered.`);
     }
     this.plugins.push(plugin);
@@ -32,7 +38,10 @@ export class PluginRegistry {
 }
 
 export class PluginRunner {
-  static async runBeforeCompile(schema: IRSchema, diagnostics: IRDiagnostic[]): Promise<void> {
+  static async runBeforeCompile(
+    schema: IRSchema,
+    diagnostics: IRDiagnostic[],
+  ): Promise<void> {
     for (const plugin of PluginRegistry.getPlugins()) {
       if (plugin.onBeforeCompile) {
         try {
@@ -48,7 +57,10 @@ export class PluginRunner {
     }
   }
 
-  static async runAfterCompile(schema: IRSchema, diagnostics: IRDiagnostic[]): Promise<void> {
+  static async runAfterCompile(
+    schema: IRSchema,
+    diagnostics: IRDiagnostic[],
+  ): Promise<void> {
     for (const plugin of PluginRegistry.getPlugins()) {
       if (plugin.onAfterCompile) {
         try {
@@ -64,13 +76,19 @@ export class PluginRunner {
     }
   }
 
-  static async runBeforeGenerate(target: string, schema: IRSchema): Promise<void> {
+  static async runBeforeGenerate(
+    target: string,
+    schema: IRSchema,
+  ): Promise<void> {
     for (const plugin of PluginRegistry.getPlugins()) {
       if (plugin.onBeforeGenerate) {
         try {
           await plugin.onBeforeGenerate(target, schema);
         } catch (err) {
-          console.error(`Plugin "${plugin.name}" onBeforeGenerate failed:`, err);
+          console.error(
+            `Plugin "${plugin.name}" onBeforeGenerate failed:`,
+            err,
+          );
         }
       }
     }

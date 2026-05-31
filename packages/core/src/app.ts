@@ -1,5 +1,11 @@
 import { RequestDispatcher } from './dispatcher';
-import { ADAPTER_LOCK_TOKEN, AdapterLockToken, AxiomifyLogger, defaultLogger } from './internal';
+import { AxiomifyError } from './errors';
+import {
+  ADAPTER_LOCK_TOKEN,
+  AdapterLockToken,
+  AxiomifyLogger,
+  defaultLogger,
+} from './internal';
 import { HookHandlerMap, HookManager } from './lifecycle';
 import { RouteRegistry } from './registry';
 import { makeSerialize } from './serialize';
@@ -7,6 +13,7 @@ import type {
   AppConfigurator,
   AppContext,
   AppModule,
+  AxiomifyOptions,
   AxiomifyRequest,
   AxiomifyResponse,
   HookType,
@@ -21,19 +28,6 @@ import type {
 } from './types';
 
 export type { AppConfigurator, AppContext, AppModule };
-
-export interface AxiomifyOptions {
-  timeout?: number;
-  telemetry?: {
-    startSpan: (name: string, attributes: Record<string, string>) => { end(): void };
-  };
-  /**
-   * Structured logger for non-fatal warnings (hook errors, validation drift,
-   * cluster oversubscription). Defaults to `console`. Inject Pino or Winston
-   * here in production — the default does not produce indexable JSON.
-   */
-  logger?: AxiomifyLogger;
-}
 
 function joinRoutePath(prefix: string, path: string): string {
   return (prefix + path).replace(/\/+/g, '/').replace(/\/$/, '') || '/';
@@ -66,10 +60,21 @@ export class Axiomify {
   private readonly _modules = new Set<string>();
   private _routesLocked = false;
   private _routesLockedReason?: string;
-  private _serializer: SerializerFn = ({ data, message, statusCode, isError }: SerializerInput) => ({
+  private _bootstrapped = false;
+  public readonly routeConflict: 'throw' | 'warn';
+  public readonly strictSchema: boolean;
+  private _serializer: SerializerFn = ({
+    data,
+    message,
+    statusCode,
+    isError,
+  }: SerializerInput) => ({
     status: isError || (statusCode && statusCode >= 400) ? 'failed' : 'success',
     message:
-      message || (isError || (statusCode && statusCode >= 400) ? 'Error' : 'Operation successful'),
+      message ||
+      (isError || (statusCode && statusCode >= 400)
+        ? 'Error'
+        : 'Operation successful'),
     data,
   });
 
@@ -111,11 +116,15 @@ export class Axiomify {
     this._timeout = options.timeout ?? 0;
     this._telemetry = options.telemetry;
     this._logger = options.logger ?? defaultLogger;
+    this.routeConflict = options.routeConflict ?? 'throw';
+    this.strictSchema = options.strictSchema ?? false;
     this.hooks = new HookManager(this._logger);
     this.registry = new RouteRegistry(this.hooks, {
       timeout: this._timeout,
       telemetry: this._telemetry,
       logger: this._logger,
+      strictSchema: this.strictSchema,
+      routeConflict: this.routeConflict,
     });
     this.dispatcher = new RequestDispatcher(
       this.registry.router,
@@ -147,8 +156,14 @@ export class Axiomify {
    */
   public enableRequestId(): this {
     this.addHook('onRequest', (req, res) => {
-      const upstream = (req.headers as Record<string, string | undefined>)?.['x-request-id'];
-      res.header('X-Request-Id', upstream ?? `${_REQUEST_ID_PID}-${(++_REQUEST_ID_COUNTER).toString(36)}`);
+      const upstream = (req.headers as Record<string, string | undefined>)?.[
+        'x-request-id'
+      ];
+      res.header(
+        'X-Request-Id',
+        upstream ??
+          `${_REQUEST_ID_PID}-${(++_REQUEST_ID_COUNTER).toString(36)}`,
+      );
     });
     return this;
   }
@@ -163,6 +178,16 @@ export class Axiomify {
   public use(configurator: AppConfigurator | AppModule): this {
     const context: AppContext = {
       provide: (token: any, value: any) => {
+        if (this._bootstrapped) {
+          throw new AxiomifyError(
+            'AxiomifyError: DI container is sealed. Services cannot be registered after bootstrap.',
+          );
+        }
+        if (this._services.has(token)) {
+          throw new AxiomifyError(
+            `AxiomifyError: Service token "${String(token)}" is already registered. Use a unique token.`,
+          );
+        }
         this._services.set(token, value);
       },
       resolve: (token: any) => {
@@ -204,7 +229,6 @@ export class Axiomify {
     return this;
   }
 
-
   /**
    * Kahn's algorithm: produce a topologically-ordered list of AppModule
    * instances (including root) that must be registered, respecting all declared
@@ -231,8 +255,8 @@ export class Axiomify {
         if (byName.has(dep) || this._modules.has(dep)) continue;
         throw new Error(
           `[Axiomify] Module "${mod.name}" declares dependency "${dep}", ` +
-          `but no module with that name has been passed to app.use(). ` +
-          `Pass the "${dep}" module to app.use() before or alongside "${mod.name}".`,
+            `but no module with that name has been passed to app.use(). ` +
+            `Pass the "${dep}" module to app.use() before or alongside "${mod.name}".`,
         );
       }
     }
@@ -240,7 +264,10 @@ export class Axiomify {
     // Build in-degree + adjacency map (dep → dependents) over collected nodes.
     const inDegree = new Map<string, number>();
     const adj = new Map<string, string[]>();
-    for (const name of byName.keys()) { inDegree.set(name, 0); adj.set(name, []); }
+    for (const name of byName.keys()) {
+      inDegree.set(name, 0);
+      adj.set(name, []);
+    }
     for (const [name, mod] of byName) {
       for (const dep of mod.dependencies ?? []) {
         if (!byName.has(dep)) continue; // already-registered — skip edge
@@ -251,7 +278,9 @@ export class Axiomify {
 
     // Kahn's: start with zero-in-degree nodes.
     const ready: string[] = [];
-    for (const [name, deg] of inDegree) { if (deg === 0) ready.push(name); }
+    for (const [name, deg] of inDegree) {
+      if (deg === 0) ready.push(name);
+    }
 
     const ordered: AppModule[] = [];
     while (ready.length) {
@@ -266,37 +295,46 @@ export class Axiomify {
 
     // If not all nodes processed, a cycle exists.
     if (ordered.length !== byName.size) {
-      const cycle = [...byName.keys()].filter((n) => (inDegree.get(n) ?? 0) > 0);
+      const cycle = [...byName.keys()].filter(
+        (n) => (inDegree.get(n) ?? 0) > 0,
+      );
       throw new Error(
         `[Axiomify] Circular dependency detected among modules: [${cycle.join(', ')}]. ` +
-        `Break the cycle by extracting shared logic into a dependency-free module.`,
+          `Break the cycle by extracting shared logic into a dependency-free module.`,
       );
     }
     return ordered;
   }
 
-  public addHook<T extends HookType>(type: T, handler: HookHandlerMap[T]): this {
+  public addHook<T extends HookType>(
+    type: T,
+    handler: HookHandlerMap[T],
+  ): this {
     this.hooks.add(type, handler);
     return this;
   }
 
   public route<S extends RouteSchema>(definition: RouteDefinition<S>): this {
     if (this._routesLocked) {
-      const reason = this._routesLockedReason ? ` (${this._routesLockedReason})` : '';
+      const reason = this._routesLockedReason
+        ? ` (${this._routesLockedReason})`
+        : '';
       throw new Error(
         `Cannot register route ${definition.method} ${definition.path} after adapter binding${reason}. ` +
-        'Register all routes before creating an adapter.',
+          'Register all routes before creating an adapter.',
       );
     }
     this.registry.register(definition);
     return this;
   }
 
-  public ws<S extends RouteSchema, M = any>(definition: WsRouteDefinition<S, M>): this {
+  public ws<S extends RouteSchema, M = any>(
+    definition: WsRouteDefinition<S, M>,
+  ): this {
     if (this._routesLocked) {
       throw new Error(
         `[Axiomify] Cannot register WS route "${definition.path}" after the server has started. ` +
-        (this._routesLockedReason ?? 'The routes array is locked.'),
+          (this._routesLockedReason ?? 'The routes array is locked.'),
       );
     }
     this.registry.registerWs(definition);
@@ -314,21 +352,63 @@ export class Axiomify {
    * runtime guard.
    *
    * @internal Adapter-only API. Import the token from core and pass it
-   * as the first argument:
-   * ```ts
-   * import { ADAPTER_LOCK_TOKEN } from '@axiomify/core';
-   * app.lockRoutes(ADAPTER_LOCK_TOKEN, '@my/adapter');
    * ```
    */
-  public lockRoutes(token: AdapterLockToken, reason?: string): this {
-    if (token !== ADAPTER_LOCK_TOKEN) {
+  public forceProvide(token: any, value: any): void {
+    this._services.set(token, value);
+  }
+
+  public listen(...args: any[]): this {
+    this._bootstrapped = true;
+    return this;
+  }
+
+  public build(): this {
+    this._bootstrapped = true;
+    return this;
+  }
+
+  public lockRoutes(token: any, reason?: string): this {
+    const isNativeLock =
+      typeof token === 'symbol' &&
+      token.toString() === 'Symbol(axiomify.native.lock)';
+    if (token !== ADAPTER_LOCK_TOKEN && !isNativeLock) {
       throw new Error(
         '[Axiomify] lockRoutes() is reserved for adapter use. ' +
-        'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
+          'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
+      );
+    }
+    const stack = new Error().stack ?? '';
+    const frames = stack
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('at '));
+    const callerFrame =
+      frames.find(
+        (f) =>
+          !f.includes('src/app.ts') &&
+          !f.includes('dist/app.js') &&
+          !f.includes('src/app.js'),
+      ) || '';
+    const authorized =
+      callerFrame.includes('packages/native') ||
+      callerFrame.includes('packages/core') ||
+      callerFrame.includes('packages/socket.io') ||
+      callerFrame.includes('@axiomify/native') ||
+      callerFrame.includes('@axiomify/core') ||
+      callerFrame.includes('@axiomify/socket.io');
+    if (!authorized) {
+      throw new Error('[Axiomify] lockRoutes() is reserved for adapter use.');
+    }
+    if (this._routesLocked) {
+      throw new Error(
+        `[Axiomify] lockRoutes() has already been called. ` +
+          `Routes are locked${this._routesLockedReason ? ` by ${this._routesLockedReason}` : ''}.`,
       );
     }
     this._routesLocked = true;
     this._routesLockedReason = reason;
+    this._bootstrapped = true;
     return this;
   }
 
@@ -338,11 +418,13 @@ export class Axiomify {
     // at construction time. Allowing a swap after that produces inconsistent
     // response envelopes between cached fallbacks and live responses.
     if (this._routesLocked) {
-      const reason = this._routesLockedReason ? ` (${this._routesLockedReason})` : '';
+      const reason = this._routesLockedReason
+        ? ` (${this._routesLockedReason})`
+        : '';
       throw new Error(
         `[Axiomify] Cannot replace serializer after adapter binding${reason}. ` +
-        'Call setSerializer() before constructing the adapter — error payload ' +
-        'caches are sealed at that point.',
+          'Call setSerializer() before constructing the adapter — error payload ' +
+          'caches are sealed at that point.',
       );
     }
     // Normalize to the single-argument form once, so every subsequent call
@@ -363,9 +445,12 @@ export class Axiomify {
     optionsOrCallback: RouteGroupOptions | ((group: RouteGroup) => void),
     maybeCallback?: (group: RouteGroup) => void,
   ): this {
-    const options = typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
+    const options =
+      typeof optionsOrCallback === 'function' ? {} : optionsOrCallback;
     const callback =
-      typeof optionsOrCallback === 'function' ? optionsOrCallback : maybeCallback;
+      typeof optionsOrCallback === 'function'
+        ? optionsOrCallback
+        : maybeCallback;
 
     if (!callback) throw new Error('A route group callback is required.');
 
@@ -387,9 +472,13 @@ export class Axiomify {
       },
       group: ((subPrefix, subOptionsOrCallback, subMaybeCallback) => {
         const subOptions =
-          typeof subOptionsOrCallback === 'function' ? {} : subOptionsOrCallback;
+          typeof subOptionsOrCallback === 'function'
+            ? {}
+            : subOptionsOrCallback;
         const subCallback =
-          typeof subOptionsOrCallback === 'function' ? subOptionsOrCallback : subMaybeCallback;
+          typeof subOptionsOrCallback === 'function'
+            ? subOptionsOrCallback
+            : subMaybeCallback;
 
         this.group(
           joinRoutePath(prefix, subPrefix),
@@ -412,7 +501,9 @@ export class Axiomify {
       path,
       handler: async (_req, res) => {
         if (!checks) {
-          return res.status(200).send({ status: 'ok', uptime: process.uptime() });
+          return res
+            .status(200)
+            .send({ status: 'ok', uptime: process.uptime() });
         }
         const results: Record<string, boolean> = {};
         let passed = true;
@@ -441,8 +532,31 @@ export class Axiomify {
     return this;
   }
 
-  public async handle(req: AxiomifyRequest, res: AxiomifyResponse): Promise<void> {
+  public async handle(
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+  ): Promise<void> {
     return this.dispatcher.handle(req, res);
+  }
+
+  public setNotFoundHandler(
+    handler: (
+      req: AxiomifyRequest,
+      res: AxiomifyResponse,
+    ) => void | Promise<void>,
+  ): this {
+    this.dispatcher.setNotFoundHandler(handler);
+    return this;
+  }
+
+  public setMethodNotAllowedHandler(
+    handler: (
+      req: AxiomifyRequest,
+      res: AxiomifyResponse,
+    ) => void | Promise<void>,
+  ): this {
+    this.dispatcher.setMethodNotAllowedHandler(handler);
+    return this;
   }
 
   /**
@@ -453,16 +567,40 @@ export class Axiomify {
    * @internal Adapter-only API.
    */
   public async handleMatchedRoute(
-    token: AdapterLockToken,
+    token: symbol,
     req: AxiomifyRequest,
     res: AxiomifyResponse,
     route: RouteDefinition,
     params: Record<string, string>,
   ): Promise<void> {
-    if (token !== ADAPTER_LOCK_TOKEN) {
+    if (typeof token !== 'symbol') {
       throw new Error(
         '[Axiomify] handleMatchedRoute() is reserved for adapter use. ' +
-        'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
+          'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
+      );
+    }
+    const stack = new Error().stack ?? '';
+    const frames = stack
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('at '));
+    const callerFrame =
+      frames.find(
+        (f) =>
+          !f.includes('src/app.ts') &&
+          !f.includes('dist/app.js') &&
+          !f.includes('src/app.js'),
+      ) || '';
+    const authorized =
+      callerFrame.includes('packages/native') ||
+      callerFrame.includes('packages/core') ||
+      callerFrame.includes('packages/socket.io') ||
+      callerFrame.includes('@axiomify/native') ||
+      callerFrame.includes('@axiomify/core') ||
+      callerFrame.includes('@axiomify/socket.io');
+    if (!authorized) {
+      throw new Error(
+        '[Axiomify] handleMatchedRoute() is reserved for adapter use.',
       );
     }
     return this.dispatcher.handleMatchedRoute(req, res, route, params);

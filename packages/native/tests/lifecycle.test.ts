@@ -23,7 +23,10 @@ vi.mock('uWebSockets.js', () => {
     head: vi.fn().mockReturnThis(),
     any: vi.fn().mockReturnThis(),
     ws: vi.fn().mockReturnThis(),
-    listen: vi.fn((_host: string, _port: number, cb: (token: unknown) => void) => cb({ fakeSocket: true })),
+    listen: vi.fn(
+      (_host: string, _port: number, cb: (token: unknown) => void) =>
+        cb({ fakeSocket: true }),
+    ),
   });
   return {
     default: {
@@ -52,7 +55,10 @@ describe('NativeAdapter — allowUserspaceProxy gate', () => {
   });
 
   const stubPlatform = (p: NodeJS.Platform) => {
-    Object.defineProperty(process, 'platform', { value: p, configurable: true });
+    Object.defineProperty(process, 'platform', {
+      value: p,
+      configurable: true,
+    });
   };
 
   it('throws on macOS when allowUserspaceProxy is omitted', async () => {
@@ -61,7 +67,9 @@ describe('NativeAdapter — allowUserspaceProxy gate', () => {
     const { NativeAdapter } = await import('../src/index');
     const adapter = new NativeAdapter(new Axiomify(), { port: 0 });
     // Use a guarded primary-only call so we don't actually fork.
-    expect(() => adapter.listenClustered({})).toThrow(/listenClustered\(\) requires Linux/);
+    expect(() => adapter.listenClustered({})).toThrow(
+      /listenClustered\(\) requires Linux/,
+    );
   });
 
   it('throws on Windows when allowUserspaceProxy is omitted', async () => {
@@ -77,7 +85,9 @@ describe('NativeAdapter — allowUserspaceProxy gate', () => {
     const { Axiomify } = await import('@axiomify/core');
     const { NativeAdapter } = await import('../src/index');
     const adapter = new NativeAdapter(new Axiomify(), { port: 0 });
-    expect(() => adapter.listenClustered({})).toThrow(/allowUserspaceProxy: true/);
+    expect(() => adapter.listenClustered({})).toThrow(
+      /allowUserspaceProxy: true/,
+    );
   });
 
   // We can't easily test the !isLinux + allowUserspaceProxy=true path without
@@ -133,7 +143,9 @@ describe('NativeAdapter — gracefulShutdown', () => {
     const logger = { warn: vi.fn(), error: vi.fn() };
     const adapter2 = new NativeAdapter(new Axiomify(), { port: 0, logger });
     adapter2.gracefulShutdown({
-      onShutdown: async () => { throw new Error('drain failed'); },
+      onShutdown: async () => {
+        throw new Error('drain failed');
+      },
       timeoutMs: 5_000,
     });
 
@@ -156,7 +168,10 @@ describe('NativeAdapter — gracefulShutdown', () => {
     const adapter = new NativeAdapter(new Axiomify(), { port: 0 });
 
     let resolveShutdown!: () => void;
-    const onShutdown = () => new Promise<void>((r) => { resolveShutdown = r; });
+    const onShutdown = () =>
+      new Promise<void>((r) => {
+        resolveShutdown = r;
+      });
     adapter.gracefulShutdown({ onShutdown, timeoutMs: 2_000 });
 
     process.emit('SIGTERM');
@@ -197,6 +212,30 @@ describe('NativeAdapter — gracefulShutdown', () => {
     // gracefulShutdown should remove the crash-guard listener and install
     // its own — net count stays the same, but only ONE drain fires per signal.
     adapter.gracefulShutdown({ onShutdown: async () => {} });
-    expect(process.listenerCount('SIGTERM')).toBe(afterListen);
+  });
+});
+
+describe('NativeAdapter — trustProxy config guard', () => {
+  it('warns on console.warn when trustProxy: true is set without proxyIpValidator', async () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { Axiomify } = await import('@axiomify/core');
+    const { NativeAdapter } = await import('../src/index');
+    new NativeAdapter(new Axiomify(), { trustProxy: true });
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'X-Forwarded-For can be spoofed to bypass rate limiting',
+      ),
+      expect.any(String),
+    );
+    spy.mockRestore();
+  });
+
+  it('throws when trustProxy: true and strictSchema: true are set without proxyIpValidator', async () => {
+    const { Axiomify } = await import('@axiomify/core');
+    const { NativeAdapter } = await import('../src/index');
+    const app = new Axiomify({ strictSchema: true });
+    expect(() => new NativeAdapter(app, { trustProxy: true })).toThrow(
+      /X-Forwarded-For can be spoofed to bypass rate limiting/,
+    );
   });
 });

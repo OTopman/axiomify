@@ -9,7 +9,13 @@
  *   - Batch registration from schema
  *   - Reserved word detection per target language
  */
-import type { IRType, IREndpoint, IRSecurityScheme, IRSchema, IREventContract } from './types';
+import type {
+  IRType,
+  IREndpoint,
+  IRSecurityScheme,
+  IRSchema,
+  IREventContract,
+} from './types';
 
 export interface Symbol {
   name: string;
@@ -26,11 +32,11 @@ export interface Symbol {
 
 /** Collision resolution strategy. */
 export type CollisionStrategy =
-  | 'error'     // Throw on duplicate (default)
-  | 'suffix'    // Append numeric suffix (e.g. User2)
-  | 'prefix'    // Prefix with scope (e.g. UsersUser)
+  | 'error' // Throw on duplicate (default)
+  | 'suffix' // Append numeric suffix (e.g. User2)
+  | 'prefix' // Prefix with scope (e.g. UsersUser)
   | 'overwrite' // Replace existing
-  | 'skip';     // Keep existing, ignore new
+  | 'skip'; // Keep existing, ignore new
 
 /** A hierarchical scope node. */
 export interface ScopeNode {
@@ -43,67 +49,372 @@ export interface ScopeNode {
 /** Reserved words per target language — used for collision avoidance. */
 const RESERVED_WORDS: Record<string, Set<string>> = {
   typescript: new Set([
-    'abstract', 'any', 'as', 'async', 'await', 'boolean', 'break', 'case',
-    'catch', 'class', 'const', 'continue', 'debugger', 'declare', 'default',
-    'delete', 'do', 'else', 'enum', 'export', 'extends', 'false', 'finally',
-    'for', 'from', 'function', 'get', 'if', 'implements', 'import', 'in',
-    'instanceof', 'interface', 'is', 'keyof', 'let', 'module', 'namespace',
-    'never', 'new', 'null', 'number', 'object', 'of', 'package', 'private',
-    'protected', 'public', 'readonly', 'require', 'return', 'set', 'static',
-    'string', 'super', 'switch', 'symbol', 'this', 'throw', 'true', 'try',
-    'type', 'typeof', 'undefined', 'unique', 'unknown', 'var', 'void',
-    'while', 'with', 'yield',
+    'abstract',
+    'any',
+    'as',
+    'async',
+    'await',
+    'boolean',
+    'break',
+    'case',
+    'catch',
+    'class',
+    'const',
+    'continue',
+    'debugger',
+    'declare',
+    'default',
+    'delete',
+    'do',
+    'else',
+    'enum',
+    'export',
+    'extends',
+    'false',
+    'finally',
+    'for',
+    'from',
+    'function',
+    'get',
+    'if',
+    'implements',
+    'import',
+    'in',
+    'instanceof',
+    'interface',
+    'is',
+    'keyof',
+    'let',
+    'module',
+    'namespace',
+    'never',
+    'new',
+    'null',
+    'number',
+    'object',
+    'of',
+    'package',
+    'private',
+    'protected',
+    'public',
+    'readonly',
+    'require',
+    'return',
+    'set',
+    'static',
+    'string',
+    'super',
+    'switch',
+    'symbol',
+    'this',
+    'throw',
+    'true',
+    'try',
+    'type',
+    'typeof',
+    'undefined',
+    'unique',
+    'unknown',
+    'var',
+    'void',
+    'while',
+    'with',
+    'yield',
   ]),
   python: new Set([
-    'False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await',
-    'break', 'class', 'continue', 'def', 'del', 'elif', 'else', 'except',
-    'finally', 'for', 'from', 'global', 'if', 'import', 'in', 'is',
-    'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise', 'return', 'try',
-    'while', 'with', 'yield', 'int', 'float', 'str', 'bool', 'list',
-    'dict', 'set', 'tuple', 'type',
+    'False',
+    'None',
+    'True',
+    'and',
+    'as',
+    'assert',
+    'async',
+    'await',
+    'break',
+    'class',
+    'continue',
+    'def',
+    'del',
+    'elif',
+    'else',
+    'except',
+    'finally',
+    'for',
+    'from',
+    'global',
+    'if',
+    'import',
+    'in',
+    'is',
+    'lambda',
+    'nonlocal',
+    'not',
+    'or',
+    'pass',
+    'raise',
+    'return',
+    'try',
+    'while',
+    'with',
+    'yield',
+    'int',
+    'float',
+    'str',
+    'bool',
+    'list',
+    'dict',
+    'set',
+    'tuple',
+    'type',
   ]),
   go: new Set([
-    'break', 'case', 'chan', 'const', 'continue', 'default', 'defer',
-    'else', 'fallthrough', 'for', 'func', 'go', 'goto', 'if', 'import',
-    'interface', 'map', 'package', 'range', 'return', 'select', 'struct',
-    'switch', 'type', 'var', 'string', 'int', 'bool', 'error',
-    'int8', 'int16', 'int32', 'int64', 'uint', 'uint8', 'uint16',
-    'uint32', 'uint64', 'float32', 'float64', 'byte', 'rune',
+    'break',
+    'case',
+    'chan',
+    'const',
+    'continue',
+    'default',
+    'defer',
+    'else',
+    'fallthrough',
+    'for',
+    'func',
+    'go',
+    'goto',
+    'if',
+    'import',
+    'interface',
+    'map',
+    'package',
+    'range',
+    'return',
+    'select',
+    'struct',
+    'switch',
+    'type',
+    'var',
+    'string',
+    'int',
+    'bool',
+    'error',
+    'int8',
+    'int16',
+    'int32',
+    'int64',
+    'uint',
+    'uint8',
+    'uint16',
+    'uint32',
+    'uint64',
+    'float32',
+    'float64',
+    'byte',
+    'rune',
   ]),
   kotlin: new Set([
-    'abstract', 'actual', 'annotation', 'as', 'break', 'by', 'catch',
-    'class', 'companion', 'const', 'constructor', 'continue', 'crossinline',
-    'data', 'delegate', 'do', 'dynamic', 'else', 'enum', 'expect',
-    'external', 'false', 'final', 'finally', 'for', 'fun', 'get', 'if',
-    'import', 'in', 'infix', 'init', 'inline', 'inner', 'interface',
-    'internal', 'is', 'it', 'lateinit', 'noinline', 'null', 'object',
-    'open', 'operator', 'out', 'override', 'package', 'private',
-    'protected', 'public', 'reified', 'return', 'sealed', 'set', 'super',
-    'suspend', 'this', 'throw', 'true', 'try', 'typealias', 'val', 'var',
-    'vararg', 'when', 'where', 'while',
+    'abstract',
+    'actual',
+    'annotation',
+    'as',
+    'break',
+    'by',
+    'catch',
+    'class',
+    'companion',
+    'const',
+    'constructor',
+    'continue',
+    'crossinline',
+    'data',
+    'delegate',
+    'do',
+    'dynamic',
+    'else',
+    'enum',
+    'expect',
+    'external',
+    'false',
+    'final',
+    'finally',
+    'for',
+    'fun',
+    'get',
+    'if',
+    'import',
+    'in',
+    'infix',
+    'init',
+    'inline',
+    'inner',
+    'interface',
+    'internal',
+    'is',
+    'it',
+    'lateinit',
+    'noinline',
+    'null',
+    'object',
+    'open',
+    'operator',
+    'out',
+    'override',
+    'package',
+    'private',
+    'protected',
+    'public',
+    'reified',
+    'return',
+    'sealed',
+    'set',
+    'super',
+    'suspend',
+    'this',
+    'throw',
+    'true',
+    'try',
+    'typealias',
+    'val',
+    'var',
+    'vararg',
+    'when',
+    'where',
+    'while',
   ]),
   swift: new Set([
-    'Any', 'Bool', 'Double', 'Float', 'Int', 'String', 'Type', 'as',
-    'associatedtype', 'break', 'case', 'catch', 'class', 'continue',
-    'default', 'defer', 'deinit', 'do', 'else', 'enum', 'extension',
-    'false', 'fileprivate', 'for', 'func', 'guard', 'if', 'import', 'in',
-    'init', 'inout', 'internal', 'is', 'let', 'nil', 'open', 'operator',
-    'override', 'precedencegroup', 'private', 'protocol', 'public',
-    'repeat', 'rethrows', 'return', 'self', 'Self', 'static', 'struct',
-    'subscript', 'super', 'switch', 'throw', 'throws', 'true', 'try',
-    'typealias', 'var', 'where', 'while',
+    'Any',
+    'Bool',
+    'Double',
+    'Float',
+    'Int',
+    'String',
+    'Type',
+    'as',
+    'associatedtype',
+    'break',
+    'case',
+    'catch',
+    'class',
+    'continue',
+    'default',
+    'defer',
+    'deinit',
+    'do',
+    'else',
+    'enum',
+    'extension',
+    'false',
+    'fileprivate',
+    'for',
+    'func',
+    'guard',
+    'if',
+    'import',
+    'in',
+    'init',
+    'inout',
+    'internal',
+    'is',
+    'let',
+    'nil',
+    'open',
+    'operator',
+    'override',
+    'precedencegroup',
+    'private',
+    'protocol',
+    'public',
+    'repeat',
+    'rethrows',
+    'return',
+    'self',
+    'Self',
+    'static',
+    'struct',
+    'subscript',
+    'super',
+    'switch',
+    'throw',
+    'throws',
+    'true',
+    'try',
+    'typealias',
+    'var',
+    'where',
+    'while',
   ]),
   dart: new Set([
-    'abstract', 'as', 'assert', 'async', 'await', 'break', 'case',
-    'catch', 'class', 'const', 'continue', 'covariant', 'default',
-    'deferred', 'do', 'dynamic', 'else', 'enum', 'export', 'extends',
-    'extension', 'external', 'factory', 'false', 'final', 'finally',
-    'for', 'Function', 'get', 'hide', 'if', 'implements', 'import', 'in',
-    'interface', 'is', 'late', 'library', 'mixin', 'new', 'null', 'on',
-    'operator', 'part', 'required', 'rethrow', 'return', 'sealed', 'set',
-    'show', 'static', 'super', 'switch', 'sync', 'this', 'throw', 'true',
-    'try', 'typedef', 'var', 'void', 'when', 'while', 'with', 'yield',
-    'int', 'double', 'bool', 'String', 'List', 'Map', 'Set',
+    'abstract',
+    'as',
+    'assert',
+    'async',
+    'await',
+    'break',
+    'case',
+    'catch',
+    'class',
+    'const',
+    'continue',
+    'covariant',
+    'default',
+    'deferred',
+    'do',
+    'dynamic',
+    'else',
+    'enum',
+    'export',
+    'extends',
+    'extension',
+    'external',
+    'factory',
+    'false',
+    'final',
+    'finally',
+    'for',
+    'Function',
+    'get',
+    'hide',
+    'if',
+    'implements',
+    'import',
+    'in',
+    'interface',
+    'is',
+    'late',
+    'library',
+    'mixin',
+    'new',
+    'null',
+    'on',
+    'operator',
+    'part',
+    'required',
+    'rethrow',
+    'return',
+    'sealed',
+    'set',
+    'show',
+    'static',
+    'super',
+    'switch',
+    'sync',
+    'this',
+    'throw',
+    'true',
+    'try',
+    'typedef',
+    'var',
+    'void',
+    'when',
+    'while',
+    'with',
+    'yield',
+    'int',
+    'double',
+    'bool',
+    'String',
+    'List',
+    'Map',
+    'Set',
   ]),
 };
 
@@ -125,7 +436,10 @@ export class SymbolTable {
   }
 
   /** Build from a schema, registering all types, endpoints, events, and security schemes. */
-  static fromSchema(schema: IRSchema, strategy?: CollisionStrategy): SymbolTable {
+  static fromSchema(
+    schema: IRSchema,
+    strategy?: CollisionStrategy,
+  ): SymbolTable {
     const table = new SymbolTable(strategy);
     for (const [id, type] of schema.types) table.registerType(id, type);
     for (const ep of schema.endpoints) table.registerEndpoint(ep);
@@ -153,7 +467,12 @@ export class SymbolTable {
   }
 
   registerEndpoint(endpoint: IREndpoint, source?: string): void {
-    this.register({ name: endpoint.operationId, kind: 'endpoint', node: endpoint, source });
+    this.register({
+      name: endpoint.operationId,
+      kind: 'endpoint',
+      node: endpoint,
+      source,
+    });
   }
 
   register(symbol: Symbol): void {
@@ -163,9 +482,9 @@ export class SymbolTable {
           const existing = this._symbols.get(symbol.name)!;
           throw new Error(
             `[SymbolTable] Duplicate symbol "${symbol.name}" ` +
-            `(${symbol.kind} vs ${existing.kind}).` +
-            (symbol.source ? ` New: ${symbol.source}.` : '') +
-            (existing.source ? ` Existing: ${existing.source}.` : ''),
+              `(${symbol.kind} vs ${existing.kind}).` +
+              (symbol.source ? ` New: ${symbol.source}.` : '') +
+              (existing.source ? ` Existing: ${existing.source}.` : ''),
           );
         }
         case 'suffix': {
@@ -176,7 +495,8 @@ export class SymbolTable {
         }
         case 'prefix': {
           const prefix = symbol.scope ?? 'Ns';
-          const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+          const capitalize = (s: string) =>
+            s.charAt(0).toUpperCase() + s.slice(1);
           const newName = this.uniqueName(capitalize(prefix) + symbol.name);
           symbol.originalName = symbol.name;
           symbol.name = newName;
@@ -222,11 +542,21 @@ export class SymbolTable {
     return [...this._symbols.values()].filter((s) => s.kind === kind);
   }
 
-  get types(): Symbol[] { return this.ofKind('type'); }
-  get endpoints(): Symbol[] { return this.ofKind('endpoint'); }
-  get events(): Symbol[] { return this.ofKind('event'); }
-  get size(): number { return this._symbols.size; }
-  get names(): string[] { return [...this._symbols.keys()]; }
+  get types(): Symbol[] {
+    return this.ofKind('type');
+  }
+  get endpoints(): Symbol[] {
+    return this.ofKind('endpoint');
+  }
+  get events(): Symbol[] {
+    return this.ofKind('event');
+  }
+  get size(): number {
+    return this._symbols.size;
+  }
+  get names(): string[] {
+    return [...this._symbols.keys()];
+  }
 
   // ─── Scope Management ─────────────────────────────────────────────
 
@@ -256,7 +586,9 @@ export class SymbolTable {
     return this._scopes.get(scopeName);
   }
 
-  get scopeNames(): string[] { return [...this._scopes.keys()]; }
+  get scopeNames(): string[] {
+    return [...this._scopes.keys()];
+  }
 
   /** Get all symbols visible in a scope (including inherited from parents). */
   visibleInScope(scopeName: string): Symbol[] {
@@ -338,16 +670,22 @@ export class SymbolTable {
 
   rename(oldName: string, newName: string): void {
     const symbol = this._symbols.get(oldName);
-    if (!symbol) throw new Error(`[SymbolTable] Cannot rename: "${oldName}" not found.`);
+    if (!symbol)
+      throw new Error(`[SymbolTable] Cannot rename: "${oldName}" not found.`);
     if (this._symbols.has(newName)) {
-      throw new Error(`[SymbolTable] Cannot rename "${oldName}" → "${newName}": target exists.`);
+      throw new Error(
+        `[SymbolTable] Cannot rename "${oldName}" → "${newName}": target exists.`,
+      );
     }
     this._symbols.delete(oldName);
     symbol.originalName = symbol.originalName ?? oldName;
     symbol.name = newName;
     this._symbols.set(newName, symbol);
     for (const [, scope] of this._scopes) {
-      if (scope.symbols.has(oldName)) { scope.symbols.delete(oldName); scope.symbols.add(newName); }
+      if (scope.symbols.has(oldName)) {
+        scope.symbols.delete(oldName);
+        scope.symbols.add(newName);
+      }
     }
   }
 

@@ -41,7 +41,6 @@ export async function initProject(
 
   questions.push(
     {
-
       type: 'input',
       name: 'description',
       message: 'Project description',

@@ -5,15 +5,26 @@ import type { AxiomifyRequest } from '../src/types';
 
 function makeReq(overrides: Partial<AxiomifyRequest> = {}): AxiomifyRequest {
   return {
-    id: 'req_1', method: 'GET', url: '/test', path: '/test',
-    ip: '127.0.0.1', headers: {}, body: undefined, query: {}, params: {},
-    state: {}, raw: {}, stream: null as any,
+    id: 'req_1',
+    method: 'GET',
+    url: '/test',
+    path: '/test',
+    ip: '127.0.0.1',
+    headers: {},
+    body: undefined,
+    query: {},
+    params: {},
+    state: {},
+    raw: {},
+    stream: null as any,
     ...overrides,
   };
 }
 
 describe('ValidationCompiler', () => {
-  afterEach(() => { vi.restoreAllMocks(); });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   describe('compile — multi-status response schema', () => {
     it('compiles per-status-code response validators', () => {
@@ -25,7 +36,9 @@ describe('ValidationCompiler', () => {
         } as any,
       });
       // should not throw — validates 200 data correctly
-      expect(() => compiler.validateResponse('GET:/users', { id: 'usr_1' }, 200)).not.toThrow();
+      expect(() =>
+        compiler.validateResponse('GET:/users', { id: 'usr_1' }, 200),
+      ).not.toThrow();
     });
 
     it('uses 200 schema as fallback for unlisted status codes', () => {
@@ -33,7 +46,9 @@ describe('ValidationCompiler', () => {
       compiler.compile('GET:/items', {
         response: { 200: z.object({ id: z.string() }) } as any,
       });
-      expect(() => compiler.validateResponse('GET:/items', { id: 'x' }, 201)).not.toThrow();
+      expect(() =>
+        compiler.validateResponse('GET:/items', { id: 'x' }, 201),
+      ).not.toThrow();
     });
 
     it('returns early when no validator for status code and no 200 fallback', () => {
@@ -42,7 +57,9 @@ describe('ValidationCompiler', () => {
         response: { 400: z.object({ message: z.string() }) } as any,
       });
       // 200 not defined, no fallback → no-op (no throw)
-      expect(() => compiler.validateResponse('GET:/items', { anything: true }, 200)).not.toThrow();
+      expect(() =>
+        compiler.validateResponse('GET:/items', { anything: true }, 200),
+      ).not.toThrow();
     });
   });
 
@@ -63,7 +80,9 @@ describe('ValidationCompiler', () => {
         query: z.object({ limit: z.number() }),
       });
       const req = makeReq({ query: { limit: 'not-a-number' as any } });
-      expect(() => compiler.execute('GET:/search', req)).toThrow(ValidationError);
+      expect(() => compiler.execute('GET:/search', req)).toThrow(
+        ValidationError,
+      );
     });
 
     it('validates params and writes back to req.params', () => {
@@ -81,7 +100,9 @@ describe('ValidationCompiler', () => {
         params: z.object({ id: z.string().uuid() }),
       });
       const req = makeReq({ params: { id: 'not-a-uuid' } });
-      expect(() => compiler.execute('GET:/users/:id', req)).toThrow(ValidationError);
+      expect(() => compiler.execute('GET:/users/:id', req)).toThrow(
+        ValidationError,
+      );
     });
   });
 
@@ -90,7 +111,9 @@ describe('ValidationCompiler', () => {
       const original = process.env.NODE_ENV;
       process.env.NODE_ENV = 'development';
       const compiler = new ValidationCompiler();
-      compiler.compile('GET:/typed', { response: z.object({ id: z.string() }) });
+      compiler.compile('GET:/typed', {
+        response: z.object({ id: z.string() }),
+      });
       expect(() =>
         compiler.validateResponse('GET:/typed', { id: 123 }, 200),
       ).toThrow(ValidationError);
@@ -102,7 +125,9 @@ describe('ValidationCompiler', () => {
       process.env.NODE_ENV = 'production';
       const logger = { warn: vi.fn(), error: vi.fn() };
       const compiler = new ValidationCompiler(logger);
-      compiler.compile('GET:/typed', { response: z.object({ id: z.string() }) });
+      compiler.compile('GET:/typed', {
+        response: z.object({ id: z.string() }),
+      });
       expect(() =>
         compiler.validateResponse('GET:/typed', { id: 999 }, 200),
       ).not.toThrow();
@@ -116,12 +141,16 @@ describe('ValidationCompiler', () => {
     it('no-ops when route has no response validator', () => {
       const compiler = new ValidationCompiler();
       compiler.compile('GET:/noschema', {});
-      expect(() => compiler.validateResponse('GET:/noschema', anything => anything, 200)).not.toThrow();
+      expect(() =>
+        compiler.validateResponse('GET:/noschema', (anything) => anything, 200),
+      ).not.toThrow();
     });
 
     it('no-ops when routeId has not been compiled at all', () => {
       const compiler = new ValidationCompiler();
-      expect(() => compiler.validateResponse('GET:/unknown', {}, 200)).not.toThrow();
+      expect(() =>
+        compiler.validateResponse('GET:/unknown', {}, 200),
+      ).not.toThrow();
     });
   });
 
@@ -156,7 +185,7 @@ describe('ValidationCompiler — AJV transform path and Zod fallback', () => {
     const compiler = new ValidationCompiler();
     // .transform() is a ZodEffects — hasTransforms() returns true → Zod re-parse runs
     compiler.compile('POST:/transform2', {
-      body: z.object({ count: z.number().transform(n => n * 2) }),
+      body: z.object({ count: z.number().transform((n) => n * 2) }),
     });
     const req = makeReq({ method: 'POST', body: { count: 5 } });
     compiler.execute('POST:/transform2', req);
@@ -167,9 +196,17 @@ describe('ValidationCompiler — AJV transform path and Zod fallback', () => {
   it('applies .transform() via Zod parse', () => {
     const compiler = new ValidationCompiler();
     compiler.compile('POST:/transform', {
-      body: z.object({ email: z.string().email().transform(s => s.toLowerCase()) }),
+      body: z.object({
+        email: z
+          .string()
+          .email()
+          .transform((s) => s.toLowerCase()),
+      }),
     });
-    const req = makeReq({ method: 'POST', body: { email: 'USER@EXAMPLE.COM' } });
+    const req = makeReq({
+      method: 'POST',
+      body: { email: 'USER@EXAMPLE.COM' },
+    });
     compiler.execute('POST:/transform', req);
     expect((req.body as any).email).toBe('user@example.com');
   });
@@ -178,7 +215,11 @@ describe('ValidationCompiler — AJV transform path and Zod fallback', () => {
     const compiler = new ValidationCompiler();
     // AJV sees it as valid (it's a string), Zod refine rejects it
     compiler.compile('POST:/refine', {
-      body: z.object({ code: z.string().refine(s => s.startsWith('AX'), { message: 'Must start with AX' }) }),
+      body: z.object({
+        code: z
+          .string()
+          .refine((s) => s.startsWith('AX'), { message: 'Must start with AX' }),
+      }),
     });
     const req = makeReq({ method: 'POST', body: { code: 'WRONG_VALUE' } });
     // Either AJV or Zod should reject this - either way it throws
@@ -230,13 +271,16 @@ describe('ValidationCompiler — Zod fallback and error message labels', () => {
     compiler.compile('POST:/nested', {
       body: z.object({ user: z.object({ age: z.number() }) }),
     });
-    const req = makeReq({ method: 'POST', body: { user: { age: 'not-a-number' } } });
+    const req = makeReq({
+      method: 'POST',
+      body: { user: { age: 'not-a-number' } },
+    });
     try {
       compiler.execute('POST:/nested', req);
     } catch (e: any) {
       if (e instanceof ValidationError) {
         const paths = Object.keys(e.errors.body ?? {});
-        expect(paths.some(p => p.includes('.'))).toBe(true);
+        expect(paths.some((p) => p.includes('.'))).toBe(true);
       }
     }
   });
@@ -246,11 +290,14 @@ describe('ValidationCompiler — Zod fallback and error message labels', () => {
     // superRefine runs after structural validation — AJV passes the string, Zod rejects it
     compiler.compile('POST:/superrefine', {
       body: z.object({
-        pin: z.string().length(4).superRefine((val, ctx) => {
-          if (!/^\d+$/.test(val)) {
-            ctx.addIssue({ code: 'custom', message: 'PIN must be numeric' });
-          }
-        }),
+        pin: z
+          .string()
+          .length(4)
+          .superRefine((val, ctx) => {
+            if (!/^\d+$/.test(val)) {
+              ctx.addIssue({ code: 'custom', message: 'PIN must be numeric' });
+            }
+          }),
       }),
     });
     const req = makeReq({ method: 'POST', body: { pin: 'abcd' } }); // 4 chars but not digits
@@ -270,7 +317,9 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
     const neverSchema = z.object({ x: z.string().min(100) });
     compiler.compile('POST:/never-len', { body: neverSchema });
     const req = makeReq({ body: { x: 'short' } });
-    expect(() => compiler.execute('POST:/never-len', req)).toThrow(ValidationError);
+    expect(() => compiler.execute('POST:/never-len', req)).toThrow(
+      ValidationError,
+    );
   });
 
   it('createZodValidator reports _root for top-level type mismatch', () => {
@@ -312,7 +361,9 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
     // AJV validates structure (string) → then Zod.parse() applies the refine.
     compiler.compile('POST:/refine3', {
       body: z.object({
-        code: z.string().refine(s => s.length === 6, { message: 'Must be 6 chars' }),
+        code: z
+          .string()
+          .refine((s) => s.length === 6, { message: 'Must be 6 chars' }),
       }),
     });
     // AJV passes, Zod refine fails (length != 6) → ValidationError
@@ -344,5 +395,40 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
         expect(e.errors.query).toBeDefined();
       }
     }
+  });
+
+  it('falls back to zod-to-json-schema when toJSONSchema is missing', () => {
+    const compiler = new ValidationCompiler();
+    const schemaWithoutToJSON = z.object({
+      id: z.string(),
+    });
+    // Delete toJSONSchema to force the fallback require('zod-to-json-schema')
+    delete (schemaWithoutToJSON as any).toJSONSchema;
+
+    compiler.compile('POST:/fallback-json-schema', {
+      body: schemaWithoutToJSON,
+    });
+
+    const req = makeReq({ method: 'POST', body: { id: 'test-id' } });
+    expect(() =>
+      compiler.execute('POST:/fallback-json-schema', req),
+    ).not.toThrow();
+  });
+
+  it('falls back to Zod validator when zod-to-json-schema fails / catch block is triggered', () => {
+    const compiler = new ValidationCompiler();
+    // A mock schema with no toJSONSchema and invalid def structure that makes zod-to-json-schema throw
+    const badSchema: any = {
+      _def: { typeName: 'ZodInvalid' },
+      parse: (x: any) => x,
+      safeParse: (x: any) => ({ success: true, data: x }),
+    };
+
+    compiler.compile('POST:/fallback-catch', {
+      body: badSchema,
+    });
+
+    const req = makeReq({ method: 'POST', body: { id: 'test-id' } });
+    expect(() => compiler.execute('POST:/fallback-catch', req)).not.toThrow();
   });
 });

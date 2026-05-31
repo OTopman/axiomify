@@ -9,7 +9,13 @@ import type { AxiomifyRequest, RouteSchema } from './types';
 
 type AjvClass = {
   new (opts: Record<string, unknown>): {
-    compile: (schema: object) => ((data: unknown) => boolean) & { errors?: Array<{ instancePath: string; keyword: string; message?: string }> | null };
+    compile: (schema: object) => ((data: unknown) => boolean) & {
+      errors?: Array<{
+        instancePath: string;
+        keyword: string;
+        message?: string;
+      }> | null;
+    };
   };
 };
 
@@ -20,16 +26,20 @@ try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const mod = require('ajv/dist/2020');
   Ajv2020 = mod.default ?? mod;
-} catch { /* fall back to Zod only */ }
+} catch {
+  /* fall back to Zod only */
+}
 
 // Lazily constructed — one instance per process, shared across all routes.
-let _ajv: ReturnType<AjvClass['prototype']['compile']> extends never ? never : InstanceType<AjvClass> | null = null;
+let _ajv: ReturnType<AjvClass['prototype']['compile']> extends never
+  ? never
+  : InstanceType<AjvClass> | null = null;
 function getAjv() {
   if (!Ajv2020) return null;
   if (!_ajv) {
     _ajv = new Ajv2020({
-      strict: false,      // permits keywords from zod-to-json-schema / z.toJSONSchema
-      allErrors: true,    // collect all field errors in a single pass
+      strict: false, // permits keywords from zod-to-json-schema / z.toJSONSchema
+      allErrors: true, // collect all field errors in a single pass
       coerceTypes: false, // never coerce — Zod handles type coercion in transforms
     });
   }
@@ -47,7 +57,25 @@ export class ValidationError extends Error {
     errors: Record<string, Record<string, string>>,
     statusCode = 400,
   ) {
-    super(message);
+    let finalMessage = message;
+    if (
+      (message === 'Request validation failed' ||
+        message === 'Response validation failed') &&
+      errors
+    ) {
+      const parts: string[] = [];
+      for (const [location, fieldErrors] of Object.entries(errors)) {
+        if (fieldErrors && typeof fieldErrors === 'object') {
+          for (const [field, msg] of Object.entries(fieldErrors)) {
+            parts.push(`${location}.${field} (${msg})`);
+          }
+        }
+      }
+      if (parts.length > 0) {
+        finalMessage = `Validation failed: ${parts.join(', ')}`;
+      }
+    }
+    super(finalMessage);
     this.name = 'ValidationError';
     this.errors = errors;
     this.statusCode = statusCode;
@@ -63,8 +91,6 @@ function isZodSchema(value: unknown): value is ZodTypeAny {
     typeof (value as Record<string, unknown>).safeParse === 'function'
   );
 }
-
-
 
 // ─── Compiled validator type ──────────────────────────────────────────────────
 
@@ -97,7 +123,9 @@ type ValidateFunction = (data: unknown) => {
 // A schema we can duck-type. Zod v4 ships `toJSONSchema()` as an instance
 // method; Zod v3 does not. We isolate the unsafe cast in one place rather
 // than `as unknown as <inline-type>` at every call site.
-interface ZodV4Schema { toJSONSchema(): object }
+interface ZodV4Schema {
+  toJSONSchema(): object;
+}
 function asZodV4(schema: ZodTypeAny): ZodV4Schema | null {
   const candidate = schema as unknown as { toJSONSchema?: unknown };
   return typeof candidate.toJSONSchema === 'function'
@@ -113,7 +141,8 @@ function buildValidator(schema: ZodTypeAny): ValidateFunction {
       // `z.toJSONSchema` is Zod v4's built-in method. It emits JSON Schema
       // 2020-12 — the dialect AJV/dist/2020 understands natively.
       const v4 = asZodV4(schema);
-      const jsonSchema = v4?.toJSONSchema() ??
+      const jsonSchema =
+        v4?.toJSONSchema() ??
         // Fallback for Zod v3 via zod-to-json-schema if it's installed.
         (() => {
           try {
@@ -144,9 +173,12 @@ function buildValidator(schema: ZodTypeAny): ValidateFunction {
           // This is 428x faster than Zod's error path for complex schemas.
           const errors: Record<string, string> = {};
           for (const err of ajvValidate.errors ?? []) {
-            const path = err.instancePath.replace(/^\//, '').replace(/\//g, '.') || '_root';
+            const path =
+              err.instancePath.replace(/^\//, '').replace(/\//g, '.') ||
+              '_root';
             const isRootMissing =
-              err.instancePath === '' && (err.keyword === 'type' || err.keyword === 'required');
+              err.instancePath === '' &&
+              (err.keyword === 'type' || err.keyword === 'required');
             errors[path] = isRootMissing
               ? 'The request body is missing or empty'
               : (err.message ?? 'Invalid value');
@@ -194,7 +226,9 @@ function createZodValidator(schema: ZodTypeAny): ValidateFunction {
         issue.path.length === 0 &&
         issue.code === 'invalid_type' &&
         (data === null || data === undefined);
-      errors[path] = isRootMissing ? 'The request body is missing or empty' : issue.message;
+      errors[path] = isRootMissing
+        ? 'The request body is missing or empty'
+        : issue.message;
     }
     return { valid: false, errors };
   };
@@ -224,8 +258,10 @@ export class ValidationCompiler {
     } = {};
 
     if (schema.body) compiled.body = buildValidator(schema.body as ZodTypeAny);
-    if (schema.query) compiled.query = buildValidator(schema.query as ZodTypeAny);
-    if (schema.params) compiled.params = buildValidator(schema.params as ZodTypeAny);
+    if (schema.query)
+      compiled.query = buildValidator(schema.query as ZodTypeAny);
+    if (schema.params)
+      compiled.params = buildValidator(schema.params as ZodTypeAny);
 
     if (schema.response) {
       if (isZodSchema(schema.response)) {
@@ -251,26 +287,37 @@ export class ValidationCompiler {
 
     if (validators.body) {
       const result = validators.body(req.body);
-      if (!result.valid) { errors.body = result.errors!; hasErrors = true; }
-      else req.body = result.data;
+      if (!result.valid) {
+        errors.body = result.errors!;
+        hasErrors = true;
+      } else req.body = result.data;
     }
 
     if (validators.query) {
       const result = validators.query(req.query);
-      if (!result.valid) { errors.query = result.errors!; hasErrors = true; }
-      else req.query = result.data as Record<string, string | string[]>;
+      if (!result.valid) {
+        errors.query = result.errors!;
+        hasErrors = true;
+      } else req.query = result.data as Record<string, string | string[]>;
     }
 
     if (validators.params) {
       const result = validators.params(req.params);
-      if (!result.valid) { errors.params = result.errors!; hasErrors = true; }
-      else req.params = result.data as Record<string, string>;
+      if (!result.valid) {
+        errors.params = result.errors!;
+        hasErrors = true;
+      } else req.params = result.data as Record<string, string>;
     }
 
-    if (hasErrors) throw new ValidationError('Request validation failed', errors);
+    if (hasErrors)
+      throw new ValidationError('Request validation failed', errors);
   }
 
-  public validateResponse(routeId: string, data: unknown, statusCode = 200): void {
+  public validateResponse(
+    routeId: string,
+    data: unknown,
+    statusCode = 200,
+  ): void {
     const validators = this.compiledSchemas.get(routeId);
     if (!validators?.response) return;
 
@@ -292,8 +339,8 @@ export class ValidationCompiler {
         // making the bug harder to diagnose and worsening user impact.
         this.logger.error(
           `[Axiomify] Response validation failed for ${routeId} (status ${statusCode}). ` +
-          `The handler returned data that does not match schema.response. ` +
-          `Set NODE_ENV=development to surface this as a thrown error.`,
+            `The handler returned data that does not match schema.response. ` +
+            `Set NODE_ENV=development to surface this as a thrown error.`,
           { routeId, statusCode, errors: result.errors ?? {} },
         );
         return;
@@ -307,4 +354,62 @@ export class ValidationCompiler {
       );
     }
   }
+}
+
+export function createErrorSanitizer(options: { logger?: any } = {}) {
+  const logger = options.logger || console;
+  return (
+    err: unknown,
+  ): { statusCode: number; message: string; data?: any } | null => {
+    if (!err || typeof err !== 'object') return null;
+    const anyErr = err as any;
+    const name = anyErr.name || anyErr.constructor?.name || '';
+
+    if (
+      name.includes('PrismaClientKnownRequestError') ||
+      anyErr.code?.startsWith('P20')
+    ) {
+      if (anyErr.code === 'P2002') {
+        return {
+          statusCode: 409,
+          message: 'Conflict: Unique constraint failed',
+          data: anyErr.meta?.target
+            ? { target: anyErr.meta.target }
+            : undefined,
+        };
+      }
+      if (anyErr.code === 'P2025') {
+        return {
+          statusCode: 404,
+          message: anyErr.meta?.cause || 'Resource not found',
+        };
+      }
+      return {
+        statusCode: 400,
+        message: 'Database error: ' + (anyErr.code || 'unknown'),
+      };
+    }
+
+    if (
+      name.includes('QueryFailedError') ||
+      name.includes('SequelizeDatabaseError') ||
+      name.includes('MongoError')
+    ) {
+      if (
+        anyErr.code === '11000' ||
+        anyErr.message?.includes('duplicate key')
+      ) {
+        return {
+          statusCode: 409,
+          message: 'Conflict: Unique constraint failed',
+        };
+      }
+      return {
+        statusCode: 400,
+        message: 'Database operation failed',
+      };
+    }
+
+    return null;
+  };
 }

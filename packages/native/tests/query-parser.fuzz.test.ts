@@ -22,8 +22,14 @@ import fc from 'fast-check';
 vi.mock('uWebSockets.js', () => ({
   default: {
     App: () => ({
-      get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(),
-      del: vi.fn(), options: vi.fn(), head: vi.fn(), any: vi.fn(),
+      get: vi.fn(),
+      post: vi.fn(),
+      put: vi.fn(),
+      patch: vi.fn(),
+      del: vi.fn(),
+      options: vi.fn(),
+      head: vi.fn(),
+      any: vi.fn(),
       ws: vi.fn(),
       listen: vi.fn((_p: number, cb: (t: unknown) => void) => cb({})),
     }),
@@ -81,9 +87,13 @@ describe('fastParseQuery — property-based fuzz', () => {
     // Limit the alphabet to characters that don't require percent-encoding
     // and aren't structural to the query format (`=`, `&`, `+`).
     const safeChar = fc.constantFrom(
-      ...'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.'.split(''),
+      ...'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.'.split(
+        '',
+      ),
     );
-    const safeWord = fc.array(safeChar, { minLength: 1, maxLength: 16 }).map((a) => a.join(''));
+    const safeWord = fc
+      .array(safeChar, { minLength: 1, maxLength: 16 })
+      .map((a) => a.join(''));
     fc.assert(
       fc.property(
         fc.array(fc.tuple(safeWord, safeWord), { minLength: 1, maxLength: 20 }),
@@ -129,7 +139,10 @@ describe('fastParseQuery — property-based fuzz', () => {
     fc.assert(
       fc.property(
         // Random strings that frequently include % followed by junk.
-        fc.string({ unit: fc.constantFrom('%', 'a', 'Z', '0', 'ÿ'), maxLength: 256 }),
+        fc.string({
+          unit: fc.constantFrom('%', 'a', 'Z', '0', 'ÿ'),
+          maxLength: 256,
+        }),
         (input) => {
           expect(() => __internal.fastParseQuery(input)).not.toThrow();
         },

@@ -8,7 +8,10 @@ export function registerSdkValidateCommand(program: Command) {
   program
     .command('validate')
     .description('Validate an API schema against the Axiomify SDK compiler')
-    .argument('<input>', 'The input schema file (e.g. spec.json, schema.graphql)')
+    .argument(
+      '<input>',
+      'The input schema file (e.g. spec.json, schema.graphql)',
+    )
     .action(async (input: string) => {
       try {
         console.log(pc.blue('ℹ Initializing SDK validator...\n'));
@@ -18,12 +21,13 @@ export function registerSdkValidateCommand(program: Command) {
         const raw = readFileSync(input, 'utf8');
 
         if (ext === 'json' || ext === 'yaml' || ext === 'yml') {
-           const parsed = ext === 'json' ? JSON.parse(raw) : require('yaml').parse(raw);
-           ir = ingestOpenApi(parsed, {});
+          const parsed =
+            ext === 'json' ? JSON.parse(raw) : require('yaml').parse(raw);
+          ir = ingestOpenApi(parsed, {});
         } else if (ext === 'graphql' || ext === 'gql') {
-           ir = await ingestGraphQL(raw, {});
+          ir = await ingestGraphQL(raw, {});
         } else {
-           throw new Error(`Unsupported file extension "${ext}".`);
+          throw new Error(`Unsupported file extension "${ext}".`);
         }
 
         console.log(pc.dim('  • Compiling IR schema...'));

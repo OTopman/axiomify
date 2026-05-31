@@ -61,6 +61,7 @@ app.route({
     tags: ['Users'],
     summary: 'Create user',
   },
+  handler: async (req, res) => {
     res.status(201).send({ id: `usr_${Date.now()}`, ...req.body });
   },
 });

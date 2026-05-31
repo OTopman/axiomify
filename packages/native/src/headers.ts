@@ -27,7 +27,7 @@ export const HEADER_INJECTION_PATTERN = /[\r\n\0]/;
 export function collectHeaders(
   req: UWSRequest,
 ): Record<string, string | string[]> {
-  const headers: Record<string, string | string[]> = {};
+  const headers: Record<string, string | string[]> = Object.create(null);
   req.forEach((k: string, v: string) => {
     const existing = headers[k];
     if (existing === undefined) {

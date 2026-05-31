@@ -56,11 +56,11 @@ The result: HTTP, native WebSocket routes (`app.ws()`), AND Socket.IO all share 
 
 ## API
 
-| Export | Purpose |
-|---|---|
-| `attachSocketIO(adapter, options?)` | Attach a Socket.IO server to the adapter. Returns `Promise<IOServer>`. |
-| `adaptAxiomifyPlugin(plugin)` | Wrap an Axiomify `RouteMiddleware` so it can run as `io.use(...)` middleware. |
-| `Socket`, `IOServer` (types) | Re-exported from `socket.io` so consumers don't need `@types/socket.io` separately. |
+| Export                              | Purpose                                                                             |
+| ----------------------------------- | ----------------------------------------------------------------------------------- |
+| `attachSocketIO(adapter, options?)` | Attach a Socket.IO server to the adapter. Returns `Promise<IOServer>`.              |
+| `adaptAxiomifyPlugin(plugin)`       | Wrap an Axiomify `RouteMiddleware` so it can run as `io.use(...)` middleware.       |
+| `Socket`, `IOServer` (types)        | Re-exported from `socket.io` so consumers don't need `@types/socket.io` separately. |
 
 ### `attachSocketIO(adapter, options?)`
 
@@ -72,7 +72,7 @@ const io = await attachSocketIO(adapter, {
   transports: ['websocket'],
 
   // Axiomify-specific extensions:
-  drainOnAdapterShutdown: true,    // default: close IO on adapter.gracefulShutdown()
+  drainOnAdapterShutdown: true, // default: close IO on adapter.gracefulShutdown()
   onAttached: (io) => console.log('IO ready'),
 });
 ```
@@ -80,6 +80,7 @@ const io = await attachSocketIO(adapter, {
 Must be called BEFORE `adapter.listen()`. The function is async because it dynamically imports `socket.io` (lets projects that don't use this bridge skip the install cost during static analysis).
 
 Throws if:
+
 - `socket.io` is not installed (clean install hint).
 - The bridge was already attached to this adapter (use `io.of(name)` for namespaces instead).
 

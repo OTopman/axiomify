@@ -122,7 +122,9 @@ function generateRouteSource(
       `  });`,
       `}`,
       ``,
-    ].filter(Boolean).join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
   }
 
   // HTTP method
@@ -157,13 +159,15 @@ function generateRouteSource(
     method === 'POST'
       ? `      // TODO — handler logic\n      res.status(201).send({ ok: true });`
       : method === 'DELETE'
-      ? `      // TODO — handler logic\n      res.status(204).send(null);`
-      : `      // TODO — handler logic\n      res.send({ ok: true });`,
+        ? `      // TODO — handler logic\n      res.status(204).send(null);`
+        : `      // TODO — handler logic\n      res.send({ ok: true });`,
     `    },`,
     `  });`,
     `}`,
     ``,
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 export async function scaffoldRoute(
@@ -180,10 +184,7 @@ export async function scaffoldRoute(
     process.exit(1);
   }
   if (!routePath.startsWith('/')) {
-    console.error(
-      pc.red('✗ Path must start with "/".'),
-      `Got: ${routePath}`,
-    );
+    console.error(pc.red('✗ Path must start with "/".'), `Got: ${routePath}`);
     process.exit(1);
   }
 
@@ -194,7 +195,9 @@ export async function scaffoldRoute(
   const source = generateRouteSource(upperMethod, routePath, opts);
 
   if (opts.dryRun) {
-    console.log(pc.dim(`# would write ${path.relative(process.cwd(), fileAbs)}\n`));
+    console.log(
+      pc.dim(`# would write ${path.relative(process.cwd(), fileAbs)}\n`),
+    );
     console.log(source);
     return;
   }
@@ -226,7 +229,9 @@ export async function scaffoldRoute(
   console.log(pc.dim('  Next steps:'));
   console.log(
     `    1. Wire it into your entry file:\n` +
-      pc.dim(`         import { registerRoute } from './routes/${pathToFilename(routePath)}';\n`) +
+      pc.dim(
+        `         import { registerRoute } from './routes/${pathToFilename(routePath)}';\n`,
+      ) +
       pc.dim(`         registerRoute(app);`),
   );
   console.log(

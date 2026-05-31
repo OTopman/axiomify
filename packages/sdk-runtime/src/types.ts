@@ -42,7 +42,7 @@ export class SdkError extends Error {
   constructor(
     public message: string,
     public status?: number,
-    public response?: ClientResponse
+    public response?: ClientResponse,
   ) {
     super(message);
     this.name = 'SdkError';

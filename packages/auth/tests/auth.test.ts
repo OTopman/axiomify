@@ -11,13 +11,10 @@ import {
 describe('Auth Plugin & Refresh', () => {
   const secret = 'super-secret-key-that-is-at-least-32-chars-long!';
 
-  it('warns on short secret', () => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    createAuthPlugin({ secret: 'short' });
-    expect(spy).toHaveBeenCalledWith(
-      expect.stringMatching(/bytes.*256 bits/),
+  it('throws on short secret', () => {
+    expect(() => createAuthPlugin({ secret: 'short' })).toThrow(
+      /JWT secret is 5 bytes.*requires at least 32 bytes/,
     );
-    spy.mockRestore();
   });
 
   it('uses custom getToken', async () => {
@@ -128,6 +125,30 @@ describe('createAuthPlugin — access token revocation via store', () => {
     expect(res.status).not.toHaveBeenCalled();
     expect(req.state.user).toBeDefined();
     expect(req.state.user.id).toBe('user-1');
+  });
+
+  it('populates auth user in request state using state.set when available', async () => {
+    const jti = 'test-jti-set-method';
+    const { sign } = await import('jsonwebtoken');
+    const token = sign({ id: 'user-set', jti }, secret, { expiresIn: 60 });
+
+    await store.save(jti, 60);
+
+    const plugin = createAuthPlugin({ secret, store });
+    const mockSet = vi.fn();
+    const req: any = {
+      headers: { authorization: `Bearer ${token}` },
+      state: { set: mockSet },
+    };
+    const res: any = { status: vi.fn().mockReturnThis(), send: vi.fn() };
+
+    await plugin(req, res);
+
+    expect(res.status).not.toHaveBeenCalled();
+    expect(mockSet).toHaveBeenCalledWith(
+      'user',
+      expect.objectContaining({ id: 'user-set' }),
+    );
   });
 
   it('rejects a token whose jti was revoked from the store', async () => {

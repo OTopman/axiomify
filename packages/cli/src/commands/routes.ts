@@ -58,7 +58,10 @@ function normalise(raw: any, isWs: boolean): NormalisedRoute {
     tags: Array.isArray(s.tags) ? s.tags : [],
     operationId: typeof s.operationId === 'string' ? s.operationId : undefined,
     deprecated: s.deprecated === true,
-    timeout: typeof raw.timeout === 'number' && raw.timeout > 0 ? raw.timeout : undefined,
+    timeout:
+      typeof raw.timeout === 'number' && raw.timeout > 0
+        ? raw.timeout
+        : undefined,
     plugins: Array.isArray(raw.plugins) ? raw.plugins.length : 0,
     isWs,
   };
@@ -92,9 +95,19 @@ function matchesFilter(route: NormalisedRoute, opts: RoutesOptions): boolean {
   return true;
 }
 
-function sortRoutes(routes: NormalisedRoute[], by: 'method' | 'path'): NormalisedRoute[] {
+function sortRoutes(
+  routes: NormalisedRoute[],
+  by: 'method' | 'path',
+): NormalisedRoute[] {
   const methodOrder: Record<string, number> = {
-    GET: 0, POST: 1, PUT: 2, PATCH: 3, DELETE: 4, HEAD: 5, OPTIONS: 6, WS: 7,
+    GET: 0,
+    POST: 1,
+    PUT: 2,
+    PATCH: 3,
+    DELETE: 4,
+    HEAD: 5,
+    OPTIONS: 6,
+    WS: 7,
   };
   return [...routes].sort((a, b) => {
     if (by === 'method') {
@@ -169,7 +182,9 @@ export async function inspectRoutes(
     const rows = filtered.map((r) => {
       const method = colourMethod(r.method);
 
-      const highlightedPath = r.path.replace(/:[a-zA-Z0-9_]+/g, (match) => pc.yellow(match));
+      const highlightedPath = r.path.replace(/:[a-zA-Z0-9_]+/g, (match) =>
+        pc.yellow(match),
+      );
       const path = r.deprecated
         ? pc.strikethrough(highlightedPath) + ' ' + badge.deprecated()
         : highlightedPath;
@@ -183,7 +198,10 @@ export async function inspectRoutes(
       if (r.operationId) metaBits.push(pc.dim(`op:`) + r.operationId);
       if (r.tags.length) metaBits.push(badge.tags(r.tags));
       if (r.timeout !== undefined) metaBits.push(badge.timeout(r.timeout));
-      if (r.plugins > 0) metaBits.push(pc.dim(`+${r.plugins} plugin${r.plugins === 1 ? '' : 's'}`));
+      if (r.plugins > 0)
+        metaBits.push(
+          pc.dim(`+${r.plugins} plugin${r.plugins === 1 ? '' : 's'}`),
+        );
       const meta = metaBits.length ? metaBits.join(' ') : pc.dim('—');
 
       return [method, path, validation, meta];

@@ -7,14 +7,16 @@ import { GeneratorRegistry } from '../../registry';
 export class DartGenerator extends Generator {
   async generate(): Promise<GeneratedFile[]> {
     const graph = TypeGraph.fromSchema(this.schema);
-    
+
     const typeEmitter = new DartTypeEmitter(this.schema, graph);
     this.addFile('lib/types.dart', typeEmitter.emitAll());
 
     const clientEmitter = new DartClientEmitter(this.schema, 'ApiClient');
     this.addFile('lib/client.dart', clientEmitter.emitAll());
 
-    this.addFile('pubspec.yaml', `name: ${this.options.packageName}
+    this.addFile(
+      'pubspec.yaml',
+      `name: ${this.options.packageName}
 version: ${this.options.version || '1.0.0'}
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -29,7 +31,8 @@ dev_dependencies:
   build_runner: ^2.4.6
   freezed: ^2.4.5
   json_serializable: ^6.7.1
-`);
+`,
+    );
 
     return this.files;
   }

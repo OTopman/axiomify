@@ -2,14 +2,31 @@
  * @axiomify/graphql — unit tests via direct src import.
  * graphql is an optional peer dep — tests skip when not installed.
  */
-import { Axiomify, z } from '@axiomify/core';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Axiomify } from '@axiomify/core';
+import { describe, expect, it, vi } from 'vitest';
 import { useGraphQL } from '../src/index';
 
 // Load graphql ONCE from the same resolution path as the src uses
 // so both share the same module instance (no "from another realm" error).
 let gql: typeof import('graphql') | null = null;
-try { gql = await import('graphql'); } catch { /* optional */ }
+try {
+  gql = await import('graphql');
+} catch {
+  /* optional */
+}
+
+vi.mock('graphql', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('graphql')>();
+  return {
+    ...actual,
+    execute: (args: any) => {
+      if ((globalThis as any).__mockExecute) {
+        return (globalThis as any).__mockExecute(args);
+      }
+      return actual.execute(args);
+    },
+  };
+});
 
 const describeGQL = gql ? describe : describe.skip;
 
@@ -21,7 +38,11 @@ function makeSchema() {
       name: 'Query',
       fields: {
         hello: { type: GraphQLString, resolve: () => 'world' },
-        add:   { type: GraphQLInt, args: { a: { type: GraphQLInt }, b: { type: GraphQLInt } }, resolve: (_: any, { a, b }: any) => a + b },
+        add: {
+          type: GraphQLInt,
+          args: { a: { type: GraphQLInt }, b: { type: GraphQLInt } },
+          resolve: (_: any, { a, b }: any) => a + b,
+        },
       },
     }),
   });
@@ -29,25 +50,57 @@ function makeSchema() {
 
 function makeReq(body?: any): any {
   return {
-    id: 'r1', method: 'POST', url: '/graphql', path: '/graphql',
-    ip: '127.0.0.1', headers: { 'content-type': 'application/json' },
-    body, query: {}, params: {}, state: {}, raw: {}, stream: null,
+    id: 'r1',
+    method: 'POST',
+    url: '/graphql',
+    path: '/graphql',
+    ip: '127.0.0.1',
+    headers: { 'content-type': 'application/json' },
+    body,
+    query: {},
+    params: {},
+    state: {},
+    raw: {},
+    stream: null,
   };
 }
 
 function makeRes(): any {
-  let _raw: any; let _sent = false;
+  let _raw: any;
+  let _sent = false;
   const res: any = {
-    status: (c: number) => { res._code = c; return res; },
-    header: (k: string, v: string) => { res._headers = { ...(res._headers || {}), [k]: v }; return res; },
-    getHeader: () => undefined, removeHeader: () => res,
-    send: (d: any) => { res._data = d; _sent = true; },
-    sendRaw: (d: any) => { _raw = d; _sent = true; },
-    error: () => {}, stream: () => {},
-    get headersSent() { return _sent; },
-    get statusCode() { return res._code ?? 200; },
-    get _raw() { return _raw; },
-    raw: {}, capabilities: { sse: false, streaming: false }, _code: 200,
+    status: (c: number) => {
+      res._code = c;
+      return res;
+    },
+    header: (k: string, v: string) => {
+      res._headers = { ...(res._headers || {}), [k]: v };
+      return res;
+    },
+    getHeader: () => undefined,
+    removeHeader: () => res,
+    send: (d: any) => {
+      res._data = d;
+      _sent = true;
+    },
+    sendRaw: (d: any) => {
+      _raw = d;
+      _sent = true;
+    },
+    error: () => {},
+    stream: () => {},
+    get headersSent() {
+      return _sent;
+    },
+    get statusCode() {
+      return res._code ?? 200;
+    },
+    get _raw() {
+      return _raw;
+    },
+    raw: {},
+    capabilities: { sse: false, streaming: false },
+    _code: 200,
   };
   return res;
 }
@@ -56,19 +109,27 @@ describeGQL('useGraphQL', () => {
   it('registers POST /graphql route by default', () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: makeSchema() });
-    expect(app.registeredRoutes.some(r => r.method === 'POST' && r.path === '/graphql')).toBe(true);
+    expect(
+      app.registeredRoutes.some(
+        (r) => r.method === 'POST' && r.path === '/graphql',
+      ),
+    ).toBe(true);
   });
 
   it('registers GET /graphql playground route when playground:true', () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: makeSchema(), playground: true });
-    expect(app.registeredRoutes.some(r => r.method === 'GET' && r.path === '/graphql')).toBe(true);
+    expect(
+      app.registeredRoutes.some(
+        (r) => r.method === 'GET' && r.path === '/graphql',
+      ),
+    ).toBe(true);
   });
 
   it('resolves { hello } query → "world"', async () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: makeSchema() });
-    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
     const res = makeRes();
     await route.handler(makeReq({ query: '{ hello }' }), res);
     const body = JSON.parse(res._raw);
@@ -78,7 +139,7 @@ describeGQL('useGraphQL', () => {
   it('resolves add(a:3, b:4) → 7', async () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: makeSchema() });
-    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
     const res = makeRes();
     await route.handler(makeReq({ query: '{ add(a: 3, b: 4) }' }), res);
     const body = JSON.parse(res._raw);
@@ -88,7 +149,7 @@ describeGQL('useGraphQL', () => {
   it('returns errors array for unknown field', async () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: makeSchema() });
-    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
     const res = makeRes();
     await route.handler(makeReq({ query: '{ nonexistent }' }), res);
     const body = JSON.parse(res._raw);
@@ -98,7 +159,7 @@ describeGQL('useGraphQL', () => {
   it('uses custom path', () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: makeSchema(), path: '/api/gql' });
-    expect(app.registeredRoutes.some(r => r.path === '/api/gql')).toBe(true);
+    expect(app.registeredRoutes.some((r) => r.path === '/api/gql')).toBe(true);
   });
 
   it('calls context factory per request', async () => {
@@ -106,9 +167,12 @@ describeGQL('useGraphQL', () => {
     let called = false;
     useGraphQL(app, {
       schema: makeSchema(),
-      context: () => { called = true; return {}; },
+      context: () => {
+        called = true;
+        return {};
+      },
     });
-    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
     await route.handler(makeReq({ query: '{ hello }' }), makeRes());
     expect(called).toBe(true);
   });
@@ -116,7 +180,9 @@ describeGQL('useGraphQL', () => {
   it('serves GraphiQL HTML on GET', async () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: makeSchema(), playground: true });
-    const route = app.registeredRoutes.find(r => r.method === 'GET' && r.path === '/graphql')!;
+    const route = app.registeredRoutes.find(
+      (r) => r.method === 'GET' && r.path === '/graphql',
+    )!;
     const res = makeRes();
     await route.handler(makeReq(), res);
     expect(res.headersSent).toBe(true);
@@ -125,7 +191,7 @@ describeGQL('useGraphQL', () => {
   it('maxDepth rejects deeply nested queries', async () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: makeSchema(), maxDepth: 1 });
-    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
     // Depth-1 query (just root fields) should succeed
     const res = makeRes();
     await route.handler(makeReq({ query: '{ hello }' }), res);
@@ -137,10 +203,13 @@ describeGQL('GraphQL execution paths', () => {
   it('rejects query exceeding maxAliases', async () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: makeSchema(), maxAliases: 1 });
-    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
     // Query with 2 aliases (hello1, hello2) — exceeds limit of 1
     const res = makeRes();
-    await route.handler(makeReq({ query: '{ hello1: hello hello2: hello }' }), res);
+    await route.handler(
+      makeReq({ query: '{ hello1: hello hello2: hello }' }),
+      res,
+    );
     const body = JSON.parse(res._raw);
     expect(body.errors).toBeDefined();
     expect(body.errors[0].message).toMatch(/alias/i);
@@ -150,9 +219,11 @@ describeGQL('GraphQL execution paths', () => {
     const app = new Axiomify();
     useGraphQL(app, {
       schema: makeSchema(),
-      context: async () => { throw new Error('ctx boom'); },
+      context: async () => {
+        throw new Error('ctx boom');
+      },
     });
-    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
     const res = makeRes();
     await route.handler(makeReq({ query: '{ hello }' }), res);
     expect(res._code).toBe(500);
@@ -163,7 +234,9 @@ describeGQL('GraphQL execution paths', () => {
   it('GET endpoint executes query from query string', async () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: makeSchema(), playground: false });
-    const getRoute = app.registeredRoutes.find(r => r.method === 'GET' && r.path !== '/')!;
+    const getRoute = app.registeredRoutes.find(
+      (r) => r.method === 'GET' && r.path !== '/',
+    )!;
     const req = { ...makeReq(), method: 'GET', query: { query: '{ hello }' } };
     const res = makeRes();
     await getRoute.handler(req, res);
@@ -174,8 +247,14 @@ describeGQL('GraphQL execution paths', () => {
   it('GET endpoint returns 400 for malformed variables JSON', async () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: makeSchema(), playground: false });
-    const getRoute = app.registeredRoutes.find(r => r.method === 'GET' && r.path !== '/')!;
-    const req = { ...makeReq(), method: 'GET', query: { query: '{ hello }', variables: '{bad json' } };
+    const getRoute = app.registeredRoutes.find(
+      (r) => r.method === 'GET' && r.path !== '/',
+    )!;
+    const req = {
+      ...makeReq(),
+      method: 'GET',
+      query: { query: '{ hello }', variables: '{bad json' },
+    };
     const res = makeRes();
     await getRoute.handler(req, res);
     expect(res._code).toBe(400);
@@ -191,14 +270,16 @@ describeGQL('GraphQL execution paths', () => {
         fields: {
           fail: {
             type: gql.GraphQLString,
-            resolve: () => { throw new Error('resolver exploded'); },
+            resolve: () => {
+              throw new Error('resolver exploded');
+            },
           },
         },
       }),
     });
     const app = new Axiomify();
     useGraphQL(app, { schema: errorSchema });
-    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
     const res = makeRes();
     await route.handler(makeReq({ query: '{ fail }' }), res);
     const body = JSON.parse(res._raw);
@@ -209,7 +290,7 @@ describeGQL('GraphQL execution paths', () => {
   it('returns 400 for missing query field', async () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: makeSchema() });
-    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
     const res = makeRes();
     await route.handler(makeReq({}), res);
     expect(res._code).toBe(400);
@@ -220,7 +301,7 @@ describeGQL('GraphQL execution paths', () => {
   it('returns 400 for syntactically invalid query (parse error)', async () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: makeSchema() });
-    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
     const res = makeRes();
     await route.handler(makeReq({ query: '{ this is not valid' }), res);
     expect(res._code).toBe(400);
@@ -242,8 +323,14 @@ describeGQL('GraphQL execution paths', () => {
     });
     const app = new Axiomify();
     useGraphQL(app, { schema: mutationSchema, playground: false });
-    const getRoute = app.registeredRoutes.find(r => r.method === 'GET' && r.path === '/graphql')!;
-    const req = { ...makeReq(), method: 'GET', query: { query: 'mutation { doIt }' } };
+    const getRoute = app.registeredRoutes.find(
+      (r) => r.method === 'GET' && r.path === '/graphql',
+    )!;
+    const req = {
+      ...makeReq(),
+      method: 'GET',
+      query: { query: 'mutation { doIt }' },
+    };
     const res = makeRes();
     await getRoute.handler(req, res);
     expect(res._code).toBe(405);
@@ -267,7 +354,7 @@ describeGQL('GraphQL execution paths', () => {
     });
     const app = new Axiomify();
     useGraphQL(app, { schema, maxDepth: 1 });
-    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
     const res = makeRes();
     await route.handler(makeReq({ query: '{ nested { val } }' }), res);
     expect(res._code).toBe(400);
@@ -278,7 +365,9 @@ describeGQL('GraphQL execution paths', () => {
   it('serves GraphiQL playground HTML at /graphql/playground', async () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: makeSchema(), playground: true });
-    const pgRoute = app.registeredRoutes.find(r => r.path === '/graphql/playground')!;
+    const pgRoute = app.registeredRoutes.find(
+      (r) => r.path === '/graphql/playground',
+    )!;
     expect(pgRoute).toBeDefined();
     const res = makeRes();
     await pgRoute.handler(makeReq(), res);
@@ -294,22 +383,25 @@ describeGQL('GraphQL execution paths', () => {
       playground: true,
       playgroundPath: '/gql-ui',
     });
-    expect(app.registeredRoutes.some(r => r.path === '/gql-ui')).toBe(true);
+    expect(app.registeredRoutes.some((r) => r.path === '/gql-ui')).toBe(true);
   });
 
   it('disableIntrospection rejects __schema queries', async () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: makeSchema(), disableIntrospection: true });
-    const route = app.registeredRoutes.find(r => r.method === 'POST')!;
+    const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
     const res = makeRes();
-    await route.handler(makeReq({ query: '{ __schema { types { name } } }' }), res);
+    await route.handler(
+      makeReq({ query: '{ __schema { types { name } } }' }),
+      res,
+    );
     expect(res._code).toBe(400);
   });
 
   it('path without leading slash is normalized', () => {
     const app = new Axiomify();
     useGraphQL(app, { schema: makeSchema(), path: 'gql' });
-    expect(app.registeredRoutes.some(r => r.path === '/gql')).toBe(true);
+    expect(app.registeredRoutes.some((r) => r.path === '/gql')).toBe(true);
   });
 
   it('GET endpoint with variables executes correctly', async () => {
@@ -328,14 +420,113 @@ describeGQL('GraphQL execution paths', () => {
     });
     const app = new Axiomify();
     useGraphQL(app, { schema: varSchema, playground: false });
-    const getRoute = app.registeredRoutes.find(r => r.method === 'GET' && r.path !== '/')!;
+    const getRoute = app.registeredRoutes.find(
+      (r) => r.method === 'GET' && r.path !== '/',
+    )!;
     const req = {
-      ...makeReq(), method: 'GET',
-      query: { query: 'query ($m: String) { echo(msg: $m) }', variables: JSON.stringify({ m: 'hi' }) },
+      ...makeReq(),
+      method: 'GET',
+      query: {
+        query: 'query ($m: String) { echo(msg: $m) }',
+        variables: JSON.stringify({ m: 'hi' }),
+      },
     };
     const res = makeRes();
     await getRoute.handler(req, res);
     const body = JSON.parse(res._raw);
     expect(body.data?.echo).toBe('hi');
+  });
+
+  it('rejects query exceeding maxFields', async () => {
+    const app = new Axiomify();
+    useGraphQL(app, { schema: makeSchema(), maxFields: 1 });
+    const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
+    const res = makeRes();
+    // Query with 2 fields (hello, add) — exceeds limit of 1
+    await route.handler(makeReq({ query: '{ hello add(a: 1, b: 2) }' }), res);
+    const body = JSON.parse(res._raw);
+    expect(res._code).toBe(400);
+    expect(body.errors).toBeDefined();
+    expect(body.errors[0].message).toMatch(/fields/i);
+  });
+
+  it('redacts internal error messages in production mode', async () => {
+    const app = new Axiomify();
+    useGraphQL(app, {
+      schema: makeSchema(),
+      context: async () => {
+        throw new Error('internal DB credentials leak');
+      },
+    });
+    const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
+    const res = makeRes();
+
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      await route.handler(makeReq({ query: '{ hello }' }), res);
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+    }
+
+    expect(res._code).toBe(500);
+    const body = JSON.parse(res._raw);
+    expect(body.errors[0].message).toBe('Context error.');
+    expect(body.errors[0].message).not.toContain(
+      'internal DB credentials leak',
+    );
+  });
+
+  it('returns extensions in response when present', async () => {
+    if (!gql) return;
+    (globalThis as any).__mockExecute = async () => ({
+      data: { hello: 'world' },
+      extensions: { myExtension: 'value' },
+    });
+    try {
+      const app = new Axiomify();
+      useGraphQL(app, { schema: makeSchema() });
+      const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
+      const res = makeRes();
+      await route.handler(makeReq({ query: '{ hello }' }), res);
+      const body = JSON.parse(res._raw);
+      expect(body.extensions).toEqual({ myExtension: 'value' });
+    } finally {
+      (globalThis as any).__mockExecute = undefined;
+    }
+  });
+
+  it('handles execution throw and redacts error in production mode', async () => {
+    if (!gql) return;
+    (globalThis as any).__mockExecute = async () => {
+      throw new Error('internal execution details');
+    };
+    try {
+      const app = new Axiomify();
+      useGraphQL(app, { schema: makeSchema() });
+      const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
+
+      // 1. Dev mode
+      const resDev = makeRes();
+      await route.handler(makeReq({ query: '{ hello }' }), resDev);
+      expect(resDev._code).toBe(500);
+      let body = JSON.parse(resDev._raw);
+      expect(body.errors[0].message).toBe('internal execution details');
+
+      // 2. Production mode
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      const resProd = makeRes();
+      try {
+        await route.handler(makeReq({ query: '{ hello }' }), resProd);
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
+      expect(resProd._code).toBe(500);
+      body = JSON.parse(resProd._raw);
+      expect(body.errors[0].message).toBe('Execution error.');
+    } finally {
+      (globalThis as any).__mockExecute = undefined;
+    }
   });
 });

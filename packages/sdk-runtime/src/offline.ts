@@ -20,7 +20,7 @@ export class OfflineQueue {
     const queued: QueuedRequest = {
       ...req,
       id: Math.random().toString(36).substring(7),
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
     this.queue.push(queued);
   }
@@ -29,7 +29,9 @@ export class OfflineQueue {
     return [...this.queue];
   }
 
-  async flush(processor?: (req: QueuedRequest) => Promise<void>): Promise<void> {
+  async flush(
+    processor?: (req: QueuedRequest) => Promise<void>,
+  ): Promise<void> {
     if (this.queue.length === 0) return;
     if (typeof navigator !== 'undefined' && !navigator.onLine) return; // Still offline
 

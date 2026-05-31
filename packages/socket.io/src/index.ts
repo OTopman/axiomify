@@ -215,6 +215,14 @@ export function adaptAxiomifyPlugin(
 ): (socket: Socket, next: (err?: Error) => void) => void {
   return (socket: Socket, next: (err?: Error) => void) => {
     const handshake = socket.handshake;
+    const controller = new AbortController();
+
+    const disconnectHandler = () => {
+      controller.abort(new Error('Socket disconnected'));
+    };
+    if (typeof socket.once === 'function') {
+      socket.once('disconnect', disconnectHandler);
+    }
 
     // Pseudo-request constructed from the Socket.IO handshake. The
     // surface mirrors what Axiomify route plugins read from the real
@@ -239,6 +247,7 @@ export function adaptAxiomifyPlugin(
       // socket so escape hatches still work for socket.io-specific needs.
       raw: { socket } as unknown,
       stream: undefined as never, // no request stream on an upgrade
+      signal: controller.signal,
     } as unknown as AxiomifyRequest;
 
     let rejected: { code: number; message?: string } | null = null;
@@ -306,6 +315,9 @@ export function adaptAxiomifyPlugin(
       .then(() => plugin(req, axRes))
       .then(() => {
         if (rejected) {
+          if (typeof socket.off === 'function') {
+            socket.off('disconnect', disconnectHandler);
+          }
           const code = rejected.code;
           const msg = rejected.message ?? `Connection refused (status ${code})`;
           // Socket.IO middleware uses Error with `data` for transport;
@@ -323,6 +335,9 @@ export function adaptAxiomifyPlugin(
         next();
       })
       .catch((err) => {
+        if (typeof socket.off === 'function') {
+          socket.off('disconnect', disconnectHandler);
+        }
         next(err instanceof Error ? err : new Error(String(err)));
       });
   };

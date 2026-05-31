@@ -14,6 +14,8 @@ import { pipeline } from 'stream/promises';
 declare module '@axiomify/core' {
   interface AxiomifyRequest<Body, Query, Params> {
     files?: Record<string, UploadedFile>;
+    uploadedFiles: string[];
+    cleanup(): Promise<void>;
   }
 }
 
@@ -168,17 +170,36 @@ async function validateFileContent(
  * Validates multipart part MIME headers as a fast pre-check, then verifies the
  * saved file's magic bytes for known content types before route handlers run.
  */
-export function useUpload(app: Axiomify): void {
+export function useUpload(
+  app: Axiomify,
+  options: { autoCleanup?: boolean } = {},
+): void {
   app.addHook(
     'onPreHandler',
     async (req: AxiomifyRequest, _res: AxiomifyResponse, match: any) => {
       const fileSchema = match?.route?.schema?.files;
       /* v8 ignore next -- multipart processing requires real Busboy stream */
-    const contentType = req.headers['content-type'] || '';
+      const contentType = req.headers['content-type'] || '';
 
       if (!fileSchema || !contentType.includes('multipart/form-data')) return;
 
       const mutableReq = req as any;
+      if (!mutableReq.uploadedFiles) {
+        mutableReq.uploadedFiles = [];
+      }
+      if (!mutableReq.cleanup) {
+        mutableReq.cleanup = async () => {
+          if (mutableReq.uploadedFiles.length > 0) {
+            await Promise.allSettled(
+              mutableReq.uploadedFiles.map((p: string) =>
+                unlink(p).catch(() => {}),
+              ),
+            );
+            mutableReq.uploadedFiles = [];
+          }
+        };
+      }
+
       if (!mutableReq.body) mutableReq.body = {};
       mutableReq.files = {};
 
@@ -288,15 +309,23 @@ export function useUpload(app: Axiomify): void {
                 }
               });
 
-              await pipeline(file, createWriteStream(savePath, { flags: 'wx' }));
+              await pipeline(
+                file,
+                createWriteStream(savePath, { flags: 'wx' }),
+              );
               mutableReq.files[fieldname].size = byteCount;
+              mutableReq.uploadedFiles.push(savePath);
 
               if (config.validateContent !== false) {
                 await validateFileContent(savePath, config.accept);
               }
             } catch (err) {
               file.resume();
-              if (savePath) await unlink(savePath).catch(() => {});
+              if (savePath) {
+                const idx = mutableReq.uploadedFiles.indexOf(savePath);
+                if (idx !== -1) mutableReq.uploadedFiles.splice(idx, 1);
+                await unlink(savePath).catch(() => {});
+              }
               safeReject(err);
             }
           })();
@@ -329,9 +358,20 @@ export function useUpload(app: Axiomify): void {
     },
   );
 
+  if (options.autoCleanup) {
+    app.addHook('onPostHandler', async (req: AxiomifyRequest) => {
+      if (req.cleanup) {
+        await req.cleanup();
+      }
+    });
+  }
+
   app.addHook(
     'onError',
     async (err: any, req: AxiomifyRequest, _res: AxiomifyResponse) => {
+      if (req.cleanup) {
+        await req.cleanup();
+      }
       if (req.files) {
         await Promise.allSettled(
           Object.values(req.files).map((file) =>

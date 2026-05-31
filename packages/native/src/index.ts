@@ -4,7 +4,12 @@ import type {
   HttpMethod,
   SerializerInput,
 } from '@axiomify/core';
-import { ADAPTER_LOCK_TOKEN, makeSerialize } from '@axiomify/core';
+import {
+  ADAPTER_LOCK_TOKEN,
+  makeSerialize,
+  compiledStates,
+  AxiomifyError,
+} from '@axiomify/core';
 import cluster from 'cluster';
 import { cpus } from 'node:os';
 import { availableParallelism } from 'os';
@@ -107,6 +112,7 @@ export interface NativeAdapterOptions {
    * @default false
    */
   trustProxy?: boolean;
+  proxyIpValidator?: (ip: string) => boolean;
   /**
    * WebSocket endpoint configuration. Omit to disable WebSocket support.
    * Set to `false` to explicitly disable.
@@ -145,6 +151,19 @@ export interface NativeAdapterOptions {
     warn(message: string, meta?: Record<string, unknown>): void;
     error(message: string, meta?: Record<string, unknown>): void;
   };
+  /**
+   * Global request timeout in milliseconds. If the request handler does not
+   * respond (i.e. headers are not sent) within this duration, the connection
+   * is closed with a 504 status.
+   * Omit or set to 0 to disable.
+   * @default 0 (disabled)
+   */
+  requestTimeout?: number;
+  /**
+   * Number of workers to restart concurrently during a rolling restart (SIGUSR2).
+   * @default 1
+   */
+  restartParallelism?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,9 +176,12 @@ export class NativeAdapter {
   private readonly _server: TemplatedApp;
   private readonly _maxBodySize: number;
   private readonly _trustProxy: boolean;
+  private readonly _proxyIpValidator?: (ip: string) => boolean;
   private readonly _workers: number;
   private readonly _allowUserspaceProxy: boolean;
   private readonly _logger: NonNullable<NativeAdapterOptions['logger']>;
+  private readonly _requestTimeout: number;
+  private readonly _restartParallelism: number;
   /** Serializer arity cached at construction time — not re-checked per request. */
   private readonly _serialize: (input: SerializerInput) => unknown;
   private _listenSocket: unknown = null;
@@ -172,19 +194,34 @@ export class NativeAdapter {
   private _inflight = 0;
   private _drainResolvers: (() => void)[] = [];
   private readonly _errorCache: ErrorCache;
+  private readonly _lockToken = Symbol('axiomify.native.lock');
 
   constructor(app: Axiomify, options: NativeAdapterOptions = {}) {
     this._app = app;
-    this._app.lockRoutes(ADAPTER_LOCK_TOKEN, '@axiomify/native');
+    this._app.lockRoutes(this._lockToken, '@axiomify/native');
     this._port = options.port ?? 3000;
     this._maxBodySize = options.maxBodySize ?? 1_048_576;
     this._trustProxy = options.trustProxy ?? false;
+    this._proxyIpValidator = options.proxyIpValidator;
+    this._requestTimeout = options.requestTimeout ?? 0;
+    this._restartParallelism = options.restartParallelism ?? 1;
     this._workers = options.workers ?? availableParallelism();
     this._allowUserspaceProxy = options.allowUserspaceProxy ?? false;
     this._logger = options.logger ?? {
       warn: (msg, meta) => console.warn(msg, meta ?? ''),
       error: (msg, meta) => console.error(msg, meta ?? ''),
     };
+    if (this._trustProxy && !this._proxyIpValidator) {
+      const msg =
+        'AxiomifyWarning: trustProxy is enabled but no proxyIpValidator is configured. ' +
+        'X-Forwarded-For can be spoofed to bypass rate limiting. ' +
+        'Configure a CIDR allowlist for trusted proxy IPs.';
+      if (this._app.strictSchema) {
+        throw new AxiomifyError(msg);
+      } else {
+        this._logger.warn(msg);
+      }
+    }
     this._serialize = makeSerialize(this._app.serializer);
 
     // Per-adapter error envelope cache. setSerializer is locked by core
@@ -224,6 +261,28 @@ export class NativeAdapter {
   // -------------------------------------------------------------------------
 
   private _registerRoutes(): void {
+    const normalizedPaths = new Map<string, string>();
+    for (const route of this._app.registeredRoutes) {
+      const norm =
+        route.method +
+        ' ' +
+        route.path
+          .split('/')
+          .map((s) => (s.startsWith(':') ? ':*' : s))
+          .join('/');
+      const existing = normalizedPaths.get(norm);
+      if (existing && existing !== route.path) {
+        const msg = `AxiomifyError: Conflicting parameterized routes: "${existing}" and "${route.path}" resolve ambiguously. Use distinct path structures.`;
+        if (this._app.routeConflict === 'throw') {
+          throw new AxiomifyError(msg);
+        } else {
+          this._logger.warn(msg);
+        }
+      } else {
+        normalizedPaths.set(norm, route.path);
+      }
+    }
+
     // Aggregate registered methods per path so we can register per-path
     // catch-alls for the unregistered methods. Without this, a request to
     // POST /resource where only GET is registered falls through to the
@@ -280,7 +339,7 @@ export class NativeAdapter {
       if (!methods.has('OPTIONS')) {
         const paramKeys = extractParamKeys(path);
         const allowMethods = Array.from(methods).sort().join(', ');
-        
+
         const optionsRoute = {
           method: 'OPTIONS',
           path,
@@ -289,7 +348,7 @@ export class NativeAdapter {
             res.status(204).send(null);
           },
         } as any;
-        
+
         this._server.options(path, this._makeHandler(optionsRoute, paramKeys));
         methods.add('OPTIONS');
       }
@@ -317,6 +376,20 @@ export class NativeAdapter {
         res.end(cached404.body);
       });
     });
+  }
+
+  private _extractIp(res: UWSResponse): string {
+    const remoteIp = _ipDecoder.decode(res.getRemoteAddressAsText());
+    if (this._trustProxy) {
+      if (this._proxyIpValidator) {
+        if (this._proxyIpValidator(remoteIp)) {
+          return (
+            _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) || remoteIp
+          );
+        }
+      }
+    }
+    return remoteIp;
   }
 
   // -------------------------------------------------------------------------
@@ -364,10 +437,7 @@ export class NativeAdapter {
       const queryStr = req.getQuery();
       const ctRaw = headers['content-type'];
       const contentType = (Array.isArray(ctRaw) ? ctRaw[0] : ctRaw) ?? '';
-      const ip = trustProxy
-        ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
-          _ipDecoder.decode(res.getRemoteAddressAsText())
-        : _ipDecoder.decode(res.getRemoteAddressAsText());
+      const ip = adapter._extractIp(res);
 
       // Construct request and response objects.
       const axiomifyReq = new NativeRequest(
@@ -379,6 +449,22 @@ export class NativeAdapter {
         undefined,
       );
       axiomifyReq.params = params;
+      let timeoutTimer: NodeJS.Timeout | null = null;
+      if (adapter._requestTimeout > 0) {
+        timeoutTimer = setTimeout(() => {
+          if (!aborted && !axiomifyRes.headersSent) {
+            aborted = true;
+            axiomifyReq.onAbort();
+            axiomifyRes.aborted = true;
+            res.cork(() => {
+              res.writeStatus('504 Gateway Timeout');
+              res.writeHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Gateway Timeout' }));
+            });
+          }
+        }, adapter._requestTimeout);
+      }
+
       const axiomifyRes = new NativeResponse(
         res,
         app,
@@ -386,6 +472,12 @@ export class NativeAdapter {
         method,
         serialize,
         errorCache,
+        () => {
+          if (timeoutTimer) {
+            clearTimeout(timeoutTimer);
+            timeoutTimer = null;
+          }
+        },
       );
 
       // Register abort handler BEFORE any async work.
@@ -393,6 +485,10 @@ export class NativeAdapter {
         aborted = true;
         axiomifyReq.onAbort();
         axiomifyRes.aborted = true;
+        if (timeoutTimer) {
+          clearTimeout(timeoutTimer);
+          timeoutTimer = null;
+        }
       });
 
       // --- ASYNC SECTION ---
@@ -413,11 +509,36 @@ export class NativeAdapter {
           if (result.tooLarge) {
             if (!aborted) {
               axiomifyRes.aborted = false; // reset to allow send
-              res.cork(() => {
-                res.writeStatus(cached413.statusLine);
-                res.writeHeader('Content-Type', 'application/json');
-                res.end(cached413.body);
+              const dummyRoute = {
+                method: route.method,
+                path: route.path,
+                handler: (_req: any, r: any) => {
+                  r.status(413).send(null, 'Payload Too Large');
+                },
+              } as any;
+
+              compiledStates.set(dummyRoute, {
+                pipeline: [dummyRoute.handler],
+                hasResponseSchema: false,
               });
+
+              app
+                .handleMatchedRoute(
+                  adapter._lockToken,
+                  axiomifyReq,
+                  axiomifyRes,
+                  dummyRoute,
+                  params,
+                )
+                .catch(() => {
+                  if (!aborted) {
+                    res.cork(() => {
+                      res.writeStatus(cached413.statusLine);
+                      res.writeHeader('Content-Type', 'application/json');
+                      res.end(cached413.body);
+                    });
+                  }
+                });
             }
             return;
           }
@@ -434,7 +555,7 @@ export class NativeAdapter {
         axiomifyRes.aborted = aborted;
 
         await app.handleMatchedRoute(
-          ADAPTER_LOCK_TOKEN,
+          adapter._lockToken,
           axiomifyReq,
           axiomifyRes,
           route,
@@ -458,8 +579,8 @@ export class NativeAdapter {
                 typeof anyErr.statusCode === 'number'
                   ? anyErr.statusCode
                   : typeof anyErr.status === 'number'
-                  ? anyErr.status
-                  : 500;
+                    ? anyErr.status
+                    : 500;
               const errMsg =
                 typeof anyErr.message === 'string'
                   ? anyErr.message
@@ -472,6 +593,10 @@ export class NativeAdapter {
           }
         })
         .finally(() => {
+          if (timeoutTimer) {
+            clearTimeout(timeoutTimer);
+            timeoutTimer = null;
+          }
           // Decrement BEFORE notifying drain resolvers so a resolver that
           // schedules `process.exit(0)` sees a consistent count.
           adapter._inflight--;
@@ -566,10 +691,7 @@ export class NativeAdapter {
 
           const url = req.getUrl();
           const queryStr = req.getQuery();
-          const ip = trustProxy
-            ? _ipDecoder.decode(res.getProxiedRemoteAddressAsText()) ||
-              _ipDecoder.decode(res.getRemoteAddressAsText())
-            : _ipDecoder.decode(res.getRemoteAddressAsText());
+          const ip = this._extractIp(res);
 
           // WS handshake headers MUST be single-valued per RFC 6455 §4.1.
           // If a client somehow sent multiples, take the first to match the
@@ -667,17 +789,43 @@ export class NativeAdapter {
                 typeof message === 'string' || Buffer.isBuffer(message)
                   ? message
                   : JSON.stringify(message);
-              ws.send(data, isBinary);
+              try {
+                ws.send(data, isBinary);
+              } catch (err: any) {
+                if (!err.message?.includes('closed uWS')) throw err;
+              }
             },
-            close: () => ws.close(),
-            subscribe: (topic: string) => ws.subscribe(topic),
-            unsubscribe: (topic: string) => ws.unsubscribe(topic),
+            close: () => {
+              try {
+                ws.close();
+              } catch (err: any) {
+                if (!err.message?.includes('closed uWS')) throw err;
+              }
+            },
+            subscribe: (topic: string) => {
+              try {
+                ws.subscribe(topic);
+              } catch (err: any) {
+                if (!err.message?.includes('closed uWS')) throw err;
+              }
+            },
+            unsubscribe: (topic: string) => {
+              try {
+                ws.unsubscribe(topic);
+              } catch (err: any) {
+                if (!err.message?.includes('closed uWS')) throw err;
+              }
+            },
             publish: (topic: string, message: any, isBinary?: boolean) => {
               const data =
                 typeof message === 'string' || Buffer.isBuffer(message)
                   ? message
                   : JSON.stringify(message);
-              ws.publish(topic, data, isBinary);
+              try {
+                ws.publish(topic, data, isBinary);
+              } catch (err: any) {
+                if (!err.message?.includes('closed uWS')) throw err;
+              }
             },
           };
           ws.client = client;
@@ -900,7 +1048,16 @@ export class NativeAdapter {
         assignedPort,
       );
 
+      const heartbeatInterval = setInterval(() => {
+        process.send?.({
+          type: 'HEARTBEAT',
+          pid: process.pid,
+        });
+      }, 5000);
+      heartbeatInterval.unref?.();
+
       process.once('SIGTERM', () => {
+        clearInterval(heartbeatInterval);
         this.close();
         setTimeout(() => {
           console.error(`[Worker ${process.pid}] Drain timeout. Forcing exit.`);
@@ -917,7 +1074,12 @@ export class NativeAdapter {
     );
     const liveWorkers = new Map<
       number,
-      { process: cluster.Worker; state: string; port: number }
+      {
+        process: cluster.Worker;
+        state: string;
+        port: number;
+        lastHeartbeat: number;
+      }
     >();
 
     let isShuttingDown = false;
@@ -967,7 +1129,12 @@ export class NativeAdapter {
       const w = cluster.fork({ AXIOMIFY_WORKER_IDX: idx.toString() });
       const pid = w.process.pid!;
 
-      liveWorkers.set(pid, { process: w, state: 'STARTING', port: 0 });
+      liveWorkers.set(pid, {
+        process: w,
+        state: 'STARTING',
+        port: 0,
+        lastHeartbeat: Date.now(),
+      });
 
       // Linux Production Optimization: CPU Pinning
       if (isLinux) {
@@ -982,6 +1149,13 @@ export class NativeAdapter {
       }
 
       w.on('message', (msg: { type?: string; port?: number }) => {
+        if (msg?.type === 'HEARTBEAT') {
+          const record = liveWorkers.get(pid);
+          if (record) {
+            record.lastHeartbeat = Date.now();
+          }
+          return;
+        }
         if (msg?.type !== 'WORKER_READY') return;
 
         const record = liveWorkers.get(pid);
@@ -1006,15 +1180,35 @@ export class NativeAdapter {
 
         // Let external orchestrators (Kubernetes/systemd) manage crash loops instead of
         // suiciding the primary process. Backoff helps prevent CPU pinning.
-        const nextDelay = Math.min((respawnDelayMs || 50) * 2, 5_000);
-        setTimeout(() => spawnWorker(idx, nextDelay), nextDelay);
+        // Exponential backoff with 20% random jitter to prevent thundering herd.
+        const baseDelay = Math.min((respawnDelayMs || 50) * 2, 5_000);
+        const jitter = Math.floor(Math.random() * (baseDelay * 0.2));
+        const nextDelay = baseDelay + (Math.random() > 0.5 ? jitter : -jitter);
+        setTimeout(() => spawnWorker(idx, baseDelay), Math.max(0, nextDelay));
       });
       return w;
     };
 
+    // Heartbeat check interval in primary (every 10 seconds)
+    const livenessInterval = setInterval(() => {
+      if (isShuttingDown) return;
+      const now = Date.now();
+      for (const [pid, record] of liveWorkers.entries()) {
+        if (record.state === 'READY' && now - record.lastHeartbeat > 15_000) {
+          this._logger.error(
+            `[Axiomify/native] Worker ${pid} missed heartbeats. Event loop might be blocked. Killing worker.`,
+            { pid },
+          );
+          record.process.kill('SIGKILL');
+        }
+      }
+    }, 10_000);
+    livenessInterval.unref?.();
+
     // SYSTEM SHUTDOWN
     process.once('SIGTERM', () => {
       isShuttingDown = true;
+      clearInterval(livenessInterval);
       l4Proxy?.close();
       if (liveWorkers.size === 0) process.exit(0);
 
@@ -1029,14 +1223,20 @@ export class NativeAdapter {
     process.on('SIGUSR2', () => {
       if (isShuttingDown) return;
       const pids = Array.from(liveWorkers.keys());
-      let i = 0;
+      let nextIndex = 0;
+      let activeRestarts = 0;
 
       const replaceNext = () => {
-        if (i >= pids.length) return;
-        const oldRecord = liveWorkers.get(pids[i]);
+        if (nextIndex >= pids.length) return;
+
+        const currentIdx = nextIndex++;
+        activeRestarts++;
+
+        const oldPid = pids[currentIdx];
+        const oldRecord = liveWorkers.get(oldPid);
 
         // Spawn replacement using the same logical index
-        const newWorker = spawnWorker(i, 0);
+        const newWorker = spawnWorker(currentIdx, 0);
 
         const readyListener = (msg: any) => {
           if (msg?.type === 'WORKER_READY') {
@@ -1045,13 +1245,17 @@ export class NativeAdapter {
               oldRecord.state = 'DRAINING';
               oldRecord.process.kill('SIGTERM');
             }
-            i++;
+            activeRestarts--;
             replaceNext();
           }
         };
         newWorker.on('message', readyListener);
       };
-      replaceNext();
+
+      // Start up to _restartParallelism workers concurrently
+      for (let p = 0; p < this._restartParallelism; p++) {
+        replaceNext();
+      }
     });
 
     for (let i = 0; i < targetWorkers; i++) spawnWorker(i);
@@ -1080,12 +1284,24 @@ export class NativeAdapter {
    *
    * @internal Plugin-author API. Not part of the public Axiomify surface.
    */
-  public getRawServer(token: AdapterLockToken): TemplatedApp {
-    if (token !== ADAPTER_LOCK_TOKEN) {
+  public getRawServer(token: symbol): TemplatedApp {
+    if (token !== this._lockToken && token !== ADAPTER_LOCK_TOKEN) {
       throw new Error(
         '[Axiomify/native] getRawServer() is reserved for adapter-bridge plugins. ' +
           'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
       );
+    }
+    if (token === ADAPTER_LOCK_TOKEN) {
+      const stack = new Error().stack ?? '';
+      const authorized =
+        stack.includes('packages/socket.io') ||
+        stack.includes('@axiomify/socket.io') ||
+        stack.includes('socket.io-bridge');
+      if (!authorized) {
+        throw new Error(
+          '[Axiomify/native] getRawServer() is privileged and can only be called by authorized adapters or bridges.',
+        );
+      }
     }
     return this._server;
   }
@@ -1104,14 +1320,26 @@ export class NativeAdapter {
    */
   private _bridgeShutdownCallbacks: Array<() => void | Promise<void>> = [];
   public registerShutdownCallback(
-    token: AdapterLockToken,
+    token: symbol,
     cb: () => void | Promise<void>,
   ): void {
-    if (token !== ADAPTER_LOCK_TOKEN) {
+    if (token !== this._lockToken && token !== ADAPTER_LOCK_TOKEN) {
       throw new Error(
         '[Axiomify/native] registerShutdownCallback() is reserved for adapter-bridge plugins. ' +
           'Import ADAPTER_LOCK_TOKEN from @axiomify/core.',
       );
+    }
+    if (token === ADAPTER_LOCK_TOKEN) {
+      const stack = new Error().stack ?? '';
+      const authorized =
+        stack.includes('packages/socket.io') ||
+        stack.includes('@axiomify/socket.io') ||
+        stack.includes('socket.io-bridge');
+      if (!authorized) {
+        throw new Error(
+          '[Axiomify/native] registerShutdownCallback() is privileged and can only be called by authorized adapters or bridges.',
+        );
+      }
     }
     this._bridgeShutdownCallbacks.push(cb);
   }

@@ -141,14 +141,22 @@ describe('RedisStore — EVALSHA caching', () => {
     const evalshaCalls: string[] = [];
 
     const mockClient = {
-      eval: vi.fn().mockImplementation((_script: unknown, numkeys: unknown, ...rest: unknown[]) => {
-        evalCalls.push('eval');
-        return Promise.resolve([1, Math.ceil(Date.now() / 1000) + 60]);
-      }),
-      evalsha: vi.fn().mockImplementation((_sha: unknown, numkeys: unknown, ...rest: unknown[]) => {
-        evalshaCalls.push('evalsha');
-        return Promise.resolve([1, Math.ceil(Date.now() / 1000) + 60]);
-      }),
+      eval: vi
+        .fn()
+        .mockImplementation(
+          (_script: unknown, numkeys: unknown, ...rest: unknown[]) => {
+            evalCalls.push('eval');
+            return Promise.resolve([1, Math.ceil(Date.now() / 1000) + 60]);
+          },
+        ),
+      evalsha: vi
+        .fn()
+        .mockImplementation(
+          (_sha: unknown, numkeys: unknown, ...rest: unknown[]) => {
+            evalshaCalls.push('evalsha');
+            return Promise.resolve([1, Math.ceil(Date.now() / 1000) + 60]);
+          },
+        ),
     };
 
     const { RedisStore } = await import('../src/index');
@@ -159,7 +167,7 @@ describe('RedisStore — EVALSHA caching', () => {
     expect(evalshaCalls).toHaveLength(0);
 
     await store.increment('key1', 60_000);
-    expect(evalCalls).toHaveLength(1);   // no new eval call
+    expect(evalCalls).toHaveLength(1); // no new eval call
     expect(evalshaCalls).toHaveLength(1); // evalsha used
   });
 
@@ -171,7 +179,10 @@ describe('RedisStore — EVALSHA caching', () => {
     const mockClient = {
       eval: vi.fn().mockImplementation((..._args: unknown[]) => {
         evalCallCount.n++;
-        return Promise.resolve([evalCallCount.n, Math.ceil(Date.now() / 1000) + 60]);
+        return Promise.resolve([
+          evalCallCount.n,
+          Math.ceil(Date.now() / 1000) + 60,
+        ]);
       }),
       evalsha: vi.fn().mockImplementation((..._args: unknown[]) => {
         evalshaCallCount.n++;
@@ -191,13 +202,13 @@ describe('RedisStore — EVALSHA caching', () => {
 
     // First call: EVALSHA throws NOSCRIPT → falls back to EVAL
     await store.increment('key1', 60_000);
-    expect(evalCallCount.n).toBe(1);    // eval was called once
+    expect(evalCallCount.n).toBe(1); // eval was called once
     expect(evalshaCallCount.n).toBe(1); // evalsha was tried
 
     // After fallback, _scriptLoaded is reset to true, so next call uses EVALSHA again
     const r2 = await store.increment('key1', 60_000);
-    expect(r2.count).toBe(99);          // evalsha succeeded this time
-    expect(evalCallCount.n).toBe(1);    // eval NOT called again
+    expect(r2.count).toBe(99); // evalsha succeeded this time
+    expect(evalCallCount.n).toBe(1); // eval NOT called again
     expect(evalshaCallCount.n).toBe(2); // evalsha called on second request
   });
 });
@@ -213,13 +224,18 @@ describe('buildLimiter — keyGenerator and skip error safety', () => {
       store,
       max: 100,
       windowMs: 60_000,
-      keyGenerator: () => { throw new Error('keyGenerator error'); },
+      keyGenerator: () => {
+        throw new Error('keyGenerator error');
+      },
     });
 
     const req: any = { ip: '1.2.3.4', headers: {}, state: {} };
     const headers: Record<string, string> = {};
     const res: any = {
-      header: (k: string, v: string) => { headers[k] = v; return res; },
+      header: (k: string, v: string) => {
+        headers[k] = v;
+        return res;
+      },
       status: vi.fn().mockReturnThis(),
       send: vi.fn(),
       headersSent: false,
@@ -241,12 +257,17 @@ describe('buildLimiter — keyGenerator and skip error safety', () => {
       store,
       max: 100,
       windowMs: 60_000,
-      skip: () => { throw new Error('skip error'); },
+      skip: () => {
+        throw new Error('skip error');
+      },
     });
 
     const req: any = { ip: '1.2.3.4', headers: {}, state: {} };
     const res: any = {
-      header: (k: string, v: string) => { if (k === 'X-RateLimit-Limit') limitApplied = true; return res; },
+      header: (k: string, v: string) => {
+        if (k === 'X-RateLimit-Limit') limitApplied = true;
+        return res;
+      },
       status: vi.fn().mockReturnThis(),
       send: vi.fn(),
       headersSent: false,

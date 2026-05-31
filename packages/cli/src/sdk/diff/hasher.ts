@@ -18,7 +18,9 @@ export class SchemaHasher {
   private replacer(key: string, value: unknown) {
     if (value instanceof Map) {
       return Object.fromEntries(
-        [...value.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+        [...value.entries()].sort((a, b) =>
+          String(a[0]).localeCompare(String(b[0])),
+        ),
       );
     }
     if (value instanceof Set) {

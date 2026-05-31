@@ -52,6 +52,25 @@ function setVaryValues(res: any, values: string[]): void {
   setVary(res, [...new Set(values)].join(', '));
 }
 
+function anchorRegExp(re: RegExp): RegExp {
+  let source = re.source;
+  if (source.startsWith('^') && source.endsWith('$')) {
+    return re;
+  }
+  console.warn(
+    `[axiomify/cors] Warning: RegExp origin ${re.toString()} is not fully anchored. ` +
+      `Auto-anchoring it to prevent partial match bypasses (e.g. attacker-domain.com). ` +
+      `Please use ^ and $ explicitly, e.g. /^https?:\\/\\/(.*\\.)?domain\\.com$/`,
+  );
+  if (!source.startsWith('^')) {
+    source = '^' + source;
+  }
+  if (!source.endsWith('$')) {
+    source = source + '$';
+  }
+  return new RegExp(source, re.flags);
+}
+
 export function useCors(app: Axiomify, options: CorsOptions = {}): void {
   const {
     origin = '*',
@@ -73,34 +92,43 @@ export function useCors(app: Axiomify, options: CorsOptions = {}): void {
     );
   }
 
+  let normalizedOrigin = origin;
+  if (origin instanceof RegExp) {
+    normalizedOrigin = anchorRegExp(origin);
+  } else if (Array.isArray(origin)) {
+    normalizedOrigin = origin.map((entry) =>
+      entry instanceof RegExp ? anchorRegExp(entry) : entry,
+    );
+  }
+
   app.addHook('onRequest', async (req, res) => {
     const requestOrigin = req.headers['origin'] as string | undefined;
     const varyValues: string[] = [];
 
     let resolvedOrigin: string | undefined;
 
-    if (origin === true) {
+    if (normalizedOrigin === true) {
       resolvedOrigin = requestOrigin;
-    } else if (origin === '*') {
+    } else if (normalizedOrigin === '*') {
       resolvedOrigin = '*';
-    } else if (origin === false) {
+    } else if (normalizedOrigin === false) {
       resolvedOrigin = undefined;
-    } else if (typeof origin === 'string') {
-      if (requestOrigin === origin) resolvedOrigin = origin;
-    } else if (origin instanceof RegExp) {
-      if (requestOrigin && origin.test(requestOrigin))
+    } else if (typeof normalizedOrigin === 'string') {
+      if (requestOrigin === normalizedOrigin) resolvedOrigin = normalizedOrigin;
+    } else if (normalizedOrigin instanceof RegExp) {
+      if (requestOrigin && normalizedOrigin.test(requestOrigin))
         resolvedOrigin = requestOrigin;
-    } else if (Array.isArray(origin)) {
+    } else if (Array.isArray(normalizedOrigin)) {
       if (requestOrigin) {
-        const match = origin.some((entry) =>
+        const match = normalizedOrigin.some((entry) =>
           typeof entry === 'string'
             ? entry === requestOrigin
             : entry.test(requestOrigin),
         );
         if (match) resolvedOrigin = requestOrigin;
       }
-    } else if (typeof origin === 'function') {
-      const allowed = await origin(requestOrigin);
+    } else if (typeof normalizedOrigin === 'function') {
+      const allowed = await normalizedOrigin(requestOrigin);
       if (allowed) {
         // With credentials, requestOrigin must be explicit — never '*'.
         resolvedOrigin = credentials ? requestOrigin : (requestOrigin ?? '*');

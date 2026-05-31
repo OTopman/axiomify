@@ -13,12 +13,12 @@ npm install redis          # redis@4
 
 ## API
 
-| Export | Description |
-|---|---|
+| Export                           | Description                                        |
+| -------------------------------- | -------------------------------------------------- |
 | `createRateLimitPlugin(options)` | Per-route plugin — attach via `plugins: [limiter]` |
-| `useRateLimit(app, options)` | Global rate limit via `onPreHandler` hook |
-| `MemoryStore` | In-process store — dev/testing only |
-| `RedisStore` | Redis-backed store — production |
+| `useRateLimit(app, options)`     | Global rate limit via `onPreHandler` hook          |
+| `MemoryStore`                    | In-process store — dev/testing only                |
+| `RedisStore`                     | Redis-backed store — production                    |
 
 ## Global rate limit
 
@@ -29,8 +29,8 @@ import Redis from 'ioredis';
 const store = new RedisStore(new Redis(process.env.REDIS_URL));
 
 useRateLimit(app, {
-  windowMs: 60_000,   // 1-minute sliding window
-  max: 100,           // 100 req/IP/window
+  windowMs: 60_000, // 1-minute sliding window
+  max: 100, // 100 req/IP/window
   store,
 });
 ```
@@ -41,8 +41,8 @@ useRateLimit(app, {
 import { createRateLimitPlugin } from '@axiomify/rate-limit';
 
 const loginLimit = createRateLimitPlugin({
-  windowMs: 15 * 60_000,  // 15 minutes
-  max: 5,                 // 5 attempts
+  windowMs: 15 * 60_000, // 15 minutes
+  max: 5, // 5 attempts
   store,
   keyGenerator: (req) => req.body?.email ?? req.ip,
 });
@@ -51,23 +51,25 @@ app.route({
   method: 'POST',
   path: '/auth/login',
   plugins: [loginLimit],
-  handler: async (req, res) => { /* ... */ },
+  handler: async (req, res) => {
+    /* ... */
+  },
 });
 ```
 
 ## Options
 
-| Option | Default | Description |
-|---|---|---|
-| `windowMs` | `60000` | Sliding window in milliseconds. |
-| `max` | `100` | Max requests per key per window. |
-| `store` | `MemoryStore` | `RateLimitStore` implementation. |
-| `keyGenerator` | `req.ip` | Derive rate-limit key from the request. |
-| `keyExtractor` | — | Alias for `keyGenerator`. |
-| `maxRequests` | — | Alias for `max`. |
-| `skip` | — | Return `true` to skip limiting for a specific request. |
-| `allowMemoryStoreInProduction` | `false` | Set `true` to explicitly allow `MemoryStore` in production. |
-| `memoryStoreMaxKeys` | `50000` | Max keys in `MemoryStore` before pruning. |
+| Option                         | Default       | Description                                                 |
+| ------------------------------ | ------------- | ----------------------------------------------------------- |
+| `windowMs`                     | `60000`       | Sliding window in milliseconds.                             |
+| `max`                          | `100`         | Max requests per key per window.                            |
+| `store`                        | `MemoryStore` | `RateLimitStore` implementation.                            |
+| `keyGenerator`                 | `req.ip`      | Derive rate-limit key from the request.                     |
+| `keyExtractor`                 | —             | Alias for `keyGenerator`.                                   |
+| `maxRequests`                  | —             | Alias for `max`.                                            |
+| `skip`                         | —             | Return `true` to skip limiting for a specific request.      |
+| `allowMemoryStoreInProduction` | `false`       | Set `true` to explicitly allow `MemoryStore` in production. |
+| `memoryStoreMaxKeys`           | `50000`       | Max keys in `MemoryStore` before pruning.                   |
 
 ## RedisStore — EVALSHA caching
 
@@ -101,12 +103,12 @@ const store = new RedisStore(redis as any);
 
 ## Response headers
 
-| Header | Value |
-|---|---|
-| `X-RateLimit-Limit` | Max requests per window |
-| `X-RateLimit-Remaining` | Requests left in current window |
-| `X-RateLimit-Reset` | Unix timestamp when the window resets |
-| `Retry-After` | Seconds to wait (429 responses only) |
+| Header                  | Value                                 |
+| ----------------------- | ------------------------------------- |
+| `X-RateLimit-Limit`     | Max requests per window               |
+| `X-RateLimit-Remaining` | Requests left in current window       |
+| `X-RateLimit-Reset`     | Unix timestamp when the window resets |
+| `Retry-After`           | Seconds to wait (429 responses only)  |
 
 ## Custom key generators
 
@@ -134,7 +136,7 @@ createRateLimitPlugin({
 
 ## MemoryStore
 
-In-process, single-server only. **Never use in multi-process or multi-instance deployments** — 
+In-process, single-server only. **Never use in multi-process or multi-instance deployments** —
 each worker maintains its own counter independently. Effective limit becomes `max × workers`.
 
 ```typescript

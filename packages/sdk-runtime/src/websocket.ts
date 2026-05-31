@@ -15,7 +15,10 @@ export class WebSocketClient {
   private retries = 0;
   private heartbeatTimer: any = null;
 
-  constructor(private url: string, private options: WebSocketClientOptions = {}) {}
+  constructor(
+    private url: string,
+    private options: WebSocketClientOptions = {},
+  ) {}
 
   connect(): void {
     if (this.active) return;
@@ -84,7 +87,9 @@ export class WebSocketClient {
     this.retries++;
     if (this.retries > maxRetries) {
       this.active = false;
-      this.options.onError?.(new Error('Max WebSocket reconnection retries reached'));
+      this.options.onError?.(
+        new Error('Max WebSocket reconnection retries reached'),
+      );
       return;
     }
 

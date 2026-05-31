@@ -7,7 +7,10 @@ import { TypeGraph } from '../../../ir/type-graph';
 import type { IRSchema, IRType, IRTypeRef } from '../../../ir/types';
 
 export class PythonTypeEmitter {
-  constructor(private schema: IRSchema, private graph: TypeGraph) {}
+  constructor(
+    private schema: IRSchema,
+    private graph: TypeGraph,
+  ) {}
 
   emitAll(): string {
     const emitter = new Emitter('    ');
@@ -35,8 +38,10 @@ export class PythonTypeEmitter {
       case 'object':
         emitter.block(`class ${type.id}(BaseModel):`, ``, () => {
           if (type.description) this.emitDoc(emitter, type.description);
-          
-          emitter.line(`model_config = ConfigDict(populate_by_name=True, protected_namespaces=())`);
+
+          emitter.line(
+            `model_config = ConfigDict(populate_by_name=True, protected_namespaces=())`,
+          );
           emitter.line();
 
           if (type.fields.length === 0) {
@@ -46,13 +51,22 @@ export class PythonTypeEmitter {
 
           for (const field of type.fields) {
             const pyType = this.renderTypeRef(field.type);
-            const alias = field.name !== this.toSnakeCase(field.name) ? `, alias="${field.name}"` : '';
-            const desc = field.description ? `, description="${field.description.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"` : '';
-            
+            const alias =
+              field.name !== this.toSnakeCase(field.name)
+                ? `, alias="${field.name}"`
+                : '';
+            const desc = field.description
+              ? `, description="${field.description.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+              : '';
+
             if (field.required) {
-              emitter.line(`${this.toSnakeCase(field.name)}: ${pyType} = Field(...${alias}${desc})`);
+              emitter.line(
+                `${this.toSnakeCase(field.name)}: ${pyType} = Field(...${alias}${desc})`,
+              );
             } else {
-              emitter.line(`${this.toSnakeCase(field.name)}: Optional[${pyType}] = Field(default=None${alias}${desc})`);
+              emitter.line(
+                `${this.toSnakeCase(field.name)}: Optional[${pyType}] = Field(default=None${alias}${desc})`,
+              );
             }
           }
         });
@@ -63,14 +77,17 @@ export class PythonTypeEmitter {
         emitter.block(`class ${type.id}(${base}, Enum):`, ``, () => {
           if (type.description) this.emitDoc(emitter, type.description);
           for (const v of type.values) {
-            const pyVal = typeof v.value === 'string' ? `"${v.value}"` : v.value;
+            const pyVal =
+              typeof v.value === 'string' ? `"${v.value}"` : v.value;
             emitter.line(`${this.toEnumKey(v.name)} = ${pyVal}`);
           }
         });
         break;
 
       case 'union':
-        emitter.line(`${type.id} = Union[${type.members.map((m: any) => this.renderTypeRef(m)).join(', ')}]`);
+        emitter.line(
+          `${type.id} = Union[${type.members.map((m: any) => this.renderTypeRef(m)).join(', ')}]`,
+        );
         break;
 
       case 'intersection':
@@ -78,7 +95,7 @@ export class PythonTypeEmitter {
         // For type safety, we define it as a Union of its members or Any.
         emitter.line(`${type.id} = Any`);
         break;
-        
+
       case 'array':
         emitter.line(`${type.id} = List[${this.renderTypeRef(type.items)}]`);
         break;
@@ -88,15 +105,20 @@ export class PythonTypeEmitter {
         break;
 
       case 'map':
-        emitter.line(`${type.id} = Dict[str, ${this.renderTypeRef(type.valueType)}]`);
+        emitter.line(
+          `${type.id} = Dict[str, ${this.renderTypeRef(type.valueType)}]`,
+        );
         break;
 
       case 'tuple':
-        emitter.line(`${type.id} = tuple[${type.elements.map((e: any) => this.renderTypeRef(e)).join(', ')}]`);
+        emitter.line(
+          `${type.id} = tuple[${type.elements.map((e: any) => this.renderTypeRef(e)).join(', ')}]`,
+        );
         break;
 
       case 'literal':
-        const literalVal = typeof type.value === 'string' ? `"${type.value}"` : type.value;
+        const literalVal =
+          typeof type.value === 'string' ? `"${type.value}"` : type.value;
         emitter.line(`${type.id} = Any # Literal: ${literalVal}`);
         break;
     }
@@ -106,33 +128,45 @@ export class PythonTypeEmitter {
     let t = 'Any';
     if (ref.ref) t = `"${ref.ref}"`;
     else if (ref.inline) {
-      if (ref.inline.kind === 'scalar') t = this.renderScalar(ref.inline.scalar);
-      else if (ref.inline.kind === 'array') t = `List[${this.renderTypeRef(ref.inline.items)}]`;
+      if (ref.inline.kind === 'scalar')
+        t = this.renderScalar(ref.inline.scalar);
+      else if (ref.inline.kind === 'array')
+        t = `List[${this.renderTypeRef(ref.inline.items)}]`;
     }
-    
+
     if (ref.isArray) t = `List[${t}]`;
     if (ref.nullable) t = `Optional[${t}]`;
     return t;
   }
 
   private renderScalar(s: string): string {
-    switch(s) {
+    switch (s) {
       case 'integer':
-      case 'bigint': return 'int';
-      case 'number': return 'float';
-      case 'boolean': return 'bool';
-      case 'datetime': return 'datetime';
+      case 'bigint':
+        return 'int';
+      case 'number':
+        return 'float';
+      case 'boolean':
+        return 'bool';
+      case 'datetime':
+        return 'datetime';
       case 'string':
-      default: return 'str';
+      default:
+        return 'str';
     }
   }
 
   private toSnakeCase(str: string): string {
-    return str.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
+    return str
+      .replace(/([A-Z])/g, '_$1')
+      .toLowerCase()
+      .replace(/^_/, '');
   }
 
   private toEnumKey(str: string): string {
-    return this.toSnakeCase(str).toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+    return this.toSnakeCase(str)
+      .toUpperCase()
+      .replace(/[^A-Z0-9_]/g, '_');
   }
 
   private emitDoc(emitter: Emitter, text: string): void {

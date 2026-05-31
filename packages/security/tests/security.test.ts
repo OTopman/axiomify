@@ -135,7 +135,7 @@ describe('Security Package', () => {
 
   it('NoSQL detector should ignore Dates/Buffers and handle deep/cyclic structures safely', async () => {
     const hook = setup({ noSqlInjectionProtection: true });
-    
+
     // Ignore Dates/Buffers
     const reqDateBuffer: any = {
       headers: {},
@@ -199,7 +199,12 @@ describe('useSecurity — no Object.defineProperty (V8 hidden-class safety)', ()
       params: {},
       state: {},
     };
-    const res: any = { status: () => res, send: () => {}, header: () => res, headersSent: false };
+    const res: any = {
+      status: () => res,
+      send: () => {},
+      header: () => res,
+      headersSent: false,
+    };
 
     const before = spy.mock.calls.length;
     const hooks = (app as any).hooks?.hooks?.onRequest ?? [];

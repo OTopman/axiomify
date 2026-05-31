@@ -15,7 +15,7 @@ Axiomify uses a highly optimized C++ Native HTTP server powered by uWebSockets.j
 
 - **Single Core:** Expect ~73-84k req/s for a "Hello World"
 - **Multi-Core (Linux):** Scales near-linearly utilizing `SO_REUSEPORT`. Expect ~200k+ req/s on a 4-core machine.
-*Numbers vary heavily based on load-generator limits. Run load generator on a separate network machine for accurate multi-core numbers.*
+  _Numbers vary heavily based on load-generator limits. Run load generator on a separate network machine for accurate multi-core numbers._
 
 ## Multi-core deployment (Linux)
 
@@ -24,8 +24,8 @@ Axiomify uses a highly optimized C++ Native HTTP server powered by uWebSockets.j
 const adapter = new NativeAdapter(app, { port: 3000 });
 adapter.listenClustered({
   onWorkerReady: () => console.log(`[${process.pid}] ready`),
-  onPrimary:     (pids) => console.log('Workers:', pids),
-  onWorkerExit:  (pid, code) => console.error(`Worker ${pid} died (${code})`),
+  onPrimary: (pids) => console.log('Workers:', pids),
+  onWorkerExit: (pid, code) => console.error(`Worker ${pid} died (${code})`),
   gracefulTimeoutMs: 10_000,
 });
 ```

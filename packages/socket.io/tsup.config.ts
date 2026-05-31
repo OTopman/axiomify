@@ -9,6 +9,11 @@ export default defineConfig({
   sourcemap: false,
   // socket.io is a peer; never bundle it. Same for the framework deps —
   // they ship separately and consumers always have them installed.
-  external: ['socket.io', '@axiomify/core', '@axiomify/native', 'uWebSockets.js'],
+  external: [
+    'socket.io',
+    '@axiomify/core',
+    '@axiomify/native',
+    'uWebSockets.js',
+  ],
   tsconfig: 'tsconfig.json',
 });

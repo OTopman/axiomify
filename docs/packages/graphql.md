@@ -44,16 +44,16 @@ adapter.listen(() => {
 
 ## Options
 
-| Option | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `schema` | `GraphQLSchema` | **required** | The compiled GraphQL schema to execute against. |
-| `path` | `string` | `'/graphql'` | HTTP path for the POST/GET endpoint. |
-| `playground` | `boolean` | `true` | Enable the GraphiQL browser UI. |
-| `playgroundPath` | `string` | `'{path}/playground'` | Path for the GraphiQL page. |
-| `context` | `(req, res) => TContext` | `{}` | Per-request context factory. Can be async. |
-| `maxDepth` | `number` | none | Reject queries deeper than this many levels. |
-| `maxAliases` | `number` | none | Reject queries with more aliases than this limit. |
-| `validationRules` | `array` | `[]` | Additional GraphQL validation rules beyond the spec defaults. |
+| Option            | Type                     | Default               | Description                                                   |
+| :---------------- | :----------------------- | :-------------------- | :------------------------------------------------------------ |
+| `schema`          | `GraphQLSchema`          | **required**          | The compiled GraphQL schema to execute against.               |
+| `path`            | `string`                 | `'/graphql'`          | HTTP path for the POST/GET endpoint.                          |
+| `playground`      | `boolean`                | `true`                | Enable the GraphiQL browser UI.                               |
+| `playgroundPath`  | `string`                 | `'{path}/playground'` | Path for the GraphiQL page.                                   |
+| `context`         | `(req, res) => TContext` | `{}`                  | Per-request context factory. Can be async.                    |
+| `maxDepth`        | `number`                 | none                  | Reject queries deeper than this many levels.                  |
+| `maxAliases`      | `number`                 | none                  | Reject queries with more aliases than this limit.             |
+| `validationRules` | `array`                  | `[]`                  | Additional GraphQL validation rules beyond the spec defaults. |
 
 ## Endpoints
 
@@ -107,8 +107,8 @@ Without limits, a malicious client can craft deeply nested or heavily aliased qu
 ```typescript
 useGraphQL(app, {
   schema,
-  maxDepth: 8,      // rejects: { a { b { c { d { e { f { g { h { value } } } } } } } } }
-  maxAliases: 15,   // rejects: { a1: field a2: field ... a16: field }
+  maxDepth: 8, // rejects: { a { b { c { d { e { f { g { h { value } } } } } } } } }
+  maxAliases: 15, // rejects: { a1: field a2: field ... a16: field }
 });
 ```
 
@@ -154,7 +154,8 @@ const schema = new GraphQLSchema({
     fields: {
       hello: {
         type: GraphQLString,
-        resolve: (_root, _args, ctx) => `Hello, ${ctx.user?.name ?? 'stranger'}`,
+        resolve: (_root, _args, ctx) =>
+          `Hello, ${ctx.user?.name ?? 'stranger'}`,
       },
     },
   }),

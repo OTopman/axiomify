@@ -2,6 +2,7 @@ import { compiledStates } from './compiled';
 import { defaultLogger, type AxiomifyLogger } from './internal';
 import type { HookManager } from './lifecycle';
 import { Router } from './router';
+import { AxiomifyError } from './errors';
 
 import type {
   AxiomifyRequest,
@@ -15,16 +16,24 @@ import { ValidationCompiler } from './validation';
 interface RegistryOptions {
   timeout: number;
   telemetry?: {
-    startSpan: (name: string, attributes: Record<string, string>) => { end(): void };
+    startSpan: (
+      name: string,
+      attributes: Record<string, string>,
+    ) => { end(): void };
   };
   logger?: AxiomifyLogger;
+  strictSchema?: boolean;
+  routeConflict?: 'throw' | 'warn';
 }
 
 function createTimeoutError(): Error & { statusCode: number } {
   return Object.assign(new Error('Request timed out'), { statusCode: 408 });
 }
 
-function rejectOnAbort(signal: AbortSignal, error: Error & { statusCode: number }): Promise<never> {
+function rejectOnAbort(
+  signal: AbortSignal,
+  error: Error & { statusCode: number },
+): Promise<never> {
   return new Promise((_, reject) => {
     if (signal.aborted) return reject(error);
     signal.addEventListener('abort', () => reject(error), { once: true });
@@ -32,16 +41,33 @@ function rejectOnAbort(signal: AbortSignal, error: Error & { statusCode: number 
 }
 
 export class RouteRegistry {
-  public readonly router = new Router();
+  public readonly router: Router;
   public readonly validator: ValidationCompiler;
   private readonly routes: RouteDefinition[] = [];
   private readonly wsRoutes: WsRouteDefinition<any, any>[] = [];
+  private _schemaLessRoutes: string[] = [];
+  private _warningScheduled = false;
 
   constructor(
     private readonly hooks: HookManager,
     private readonly options: RegistryOptions,
   ) {
     this.validator = new ValidationCompiler(options.logger ?? defaultLogger);
+    this.router = new Router({ routeConflict: options.routeConflict });
+  }
+
+  private _scheduleWarning() {
+    if (this._warningScheduled) return;
+    this._warningScheduled = true;
+    process.nextTick(() => {
+      if (this._schemaLessRoutes.length > 0) {
+        console.warn(
+          `[Axiomify] Warning: The following routes are schema-less: ${this._schemaLessRoutes.join(', ')}`,
+        );
+        this._schemaLessRoutes = [];
+      }
+      this._warningScheduled = false;
+    });
   }
 
   public get registeredRoutes(): readonly RouteDefinition[] {
@@ -53,11 +79,27 @@ export class RouteRegistry {
   }
 
   public register<S extends RouteSchema>(definition: RouteDefinition<S>): void {
+    const hasSchema = !!definition.schema;
+    const hasIgnore = definition.handler
+      .toString()
+      .includes('@axiomify-ignore-schema');
+    if (!hasSchema && !hasIgnore) {
+      if (this.options.strictSchema) {
+        throw new AxiomifyError(
+          `AxiomifyError: Route "${definition.method} ${definition.path}" has a typed handler but no schema defined. Enable a schema or set strictSchema: false to suppress.`,
+        );
+      } else {
+        this._schemaLessRoutes.push(`${definition.method} ${definition.path}`);
+        this._scheduleWarning();
+      }
+    }
+
     const routeId = `${definition.method}:${definition.path}`;
     if (definition.schema) this.validator.compile(routeId, definition.schema);
 
-    const pipeline: Array<(req: AxiomifyRequest, res: AxiomifyResponse) => Promise<void> | void> =
-      [];
+    const pipeline: Array<
+      (req: AxiomifyRequest, res: AxiomifyResponse) => Promise<void> | void
+    > = [];
 
     // onPreHandler hooks are NOT baked into the per-route pipeline.
     // The dispatcher runs them directly before entering the pipeline so that:
@@ -81,14 +123,16 @@ export class RouteRegistry {
         const timeoutSignal = AbortSignal.timeout(effectiveTimeout);
         let span: { end(): void } | undefined;
         if (telemetry) {
-          span = telemetry.startSpan('http.request', { method: req.method, path: definition.path });
+          span = telemetry.startSpan('http.request', {
+            method: req.method,
+            path: definition.path,
+          });
         }
         try {
           await Promise.race([
             definition.handler(req as never, res),
             rejectOnAbort(timeoutSignal, timeoutError),
           ]);
-
         } finally {
           span?.end();
         }
@@ -109,7 +153,9 @@ export class RouteRegistry {
     this.routes.push(definition as RouteDefinition);
   }
 
-  public registerWs<S extends RouteSchema, M = any>(definition: WsRouteDefinition<S, M>): void {
+  public registerWs<S extends RouteSchema, M = any>(
+    definition: WsRouteDefinition<S, M>,
+  ): void {
     const routeId = `WS:${definition.path}`;
     if (definition.schema?.message) {
       // The ValidationCompiler is a request-shape validator (body / query /

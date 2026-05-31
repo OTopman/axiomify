@@ -30,32 +30,32 @@ Explicit form with every option:
 
 ```typescript
 useSecurity(app, {
-  xssProtection: true,                 // strip XSS patterns from body/query/params
-  hppProtection: true,                 // normalise duplicate query params
-  prototypePollutionProtection: true,  // drop __proto__ / constructor / prototype keys
-  nullByteProtection: true,            // strip null bytes from strings
-  botProtection: true,                 // block common scanner User-Agents
-  noSqlInjectionProtection: false,     // off by default — narrow Mongo $op check
-  maxBodySize: 1_048_576,              // 1 MiB Content-Length guard (NOT a stream limit)
+  xssProtection: true, // strip XSS patterns from body/query/params
+  hppProtection: true, // normalise duplicate query params
+  prototypePollutionProtection: true, // drop __proto__ / constructor / prototype keys
+  nullByteProtection: true, // strip null bytes from strings
+  botProtection: true, // block common scanner User-Agents
+  noSqlInjectionProtection: false, // off by default — narrow Mongo $op check
+  maxBodySize: 1_048_576, // 1 MiB Content-Length guard (NOT a stream limit)
 });
 ```
 
 ## Options
 
-| Option | Default | Description |
-|---|---|---|
-| `xssProtection` | `true` | Strip XSS patterns (`<script>`, `javascript:`, inline event handlers, `<iframe>` / `<svg>` / `<object>`) from body, query, and params. **Heuristic only — see "Important limitations" below.** |
-| `hppProtection` | `true` | HTTP Parameter Pollution: collapse duplicate query keys to the *last* value (`?a=1&a=2` → `{a: '2'}`). |
-| `prototypePollutionProtection` | `true` | Drop `__proto__`, `constructor`, and `prototype` keys recursively from all input objects. |
-| `nullByteProtection` | `true` | Strip null bytes (`\0`) from all string values in body/query/params. |
-| `botProtection` | `true` | Reject requests matching known scanner/scraper User-Agents (`sqlmap`, `nikto`, `acunetix`, `nessus`, `nmap`, `masscan`, `zgrab`). |
-| `noSqlInjectionProtection` | `false` | Narrow Mongo-style operator-key check. Off by default; opt in only as a defence-in-depth supplement to schema validation — see "Important limitations". |
-| `maxBodySize` | `1048576` | Reject requests whose `Content-Length` header exceeds this value. ⚠️ Chunked transfer bypasses this — enforce limits at the adapter layer too. |
-| `blockedUserAgentPatterns` | built-in | Override the default scanner UA regex list. |
-| `noSqlPatterns` | built-in | Override the NoSQL operator regex list. |
-| `sanitizerMaxDepth` | `64` | Maximum depth for recursive input sanitisation (prevents stack overflow attacks via deeply nested JSON). |
-| ~~`sqlInjectionProtection`~~ | — | **Removed in v6.0.** TypeScript excess-property error at compile time. Use parameterised queries. |
-| ~~`sqlPatterns`~~ | — | **Removed in 5.0.0.** No longer used. |
+| Option                         | Default   | Description                                                                                                                                                                                    |
+| ------------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `xssProtection`                | `true`    | Strip XSS patterns (`<script>`, `javascript:`, inline event handlers, `<iframe>` / `<svg>` / `<object>`) from body, query, and params. **Heuristic only — see "Important limitations" below.** |
+| `hppProtection`                | `true`    | HTTP Parameter Pollution: collapse duplicate query keys to the _last_ value (`?a=1&a=2` → `{a: '2'}`).                                                                                         |
+| `prototypePollutionProtection` | `true`    | Drop `__proto__`, `constructor`, and `prototype` keys recursively from all input objects.                                                                                                      |
+| `nullByteProtection`           | `true`    | Strip null bytes (`\0`) from all string values in body/query/params.                                                                                                                           |
+| `botProtection`                | `true`    | Reject requests matching known scanner/scraper User-Agents (`sqlmap`, `nikto`, `acunetix`, `nessus`, `nmap`, `masscan`, `zgrab`).                                                              |
+| `noSqlInjectionProtection`     | `false`   | Narrow Mongo-style operator-key check. Off by default; opt in only as a defence-in-depth supplement to schema validation — see "Important limitations".                                        |
+| `maxBodySize`                  | `1048576` | Reject requests whose `Content-Length` header exceeds this value. ⚠️ Chunked transfer bypasses this — enforce limits at the adapter layer too.                                                 |
+| `blockedUserAgentPatterns`     | built-in  | Override the default scanner UA regex list.                                                                                                                                                    |
+| `noSqlPatterns`                | built-in  | Override the NoSQL operator regex list.                                                                                                                                                        |
+| `sanitizerMaxDepth`            | `64`      | Maximum depth for recursive input sanitisation (prevents stack overflow attacks via deeply nested JSON).                                                                                       |
+| ~~`sqlInjectionProtection`~~   | —         | **Removed in v6.0.** TypeScript excess-property error at compile time. Use parameterised queries.                                                                                              |
+| ~~`sqlPatterns`~~              | —         | **Removed in 5.0.0.** No longer used.                                                                                                                                                          |
 
 ## Important limitations
 

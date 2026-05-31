@@ -30,7 +30,9 @@ function connectWs(
   headers?: Record<string, string>,
 ): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://localhost:${port}${path}`, { headers }) as TestWebSocket;
+    const ws = new WebSocket(`ws://localhost:${port}${path}`, {
+      headers,
+    }) as TestWebSocket;
     ws.queue = [];
     ws.resolvers = [];
 
@@ -101,6 +103,7 @@ describe.skipIf(!uwsSupported)('@axiomify/ws - Room Manager', () => {
     rooms = wsRooms(app, {
       path: '/chat',
       maxRoomsPerClient: 3,
+      allowlist: /.*/,
       presenceIntervalMs: 0, // disable for tests
       plugins: [
         async (req, res) => {
@@ -181,7 +184,10 @@ describe.skipIf(!uwsSupported)('@axiomify/ws - Room Manager', () => {
 
     await sendAction(ws, { action: 'join', room: 'temp-room' });
 
-    const response = await sendAction(ws, { action: 'leave', room: 'temp-room' });
+    const response = await sendAction(ws, {
+      action: 'leave',
+      room: 'temp-room',
+    });
     expect(response).toEqual({ event: 'left', room: 'temp-room' });
 
     // Room should be destroyed (last member left).
@@ -251,11 +257,13 @@ describe.skipIf(!uwsSupported)('@axiomify/ws - Room Manager', () => {
     const ws1Promise = nextMessage(ws1);
 
     // Send a message via wire protocol
-    ws1.send(JSON.stringify({
-      action: 'message',
-      room: 'broadcast-test',
-      data: { text: 'hello room' },
-    }));
+    ws1.send(
+      JSON.stringify({
+        action: 'message',
+        room: 'broadcast-test',
+        data: { text: 'hello room' },
+      }),
+    );
 
     // Both ws1 and ws2 should receive the broadcast
     const msg1 = await ws1Promise;
@@ -309,7 +317,10 @@ describe.skipIf(!uwsSupported)('@axiomify/ws - Room Manager', () => {
     await sendAction(ws1, { action: 'join', room: 'presence-test' });
     await sendAction(ws2, { action: 'join', room: 'presence-test' });
 
-    const response = await sendAction(ws1, { action: 'presence', room: 'presence-test' });
+    const response = await sendAction(ws1, {
+      action: 'presence',
+      room: 'presence-test',
+    });
     expect(response.event).toBe('presence');
     expect(response.room).toBe('presence-test');
     expect(response.clients).toHaveLength(2);

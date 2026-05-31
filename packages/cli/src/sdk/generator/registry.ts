@@ -7,7 +7,10 @@
 import type { Generator, GeneratorOptions } from './generator';
 import type { IRSchema } from '../ir/types';
 
-export type GeneratorConstructor = new (schema: IRSchema, options: GeneratorOptions) => Generator;
+export type GeneratorConstructor = new (
+  schema: IRSchema,
+  options: GeneratorOptions,
+) => Generator;
 
 export class GeneratorRegistry {
   private static generators = new Map<string, GeneratorConstructor>();

@@ -129,7 +129,8 @@ describe.skipIf(!uwsSupported)('NativeAdapter (uWebSockets.js)', () => {
         port: PORT,
         ws: {
           open: (ws: any) => ws.send('Welcome to Axiomify Native'),
-          message: (ws: any, message: any, isBinary: any) => ws.send(message, isBinary),
+          message: (ws: any, message: any, isBinary: any) =>
+            ws.send(message, isBinary),
         },
       });
       adapter.listen(() => resolve());
@@ -180,12 +181,19 @@ describe.skipIf(!uwsSupported)('NativeAdapter (uWebSockets.js)', () => {
     // an Allow header listing the supported methods. The previous adapter
     // returned a generic 404 from the `any('/*')` fallback — this test
     // pins the corrected behaviour so it doesn't regress.
-    const res = await fetch(`http://localhost:${PORT}/ping`, { method: 'DELETE' });
+    const res = await fetch(`http://localhost:${PORT}/ping`, {
+      method: 'DELETE',
+    });
     expect(res.status).toBe(405);
     const allow = res.headers.get('allow');
     expect(allow).not.toBeNull();
     // GET is registered explicitly; HEAD and OPTIONS are auto-registered alongside GET.
-    expect(allow!.split(',').map((s) => s.trim()).sort()).toEqual(['GET', 'HEAD', 'OPTIONS']);
+    expect(
+      allow!
+        .split(',')
+        .map((s) => s.trim())
+        .sort(),
+    ).toEqual(['GET', 'HEAD', 'OPTIONS']);
   });
 
   // -------------------------------------------------------------------------
@@ -257,7 +265,9 @@ describe.skipIf(!uwsSupported)('NativeAdapter (uWebSockets.js)', () => {
   // -------------------------------------------------------------------------
 
   it('auto-registers HEAD for GET routes — returns 200 with no body', async () => {
-    const res = await fetch(`http://localhost:${PORT}/ping`, { method: 'HEAD' });
+    const res = await fetch(`http://localhost:${PORT}/ping`, {
+      method: 'HEAD',
+    });
     expect(res.status).toBe(200);
     // HEAD responses must not include a body.
     const text = await res.text();
@@ -269,7 +279,9 @@ describe.skipIf(!uwsSupported)('NativeAdapter (uWebSockets.js)', () => {
   // -------------------------------------------------------------------------
 
   it('routes DELETE /items/:id via uWS .del() — returns 204', async () => {
-    const res = await fetch(`http://localhost:${PORT}/items/5`, { method: 'DELETE' });
+    const res = await fetch(`http://localhost:${PORT}/items/5`, {
+      method: 'DELETE',
+    });
     expect(res.status).toBe(204);
   });
 
@@ -318,93 +330,101 @@ describe.skipIf(!uwsSupported)('NativeAdapter (uWebSockets.js)', () => {
   });
 });
 
-
 // ---------------------------------------------------------------------------
 // Buffer pool / body size limit
 // ---------------------------------------------------------------------------
 
-describe.skipIf(!uwsSupported)('NativeAdapter: body size limit enforcement', () => {
-  let adapter: any;
-  const LIMIT_PORT = 3099;
+describe.skipIf(!uwsSupported)(
+  'NativeAdapter: body size limit enforcement',
+  () => {
+    let adapter: any;
+    const LIMIT_PORT = 3099;
 
-  beforeAll(async () => {
-    const { Axiomify } = await import('@axiomify/core');
-    const { NativeAdapter } = await import('../src/index');
+    beforeAll(async () => {
+      const { Axiomify } = await import('@axiomify/core');
+      const { NativeAdapter } = await import('../src/index');
 
-    const app = new Axiomify();
-    app.route({
-      method: 'POST',
-      path: '/echo',
-      handler: async (req: any, res: any) => res.send(req.body),
+      const app = new Axiomify();
+      app.route({
+        method: 'POST',
+        path: '/echo',
+        handler: async (req: any, res: any) => res.send(req.body),
+      });
+
+      return new Promise<void>((resolve) => {
+        adapter = new NativeAdapter(app, {
+          port: LIMIT_PORT,
+          maxBodySize: 1024,
+        });
+        adapter.listen(() => resolve());
+      });
     });
 
-    return new Promise<void>((resolve) => {
-      adapter = new NativeAdapter(app, { port: LIMIT_PORT, maxBodySize: 1024 });
-      adapter.listen(() => resolve());
-    });
-  });
+    afterAll(() => adapter.close());
 
-  afterAll(() => adapter.close());
-
-  it('accepts bodies under the limit', async () => {
-    const res = await fetch(`http://localhost:${LIMIT_PORT}/echo`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ small: 'payload' }),
+    it('accepts bodies under the limit', async () => {
+      const res = await fetch(`http://localhost:${LIMIT_PORT}/echo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ small: 'payload' }),
+      });
+      expect(res.status).toBe(200);
     });
-    expect(res.status).toBe(200);
-  });
 
-  it('rejects bodies over the limit with 413', async () => {
-    const large = JSON.stringify({ data: 'x'.repeat(2048) });
-    const res = await fetch(`http://localhost:${LIMIT_PORT}/echo`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: large,
+    it('rejects bodies over the limit with 413', async () => {
+      const large = JSON.stringify({ data: 'x'.repeat(2048) });
+      const res = await fetch(`http://localhost:${LIMIT_PORT}/echo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: large,
+      });
+      expect(res.status).toBe(413);
     });
-    expect(res.status).toBe(413);
-  });
-});
+  },
+);
 
 // ─── Handler rejection caught — no unhandled rejection crash ─────────────────
 
-describe.skipIf(!uwsSupported)('NativeAdapter — handler rejection safety', () => {
-  let adapter: any;
-  const PORT = 3002;
+describe.skipIf(!uwsSupported)(
+  'NativeAdapter — handler rejection safety',
+  () => {
+    let adapter: any;
+    const PORT = 3002;
 
-  beforeAll(async () => {
-    const { Axiomify } = await import('@axiomify/core');
-    const { NativeAdapter } = await import('../src/index');
+    beforeAll(async () => {
+      const { Axiomify } = await import('@axiomify/core');
+      const { NativeAdapter } = await import('../src/index');
 
-    const app = new Axiomify();
+      const app = new Axiomify();
 
-    // Route whose handler always throws — previously an unhandled rejection
-    app.route({
-      method: 'GET',
-      path: '/throws',
-      handler: async () => {
-        throw new Error('Intentional handler error');
-      },
+      // Route whose handler always throws — previously an unhandled rejection
+      app.route({
+        method: 'GET',
+        path: '/throws',
+        handler: async () => {
+          throw new Error('Intentional handler error');
+        },
+      });
+
+      return new Promise<void>((resolve) => {
+        adapter = new NativeAdapter(app, { port: PORT });
+        adapter.listen(() => resolve());
+      });
     });
 
-    return new Promise<void>((resolve) => {
-      adapter = new NativeAdapter(app, { port: PORT });
-      adapter.listen(() => resolve());
+    afterAll(() => adapter.close());
+
+    it('returns 500 instead of crashing the process on handler throw', async () => {
+      const res = await fetch(`http://localhost:${PORT}/throws`);
+      // The .catch() in the async IIFE must handle the rejection and send 500.
+      expect(res.status).toBe(500);
     });
-  });
 
-  afterAll(() => adapter.close());
-
-  it('returns 500 instead of crashing the process on handler throw', async () => {
-    const res = await fetch(`http://localhost:${PORT}/throws`);
-    // The .catch() in the async IIFE must handle the rejection and send 500.
-    expect(res.status).toBe(500);
-  });
-
-  it('continues serving subsequent requests after a handler throw', async () => {
-    await fetch(`http://localhost:${PORT}/throws`);
-    // Server must still respond — not crashed from unhandled rejection
-    const r2 = await fetch(`http://localhost:${PORT}/throws`);
-    expect(r2.status).toBe(500);
-  });
-});
+    it('continues serving subsequent requests after a handler throw', async () => {
+      await fetch(`http://localhost:${PORT}/throws`);
+      // Server must still respond — not crashed from unhandled rejection
+      const r2 = await fetch(`http://localhost:${PORT}/throws`);
+      expect(r2.status).toBe(500);
+    });
+  },
+);

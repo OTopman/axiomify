@@ -21,21 +21,21 @@ export class Validator {
       }
       opIds.add(ep.operationId);
     }
-    
+
     // 2. Ensure all types have an ID
     for (const [id, type] of schema.types) {
       if (!type.id) {
-         diagnostics.push({
+        diagnostics.push({
           severity: 'error',
           code: 'MISSING_TYPE_ID',
           message: `Type registered under "${id}" is missing its internal ID.`,
-        });       
+        });
       } else if (type.id !== id) {
-         diagnostics.push({
+        diagnostics.push({
           severity: 'error',
           code: 'MISMATCHED_TYPE_ID',
           message: `Type registered under "${id}" has a mismatched internal ID "${type.id}".`,
-        }); 
+        });
       }
     }
   }

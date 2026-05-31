@@ -60,7 +60,8 @@ function checkRequestId(ctx: CheckCtx): void {
       severity: 'warn',
       area: 'observability',
       message: '`app.enableRequestId()` has not been called',
-      hint: 'Distributed-trace correlation will be impossible without an X-Request-Id header. ' +
+      hint:
+        'Distributed-trace correlation will be impossible without an X-Request-Id header. ' +
         'Add `app.enableRequestId()` after construction unless you handle this elsewhere.',
     });
     return;
@@ -91,7 +92,7 @@ function checkEnvVars(ctx: CheckCtx): void {
         hint:
           key === 'JWT_SECRET'
             ? 'Set this before deploying. Generate one via ' +
-              '`node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'base64\'))"`'
+              "`node -e \"console.log(require('crypto').randomBytes(48).toString('base64'))\"`"
             : `Ensure ${key} is set in your deployment environment.`,
       });
     }
@@ -173,7 +174,11 @@ function checkHealthCheck(ctx: CheckCtx): void {
       ),
   );
   if (hasHealth) {
-    add(ctx, { severity: 'ok', area: 'ops', message: 'health-check route registered' });
+    add(ctx, {
+      severity: 'ok',
+      area: 'ops',
+      message: 'health-check route registered',
+    });
   } else {
     add(ctx, {
       severity: 'warn',
@@ -276,7 +281,8 @@ function collectEnvKeysFromBundle(bundlePath: string): Set<string> {
   try {
     const src = fs.readFileSync(bundlePath, 'utf8');
     // Match `process.env.NAME` and `process.env["NAME"]` / `['NAME']`.
-    const re = /process\.env\.([A-Z][A-Z0-9_]*)|process\.env\[(['"])([A-Z][A-Z0-9_]*)\2\]/g;
+    const re =
+      /process\.env\.([A-Z][A-Z0-9_]*)|process\.env\[(['"])([A-Z][A-Z0-9_]*)\2\]/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(src)) !== null) {
       keys.add(m[1] ?? m[3]);
@@ -358,7 +364,10 @@ export async function runCheck(entry: string): Promise<void> {
     console.log(`  ${sym[f.severity]} ${tag} ${f.message}`);
     if (f.hint && f.severity !== 'ok') {
       // Indent hint with same colour as severity tag, wrap softly at 80.
-      const wrapped = f.hint.replace(/(.{1,80})(\s+|$)/g, '\n      ' + pc.dim('$1'));
+      const wrapped = f.hint.replace(
+        /(.{1,80})(\s+|$)/g,
+        '\n      ' + pc.dim('$1'),
+      );
       console.log(wrapped);
     }
   }
@@ -371,9 +380,13 @@ export async function runCheck(entry: string): Promise<void> {
   const summary =
     `  ${symbols.ok} ${pluralise(oks, 'pass', 'passes')}` +
     pc.dim('  ·  ') +
-    (warns > 0 ? `${symbols.warn} ${pluralise(warns, 'warning')}` : pc.dim('0 warnings')) +
+    (warns > 0
+      ? `${symbols.warn} ${pluralise(warns, 'warning')}`
+      : pc.dim('0 warnings')) +
     pc.dim('  ·  ') +
-    (fails > 0 ? `${symbols.fail} ${pluralise(fails, 'failure')}` : pc.dim('0 failures'));
+    (fails > 0
+      ? `${symbols.fail} ${pluralise(fails, 'failure')}`
+      : pc.dim('0 failures'));
   console.log(summary);
   console.log();
 

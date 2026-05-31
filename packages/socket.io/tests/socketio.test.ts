@@ -174,7 +174,9 @@ describe('attachSocketIO — graceful shutdown', () => {
 
 describe('adaptAxiomifyPlugin', () => {
   function makeSocket(overrides: Record<string, unknown> = {}): any {
-    return {
+    const { EventEmitter } = require('node:events');
+    const emitter = new EventEmitter();
+    const sock = {
       id: 'sock-1',
       nsp: { name: '/' },
       data: {},
@@ -186,8 +188,14 @@ describe('adaptAxiomifyPlugin', () => {
         ...((overrides as { handshake?: Record<string, unknown> }).handshake ??
           {}),
       },
+      once: emitter.once.bind(emitter),
+      off: emitter.off.bind(emitter),
+      emit: emitter.emit.bind(emitter),
+      on: emitter.on.bind(emitter),
+      listenerCount: emitter.listenerCount.bind(emitter),
       ...overrides,
     };
+    return sock;
   }
 
   it('calls next() with no error when the plugin does not touch res', async () => {
@@ -254,5 +262,51 @@ describe('adaptAxiomifyPlugin', () => {
     expect((err as Error).message).toMatch(
       /Streaming responses cannot be used inside an io\.use/,
     );
+  });
+
+  it('exposes req.signal (AbortSignal) and aborts it on socket disconnect', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const plugin = vi.fn(async (req: any) => {
+      capturedSignal = req.signal;
+    });
+    const middleware = adaptAxiomifyPlugin(plugin);
+    const socket = makeSocket();
+    const next = vi.fn();
+    middleware(socket, next);
+    await new Promise((r) => setImmediate(r));
+
+    expect(next).toHaveBeenCalledWith();
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal?.aborted).toBe(false);
+
+    // Trigger disconnect
+    socket.emit('disconnect');
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
+  it('removes disconnect listener if the connection is rejected or throws an error', async () => {
+    // 1. Rejected connection
+    const rejectPlugin = vi.fn(async (_req: unknown, res: any) => {
+      res.status(401).send(null, 'Unauthorized');
+    });
+    const middleware1 = adaptAxiomifyPlugin(rejectPlugin);
+    const socket1 = makeSocket();
+    const next1 = vi.fn();
+    middleware1(socket1, next1);
+    await new Promise((r) => setImmediate(r));
+    expect(next1).toHaveBeenCalled();
+    expect(socket1.listenerCount('disconnect')).toBe(0);
+
+    // 2. Thrown error
+    const throwPlugin = vi.fn(async () => {
+      throw new Error('boom');
+    });
+    const middleware2 = adaptAxiomifyPlugin(throwPlugin);
+    const socket2 = makeSocket();
+    const next2 = vi.fn();
+    middleware2(socket2, next2);
+    await new Promise((r) => setImmediate(r));
+    expect(next2).toHaveBeenCalled();
+    expect(socket2.listenerCount('disconnect')).toBe(0);
   });
 });

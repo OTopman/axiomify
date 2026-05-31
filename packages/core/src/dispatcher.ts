@@ -1,17 +1,57 @@
 import { getCompiledState } from './compiled';
 import type { HookManager } from './lifecycle';
 import type { Router } from './router';
-import type { AxiomifyRequest, AxiomifyResponse, RouteDefinition } from './types';
+import type {
+  AxiomifyRequest,
+  AxiomifyResponse,
+  RouteDefinition,
+} from './types';
+import { ValidationError } from './validation';
 import type { ValidationCompiler } from './validation';
 
 export class RequestDispatcher {
+  private _notFoundHandler: (
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+  ) => void | Promise<void> = (req, res) => {
+    res.status(404).send(null, 'Route not found');
+  };
+
+  private _methodNotAllowedHandler: (
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+  ) => void | Promise<void> = (req, res) => {
+    res.status(405).send(null, 'Method Not Allowed');
+  };
+
+  public setNotFoundHandler(
+    handler: (
+      req: AxiomifyRequest,
+      res: AxiomifyResponse,
+    ) => void | Promise<void>,
+  ): void {
+    this._notFoundHandler = handler;
+  }
+
+  public setMethodNotAllowedHandler(
+    handler: (
+      req: AxiomifyRequest,
+      res: AxiomifyResponse,
+    ) => void | Promise<void>,
+  ): void {
+    this._methodNotAllowedHandler = handler;
+  }
+
   constructor(
     private readonly router: Router,
     private readonly hooks: HookManager,
     private readonly validator: ValidationCompiler,
-  ) { }
+  ) {}
 
-  public async handle(req: AxiomifyRequest, res: AxiomifyResponse): Promise<void> {
+  public async handle(
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+  ): Promise<void> {
     try {
       const onRequestRet = this.hooks.run('onRequest', req, res);
       if (onRequestRet) await onRequestRet;
@@ -19,10 +59,18 @@ export class RequestDispatcher {
 
       const reqParams = req.params as Record<string, string>;
       const match = this.router.lookup(req.method, req.path, reqParams);
-      if (!match) return res.status(404).send(null, 'Route not found');
+      if (!match) {
+        await this._notFoundHandler(req, res);
+        return;
+      }
       if ('error' in match) {
-        res.header('Allow', match.allowed.join(', '));
-        return res.status(405).send(null, 'Method Not Allowed');
+        const allowed = [...match.allowed];
+        if (!allowed.includes('OPTIONS')) {
+          allowed.push('OPTIONS');
+        }
+        res.header('Allow', allowed.join(', '));
+        await this._methodNotAllowedHandler(req, res);
+        return;
       }
 
       await this.executeMatchedRoute(req, res, match.route, reqParams);
@@ -32,7 +80,7 @@ export class RequestDispatcher {
       if (res.isStreaming) {
         res.onStreamClose = () => {
           const onCloseRet = this.hooks.runSafe('onClose', req, res);
-          if (onCloseRet) onCloseRet.catch(() => { });
+          if (onCloseRet) onCloseRet.catch(() => {});
         };
       } else {
         const onCloseRet = this.hooks.runSafe('onClose', req, res);
@@ -64,7 +112,7 @@ export class RequestDispatcher {
       if (res.isStreaming) {
         res.onStreamClose = () => {
           const onCloseRet = this.hooks.runSafe('onClose', req, res);
-          if (onCloseRet) onCloseRet.catch(() => { });
+          if (onCloseRet) onCloseRet.catch(() => {});
         };
       } else {
         const onCloseRet = this.hooks.runSafe('onClose', req, res);
@@ -93,7 +141,10 @@ export class RequestDispatcher {
     // when no onPreHandler hooks are registered.
     const preHandlerList = this.hooks.hooks.onPreHandler;
     if (preHandlerList.length > 0) {
-      const ret = this.hooks.run('onPreHandler', req, res, { route, params: reqParams });
+      const ret = this.hooks.run('onPreHandler', req, res, {
+        route,
+        params: reqParams,
+      });
       if (ret) await ret;
       if (res.headersSent) return;
     }
@@ -121,26 +172,54 @@ export class RequestDispatcher {
       }
     }
 
-    const postRet = this.hooks.run('onPostHandler', req, dispatchRes, { route, params });
+    const postRet = this.hooks.run('onPostHandler', req, dispatchRes, {
+      route,
+      params,
+    });
     if (postRet) await postRet;
   }
 
-  private async handleError(err: unknown, req: AxiomifyRequest, res: AxiomifyResponse): Promise<void> {
+  private async handleError(
+    err: unknown,
+    req: AxiomifyRequest,
+    res: AxiomifyResponse,
+  ): Promise<void> {
     const onErrorRet = this.hooks.runSafe('onError', err, req, res);
     if (onErrorRet) await onErrorRet;
     if (res.headersSent) return;
+
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (isProduction) {
+      if (err instanceof ValidationError) {
+        res
+          .status(err.statusCode || 400)
+          .send(err.errors || (err as any).issues, err.message);
+      } else {
+        res
+          .status(500)
+          .send(
+            { error: 'Internal Server Error', code: 'INTERNAL_ERROR' },
+            'Internal Server Error',
+          );
+      }
+      return;
+    }
+
     const anyErr = err as Record<string, unknown>;
     const statusCode =
-      typeof anyErr.statusCode === 'number' ? anyErr.statusCode
-        : typeof anyErr.status === 'number' ? anyErr.status
+      typeof anyErr.statusCode === 'number'
+        ? anyErr.statusCode
+        : typeof anyErr.status === 'number'
+          ? anyErr.status
           : 500;
-    const message = typeof anyErr.message === 'string' ? anyErr.message : 'Internal Server Error';
-    const errorData =
-      anyErr.issues ??
-      anyErr.errors ??
-      (process.env.NODE_ENV === 'development'
-        ? { stack: typeof anyErr.stack === 'string' ? anyErr.stack : undefined }
-        : null);
+    const message =
+      typeof anyErr.message === 'string'
+        ? anyErr.message
+        : 'Internal Server Error';
+    const errorData = anyErr.issues ??
+      anyErr.errors ?? {
+        stack: typeof anyErr.stack === 'string' ? anyErr.stack : undefined,
+      };
     res.status(statusCode).send(errorData, message);
   }
 }
@@ -159,35 +238,70 @@ class ValidatingResponse implements AxiomifyResponse {
     private readonly validator: ValidationCompiler,
     private readonly method: string,
     private readonly routeId: string,
-  ) { }
+  ) {}
 
-  status(code: number): this { this.inner.status(code); return this; }
-  header(key: string, value: string): this { this.inner.header(key, value); return this; }
-  getHeader(key: string): string | undefined { return this.inner.getHeader(key); }
-  removeHeader(key: string): this { this.inner.removeHeader(key); return this; }
+  status(code: number): this {
+    this.inner.status(code);
+    return this;
+  }
+  header(key: string, value: string): this {
+    this.inner.header(key, value);
+    return this;
+  }
+  getHeader(key: string): string | undefined {
+    return this.inner.getHeader(key);
+  }
+  removeHeader(key: string): this {
+    this.inner.removeHeader(key);
+    return this;
+  }
 
   send<T>(data: T, message?: string): void {
     if (!this._sent) {
       this._sent = true;
-      this.validator.validateResponse(this.routeId, data, this.inner.statusCode);
+      this.validator.validateResponse(
+        this.routeId,
+        data,
+        this.inner.statusCode,
+      );
     }
     this.inner.send(data, message); // NativeResponse handles HEAD suppression
   }
 
-  sendRaw(payload: any, contentType?: string): void { this.inner.sendRaw(payload, contentType); }
+  sendRaw(payload: any, contentType?: string): void {
+    this.inner.sendRaw(payload, contentType);
+  }
 
   stream(readable: import('stream').Readable, contentType?: string): void {
     this.inner.isStreaming = true;
     this.inner.stream(readable, contentType);
   }
 
-  get capabilities() { return this.inner.capabilities ?? { sse: false, streaming: false }; }
-  sseInit(ms?: number): void { this.inner.sseInit?.(ms); }
-  sseSend(data: any, event?: string): void { this.inner.sseSend?.(data, event); }
-  get statusCode(): number { return this.inner.statusCode; }
-  get raw(): unknown { return this.inner.raw; }
-  get headersSent(): boolean { return this.inner.headersSent; }
-  get isStreaming(): boolean | undefined { return this.inner.isStreaming; }
-  get onStreamClose(): (() => void) | null | undefined { return this.inner.onStreamClose; }
-  set onStreamClose(cb: (() => void) | null | undefined) { this.inner.onStreamClose = cb ?? null; }
+  get capabilities() {
+    return this.inner.capabilities ?? { sse: false, streaming: false };
+  }
+  sseInit(ms?: number): void {
+    this.inner.sseInit?.(ms);
+  }
+  sseSend(data: any, event?: string): void {
+    this.inner.sseSend?.(data, event);
+  }
+  get statusCode(): number {
+    return this.inner.statusCode;
+  }
+  get raw(): unknown {
+    return this.inner.raw;
+  }
+  get headersSent(): boolean {
+    return this.inner.headersSent;
+  }
+  get isStreaming(): boolean | undefined {
+    return this.inner.isStreaming;
+  }
+  get onStreamClose(): (() => void) | null | undefined {
+    return this.inner.onStreamClose;
+  }
+  set onStreamClose(cb: (() => void) | null | undefined) {
+    this.inner.onStreamClose = cb ?? null;
+  }
 }

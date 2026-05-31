@@ -15,10 +15,11 @@
  * decoded body. The new behaviour throws loudly so the bug surfaces
  * at integration time instead of three weeks later in production.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createNodeReqPolyfill,
   createNodeResPolyfill,
+  adaptMiddleware,
 } from '../src/bridge';
 
 function mockAxiomifyReq() {
@@ -37,16 +38,40 @@ function mockAxiomifyRes() {
   const headers: Record<string, string> = {};
   return {
     calls,
-    get statusCode() { return statusCode; },
-    status(c: number) { statusCode = c; calls.push({ fn: 'status', args: [c] }); return this; },
-    header(k: string, v: string) { headers[k] = v; calls.push({ fn: 'header', args: [k, v] }); return this; },
-    getHeader(k: string) { return headers[k]; },
-    removeHeader(k: string) { delete headers[k]; calls.push({ fn: 'removeHeader', args: [k] }); return this; },
-    sendRaw(payload: unknown, contentType?: string) { calls.push({ fn: 'sendRaw', args: [payload, contentType] }); },
-    send(data: unknown, message?: string) { calls.push({ fn: 'send', args: [data, message] }); },
-    error(err: unknown) { calls.push({ fn: 'error', args: [err] }); },
+    get statusCode() {
+      return statusCode;
+    },
+    status(c: number) {
+      statusCode = c;
+      calls.push({ fn: 'status', args: [c] });
+      return this;
+    },
+    header(k: string, v: string) {
+      headers[k] = v;
+      calls.push({ fn: 'header', args: [k, v] });
+      return this;
+    },
+    getHeader(k: string) {
+      return headers[k];
+    },
+    removeHeader(k: string) {
+      delete headers[k];
+      calls.push({ fn: 'removeHeader', args: [k] });
+      return this;
+    },
+    sendRaw(payload: unknown, contentType?: string) {
+      calls.push({ fn: 'sendRaw', args: [payload, contentType] });
+    },
+    send(data: unknown, message?: string) {
+      calls.push({ fn: 'send', args: [data, message] });
+    },
+    error(err: unknown) {
+      calls.push({ fn: 'error', args: [err] });
+    },
     stream() {},
-    get headersSent() { return calls.some((c) => c.fn === 'sendRaw' || c.fn === 'send'); },
+    get headersSent() {
+      return calls.some((c) => c.fn === 'sendRaw' || c.fn === 'send');
+    },
     raw: {},
     capabilities: { sse: false, streaming: true },
   } as any;
@@ -60,8 +85,12 @@ describe('bridge.createNodeReqPolyfill — fail-fast on body stream access', () 
     expect(nodeReq.url).toBe('/x');
     expect(nodeReq.originalUrl).toBe('/x');
     expect(nodeReq.ip).toBe('127.0.0.1');
-    expect((nodeReq.socket as { remoteAddress: string }).remoteAddress).toBe('127.0.0.1');
-    expect((nodeReq.connection as { remoteAddress: string }).remoteAddress).toBe('127.0.0.1');
+    expect((nodeReq.socket as { remoteAddress: string }).remoteAddress).toBe(
+      '127.0.0.1',
+    );
+    expect(
+      (nodeReq.connection as { remoteAddress: string }).remoteAddress,
+    ).toBe('127.0.0.1');
   });
 
   it('THROWS on req.on("data") — pins the fail-fast regression', () => {
@@ -84,7 +113,10 @@ describe('bridge.createNodeResPolyfill — header / status / end mapping', () =>
     const res = mockAxiomifyRes();
     const nodeRes = createNodeResPolyfill(res);
     (nodeRes as any).statusCode = 418;
-    expect(res.calls.find((c: any) => c.fn === 'status')).toEqual({ fn: 'status', args: [418] });
+    expect(res.calls.find((c: any) => c.fn === 'status')).toEqual({
+      fn: 'status',
+      args: [418],
+    });
     expect((nodeRes as any).statusCode).toBe(418);
   });
 
@@ -101,7 +133,9 @@ describe('bridge.createNodeResPolyfill — header / status / end mapping', () =>
     const res = mockAxiomifyRes();
     const nodeRes = createNodeResPolyfill(res);
     (nodeRes.setHeader as any)('Cache-Control', ['public', 'max-age=60']);
-    expect((nodeRes.getHeader as any)('Cache-Control')).toBe('public, max-age=60');
+    expect((nodeRes.getHeader as any)('Cache-Control')).toBe(
+      'public, max-age=60',
+    );
   });
 
   it('end(chunk) routes to sendRaw with the configured Content-Type', () => {
@@ -130,5 +164,21 @@ describe('bridge.createNodeResPolyfill — header / status / end mapping', () =>
     expect(() => (nodeRes.write as any)('partial')).toThrow(
       /Chunked writes via res\.write\(\) are not supported/,
     );
+  });
+});
+
+describe('bridge.adaptMiddleware — warnings on unsafe middleware', () => {
+  it('logs warning when JSON body parser middleware is adapted', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    function jsonParser(req: any, res: any, next: any) {}
+
+    adaptMiddleware(jsonParser);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Bridging middleware "jsonParser" may be unsafe'),
+    );
+
+    warnSpy.mockRestore();
   });
 });

@@ -36,7 +36,6 @@ function setIfEnabled(
   res.header(headerName, typeof value === 'string' ? value : fallback);
 }
 
-
 export function useHelmet(app: Axiomify, options: HelmetOptions = {}): void {
   const {
     hsts = true,
@@ -66,7 +65,7 @@ export function useHelmet(app: Axiomify, options: HelmetOptions = {}): void {
   app.addHook('onRequest', (req: AxiomifyRequest, res: AxiomifyResponse) => {
     // Exact prefix match at a path segment boundary — prevents `/other-docs`
     // or `?ref=/docs` from matching and receiving the permissive Docs CSP.
- 
+
     setIfEnabled(res, 'X-Content-Type-Options', xContentTypeOptions, 'nosniff');
     setIfEnabled(res, 'X-Frame-Options', xFrameOptions, 'DENY');
     setIfEnabled(res, 'X-XSS-Protection', xXssProtection, '0');
@@ -80,10 +79,7 @@ export function useHelmet(app: Axiomify, options: HelmetOptions = {}): void {
     );
     setIfEnabled(res, 'X-DNS-Prefetch-Control', xDnsPrefetchControl, 'off');
     if (contentSecurityPolicy) {
-      res.header(
-        'Content-Security-Policy',
-        contentSecurityPolicy,
-      );
+      res.header('Content-Security-Policy', contentSecurityPolicy);
     }
 
     if (crossOriginEmbedderPolicy) {
