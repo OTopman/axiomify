@@ -740,5 +740,54 @@ describe('Dispatcher — ValidatingResponse and error dev stack', () => {
         process.env.NODE_ENV = originalEnv;
       }
     });
+
+    it('production mode masks generic errors and exposes validation errors', async () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        const app = new Axiomify();
+        // 1. Generic error path
+        app.route({
+          method: 'GET',
+          path: '/prod-generic-err',
+          handler: async () => {
+            throw new Error('sensitive database error details');
+          },
+        });
+        const [res1, events1] = makeAxiomifyResPair();
+        const req1 = makeAxiomifyReq({ path: '/prod-generic-err' });
+        await app.handle(req1, res1);
+        expect(res1.status).toHaveBeenCalledWith(500);
+        const genericEvent = events1().find((e) => e.startsWith('send:'));
+        expect(genericEvent).toBeDefined();
+        const body1 = JSON.parse(genericEvent!.substring(5));
+        expect(body1).toEqual({
+          error: 'Internal Server Error',
+          code: 'INTERNAL_ERROR',
+        });
+
+        // 2. Validation error path
+        const { ValidationError } = await import('../src/index');
+        app.route({
+          method: 'GET',
+          path: '/prod-validation-err',
+          handler: async () => {
+            throw new ValidationError('Validation failed', {
+              body: { email: 'invalid email' },
+            });
+          },
+        });
+        const [res2, events2] = makeAxiomifyResPair();
+        const req2 = makeAxiomifyReq({ path: '/prod-validation-err' });
+        await app.handle(req2, res2);
+        expect(res2.status).toHaveBeenCalledWith(400);
+        const validationEvent = events2().find((e) => e.startsWith('send:'));
+        expect(validationEvent).toBeDefined();
+        const body2 = JSON.parse(validationEvent!.substring(5));
+        expect(body2).toEqual({ body: { email: 'invalid email' } });
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
+    });
   });
 });
