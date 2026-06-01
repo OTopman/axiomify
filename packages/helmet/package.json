@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/helmet",
-  "version": "6.2.0",
+  "version": "6.2.1",
   "description": "Security headers plugin for Axiomify",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
