@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/security",
-  "version": "6.1.0",
+  "version": "6.2.0",
   "description": "Request-level defence in depth for Axiomify — XSS sanitisation, HPP normalisation, prototype-pollution + null-byte filtering, bot UA detection.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
