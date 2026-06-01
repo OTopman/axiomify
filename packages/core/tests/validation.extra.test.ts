@@ -137,6 +137,27 @@ describe('ValidationCompiler', () => {
       expect((req.query as any).active).toBe(false);
     });
 
+    it('does not coerce non-boolean strings to boolean', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('GET:/items', {
+        query: z.object({ active: z.boolean() }),
+      });
+      const req = makeReq({ query: { active: 'maybe' as any } });
+      expect(() => compiler.execute('GET:/items', req)).toThrow(ValidationError);
+    });
+
+    it('handles targetType as an array (array of types)', () => {
+      const compiler = new ValidationCompiler();
+      const mockSchema = z.number() as any;
+      mockSchema.toJSONSchema = () => ({ type: ['number'] });
+      compiler.compile('GET:/array-type', {
+        query: z.object({ limit: mockSchema }),
+      });
+      const req = makeReq({ query: { limit: '42' as any } });
+      expect(() => compiler.execute('GET:/array-type', req)).not.toThrow();
+      expect((req.query as any).limit).toBe(42);
+    });
+
     it('still throws ValidationError for genuinely non-castable values', () => {
       const compiler = new ValidationCompiler();
       compiler.compile('GET:/items', {
