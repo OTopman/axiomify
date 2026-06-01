@@ -1,5 +1,37 @@
 # Changelog
 
+## 6.2.1
+
+### 🐛 Bug Fixes
+
+#### `@axiomify/core` — Type Coercion in Validation Pipeline
+
+- **Automatic type coercion for query, params, and body.** Schemas declaring `z.number()` or `z.boolean()` no longer reject valid string representations from the HTTP transport layer. The framework now coerces castable values before validation and only throws `ValidationError` when coercion is impossible.
+
+  Previously, a query parameter like `?limit=5` with schema `z.object({ limit: z.number() })` threw a `ValidationError` because AJV (configured with `coerceTypes: false`) rejected the string `"5"` before Zod could parse it.
+
+  **Coercion rules:**
+  - `"5"` → `5`, `"0"` → `0`, `"-10"` → `-10`, `"9.99"` → `9.99` (number/integer schemas)
+  - `"true"` → `true`, `"false"` → `false` (boolean schemas)
+  - Non-castable values (`"abc"` for a number) are left as-is for proper rejection
+  - Nested objects and arrays are coerced recursively
+  - `null` / `undefined` values are passed through unchanged
+
+  **Per-source coercion strategy:**
+  | Source | Strategy |
+  |---|---|
+  | `query` / `params` | Pre-coerce → Zod-only validation (AJV bypassed — these are always strings from HTTP) |
+  | `body` | Pre-coerce → AJV fast-rejection → Zod parse |
+  | `response` | No coercion (handler data, not HTTP input) |
+
+  No code changes required — existing schemas work as-is. Users who already used `z.coerce.number()` as a workaround can optionally simplify to `z.number()`.
+
+### 🧪 Tests
+
+687 passing across 59 files · 0 failures. +19 new coercion tests covering query params, URL params, body (flat, nested, arrays), edge cases (`"0"`, negative, float), and non-castable rejection.
+
+---
+
 ## 6.2.0
  
 ### ✨ New Features

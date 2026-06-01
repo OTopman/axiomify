@@ -59,13 +59,31 @@ describe('ValidationCompiler Fallback — Default and Schema fallbacks', () => {
     const { ValidationCompiler } = await import('../src/validation');
     const compiler = new ValidationCompiler();
 
+    // Pass a mock schema that satisfies isZodSchema but does NOT have toJSONSchema.
+    // This forces it to try to require zod-to-json-schema, which will throw,
+    // thereby covering the catch block in extractJsonSchema.
+    const mockSchema = {
+      safeParse: (data: any) => ({ success: true, data }),
+    } as any;
+
+    // Body validation path with null jsonSchema fallback
     compiler.compile('POST:/fallback-zod-schema', {
-      body: z.object({ id: z.string() }),
+      body: mockSchema,
     });
 
     const reqOk = makeReq({ body: { id: 'ok' } });
     expect(() =>
       compiler.execute('POST:/fallback-zod-schema', reqOk),
+    ).not.toThrow();
+
+    // Query validation path with null jsonSchema fallback (covers line 261: : data)
+    compiler.compile('GET:/fallback-zod-schema-query', {
+      query: mockSchema,
+    });
+
+    const reqQueryOk = makeReq({ query: { active: 'true' as any } });
+    expect(() =>
+      compiler.execute('GET:/fallback-zod-schema-query', reqQueryOk),
     ).not.toThrow();
 
     delete mockRegistry['zod-to-json-schema'];

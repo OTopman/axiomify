@@ -106,6 +106,202 @@ describe('ValidationCompiler', () => {
     });
   });
 
+  describe('type coercion — query params', () => {
+    it('coerces string to number in query when schema expects z.number()', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('GET:/items', {
+        query: z.object({ limit: z.number() }),
+      });
+      const req = makeReq({ query: { limit: '5' as any } });
+      expect(() => compiler.execute('GET:/items', req)).not.toThrow();
+      expect((req.query as any).limit).toBe(5);
+    });
+
+    it('coerces string to boolean in query when schema expects z.boolean()', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('GET:/items', {
+        query: z.object({ active: z.boolean() }),
+      });
+      const req = makeReq({ query: { active: 'true' as any } });
+      expect(() => compiler.execute('GET:/items', req)).not.toThrow();
+      expect((req.query as any).active).toBe(true);
+    });
+
+    it('coerces "false" string to boolean false', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('GET:/items', {
+        query: z.object({ active: z.boolean() }),
+      });
+      const req = makeReq({ query: { active: 'false' as any } });
+      expect(() => compiler.execute('GET:/items', req)).not.toThrow();
+      expect((req.query as any).active).toBe(false);
+    });
+
+    it('does not coerce non-boolean strings to boolean', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('GET:/items', {
+        query: z.object({ active: z.boolean() }),
+      });
+      const req = makeReq({ query: { active: 'maybe' as any } });
+      expect(() => compiler.execute('GET:/items', req)).toThrow(ValidationError);
+    });
+
+    it('handles targetType as an array (array of types)', () => {
+      const compiler = new ValidationCompiler();
+      const mockSchema = z.number() as any;
+      mockSchema.toJSONSchema = () => ({ type: ['number'] });
+      compiler.compile('GET:/array-type', {
+        query: z.object({ limit: mockSchema }),
+      });
+      const req = makeReq({ query: { limit: '42' as any } });
+      expect(() => compiler.execute('GET:/array-type', req)).not.toThrow();
+      expect((req.query as any).limit).toBe(42);
+    });
+
+    it('still throws ValidationError for genuinely non-castable values', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('GET:/items', {
+        query: z.object({ limit: z.number() }),
+      });
+      const req = makeReq({ query: { limit: 'abc' as any } });
+      expect(() => compiler.execute('GET:/items', req)).toThrow(
+        ValidationError,
+      );
+    });
+
+    it('coerces numeric string "0" to number 0', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('GET:/items', {
+        query: z.object({ offset: z.number() }),
+      });
+      const req = makeReq({ query: { offset: '0' as any } });
+      expect(() => compiler.execute('GET:/items', req)).not.toThrow();
+      expect((req.query as any).offset).toBe(0);
+    });
+
+    it('coerces negative number string', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('GET:/items', {
+        query: z.object({ offset: z.number() }),
+      });
+      const req = makeReq({ query: { offset: '-10' as any } });
+      expect(() => compiler.execute('GET:/items', req)).not.toThrow();
+      expect((req.query as any).offset).toBe(-10);
+    });
+
+    it('coerces floating point string', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('GET:/items', {
+        query: z.object({ price: z.number() }),
+      });
+      const req = makeReq({ query: { price: '9.99' as any } });
+      expect(() => compiler.execute('GET:/items', req)).not.toThrow();
+      expect((req.query as any).price).toBe(9.99);
+    });
+  });
+
+  describe('type coercion — URL params', () => {
+    it('coerces string to number in params when schema expects z.number()', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('GET:/users/:id', {
+        params: z.object({ id: z.number() }),
+      });
+      const req = makeReq({ params: { id: '42' as any } });
+      expect(() => compiler.execute('GET:/users/:id', req)).not.toThrow();
+      expect((req.params as any).id).toBe(42);
+    });
+
+    it('throws for non-numeric param when number expected', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('GET:/users/:id', {
+        params: z.object({ id: z.number() }),
+      });
+      const req = makeReq({ params: { id: 'not-a-number' as any } });
+      expect(() => compiler.execute('GET:/users/:id', req)).toThrow(
+        ValidationError,
+      );
+    });
+  });
+
+  describe('type coercion — body', () => {
+    it('coerces string to number in body when schema expects z.number()', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('POST:/items', {
+        body: z.object({ count: z.number() }),
+      });
+      const req = makeReq({ method: 'POST', body: { count: '10' } });
+      expect(() => compiler.execute('POST:/items', req)).not.toThrow();
+      expect((req.body as any).count).toBe(10);
+    });
+
+    it('coerces nested object string→number', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('POST:/orders', {
+        body: z.object({
+          item: z.object({ quantity: z.number() }),
+        }),
+      });
+      const req = makeReq({
+        method: 'POST',
+        body: { item: { quantity: '3' } },
+      });
+      expect(() => compiler.execute('POST:/orders', req)).not.toThrow();
+      expect((req.body as any).item.quantity).toBe(3);
+    });
+
+    it('coerces array items string→number', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('POST:/batch', {
+        body: z.object({ ids: z.array(z.number()) }),
+      });
+      const req = makeReq({
+        method: 'POST',
+        body: { ids: ['1', '2', '3'] },
+      });
+      expect(() => compiler.execute('POST:/batch', req)).not.toThrow();
+      expect((req.body as any).ids).toEqual([1, 2, 3]);
+    });
+
+    it('still throws for non-castable body values', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('POST:/items', {
+        body: z.object({ count: z.number() }),
+      });
+      const req = makeReq({ method: 'POST', body: { count: 'not-a-number' } });
+      expect(() => compiler.execute('POST:/items', req)).toThrow(
+        ValidationError,
+      );
+    });
+
+    it('preserves already-correct types (no unnecessary coercion)', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('POST:/items', {
+        body: z.object({ count: z.number(), name: z.string() }),
+      });
+      const req = makeReq({
+        method: 'POST',
+        body: { count: 42, name: 'widget' },
+      });
+      expect(() => compiler.execute('POST:/items', req)).not.toThrow();
+      expect((req.body as any).count).toBe(42);
+      expect((req.body as any).name).toBe('widget');
+    });
+
+    it('does not coerce null or undefined', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('POST:/items', {
+        body: z.object({ name: z.string() }),
+      });
+      const req = makeReq({ method: 'POST', body: null });
+      try {
+        compiler.execute('POST:/items', req);
+        throw new Error('should have thrown');
+      } catch (e: any) {
+        expect(e).toBeInstanceOf(ValidationError);
+      }
+    });
+  });
+
   describe('validateResponse — production vs development mode', () => {
     it('throws ValidationError in development when response schema mismatch', () => {
       const original = process.env.NODE_ENV;
