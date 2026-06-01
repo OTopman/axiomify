@@ -92,6 +92,75 @@ function isZodSchema(value: unknown): value is ZodTypeAny {
   );
 }
 
+// ─── Type coercion ────────────────────────────────────────────────────────────
+// HTTP query strings and URL params always arrive as strings. When a schema
+// declares `z.number()` the raw value `"5"` should be coerced to `5`, not
+// rejected. This pre-coercion step walks the JSON Schema and converts string
+// values to the expected type *before* AJV or Zod sees them. Non-castable
+// values (e.g. `"abc"` for a number field) are left as-is so the downstream
+// validator can produce a proper error.
+
+/**
+ * Recursively coerces string values in `data` to the types declared in
+ * `jsonSchema`. Mutates `data` in place for performance (objects are
+ * already ephemeral per-request).
+ *
+ * Supported coercions:
+ *   - string → number / integer  (via `Number()`, rejects NaN)
+ *   - string → boolean           (`"true"` → true, `"false"` → false)
+ *   - arrays of the above
+ */
+function preCoerce(data: unknown, jsonSchema: Record<string, unknown>): unknown {
+  if (data === null || data === undefined) return data;
+
+  const schemaType = jsonSchema.type as string | string[] | undefined;
+
+  // ── Scalar coercion ──────────────────────────────────────────────────────
+  if (typeof data === 'string') {
+    const targetType = Array.isArray(schemaType) ? schemaType[0] : schemaType;
+    if (targetType === 'number' || targetType === 'integer') {
+      const n = Number(data);
+      if (!Number.isNaN(n) && data.trim() !== '') return n;
+      return data; // leave as-is — validator will reject
+    }
+    if (targetType === 'boolean') {
+      if (data === 'true') return true;
+      if (data === 'false') return false;
+      return data; // leave as-is
+    }
+    return data;
+  }
+
+  // ── Array coercion ───────────────────────────────────────────────────────
+  if (Array.isArray(data)) {
+    const itemSchema = jsonSchema.items as Record<string, unknown> | undefined;
+    if (itemSchema) {
+      for (let i = 0; i < data.length; i++) {
+        data[i] = preCoerce(data[i], itemSchema);
+      }
+    }
+    return data;
+  }
+
+  // ── Object coercion (recurse into properties) ────────────────────────────
+  if (typeof data === 'object') {
+    const properties = jsonSchema.properties as
+      | Record<string, Record<string, unknown>>
+      | undefined;
+    if (properties) {
+      const obj = data as Record<string, unknown>;
+      for (const key of Object.keys(obj)) {
+        if (properties[key]) {
+          obj[key] = preCoerce(obj[key], properties[key]);
+        }
+      }
+    }
+    return data;
+  }
+
+  return data;
+}
+
 // ─── Compiled validator type ──────────────────────────────────────────────────
 
 type ValidateFunction = (data: unknown) => {
@@ -100,26 +169,8 @@ type ValidateFunction = (data: unknown) => {
   errors?: Record<string, string>;
 };
 
-// ─── Validator factory ────────────────────────────────────────────────────────
+// ─── JSON Schema extraction ───────────────────────────────────────────────────
 
-/**
- * Builds the fastest correct validator for a Zod schema.
- *
- * When `ajv` is installed (it usually is — it's a transitive dep of many tools):
- *
- *   Startup  : z.toJSONSchema(schema) → AJV.compile()     [happens once]
- *              hasTransforms(schema)                      [happens once]
- *   Request  : ajvValidate(data)                          [0.06µs/call]
- *              If invalid → format AJV errors             [0.12µs/call — 428x faster than Zod on invalid]
- *              If valid AND schema has NO transforms → return data directly
- *              If valid AND schema HAS transforms → schema.parse() to apply them
- *
- * Skipping `schema.parse()` on transform-free schemas eliminates a second
- * walk of the schema tree on every successful request — measurably 15–25%
- * throughput improvement on validated routes for typical schemas.
- *
- * When `ajv` is NOT installed, falls back to Zod `safeParse` (correct, ~1.6x slower).
- */
 // A schema we can duck-type. Zod v4 ships `toJSONSchema()` as an instance
 // method; Zod v3 does not. We isolate the unsafe cast in one place rather
 // than `as unknown as <inline-type>` at every call site.
@@ -133,44 +184,103 @@ function asZodV4(schema: ZodTypeAny): ZodV4Schema | null {
     : null;
 }
 
-function buildValidator(schema: ZodTypeAny): ValidateFunction {
+/**
+ * Extracts the JSON Schema from a Zod schema. Tries Zod v4's built-in
+ * `toJSONSchema()` first, then falls back to `zod-to-json-schema`.
+ * Returns `null` if neither is available.
+ */
+function extractJsonSchema(schema: ZodTypeAny): object | null {
+  const v4 = asZodV4(schema);
+  if (v4) {
+    try {
+      return v4.toJSONSchema();
+    } catch {
+      return null;
+    }
+  }
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { zodToJsonSchema } = require('zod-to-json-schema');
+    return zodToJsonSchema(schema, {
+      target: 'jsonSchema7',
+      $refStrategy: 'none',
+    });
+  } catch {
+    return null;
+  }
+}
+
+// ─── Validator source hint ────────────────────────────────────────────────────
+// Tells `buildValidator` where the data originates so it can apply the right
+// coercion strategy. Query and params always arrive as strings from the HTTP
+// layer; body may contain mixed types from JSON parsing.
+
+type ValidatorSource = 'body' | 'query' | 'params' | 'response';
+
+// ─── Validator factory ────────────────────────────────────────────────────────
+
+/**
+ * Builds the fastest correct validator for a Zod schema.
+ *
+ * **Coercion strategy by source:**
+ *
+ *   `query` / `params` — HTTP always delivers strings. Pre-coerce string values
+ *   to the type declared in the JSON Schema (string → number, string → boolean)
+ *   before Zod parses. Uses Zod-only path (no AJV) since schemas are small and
+ *   Zod handles coercion natively via `.coerce.*` or after pre-coercion.
+ *
+ *   `body` — JSON parsing usually preserves types, but HTML forms and some
+ *   clients send strings. Pre-coerce before AJV's fast-rejection filter, then
+ *   Zod parse for transforms/defaults.
+ *
+ *   `response` — No coercion. Response data comes from the handler, not HTTP.
+ *
+ * When `ajv` is installed (it usually is — it's a transitive dep of many tools):
+ *
+ *   Startup  : z.toJSONSchema(schema) → AJV.compile()     [happens once]
+ *   Request  : preCoerce(data)  →  ajvValidate(data)      [0.06µs/call]
+ *              If invalid → format AJV errors             [~428x faster than Zod on invalid]
+ *              If valid → schema.parse() for transforms   [applies .default(), .transform(), .coerce.*]
+ *
+ * When `ajv` is NOT installed, falls back to Zod `safeParse` (correct, ~1.6x slower).
+ */
+function buildValidator(
+  schema: ZodTypeAny,
+  source: ValidatorSource = 'body',
+): ValidateFunction {
+  const jsonSchema = extractJsonSchema(schema);
+
+  // ── Query / Params: Zod-only path with pre-coercion ──────────────────────
+  // These always arrive as strings from HTTP. Pre-coerce first, then let
+  // Zod handle the rest. AJV would reject string→number mismatches that
+  // are perfectly valid after coercion, so we skip it entirely.
+  if (source === 'query' || source === 'params') {
+    return (data: unknown) => {
+      const coerced = jsonSchema
+        ? preCoerce(data, jsonSchema as Record<string, unknown>)
+        : data;
+      return createZodValidator(schema)(coerced);
+    };
+  }
+
+  // ── Body: AJV fast-path with pre-coercion ────────────────────────────────
   const ajv = getAjv();
 
-  if (ajv) {
+  if (ajv && jsonSchema) {
     try {
-      // `z.toJSONSchema` is Zod v4's built-in method. It emits JSON Schema
-      // 2020-12 — the dialect AJV/dist/2020 understands natively.
-      const v4 = asZodV4(schema);
-      const jsonSchema =
-        v4?.toJSONSchema() ??
-        // Fallback for Zod v3 via zod-to-json-schema if it's installed.
-        (() => {
-          try {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const { zodToJsonSchema } = require('zod-to-json-schema');
-            return zodToJsonSchema(schema, {
-              target: 'jsonSchema7',
-              $refStrategy: 'none',
-            });
-          } catch {
-            return null;
-          }
-        })();
-
-      if (!jsonSchema) return createZodValidator(schema);
-
       const ajvValidate = ajv.compile(jsonSchema as object);
 
       return (data: unknown) => {
-        // No defensive shallow-clone here. AJV is configured with
-        // `coerceTypes: false` and `removeAdditional` is not set, so the
-        // default validator does not mutate its input. The previous clone
-        // was an unnecessary per-request allocation.
-        const structurallyValid = ajvValidate(data);
+        // Pre-coerce string values to the type declared in the JSON Schema.
+        // This handles the case where a client sends `"5"` for a number field
+        // (common with HTML forms, query-string-encoded bodies, etc).
+        const coerced = preCoerce(data, jsonSchema as Record<string, unknown>);
+
+        const structurallyValid = ajvValidate(coerced);
 
         if (!structurallyValid) {
           // Fast rejection path — build error map from AJV's already-collected errors.
-          // This is 428x faster than Zod's error path for complex schemas.
+          // This is ~428x faster than Zod's error path for complex schemas.
           const errors: Record<string, string> = {};
           for (const err of ajvValidate.errors ?? []) {
             const path =
@@ -190,17 +300,25 @@ function buildValidator(schema: ZodTypeAny): ValidateFunction {
         // and crucially, to safely strip unknown properties. AJV is only used
         // as a fast-rejection filter.
         try {
-          const parsed = schema.parse(data);
+          const parsed = schema.parse(coerced);
           return { valid: true, data: parsed };
         } catch {
           // AJV said valid but Zod disagrees. Fall through to full Zod validator.
-          return createZodValidator(schema)(data);
+          return createZodValidator(schema)(coerced);
         }
       };
     } catch {
       // z.toJSONSchema() threw — schema uses features not expressible in JSON
       // Schema (rare: recursive schemas, ZodNever in non-obvious positions).
     }
+  }
+
+  // ── Fallback: Zod-only with pre-coercion for body ────────────────────────
+  if (source === 'body' && jsonSchema) {
+    return (data: unknown) => {
+      const coerced = preCoerce(data, jsonSchema as Record<string, unknown>);
+      return createZodValidator(schema)(coerced);
+    };
   }
 
   return createZodValidator(schema);
@@ -257,19 +375,23 @@ export class ValidationCompiler {
       response?: ValidateFunction | Record<number, ValidateFunction>;
     } = {};
 
-    if (schema.body) compiled.body = buildValidator(schema.body as ZodTypeAny);
+    if (schema.body)
+      compiled.body = buildValidator(schema.body as ZodTypeAny, 'body');
     if (schema.query)
-      compiled.query = buildValidator(schema.query as ZodTypeAny);
+      compiled.query = buildValidator(schema.query as ZodTypeAny, 'query');
     if (schema.params)
-      compiled.params = buildValidator(schema.params as ZodTypeAny);
+      compiled.params = buildValidator(schema.params as ZodTypeAny, 'params');
 
     if (schema.response) {
       if (isZodSchema(schema.response)) {
-        compiled.response = buildValidator(schema.response);
+        compiled.response = buildValidator(schema.response, 'response');
       } else {
         const responseMap: Record<number, ValidateFunction> = {};
         for (const [code, zodSchema] of Object.entries(schema.response)) {
-          responseMap[Number(code)] = buildValidator(zodSchema as ZodTypeAny);
+          responseMap[Number(code)] = buildValidator(
+            zodSchema as ZodTypeAny,
+            'response',
+          );
         }
         compiled.response = responseMap;
       }
