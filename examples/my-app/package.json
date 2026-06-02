@@ -20,7 +20,7 @@
     "@axiomify/openapi": "*",
     "@axiomify/static": "*",
     "@axiomify/upload": "*",
-    "graphql": "^16.9.0"
+    "graphql": "^16.14.1"
   },
   "devDependencies": {
     "typescript": "^6.0.2",
