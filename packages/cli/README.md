@@ -28,8 +28,9 @@ the same major as your `@axiomify/*` runtime packages.
 | `axiomify dev [entry]`      | Hot-reload dev server (esbuild watch)            |
 | `axiomify build [entry]`    | Compile a production bundle to `dist/`           |
 | `axiomify routes [entry]`   | Inspect every HTTP + WebSocket route             |
-| `axiomify openapi [entry]`  | Generate the OpenAPI 3.0.3 spec                  |
+| `axiomify openapi [entry]`  | Generate the OpenAPI 3.1.0 spec                  |
 | `axiomify check [entry]`    | Static production-readiness audit                |
+| `axiomify studio [entry]`   | Launch Axiomify Studio visual dashboard          |
 | `axiomify doctor`           | Diagnose the host environment                    |
 | `axiomify sdk <subcommand>` | Manage, generate, build, validate, and diff SDKs |
 
@@ -129,6 +130,27 @@ no deprecated `meta:` field usage, health check registered, OpenAPI docs
 protected, security plugins active.
 
 Exit code 1 on any fail — wire into CI to gate deploys.
+
+## `axiomify studio`
+
+```bash
+axiomify studio [entry]
+```
+
+Launches Axiomify Studio — a premium visual developer dashboard that serves as a control center for your API. It inspects your application's:
+
+- **Route Inspector**: Search, filter, and drill down into HTTP & WebSocket routes.
+- **Schema Inspector**: Browse and inspect JSON schemas compiled from Zod validators.
+- **OpenAPI Spec Viewer**: Render collapsible tree views of OpenAPI paths and operations.
+- **Lifecycle Hooks**: Review registered hook handlers across request lifecycle phases.
+- **Health Dashboard**: Inspect production-readiness finding audits (pass/warn/fail).
+- **Request Tester**: Construct and send test requests (GET, POST, etc.) directly against your in-memory Axiomify app instance, capturing response status, headers, and body.
+
+The dashboard uses **Live Sync** (WebSockets) powered by esbuild's watch context to automatically re-compile and refresh the browser interface in real time as you edit your project files.
+
+Flags:
+- `-p, --port <number>`: Port to start the Studio server on (default: `4399`, falls back to a random port if busy).
+- `--no-open`: Disable auto-opening the dashboard in the browser.
 
 ## `axiomify doctor`
 

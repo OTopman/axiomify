@@ -1,0 +1,585 @@
+import { describe, it, expect, vi } from 'vitest';
+import { createServer } from 'node:http';
+import { StudioRouter } from '../../src/studio/server/router';
+import { createStudioServer } from '../../src/studio/server/http-server';
+import { registerStudioApi } from '../../src/studio/api';
+import { StudioWsServer } from '../../src/studio/server/ws-server';
+import { Axiomify } from '@axiomify/core';
+
+describe('Studio Server & Router', () => {
+  it('should match registered routes on the router', () => {
+    const router = new StudioRouter();
+    const handler = vi.fn();
+
+    router.get('/__studio/api/test', handler);
+    router.post('/__studio/api/submit', handler);
+
+    expect(router.match('GET', '/__studio/api/test')).toBe(handler);
+    expect(router.match('POST', '/__studio/api/submit')).toBe(handler);
+    expect(router.match('GET', '/nonexistent')).toBeNull();
+  });
+
+  it('should serve indexHtml for non-API routes', async () => {
+    const router = new StudioRouter();
+    const indexHtml = '<html>Hello Studio</html>';
+
+    const server = createStudioServer({
+      port: 0, // OS-assigned port
+      router,
+      indexHtml,
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      const res = await fetch(`http://127.0.0.1:${port}/some-random-route`);
+      const body = await res.text();
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('text/html');
+      expect(body).toBe(indexHtml);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('should serve API routes registered on the router', async () => {
+    const router = new StudioRouter();
+    router.get('/__studio/api/hello', (_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('Hello API');
+    });
+
+    const server = createStudioServer({
+      port: 0,
+      router,
+      indexHtml: 'index',
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      const res = await fetch(`http://127.0.0.1:${port}/__studio/api/hello`);
+      const body = await res.text();
+
+      expect(res.status).toBe(200);
+      expect(body).toBe('Hello API');
+    } finally {
+      server.close();
+    }
+  });
+
+  it('should serve registered Studio API health endpoint', async () => {
+    const router = new StudioRouter();
+    const mockHealth = {
+      findings: [{ severity: 'warn', area: 'ops', message: 'test warning' }],
+      summary: { passes: 0, warnings: 1, failures: 0 },
+    };
+    const mockDiscovery: any = {
+      health: mockHealth,
+      discoveredAt: new Date().toISOString(),
+    };
+
+    registerStudioApi(router, {
+      getDiscovery: () => mockDiscovery,
+    });
+
+    const server = createStudioServer({
+      port: 0,
+      router,
+      indexHtml: 'index',
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      const res = await fetch(`http://127.0.0.1:${port}/__studio/api/health`);
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.health).toEqual(mockHealth);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('should fall back to a random port if the requested port is busy', async () => {
+    // 1. Start a server on a specific port to keep it busy.
+    const busyServer = createServer((_req, res) => {
+      res.end('Busy');
+    });
+
+    await new Promise<void>((resolve) => {
+      busyServer.listen(0, '127.0.0.1', () => resolve());
+    });
+
+    const addr = busyServer.address();
+    const busyPort = typeof addr === 'object' && addr ? addr.port : 0;
+
+    // 2. Try to start the Studio server on that same port.
+    const router = new StudioRouter();
+    let onReadyCalled = false;
+    let actualPort: number | undefined;
+
+    const studioServer = createStudioServer({
+      port: busyPort,
+      router,
+      indexHtml: 'index',
+      onReady: (port) => {
+        onReadyCalled = true;
+        actualPort = port;
+      },
+    });
+
+    try {
+      // Allow time for fallback listener to fire
+      await new Promise<void>((resolve) => {
+        const check = () => {
+          if (onReadyCalled) {
+            resolve();
+          } else {
+            setTimeout(check, 50);
+          }
+        };
+        check();
+      });
+
+      expect(onReadyCalled).toBe(true);
+      expect(actualPort).toBeDefined();
+      expect(actualPort).not.toBe(busyPort);
+    } finally {
+      busyServer.close();
+      studioServer.close();
+    }
+  });
+
+  it('should upgrade and broadcast messages via StudioWsServer', async () => {
+    const wsServer = new StudioWsServer();
+    const router = new StudioRouter();
+    const server = createStudioServer({
+      port: 0,
+      router,
+      indexHtml: 'index',
+    });
+
+    server.on('upgrade', (req, socket) => {
+      wsServer.handleUpgrade(req, socket);
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/__studio/ws`);
+
+      const messagePromise = new Promise<string>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Timeout waiting for message')), 2000);
+        ws.onmessage = (event) => {
+          clearTimeout(timeout);
+          resolve(event.data);
+        };
+        ws.onerror = (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        };
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Timeout connecting')), 2000);
+        ws.onopen = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        ws.onerror = (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        };
+      });
+
+      const testMsg = JSON.stringify({ type: 'reload' });
+      wsServer.broadcast(testMsg);
+
+      const received = await messagePromise;
+      expect(received).toBe(testMsg);
+
+      ws.close();
+    } finally {
+      wsServer.close();
+      server.close();
+    }
+  });
+
+  it('should proxy requests to the in-memory app via POST /__studio/api/request', async () => {
+    const app = new Axiomify();
+    app.route({
+      method: 'GET',
+      path: '/hello',
+      handler: async (req, res) => {
+        res.header('X-Response-Hello', 'world').send({ hello: 'world' });
+      },
+    });
+    app.route({
+      method: 'POST',
+      path: '/echo',
+      handler: async (req, res) => {
+        res.send({ bodyReceived: req.body });
+      },
+    });
+
+    const router = new StudioRouter();
+    registerStudioApi(router, {
+      getDiscovery: () => ({} as any),
+      getApp: () => app,
+    });
+
+    const server = createStudioServer({
+      port: 0,
+      router,
+      indexHtml: 'index',
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      // 1. Test proxying a GET request
+      const resGet = await fetch(`http://127.0.0.1:${port}/__studio/api/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'GET',
+          path: '/hello',
+        }),
+      });
+
+      expect(resGet.status).toBe(200);
+      const dataGet = await resGet.json();
+      expect(dataGet.status).toBe(200);
+      expect(dataGet.headers['x-response-hello']).toBe('world');
+      expect(dataGet.body).toEqual({ hello: 'world' });
+
+      // 2. Test proxying a POST request with body
+      const resPost = await fetch(`http://127.0.0.1:${port}/__studio/api/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'POST',
+          path: '/echo',
+          body: { foo: 'bar' },
+        }),
+      });
+
+      expect(resPost.status).toBe(200);
+      const dataPost = await resPost.json();
+      expect(dataPost.status).toBe(200);
+      expect(dataPost.body).toEqual({ bodyReceived: { foo: 'bar' } });
+    } finally {
+      server.close();
+    }
+  });
+
+  it('should return profile timeline metadata when proxying requests', async () => {
+    const app = new Axiomify();
+    app.route({
+      method: 'GET',
+      path: '/profile-test',
+      handler: async (req, res) => {
+        res.send({ ok: true });
+      },
+    });
+
+    const router = new StudioRouter();
+    registerStudioApi(router, {
+      getDiscovery: () => ({} as any),
+      getApp: () => app,
+    });
+
+    const server = createStudioServer({
+      port: 0,
+      router,
+      indexHtml: 'index',
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      const res = await fetch(`http://127.0.0.1:${port}/__studio/api/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'GET',
+          path: '/profile-test',
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const result = await res.json();
+      expect(result.profile).toBeDefined();
+      expect(result.profile.timeline).toBeDefined();
+      expect(result.profile.timeline.length).toBeGreaterThan(0);
+      
+      const handlerStep = result.profile.timeline.find((t: any) => t.type === 'handler');
+      expect(handlerStep).toBeDefined();
+      expect(handlerStep.name).toContain('Handler:');
+    } finally {
+      server.close();
+    }
+  });
+
+  it('should support syncing OpenAPI schema to local file via POST /__studio/api/openapi/sync', async () => {
+    const mockSpec = { openapi: '3.0.0', info: { title: 'Test', version: '1' } };
+    const router = new StudioRouter();
+    registerStudioApi(router, {
+      getDiscovery: () => ({ openapi: mockSpec } as any),
+      getApp: () => ({} as any),
+    });
+
+    const server = createStudioServer({
+      port: 0,
+      router,
+      indexHtml: 'index',
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      const res = await fetch(`http://127.0.0.1:${port}/__studio/api/openapi/sync`, {
+        method: 'POST',
+      });
+
+      expect(res.status).toBe(200);
+      const result = await res.json();
+      expect(result.success).toBe(true);
+
+      const fs = await import('node:fs');
+      const path = await import('node:path');
+      const filePath = path.resolve(process.cwd(), 'openapi.json');
+      expect(fs.existsSync(filePath)).toBe(true);
+
+      const content = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      expect(content).toEqual(mockSpec);
+
+      fs.unlinkSync(filePath);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('should serve system metrics endpoint GET /__studio/api/system', async () => {
+    const router = new StudioRouter();
+    registerStudioApi(router, {
+      getDiscovery: () => ({} as any),
+      getApp: () => ({} as any),
+    });
+
+    const server = createStudioServer({
+      port: 0,
+      router,
+      indexHtml: 'index',
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      const res = await fetch(`http://127.0.0.1:${port}/__studio/api/system`);
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.nodeVersion).toBeDefined();
+      expect(body.platform).toBe(process.platform);
+      expect(body.memory).toBeDefined();
+      expect(body.memory.heapUsed).toBeTypeOf('number');
+      expect(body.cpu).toBeDefined();
+    } finally {
+      server.close();
+    }
+  });
+
+  it('should serve recorded errors endpoint GET /__studio/api/errors', async () => {
+    const router = new StudioRouter();
+    registerStudioApi(router, {
+      getDiscovery: () => ({} as any),
+      getApp: () => ({} as any),
+    });
+
+    const server = createStudioServer({
+      port: 0,
+      router,
+      indexHtml: 'index',
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      const res = await fetch(`http://127.0.0.1:${port}/__studio/api/errors`);
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.errorsToday).toBeDefined();
+      expect(body.errors).toBeInstanceOf(Array);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('should serve websocket analytics endpoint GET /__studio/api/ws-analytics', async () => {
+    const router = new StudioRouter();
+    registerStudioApi(router, {
+      getDiscovery: () => ({} as any),
+      getApp: () => ({} as any),
+    });
+
+    const server = createStudioServer({
+      port: 0,
+      router,
+      indexHtml: 'index',
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      const res = await fetch(`http://127.0.0.1:${port}/__studio/api/ws-analytics`);
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.metrics).toBeDefined();
+      expect(body.rates).toBeInstanceOf(Array);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('should support request replays via POST/GET /__studio/api/request/replay(s)', async () => {
+    const router = new StudioRouter();
+    registerStudioApi(router, {
+      getDiscovery: () => ({} as any),
+      getApp: () => ({} as any),
+    });
+
+    const server = createStudioServer({
+      port: 0,
+      router,
+      indexHtml: 'index',
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      const payload = {
+        id: 'test-id',
+        method: 'POST',
+        path: '/test-path',
+        headers: { 'Content-Type': 'application/json' },
+        query: {},
+        body: { test: true },
+      };
+
+      const resPost = await fetch(`http://127.0.0.1:${port}/__studio/api/request/replay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      expect(resPost.status).toBe(200);
+      const resPostJson = await resPost.json();
+      expect(resPostJson.success).toBe(true);
+
+      const resGet = await fetch(`http://127.0.0.1:${port}/__studio/api/request/replays`);
+      const resGetJson = await resGet.json();
+
+      expect(resGet.status).toBe(200);
+      expect(resGetJson.history).toBeInstanceOf(Array);
+      expect(resGetJson.history.length).toBeGreaterThan(0);
+      const found = resGetJson.history.find((h: any) => h.id === 'test-id');
+      expect(found).toBeDefined();
+
+      // 1. Delete single replay item
+      const resDeleteOne = await fetch(`http://127.0.0.1:${port}/__studio/api/request/replay?id=test-id`, {
+        method: 'DELETE',
+      });
+      expect(resDeleteOne.status).toBe(200);
+      const resDeleteOneJson = await resDeleteOne.json();
+      expect(resDeleteOneJson.success).toBe(true);
+
+      const resGetAfterDelete = await fetch(`http://127.0.0.1:${port}/__studio/api/request/replays`);
+      const resGetAfterDeleteJson = await resGetAfterDelete.json();
+      const foundAfterDelete = resGetAfterDeleteJson.history.find((h: any) => h.id === 'test-id');
+      expect(foundAfterDelete).toBeUndefined();
+
+      // 2. Clear all replay items
+      const resClearAll = await fetch(`http://127.0.0.1:${port}/__studio/api/request/replays`, {
+        method: 'DELETE',
+      });
+      expect(resClearAll.status).toBe(200);
+      const resClearAllJson = await resClearAll.json();
+      expect(resClearAllJson.success).toBe(true);
+
+      const resGetAfterClear = await fetch(`http://127.0.0.1:${port}/__studio/api/request/replays`);
+      const resGetAfterClearJson = await resGetAfterClear.json();
+      expect(resGetAfterClearJson.history.length).toBe(0);
+    } finally {
+      server.close();
+      const fs = require('node:fs');
+      const path = require('node:path');
+      const histFile = path.join(process.cwd(), '.axiomify-studio-history.json');
+      if (fs.existsSync(histFile)) {
+        try {
+          fs.unlinkSync(histFile);
+        } catch {}
+      }
+    }
+  });
+});

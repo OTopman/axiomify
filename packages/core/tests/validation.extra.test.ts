@@ -143,7 +143,9 @@ describe('ValidationCompiler', () => {
         query: z.object({ active: z.boolean() }),
       });
       const req = makeReq({ query: { active: 'maybe' as any } });
-      expect(() => compiler.execute('GET:/items', req)).toThrow(ValidationError);
+      expect(() => compiler.execute('GET:/items', req)).toThrow(
+        ValidationError,
+      );
     });
 
     it('handles targetType as an array (array of types)', () => {

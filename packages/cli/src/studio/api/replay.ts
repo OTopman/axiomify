@@ -1,0 +1,101 @@
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { sendJson, readBody } from '../server/http-server';
+
+export interface ReplayItem {
+  id: string;
+  method: string;
+  path: string;
+  headers: any;
+  query: any;
+  body: any;
+  timestamp: string;
+}
+
+const HISTORY_FILE = path.join(process.cwd(), '.axiomify-studio-history.json');
+
+function loadHistory(): ReplayItem[] {
+  try {
+    if (fs.existsSync(HISTORY_FILE)) {
+      const data = fs.readFileSync(HISTORY_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (err) {
+    // Silently default to empty list on parsing/loading errors
+  }
+  return [];
+}
+
+export function saveHistory(): void {
+  try {
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(requestHistory, null, 2), 'utf8');
+  } catch (err) {
+    console.warn('[Studio] Failed to save request history:', err);
+  }
+}
+
+export const requestHistory: ReplayItem[] = loadHistory();
+
+export async function handlePostRequestReplay(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  try {
+    const rawBody = await readBody(req);
+    const payload = JSON.parse(rawBody);
+    
+    if (payload.id && payload.method && payload.path) {
+      requestHistory.push({
+        id: payload.id,
+        method: payload.method,
+        path: payload.path,
+        headers: payload.headers || {},
+        query: payload.query || {},
+        body: payload.body,
+        timestamp: new Date().toISOString(),
+      });
+      if (requestHistory.length > 50) {
+        requestHistory.shift();
+      }
+      saveHistory();
+      sendJson(res, { success: true });
+    } else {
+      sendJson(res, { error: 'Invalid replay payload' }, 400);
+    }
+  } catch (err: any) {
+    sendJson(res, { error: err.message }, 500);
+  }
+}
+
+export function handleGetRequestReplays(_req: any, res: ServerResponse): void {
+  sendJson(res, { history: requestHistory });
+}
+
+export function handleDeleteRequestReplay(req: IncomingMessage, res: ServerResponse): void {
+  try {
+    const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
+    const id = url.searchParams.get('id');
+    if (!id) {
+      sendJson(res, { error: 'Missing "id" parameter' }, 400);
+      return;
+    }
+    const index = requestHistory.findIndex(item => item.id === id);
+    if (index !== -1) {
+      requestHistory.splice(index, 1);
+      saveHistory();
+      sendJson(res, { success: true });
+    } else {
+      sendJson(res, { error: 'Item not found' }, 404);
+    }
+  } catch (err: any) {
+    sendJson(res, { error: err.message }, 500);
+  }
+}
+
+export function handleDeleteAllRequestReplays(_req: IncomingMessage, res: ServerResponse): void {
+  try {
+    requestHistory.length = 0;
+    saveHistory();
+    sendJson(res, { success: true });
+  } catch (err: any) {
+    sendJson(res, { error: err.message }, 500);
+  }
+}

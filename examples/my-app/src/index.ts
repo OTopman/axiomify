@@ -10,8 +10,21 @@ import { randomUUID } from 'crypto';
 import { createReadStream, existsSync } from 'fs';
 import { GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
 import path from 'path';
+import {wsRooms} from '@axiomify/ws';
 
 export const app = new Axiomify();
+
+const room = wsRooms(app,{
+  path: '/ws',
+  schema:  z.object({
+    action: z.string(),
+    room: z.string().optional(),
+    data: z.any().optional(),
+  }),
+  onConnect(client) {
+    console.log(client.rooms);
+  },
+});
 
 function getRequiredEnv(name: string): string {
   const value = process.env[name];

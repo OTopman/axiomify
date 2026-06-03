@@ -11,6 +11,7 @@ import { emitOpenApi } from './commands/openapi';
 import { inspectRoutes, RoutesOptions } from './commands/routes';
 import { scaffoldRoute } from './commands/scaffold';
 import { generateSdk } from './commands/sdk/generate';
+import { runStudio, StudioCommandOptions } from './commands/studio';
 
 const program = new Command();
 
@@ -148,6 +149,18 @@ scaffold
         dir?: string;
       },
     ) => scaffoldRoute(method, routePath, options),
+  );
+
+program
+  .command('studio')
+  .description(
+    'Launch Axiomify Studio — a visual control centre for inspecting routes, schemas, hooks, and more',
+  )
+  .argument('[entry]', 'Entry file', 'src/index.ts')
+  .option('-p, --port <port>', 'Port for the Studio server (default: 4399)')
+  .option('--no-open', 'Do not auto-open the browser')
+  .action((entry: string, options: StudioCommandOptions) =>
+    runStudio(entry, options),
   );
 
 program

@@ -1,0 +1,113 @@
+import * as esbuild from 'esbuild';
+import path from 'node:path';
+import pc from 'picocolors';
+import { loadApp } from '../../utils/load-app';
+import { getUserExternals } from '../../utils/externals';
+import { performDiscovery, type StudioDiscoveryResult } from '../discovery';
+import { StudioWsServer } from '../server/ws-server';
+
+export interface SyncEngineOptions {
+  entry: string;
+  wsServer: StudioWsServer;
+  onReload: (newDiscovery: StudioDiscoveryResult, newApp: any) => void;
+}
+
+/**
+ * The Studio Live Sync Engine.
+ *
+ * Uses esbuild's watch context to detect source file changes, recompiles the
+ * app bundle, re-runs discovery, updates the memory cache, and broadcasts
+ * reload/error signals to all connected browsers via WebSockets.
+ */
+export class StudioSyncEngine {
+  private ctx: esbuild.BuildContext | null = null;
+
+  constructor(private options: SyncEngineOptions) {}
+
+  /**
+   * Starts watching project files for changes.
+   */
+  public async start(): Promise<void> {
+    const entryPath = path.resolve(process.cwd(), this.options.entry);
+    const tempDir = path.resolve(process.cwd(), '.axiomify');
+    const tempPath = path.join(tempDir, 'inspect.cjs');
+    const userExternals = getUserExternals(process.cwd());
+
+    const watchPlugin: esbuild.Plugin = {
+      name: 'studio-watch-plugin',
+      setup: (build) => {
+        let first = true;
+        build.onEnd(async (result) => {
+          if (first) {
+            first = false;
+            return; // Skip first build because startStudio() performs it synchronously.
+          }
+
+          if (result.errors.length > 0) {
+            console.error(
+              pc.red('\n  ✗ Build failed. Fix errors to trigger reload.'),
+            );
+            this.options.wsServer.broadcast(
+              JSON.stringify({ type: 'build-error', errors: result.errors }),
+            );
+            return;
+          }
+
+          console.log(pc.dim('  Changes detected, reloading app...'));
+
+          try {
+            // Clear CommonJS cache for the compiled app file.
+            delete require.cache[require.resolve(tempPath)];
+
+            // Reload the app and run discovery.
+            const loaded = await loadApp(this.options.entry);
+            const discovery = await performDiscovery(loaded.app);
+            await loaded.cleanup();
+
+            // Update discovery cache in the router.
+            this.options.onReload(discovery, loaded.app);
+
+            console.log(pc.green('  ✓ App reloaded successfully.'));
+
+            // Broadcast refresh signal to the browser.
+            this.options.wsServer.broadcast(JSON.stringify({ type: 'reload' }));
+          } catch (err) {
+            console.error(
+              pc.red('  ✗ Reload failed:'),
+              (err as Error).message,
+            );
+            this.options.wsServer.broadcast(
+              JSON.stringify({
+                type: 'reload-error',
+                message: (err as Error).message,
+              }),
+            );
+          }
+        });
+      },
+    };
+
+    this.ctx = await esbuild.context({
+      entryPoints: [entryPath],
+      bundle: true,
+      platform: 'node',
+      format: 'cjs',
+      outfile: tempPath,
+      external: [...new Set([...userExternals, 'node:*'])],
+      plugins: [watchPlugin],
+      logLevel: 'mute',
+    });
+
+    await this.ctx.watch();
+  }
+
+  /**
+   * Disposes of the file watcher context.
+   */
+  public async stop(): Promise<void> {
+    if (this.ctx) {
+      await this.ctx.dispose();
+      this.ctx = null;
+    }
+  }
+}
