@@ -11,7 +11,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 import { sendJson, readBody } from '../server/http-server';
 import { compiledStates } from '@axiomify/core';
-import { requestHistory, saveHistory } from './replay';
+import { requestHistory, saveHistory, notifyReplaysUpdated } from './replay';
 
 let activeProfile: any = null;
 
@@ -58,6 +58,7 @@ export async function handlePostRequest(
       requestHistory.shift();
     }
     saveHistory();
+    notifyReplaysUpdated();
 
     // Reconstruct query string
     let queryString = '';

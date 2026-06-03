@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Axiomify } from '@axiomify/core';
 import { z } from 'zod';
 import { performDiscovery } from '../../src/studio/discovery';
@@ -8,6 +8,29 @@ import { discoverHooks } from '../../src/studio/discovery/hook-discovery';
 import { discoverHealth } from '../../src/studio/discovery/health-discovery';
 
 describe('Studio Discovery Engine', () => {
+  let tempDir: string;
+  let cwdSpy: any;
+
+  beforeEach(async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const crypto = await import('node:crypto');
+    tempDir = path.resolve(__dirname, `temp-discovery-${crypto.randomUUID()}`);
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(tempDir);
+  });
+
+  afterEach(async () => {
+    const fs = await import('node:fs');
+    cwdSpy.mockRestore();
+    try {
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    } catch {}
+  });
   it('should handle an empty app instance', async () => {
     const app = new Axiomify();
     const result = await performDiscovery(app);

@@ -48,6 +48,60 @@ describe('Studio Server & Router', () => {
     }
   });
 
+  it('should enforce token authentication on API routes if token is specified', async () => {
+    const router = new StudioRouter();
+    const handler = vi.fn((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    router.get('/__studio/api/test', handler);
+
+    const token = 'my-secret-token';
+    const server = createStudioServer({
+      port: 0,
+      router,
+      indexHtml: '<html>Hello Studio</html>',
+      token,
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      // 1. Request without token should fail with 401
+      const resNoToken = await fetch(`http://127.0.0.1:${port}/__studio/api/test`);
+      expect(resNoToken.status).toBe(401);
+      const bodyNoToken = await resNoToken.json() as any;
+      expect(bodyNoToken.error).toBe('Unauthorized');
+
+      // 2. Request with invalid token should fail with 401
+      const resBadToken = await fetch(`http://127.0.0.1:${port}/__studio/api/test`, {
+        headers: { 'Authorization': 'Bearer bad-token' },
+      });
+      expect(resBadToken.status).toBe(401);
+
+      // 3. Request with valid token should succeed with 200
+      const resOkToken = await fetch(`http://127.0.0.1:${port}/__studio/api/test`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      expect(resOkToken.status).toBe(200);
+      const bodyOkToken = await resOkToken.json() as any;
+      expect(bodyOkToken.ok).toBe(true);
+
+      // 4. Request for non-API route should still succeed with 200 indexHtml without token
+      const resHtml = await fetch(`http://127.0.0.1:${port}/some-random-route`);
+      expect(resHtml.status).toBe(200);
+      const bodyHtml = await resHtml.text();
+      expect(bodyHtml).toBe('<html>Hello Studio</html>');
+    } finally {
+      server.close();
+    }
+  });
+
   it('should serve API routes registered on the router', async () => {
     const router = new StudioRouter();
     router.get('/__studio/api/hello', (_req, res) => {
@@ -355,6 +409,14 @@ describe('Studio Server & Router', () => {
   });
 
   it('should support syncing OpenAPI schema to local file via POST /__studio/api/openapi/sync', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const tempDir = path.resolve(__dirname, 'temp-server-sync');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(tempDir);
+
     const mockSpec = { openapi: '3.0.0', info: { title: 'Test', version: '1' } };
     const router = new StudioRouter();
     registerStudioApi(router, {
@@ -384,9 +446,7 @@ describe('Studio Server & Router', () => {
       const result = await res.json();
       expect(result.success).toBe(true);
 
-      const fs = await import('node:fs');
-      const path = await import('node:path');
-      const filePath = path.resolve(process.cwd(), 'openapi.json');
+      const filePath = path.resolve(tempDir, 'openapi.json');
       expect(fs.existsSync(filePath)).toBe(true);
 
       const content = JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -395,6 +455,12 @@ describe('Studio Server & Router', () => {
       fs.unlinkSync(filePath);
     } finally {
       server.close();
+      cwdSpy.mockRestore();
+      try {
+        if (fs.existsSync(tempDir)) {
+          fs.rmdirSync(tempDir);
+        }
+      } catch {}
     }
   });
 
@@ -428,6 +494,48 @@ describe('Studio Server & Router', () => {
       expect(body.memory).toBeDefined();
       expect(body.memory.heapUsed).toBeTypeOf('number');
       expect(body.cpu).toBeDefined();
+    } finally {
+      server.close();
+    }
+  });
+
+  it('should serve app metrics endpoint GET /__studio/api/metrics', async () => {
+    const mockApp = {
+      registeredRoutes: [
+        { method: 'GET', path: '/metrics' }
+      ],
+      handle: async (req: any, res: any) => {
+        res.status(200).sendRaw('http_requests_total{method="GET",route="/test"} 10', 'text/plain');
+      }
+    };
+
+    const router = new StudioRouter();
+    registerStudioApi(router, {
+      getDiscovery: () => ({} as any),
+      getApp: () => mockApp as any,
+    });
+
+    const server = createStudioServer({
+      port: 0,
+      router,
+      indexHtml: 'index',
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      const res = await fetch(`http://127.0.0.1:${port}/__studio/api/metrics`);
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.available).toBe(true);
+      expect(body.raw).toContain('http_requests_total');
+      expect(body.path).toBe('/metrics');
     } finally {
       server.close();
     }
@@ -580,6 +688,133 @@ describe('Studio Server & Router', () => {
           fs.unlinkSync(histFile);
         } catch {}
       }
+    }
+  });
+
+  it('should auto-capture requests via onRequest hook and notify updates', async () => {
+    const { instrumentRequestReplay, setOnReplayUpdated } = await import('../../src/studio/api/replay');
+    
+    const app = new Axiomify();
+    instrumentRequestReplay(app);
+
+    let notified = false;
+    setOnReplayUpdated(() => {
+      notified = true;
+    });
+
+    // Simulate handling a normal request
+    const mockReq: any = {
+      id: 'normal-request-123',
+      method: 'GET',
+      path: '/api/test-capture',
+      headers: {},
+      query: {},
+      body: null,
+    };
+    const responseHeaders: Record<string, string> = {};
+    const mockRes: any = {
+      headersSent: false,
+      status(code: number) {
+        return this;
+      },
+      header(key: string, value: string) {
+        responseHeaders[key.toLowerCase()] = value;
+        return this;
+      },
+      getHeader(key: string) {
+        return responseHeaders[key.toLowerCase()];
+      },
+      removeHeader(key: string) {
+        delete responseHeaders[key.toLowerCase()];
+        return this;
+      },
+      send(data: any) {
+        this.headersSent = true;
+        return this;
+      },
+      capabilities: { sse: false, streaming: false },
+    };
+
+    // Trigger handle which runs the lifecycle hooks
+    await app.handle(mockReq, mockRes);
+
+    expect(notified).toBe(true);
+
+    const { requestHistory } = await import('../../src/studio/api/replay');
+    const captured = requestHistory.find(h => h.path === '/api/test-capture');
+    expect(captured).toBeDefined();
+    expect(captured?.method).toBe('GET');
+
+    // Clean up
+    setOnReplayUpdated(() => {});
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const histFile = path.join(process.cwd(), '.axiomify-studio-history.json');
+    if (fs.existsSync(histFile)) {
+      try {
+        fs.unlinkSync(histFile);
+      } catch {}
+    }
+    requestHistory.length = 0;
+  });
+
+  it('should intercept console logs and serve them via API', async () => {
+    const { instrumentLogs, setOnLogsUpdated, recordedLogs } = await import('../../src/studio/api/logs');
+
+    instrumentLogs();
+
+    let notified = false;
+    setOnLogsUpdated(() => {
+      notified = true;
+    });
+
+    console.warn('Hello warning test');
+
+    expect(notified).toBe(true);
+
+    const found = recordedLogs.find(l => l.message === 'Hello warning test');
+    expect(found).toBeDefined();
+    expect(found?.level).toBe('warn');
+    expect(found?.stack).toBeDefined();
+
+    // Test API GET /__studio/api/logs
+    const router = new StudioRouter();
+    registerStudioApi(router, {
+      getDiscovery: () => ({} as any),
+      getApp: () => ({} as any),
+    });
+
+    const server = createStudioServer({
+      port: 0,
+      router,
+      indexHtml: 'index',
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      const resGet = await fetch(`http://127.0.0.1:${port}/__studio/api/logs`);
+      const bodyGet = await resGet.json();
+      expect(resGet.status).toBe(200);
+      expect(bodyGet.logs).toBeInstanceOf(Array);
+      expect(bodyGet.logs.some((l: any) => l.message === 'Hello warning test')).toBe(true);
+
+      // Test API DELETE /__studio/api/logs
+      const resDel = await fetch(`http://127.0.0.1:${port}/__studio/api/logs`, {
+        method: 'DELETE',
+      });
+      const bodyDel = await resDel.json();
+      expect(resDel.status).toBe(200);
+      expect(bodyDel.success).toBe(true);
+      expect(recordedLogs.length).toBe(0);
+    } finally {
+      server.close();
+      setOnLogsUpdated(() => {});
     }
   });
 });

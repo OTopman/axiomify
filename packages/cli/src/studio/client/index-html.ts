@@ -1157,10 +1157,110 @@ export function buildIndexHtml(): string {
       word-break: break-all;
       border: 1px solid var(--border);
     }
+
+    /* ── Login screen styling ────────────────────────────────────── */
+    .login-container {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--bg-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      font-family: var(--font-sans);
+    }
+    .login-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: var(--shadow-md), var(--shadow-glow);
+      text-align: center;
+    }
+    .login-logo {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: 700;
+      color: #fff;
+      margin: 0 auto 16px;
+      box-shadow: var(--shadow-glow);
+    }
+    .login-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+      letter-spacing: -0.02em;
+    }
+    .login-subtitle {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+    .login-input {
+      width: 100%;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      font-size: 14px;
+      font-family: var(--font-mono);
+      color: var(--text-primary);
+      outline: none;
+      margin-bottom: 16px;
+      text-align: center;
+      transition: border-color var(--transition);
+    }
+    .login-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    }
+    .login-button {
+      width: 100%;
+      background: var(--accent);
+      color: #ffffff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity var(--transition);
+    }
+    .login-button:hover {
+      opacity: 0.9;
+    }
+    .login-error {
+      color: var(--error);
+      font-size: 13px;
+      margin-top: 12px;
+      display: none;
+    }
   </style>
 </head>
 <body>
-  <div class="app-layout">
+  <!-- Login Screen -->
+  <div id="login-container" class="login-container" style="display: none;">
+    <div class="login-card">
+      <div class="login-logo">A</div>
+      <h2 class="login-title">Axiomify Studio</h2>
+      <p class="login-subtitle">Enter the access token printed in your terminal to log in to the explorer.</p>
+      <input type="password" id="login-token-input" class="login-input" placeholder="Paste access token..." onkeydown="if(event.key === 'Enter') login()"/>
+      <button class="login-button" onclick="login()">Access Studio</button>
+      <div id="login-error" class="login-error">Invalid or missing token. Please check the terminal.</div>
+    </div>
+  </div>
+
+  <div class="app-layout" id="app-layout" style="display: none;">
     <!-- Header -->
     <header class="header">
       <div class="header-title" id="header-title">Route Inspector</div>
@@ -1209,14 +1309,18 @@ export function buildIndexHtml(): string {
         <span>Hooks</span>
         <span class="nav-badge" id="badge-hooks">—</span>
       </a>
-      <a class="nav-item" data-panel="errors" href="#errors">
-        <span class="nav-icon">👁️</span>
-        <span>Errors</span>
-        <span class="nav-badge" id="badge-errors">0</span>
+      <a class="nav-item" data-panel="logs" href="#logs">
+        <span class="nav-icon">📜</span>
+        <span>Logs</span>
+        <span class="nav-badge" id="badge-logs">0</span>
       </a>
       <a class="nav-item" data-panel="ws-analytics" href="#ws-analytics">
         <span class="nav-icon">📊</span>
         <span>WS Traffic</span>
+      </a>
+      <a class="nav-item" data-panel="metrics" href="#metrics">
+        <span class="nav-icon">📈</span>
+        <span>Metrics</span>
       </a>
       <a class="nav-item" data-panel="health" href="#health">
         <span class="nav-icon">❤️</span>
@@ -1236,6 +1340,12 @@ export function buildIndexHtml(): string {
         <span class="nav-icon">⚡</span>
         <span>Request Tester</span>
       </a>
+      <div style="margin-top: auto; padding-top: 20px;">
+        <button onclick="logout()" class="nav-item" style="width: 100%; border: none; background: transparent; text-align: left; justify-content: flex-start;">
+          <span class="nav-icon">🚪</span>
+          <span>Logout</span>
+        </button>
+      </div>
     </nav>
 
     <!-- Main Content -->
@@ -1482,12 +1592,25 @@ export function buildIndexHtml(): string {
       </div>
 
       <!-- Errors Panel -->
-      <div class="panel" id="panel-errors">
+      <!-- Metrics Panel -->
+      <div class="panel" id="panel-metrics">
         <div class="panel-header">
-          <div class="panel-title">Error Observatory</div>
-          <div class="panel-subtitle">Centralized analysis of errors and validation failures today</div>
+          <div class="panel-title">App Metrics & Telemetry</div>
+          <div class="panel-subtitle">Real-time HTTP performance, Prometheus endpoints, and OpenTelemetry instrumentation</div>
         </div>
-        <div id="errors-content"></div>
+        <div id="metrics-content"></div>
+      </div>
+
+      <!-- Logs Panel -->
+      <div class="panel" id="panel-logs">
+        <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+          <div>
+            <div class="panel-title">Logs Observatory</div>
+            <div class="panel-subtitle">Real-time log capture with full interactive stack traces (trace, debug, info, warn, error, fatal)</div>
+          </div>
+          <button class="btn btn-danger" onclick="clearLogs()">Clear Logs</button>
+        </div>
+        <div id="logs-content"></div>
       </div>
 
       <!-- WS Analytics Panel -->
@@ -1520,6 +1643,75 @@ export function buildIndexHtml(): string {
   </div>
 
   <script>
+    // Intercept fetch to attach auth token & handle 401
+    const originalFetch = window.fetch;
+    window.fetch = function(url, options) {
+      options = options || {};
+      options.headers = options.headers || {};
+      const token = localStorage.getItem('axiomify_studio_token') || '';
+      if (token) {
+        if (options.headers instanceof Headers) {
+          options.headers.set('Authorization', 'Bearer ' + token);
+        } else if (Array.isArray(options.headers)) {
+          options.headers.push(['Authorization', 'Bearer ' + token]);
+        } else {
+          options.headers['Authorization'] = 'Bearer ' + token;
+        }
+      }
+      return originalFetch(url, options).then(res => {
+        if (res.status === 401 && !url.includes('/__studio/api/discovery')) {
+          logout();
+        }
+        return res;
+      });
+    };
+
+    function login() {
+      const input = document.getElementById('login-token-input');
+      const token = input.value.trim();
+      if (!token) {
+        showLoginError('Token cannot be empty');
+        return;
+      }
+      localStorage.setItem('axiomify_studio_token', token);
+      fetchDiscovery();
+    }
+    window.login = login;
+
+    function logout() {
+      localStorage.removeItem('axiomify_studio_token');
+      if (typeof stopLogsPolling === 'function') stopLogsPolling();
+      if (typeof stopMetricsPolling === 'function') stopMetricsPolling();
+      if (typeof stopWsAnalyticsPolling === 'function') stopWsAnalyticsPolling();
+      if (typeof stopSysStatsPolling === 'function') stopSysStatsPolling();
+      if (socket) {
+        socket.close();
+        socket = null;
+      }
+      showLoginScreen();
+      const errorEl = document.getElementById('login-error');
+      if (errorEl) errorEl.style.display = 'none';
+      const inputEl = document.getElementById('login-token-input');
+      if (inputEl) inputEl.value = '';
+    }
+    window.logout = logout;
+
+    function showLoginScreen() {
+      document.getElementById('app-layout').style.display = 'none';
+      document.getElementById('login-container').style.display = 'flex';
+      hideLoading();
+    }
+    window.showLoginScreen = showLoginScreen;
+
+    function showLoginError(msg) {
+      const errEl = document.getElementById('login-error');
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
+    }
+    function hideLoginError() {
+      document.getElementById('login-error').style.display = 'none';
+    }
+
     // ── State ──────────────────────────────────────────────────────
     let discovery = null;
     let activePanel = 'routes';
@@ -1580,7 +1772,8 @@ export function buildIndexHtml(): string {
         errors: 'Error Observatory',
         'ws-analytics': 'WebSocket Traffic Analytics',
         architecture: 'Application Architecture Map',
-        events: 'Event Bus Explorer'
+        events: 'Event Bus Explorer',
+        logs: 'Logs Observatory'
       };
       const titleEl = document.getElementById('header-title');
       if (titleEl) {
@@ -1610,16 +1803,22 @@ export function buildIndexHtml(): string {
         }
       }
 
-      if (name === 'errors') {
-        startErrorsPolling();
+      if (name === 'metrics') {
+        startMetricsPolling();
       } else {
-        stopErrorsPolling();
+        stopMetricsPolling();
       }
 
       if (name === 'ws-analytics') {
         startWsAnalyticsPolling();
       } else {
         stopWsAnalyticsPolling();
+      }
+
+      if (name === 'logs') {
+        startLogsPolling();
+      } else {
+        stopLogsPolling();
       }
 
       if (name === 'tester') {
@@ -1674,10 +1873,35 @@ export function buildIndexHtml(): string {
     // ── Fetch Discovery ───────────────────────────────────────────
     async function fetchDiscovery() {
       try {
+        const token = localStorage.getItem('axiomify_studio_token');
+        if (!token) {
+          showLoginScreen();
+          return;
+        }
+
         const res = await fetch('/__studio/api/discovery');
+        if (res.status === 401) {
+          localStorage.removeItem('axiomify_studio_token');
+          showLoginError('Invalid Access Token. Please check the terminal.');
+          showLoginScreen();
+          return;
+        }
+        if (!res.ok) {
+          throw new Error('Server returned status ' + res.status);
+        }
+
         discovery = await res.json();
+        
+        // Hide login and show layout
+        document.getElementById('login-container').style.display = 'none';
+        document.getElementById('app-layout').style.display = 'grid';
+        
         hideLoading();
         renderAll();
+        
+        // Connect WebSocket and fetch initial logs
+        connectWs();
+        startLogsPolling();
       } catch (err) {
         document.getElementById('loading-state').innerHTML =
           '<div class="error-banner">Failed to load discovery data: ' + err.message + '</div>';
@@ -1705,7 +1929,6 @@ export function buildIndexHtml(): string {
       runSecurityAudit();
       renderEvents();
       renderArchitecture();
-      fetchErrors();
       fetchReplays();
     }
 
@@ -2545,13 +2768,17 @@ export function buildIndexHtml(): string {
 
     // ── Live Sync (WebSockets) ────────────────────────────────────
     let socket = null;
-    const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/__studio/ws';
     let reconnectTimeout = null;
 
     function connectWs() {
       if (socket) {
         socket.close();
       }
+
+      const token = localStorage.getItem('axiomify_studio_token') || '';
+      const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + 
+        location.host + '/__studio/ws' + 
+        (token ? '?token=' + encodeURIComponent(token) : '');
 
       socket = new WebSocket(wsUrl);
 
@@ -2573,6 +2800,10 @@ export function buildIndexHtml(): string {
             showErrorBanner('build-error', 'Build Failed: ' + data.errors.map(e => e.text).join('<br/>'));
           } else if (data.type === 'reload-error') {
             showErrorBanner('reload-error', 'Reload Failed: ' + data.message);
+          } else if (data.type === 'replays-updated') {
+            fetchReplays();
+          } else if (data.type === 'logs-updated') {
+            fetchLogs();
           }
         } catch (err) {
           console.error('Failed to parse WebSocket message:', err);
@@ -2972,109 +3203,234 @@ export function buildIndexHtml(): string {
     }
 
     // ── Observatory, WS Analytics, Replays, Architecture, Events Renderers ──
-    let errorsInterval = null;
-    function startErrorsPolling() {
-      if (errorsInterval) return;
-      fetchErrors();
-      errorsInterval = setInterval(fetchErrors, 3000);
+    let metricsInterval = null;
+    let activeMetricsTab = 'dashboard';
+    let metricsData = null;
+
+    function startMetricsPolling() {
+      if (metricsInterval) return;
+      fetchMetrics();
+      metricsInterval = setInterval(fetchMetrics, 3000);
     }
-    function stopErrorsPolling() {
-      if (errorsInterval) {
-        clearInterval(errorsInterval);
-        errorsInterval = null;
+    function stopMetricsPolling() {
+      if (metricsInterval) {
+        clearInterval(metricsInterval);
+        metricsInterval = null;
       }
     }
 
-    async function fetchErrors() {
+    async function fetchMetrics() {
       try {
-        const res = await fetch('/__studio/api/errors');
+        const res = await fetch('/__studio/api/metrics');
         const data = await res.json();
-        
-        const badge = document.getElementById('badge-errors');
-        if (badge) badge.textContent = data.errorsToday;
-
-        if (activePanel === 'errors') {
-          renderErrors(data);
-        }
+        metricsData = data;
+        renderMetrics();
       } catch (err) {
-        console.error('Failed to fetch errors:', err);
+        console.error('Failed to fetch metrics:', err);
       }
     }
 
-    function renderErrors(data) {
-      const container = document.getElementById('errors-content');
+    function switchMetricsTab(tab) {
+      activeMetricsTab = tab;
+      renderMetrics();
+    }
+    window.switchMetricsTab = switchMetricsTab;
+
+    function parsePrometheus(text) {
+      const lines = text.split('\\n');
+      const result = {
+        http_requests_total: [],
+        http_request_duration_ms: [],
+        ws_connected_clients: 0
+      };
+      for (const line of lines) {
+        if (line.startsWith('#') || !line.trim()) continue;
+        const match = line.match(/^([a-zA-Z_0-9]+)(\\{([^}]+)\\})?\\s+([0-9.eE+-]+)/);
+        if (match) {
+          const name = match[1];
+          const labelsRaw = match[3] || '';
+          const val = parseFloat(match[4]);
+          
+          const labels = {};
+          if (labelsRaw) {
+            const parts = labelsRaw.split(',');
+            for (const p of parts) {
+              const eqIndex = p.indexOf('=');
+              if (eqIndex !== -1) {
+                const k = p.substring(0, eqIndex).trim();
+                const v = p.substring(eqIndex + 1).replace(/^["']|["']$/g, '').trim();
+                labels[k] = v;
+              }
+            }
+          }
+          
+          if (name === 'http_requests_total') {
+            result.http_requests_total.push({ labels, value: val });
+          } else if (name === 'http_request_duration_ms') {
+            result.http_request_duration_ms.push({ labels, value: val });
+          } else if (name === 'ws_connected_clients') {
+            result.ws_connected_clients = val;
+          }
+        }
+      }
+      return result;
+    }
+
+    function renderMetrics() {
+      const container = document.getElementById('metrics-content');
       if (!container) return;
 
-      const summaryHtml = '<div style="display:flex; gap:16px; margin-bottom:20px;">' +
-        '<div class="info-card" style="flex:1;">' +
-        '<div class="info-card-label">Errors Today</div>' +
-        '<div class="info-card-value">' + data.errorsToday + '</div>' +
-        '</div>' +
-        '<div class="info-card" style="flex:1;">' +
-        '<div class="info-card-label">Top Error</div>' +
-        '<div class="info-card-value" style="font-size:18px; color:var(--error); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + escapeHtml(data.topError) + '</div>' +
-        '<div class="info-card-sub">Occurred ' + data.topErrorCount + ' times</div>' +
-        '</div>' +
-        '</div>';
+      if (!metricsData) {
+        container.innerHTML = '<div class="loading"><div class="spinner"></div><span>Loading telemetry data...</span></div>';
+        return;
+      }
 
-      if (data.errors.length === 0) {
-        container.innerHTML = summaryHtml + 
-          '<div class="empty-state">' +
-          '<div class="empty-state-icon">👁️</div>' +
-          '<div class="empty-state-message">No errors recorded yet. Good job!</div>' +
+      if (!metricsData.available) {
+        container.innerHTML = '<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:40px; border:1px dashed var(--border); border-radius:var(--radius-sm); background:var(--bg-secondary); margin:20px 0;">' +
+          '<div style="font-size:40px; margin-bottom:16px;">🔌</div>' +
+          '<h3 style="margin-top:0; font-size:16px; font-weight:600; color:var(--text-primary);">Metrics Exporter Inactive</h3>' +
+          '<p style="max-width:450px; font-size:13px; color:var(--text-secondary); line-height:1.5; margin-bottom:24px;">' + escapeHtml(metricsData.message || 'The @axiomify/metrics plugin is not active in this application instance.') + '</p>' +
+          '<div style="text-align:left; width:100%; max-width:500px; background:#1e1e2e; padding:16px; border-radius:var(--radius-sm); border:1px solid #313244;">' +
+          '<div style="font-size:11px; color:#cdd6f4; font-weight:600; margin-bottom:8px; font-family:var(--font-mono);">// Enable metrics in your application:</div>' +
+          '<pre style="margin:0; color:#a6e3a1; font-family:var(--font-mono); font-size:12px; overflow-x:auto;">' +
+          'import { useMetrics } from \\\'@axiomify/metrics\\\';\\n\\n' +
+          '// Register Prometheus-compatible metrics\\n' +
+          'useMetrics(app);' +
+          '</pre>' +
+          '</div>' +
           '</div>';
         return;
       }
 
-      let listHtml = '<div style="display:flex; flex-direction:column; gap:12px;">';
-      const errors = [...data.errors].reverse();
-      for (const err of errors) {
-        let detailsHtml = '';
-        if (err.payload) {
-          detailsHtml += '<div style="margin-top:8px;">';
-          if (err.payload.body && Object.keys(err.payload.body).length > 0) {
-            detailsHtml += '<div style="font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:4px;">Request Body</div>' +
-              '<pre class="schema-json" style="margin-top:0; margin-bottom:8px;">' + escapeHtml(JSON.stringify(err.payload.body, null, 2)) + '</pre>';
-          }
-          if (err.payload.query && Object.keys(err.payload.query).length > 0) {
-            detailsHtml += '<div style="font-size:11px; font-weight:600; color:var(--text-muted); margin-bottom:4px;">Query Params</div>' +
-              '<pre class="schema-json" style="margin-top:0; margin-bottom:8px;">' + escapeHtml(JSON.stringify(err.payload.query, null, 2)) + '</pre>';
-          }
-          if (err.payload.validationErrors && err.payload.validationErrors.length > 0) {
-            detailsHtml += '<div style="font-size:11px; font-weight:600; color:var(--error); margin-bottom:4px;">Validation Details</div>';
-            let vHtml = '<div style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">';
-            for (const ve of err.payload.validationErrors) {
-              vHtml += '<div style="background:rgba(239, 68, 68, 0.05); border:1px solid rgba(239, 68, 68, 0.15); border-radius:var(--radius-sm); padding:8px; font-size:12px;">' +
-                '<div><strong>Field:</strong> <code style="font-family:var(--font-mono); color:var(--error);">' + escapeHtml(ve.field) + '</code> (' + escapeHtml(ve.location) + ')</div>' +
-                '<div><strong>Reason:</strong> ' + escapeHtml(ve.reason) + '</div>' +
-                '<div><strong>Received:</strong> <code style="font-family:var(--font-mono);">' + escapeHtml(JSON.stringify(ve.received)) + '</code></div>' +
-                '</div>';
-            }
-            vHtml += '</div>';
-            detailsHtml += vHtml;
-          }
-          detailsHtml += '</div>';
-        }
+      const parsed = parsePrometheus(metricsData.raw || '');
 
-        listHtml += '<div class="schema-card" onclick="this.classList.toggle(\\\'open\\\')">' +
-          '<div class="schema-card-header" style="border-left: 4px solid var(--error);">' +
-          '<span class="schema-card-chevron">▶</span>' +
-          '<span class="method-badge method-' + err.method + '" style="flex:none;">' + err.method + '</span>' +
-          '<span class="route-path" style="margin-left:8px; word-break:break-all;">' + escapeHtml(err.path) + '</span>' +
-          '<span style="font-weight:600; color:var(--error); margin-left:12px; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:40%;">' + escapeHtml(err.name) + '</span>' +
-          '<span style="color:var(--text-muted); font-size:11px; margin-left:auto; font-family:var(--font-mono);">' + new Date(err.timestamp).toLocaleTimeString() + '</span>' +
+      let totalRequests = 0;
+      let totalDurationMs = 0;
+      const routeStats = {};
+
+      for (const item of parsed.http_requests_total) {
+        const key = item.labels.method + ' ' + item.labels.route;
+        if (!routeStats[key]) {
+          routeStats[key] = { method: item.labels.method, route: item.labels.route, count: 0, duration: 0 };
+        }
+        routeStats[key].count += item.value;
+        totalRequests += item.value;
+      }
+
+      for (const item of parsed.http_request_duration_ms) {
+        const key = item.labels.method + ' ' + item.labels.route;
+        if (!routeStats[key]) {
+          routeStats[key] = { method: item.labels.method, route: item.labels.route, count: 0, duration: 0 };
+        }
+        routeStats[key].duration += item.value;
+        totalDurationMs += item.value;
+      }
+
+      const globalAvgLatency = totalRequests > 0 ? (totalDurationMs / totalRequests) : 0;
+
+      let html = '<div style="display:flex; flex-direction:column; gap:20px; width:100%;">' +
+        '<div style="display:flex; border-bottom:1px solid var(--border); margin-bottom:8px; gap:16px;">' +
+        '<button class="tab-btn' + (activeMetricsTab === 'dashboard' ? ' active' : '') + '" onclick="switchMetricsTab(\\\'dashboard\\\')" style="background:none; border:none; padding:8px 4px; font-size:13px; font-weight:500; cursor:pointer; color:' + (activeMetricsTab === 'dashboard' ? 'var(--accent)' : 'var(--text-secondary)') + '; border-bottom:2px solid ' + (activeMetricsTab === 'dashboard' ? 'var(--accent)' : 'transparent') + ';">📊 Dashboard</button>' +
+        '<button class="tab-btn' + (activeMetricsTab === 'otel' ? ' active' : '') + '" onclick="switchMetricsTab(\\\'otel\\\')" style="background:none; border:none; padding:8px 4px; font-size:13px; font-weight:500; cursor:pointer; color:' + (activeMetricsTab === 'otel' ? 'var(--accent)' : 'var(--text-secondary)') + '; border-bottom:2px solid ' + (activeMetricsTab === 'otel' ? 'var(--accent)' : 'transparent') + ';">🌐 OpenTelemetry & Tracing</button>' +
+        '<button class="tab-btn' + (activeMetricsTab === 'raw' ? ' active' : '') + '" onclick="switchMetricsTab(\\\'raw\\\')" style="background:none; border:none; padding:8px 4px; font-size:13px; font-weight:500; cursor:pointer; color:' + (activeMetricsTab === 'raw' ? 'var(--accent)' : 'var(--text-secondary)') + '; border-bottom:2px solid ' + (activeMetricsTab === 'raw' ? 'var(--accent)' : 'transparent') + ';">📜 Prometheus Exporter (' + escapeHtml(metricsData.path || '/metrics') + ')</button>' +
+        '</div>';
+
+      if (activeMetricsTab === 'dashboard') {
+        const latencyColor = globalAvgLatency < 50 ? 'var(--success)' : globalAvgLatency < 200 ? 'var(--warning)' : 'var(--error)';
+        const wsPulseHtml = parsed.ws_connected_clients > 0 ? '<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--method-ws); margin-right:6px; animation:pulse 1.5s infinite;"></span>' : '';
+
+        html += '<div style="display:flex; gap:16px; flex-wrap:wrap; width:100%;">' +
+          '<div class="card" style="flex:1; min-width:200px; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:16px; border-top:3px solid var(--accent);">' +
+          '<div style="font-size:11px; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">HTTP Throughput</div>' +
+          '<div style="font-size:28px; font-weight:700; color:var(--text-primary);">' + totalRequests + ' <span style="font-size:12px; color:var(--text-muted); font-weight:400;">reqs</span></div>' +
           '</div>' +
-          '<div class="schema-card-body" style="padding-top:12px;">' +
-          '<div style="font-size:13px; font-weight:500; margin-bottom:8px; color:var(--text-primary); font-family:var(--font-mono);">' + escapeHtml(err.message) + '</div>' +
-          detailsHtml +
-          '<div class="schema-section-label">Stack Trace</div>' +
-          '<pre class="schema-json" style="background:#1a1a24; color:#a6accd; max-height:250px; overflow-y:auto; font-size:11px; font-family:var(--font-mono); padding:10px;">' + escapeHtml(err.stack) + '</pre>' +
+          '<div class="card" style="flex:1; min-width:200px; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:16px; border-top:3px solid ' + latencyColor + ';">' +
+          '<div style="font-size:11px; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">Avg Request Latency</div>' +
+          '<div style="font-size:28px; font-weight:700; color:' + latencyColor + ';">' + globalAvgLatency.toFixed(2) + ' <span style="font-size:12px; color:var(--text-muted); font-weight:400;">ms</span></div>' +
+          '</div>' +
+          '<div class="card" style="flex:1; min-width:200px; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:16px; border-top:3px solid var(--method-ws);">' +
+          '<div style="font-size:11px; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">WS Connections</div>' +
+          '<div style="font-size:28px; font-weight:700; color:var(--text-primary); display:flex; align-items:center;">' + wsPulseHtml + parsed.ws_connected_clients + '</div>' +
           '</div>' +
           '</div>';
-      }
-      listHtml += '</div>';
 
-      container.innerHTML = summaryHtml + listHtml;
+        html += '<div class="card" style="padding:16px;">' +
+          '<div style="font-size:14px; font-weight:600; margin-bottom:12px; color:var(--text-primary);">Endpoint Performance Metrics</div>';
+
+        const statsArray = Object.values(routeStats);
+        if (statsArray.length === 0) {
+          html += '<div style="font-size:12px; color:var(--text-muted); text-align:center; padding:24px;">No endpoint data recorded yet. Send some requests using the Request Tester!</div>';
+        } else {
+          statsArray.sort((a, b) => b.count - a.count);
+
+          html += '<div style="overflow-x:auto;"><table class="table" style="width:100%; border-collapse:collapse;">' +
+            '<thead><tr>' +
+            '<th style="text-align:left; font-size:11px; color:var(--text-muted); font-weight:600; padding:8px;">Method</th>' +
+            '<th style="text-align:left; font-size:11px; color:var(--text-muted); font-weight:600; padding:8px;">Endpoint Path</th>' +
+            '<th style="text-align:right; font-size:11px; color:var(--text-muted); font-weight:600; padding:8px;">Calls</th>' +
+            '<th style="text-align:right; font-size:11px; color:var(--text-muted); font-weight:600; padding:8px;">Avg Latency</th>' +
+            '</tr></thead><tbody>';
+
+          for (const item of statsArray) {
+            const avg = item.count > 0 ? (item.duration / item.count) : 0;
+            const avgColor = avg < 30 ? 'var(--success)' : avg < 150 ? 'var(--warning)' : 'var(--error)';
+            html += '<tr style="border-top:1px solid var(--border);">' +
+              '<td style="padding:8px;"><span class="method-badge method-' + item.method + '" style="font-size:10px; padding:2px 6px;">' + item.method + '</span></td>' +
+              '<td style="padding:8px; font-family:var(--font-mono); font-size:12px; color:var(--text-primary); font-weight:500;">' + escapeHtml(item.route) + '</td>' +
+              '<td style="padding:8px; text-align:right; font-family:var(--font-mono); font-size:12px; color:var(--text-secondary);">' + item.count + '</td>' +
+              '<td style="padding:8px; text-align:right; font-family:var(--font-mono); font-size:12px; color:' + avgColor + '; font-weight:600;">' + avg.toFixed(2) + ' ms</td>' +
+              '</tr>';
+          }
+          html += '</tbody></table></div>';
+        }
+        html += '</div>';
+
+      } else if (activeMetricsTab === 'otel') {
+        html += '<div style="display:flex; flex-direction:column; gap:16px;">' +
+          '<div class="card" style="padding:16px;">' +
+          '<div style="font-size:14px; font-weight:600; margin-bottom:12px; color:var(--text-primary); display:flex; align-items:center; gap:8px;">' +
+          '<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--success);"></span>' +
+          'Automatic OpenTelemetry Context Propagation' +
+          '</div>' +
+          '<p style="font-size:13px; color:var(--text-secondary); line-height:1.6; margin:0;">' +
+          'Axiomify core automatically handles trace context propagation across all network adapters and hooks. When the OTel libraries are registered, ' +
+          '<code>req.state.traceContext</code> is auto-populated for incoming requests, preserving W3C Trace Context and baggage propagation headers (<code>traceparent</code>, <code>tracestate</code>).' +
+          '</p>' +
+          '</div>' +
+          '<div class="card" style="padding:16px;">' +
+          '<div style="font-size:14px; font-weight:600; margin-bottom:12px; color:var(--text-primary);">Configuring OpenTelemetry Exporters</div>' +
+          '<p style="font-size:13px; color:var(--text-secondary); line-height:1.6; margin-bottom:12px;">' +
+          'To export traces and metrics to your OpenTelemetry collector, Jaeger, or Zipkin, configure the OpenTelemetry Node SDK at application initialization:' +
+          '</p>' +
+          '<div style="background:#1e1e2e; padding:16px; border-radius:var(--radius-sm); border:1px solid #313244;">' +
+          '<pre style="margin:0; color:#cdd6f4; font-family:var(--font-mono); font-size:11px; overflow-x:auto; line-height:1.5;">' +
+          'import { NodeSDK } from \\\'@opentelemetry/sdk-node\\\';\\n' +
+          'import { OTLPTraceExporter } from \\\'@opentelemetry/exporter-trace-otlp-grpc\\\';\\n' +
+          'import { getNodeAutoInstrumentations } from \\\'@opentelemetry/auto-instrumentations-node\\\';\\n\\n' +
+          'const sdk = new NodeSDK({\\n' +
+          '  traceExporter: new OTLPTraceExporter({\\n' +
+          '    url: \\\'http://localhost:4317\\\' // collector endpoint\\n' +
+          '  }),\\n' +
+          '  instrumentations: [getNodeAutoInstrumentations()]\\n' +
+          '});\\n\\n' +
+          '// Start SDK before booting Axiomify app\\n' +
+          'sdk.start();' +
+          '</pre>' +
+          '</div>' +
+          '</div>' +
+          '</div>';
+
+      } else {
+        html += '<div class="card" style="padding:16px;">' +
+          '<div style="font-size:14px; font-weight:600; margin-bottom:12px; color:var(--text-primary);">Raw Prometheus Metric Streams</div>' +
+          '<pre style="margin:0; background:var(--bg-primary); border:1px solid var(--border); padding:16px; font-family:var(--font-mono); font-size:12px; max-height:400px; overflow-y:auto; color:var(--text-secondary); line-height:1.5;">' +
+          escapeHtml(metricsData.raw || '# No metrics available') +
+          '</pre>' +
+          '</div>';
+      }
+
+      html += '</div>';
+      container.innerHTML = html;
     }
 
     let wsAnalyticsInterval = null;
@@ -3409,9 +3765,161 @@ export function buildIndexHtml(): string {
     }
     window.restoreReplay = restoreReplay;
 
+    // ── Logs Observatory State & Renderers ────────────────────────
+    let logsList = [];
+    let logFilterLevel = 'ALL';
+    let logSearchQuery = '';
+    let logsPollingInterval = null;
+
+    async function fetchLogs() {
+      try {
+        const res = await fetch('/__studio/api/logs');
+        const data = await res.json();
+        logsList = data.logs || [];
+        
+        const badge = document.getElementById('badge-logs');
+        if (badge) {
+          badge.textContent = logsList.length;
+        }
+
+        renderLogs();
+      } catch (err) {
+        console.error('Failed to fetch logs:', err);
+      }
+    }
+
+    function filterLogs(level) {
+      logFilterLevel = level;
+      document.querySelectorAll('.log-filter-btn').forEach(btn => {
+        if (btn.getAttribute('data-level') === level) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+      renderLogs();
+    }
+    window.filterLogs = filterLogs;
+
+    function onLogSearchChange(query) {
+      logSearchQuery = query.toLowerCase();
+      renderLogs();
+    }
+    window.onLogSearchChange = onLogSearchChange;
+
+    async function clearLogs() {
+      if (!confirm('Are you sure you want to clear all captured logs?')) return;
+      try {
+        await fetch('/__studio/api/logs', { method: 'DELETE' });
+        fetchLogs();
+      } catch (err) {
+        console.error('Failed to clear logs:', err);
+      }
+    }
+    window.clearLogs = clearLogs;
+
+    function renderLogs() {
+      const container = document.getElementById('logs-content');
+      if (!container) return;
+
+      const filtered = logsList.filter(log => {
+        const matchesLevel = logFilterLevel === 'ALL' || log.level.toUpperCase() === logFilterLevel;
+        const matchesSearch = !logSearchQuery || log.message.toLowerCase().includes(logSearchQuery) || (log.stack && log.stack.toLowerCase().includes(logSearchQuery));
+        return matchesLevel && matchesSearch;
+      });
+
+      let html = '<div style="display:flex; flex-direction:column; gap:16px; width:100%;">' +
+        '<div class="card" style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 16px;">' +
+        '<div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">' +
+        '<span style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-right:6px;">Filter Level:</span>' +
+        '<button class="btn btn-secondary log-filter-btn' + (logFilterLevel === 'ALL' ? ' active' : '') + '" data-level="ALL" onclick="filterLogs(\\\'ALL\\\')" style="margin:0; padding:4px 8px; font-size:11px;">All</button>' +
+        '<button class="btn btn-secondary log-filter-btn' + (logFilterLevel === 'TRACE' ? ' active' : '') + '" data-level="TRACE" onclick="filterLogs(\\\'TRACE\\\')" style="margin:0; padding:4px 8px; font-size:11px;">Trace</button>' +
+        '<button class="btn btn-secondary log-filter-btn' + (logFilterLevel === 'DEBUG' ? ' active' : '') + '" data-level="DEBUG" onclick="filterLogs(\\\'DEBUG\\\')" style="margin:0; padding:4px 8px; font-size:11px;">Debug</button>' +
+        '<button class="btn btn-secondary log-filter-btn' + (logFilterLevel === 'INFO' ? ' active' : '') + '" data-level="INFO" onclick="filterLogs(\\\'INFO\\\')" style="margin:0; padding:4px 8px; font-size:11px;">Info</button>' +
+        '<button class="btn btn-secondary log-filter-btn' + (logFilterLevel === 'WARN' ? ' active' : '') + '" data-level="WARN" onclick="filterLogs(\\\'WARN\\\')" style="margin:0; padding:4px 8px; font-size:11px;">Warn</button>' +
+        '<button class="btn btn-secondary log-filter-btn' + (logFilterLevel === 'ERROR' ? ' active' : '') + '" data-level="ERROR" onclick="filterLogs(\\\'ERROR\\\')" style="margin:0; padding:4px 8px; font-size:11px;">Error</button>' +
+        '<button class="btn btn-secondary log-filter-btn' + (logFilterLevel === 'FATAL' ? ' active' : '') + '" data-level="FATAL" onclick="filterLogs(\\\'FATAL\\\')" style="margin:0; padding:4px 8px; font-size:11px;">Fatal</button>' +
+        '</div>' +
+        '<div style="flex-grow:1; max-width:300px; margin:0;">' +
+        '<input type="text" id="log-search-input" class="text-input" placeholder="Search logs..." value="' + escapeHtml(logSearchQuery) + '" oninput="onLogSearchChange(this.value)" style="width:100%; margin:0;" />' +
+        '</div>' +
+        '</div>' +
+        '<div style="display:flex; flex-direction:column; gap:8px;">';
+
+      if (filtered.length === 0) {
+        html += '<div style="color:var(--text-muted); font-size:12px; text-align:center; padding:24px; border:1px dashed var(--border); border-radius:var(--radius-sm); background:var(--bg-secondary);">No logs match search/filters</div>';
+      } else {
+        html += filtered.slice().reverse().map(log => {
+          let levelBadgeClass = 'method-GET'; // default blue-ish
+          if (log.level === 'warn') levelBadgeClass = 'method-PUT';
+          else if (log.level === 'error' || log.level === 'fatal') levelBadgeClass = 'method-DELETE';
+          else if (log.level === 'info') levelBadgeClass = 'method-POST';
+          else if (log.level === 'debug' || log.level === 'trace') levelBadgeClass = 'method-OPTIONS';
+
+          const hasStack = log.stack && log.stack.trim().length > 0;
+          const stackToggleHtml = hasStack ? 
+            '<button class="btn btn-secondary" style="padding:2px 8px; font-size:10px; border-radius:var(--radius-sm); margin:0;" onclick="toggleLogStack(\\\'' + log.id + '\\\')">Toggle Stack</button>' : '';
+
+          const stackPanelHtml = hasStack ?
+            '<pre id="stack-' + log.id + '" class="code-block" style="display:none; font-size:11px; margin-top:8px; padding:10px; background:var(--bg-primary); border:1px solid var(--border); max-height:250px; overflow-y:auto; overflow-x:auto;">' + escapeHtml(log.stack) + '</pre>' : '';
+
+          return '<div class="card" style="display:flex; flex-direction:column; gap:8px; padding:12px 16px; margin:0;">' +
+            '<div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">' +
+            '<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">' +
+            '<span class="method-badge ' + levelBadgeClass + '" style="font-size:10px; padding:2px 6px;">' + log.level.toUpperCase() + '</span>' +
+            '<span style="font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--text-primary); word-break:break-all;">' + escapeHtml(log.message) + '</span>' +
+            '</div>' +
+            '<div style="display:flex; align-items:center; gap:8px;">' +
+            '<span style="color:var(--text-muted); font-size:10px; font-family:var(--font-mono);">' + new Date(log.timestamp).toLocaleTimeString() + '</span>' +
+            stackToggleHtml +
+            '</div>' +
+            '</div>' +
+            stackPanelHtml +
+            '</div>';
+        }).join('');
+      }
+
+      html += '</div></div>';
+      container.innerHTML = html;
+    }
+
+    function toggleLogStack(id) {
+      const el = document.getElementById('stack-' + id);
+      if (el) {
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+      }
+    }
+    window.toggleLogStack = toggleLogStack;
+
+    function startLogsPolling() {
+      fetchLogs();
+      clearInterval(logsPollingInterval);
+      logsPollingInterval = setInterval(fetchLogs, 2000);
+    }
+
+    function stopLogsPolling() {
+      clearInterval(logsPollingInterval);
+    }
+
     // ── Initialise ────────────────────────────────────────────────
-    fetchDiscovery();
-    connectWs();
+    (function init() {
+      // 1. Check for token in URL query string
+      const urlToken = new URLSearchParams(window.location.search).get('token');
+      if (urlToken) {
+        localStorage.setItem('axiomify_studio_token', urlToken);
+        // Clean URL query parameter
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+      }
+
+      // 2. Try to load discovery (which triggers WS & logs on success)
+      const token = localStorage.getItem('axiomify_studio_token');
+      if (token) {
+        fetchDiscovery();
+      } else {
+        logout();
+      }
+    })();
   </script>
 </body>
 </html>`;

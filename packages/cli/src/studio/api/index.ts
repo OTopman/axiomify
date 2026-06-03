@@ -20,6 +20,8 @@ import { handleGetSystem } from './system';
 import { handleGetErrors } from './errors';
 import { handleGetWsAnalytics } from './ws-analytics';
 import { handlePostRequestReplay, handleGetRequestReplays, handleDeleteRequestReplay, handleDeleteAllRequestReplays } from './replay';
+import { handleGetLogs, handleDeleteLogs } from './logs';
+import { handleGetAppMetrics } from './metrics';
 
 export interface StudioApiContext {
   /** Returns the latest cached discovery result. */
@@ -77,6 +79,10 @@ export function registerStudioApi(
     handleGetSystem(req, res);
   });
 
+  router.get('/__studio/api/metrics', (req, res) => {
+    handleGetAppMetrics(req, res, ctx.getApp());
+  });
+
   router.post('/__studio/api/request', (req, res) => {
     handlePostRequest(req, res, ctx.getApp());
   });
@@ -103,5 +109,13 @@ export function registerStudioApi(
 
   router.on('DELETE', '/__studio/api/request/replays', (req, res) => {
     handleDeleteAllRequestReplays(req, res);
+  });
+
+  router.get('/__studio/api/logs', (req, res) => {
+    handleGetLogs(req, res);
+  });
+
+  router.on('DELETE', '/__studio/api/logs', (req, res) => {
+    handleDeleteLogs(req, res);
   });
 }

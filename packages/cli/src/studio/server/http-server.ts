@@ -27,6 +27,8 @@ export interface StudioServerOptions {
   onReady?: (port: number, url: string) => void;
   /** HTML content to serve as the SPA shell (index.html). */
   indexHtml: string;
+  /** Optional security token to restrict API and WebSocket access. */
+  token?: string;
 }
 
 /**
@@ -94,6 +96,21 @@ export function createStudioServer(options: StudioServerOptions): Server {
       // ── Studio API routes ────────────────────────────────────────────────
       const handler = router.match(method, pathname);
       if (handler) {
+        if (options.token) {
+          const authHeader = req.headers['authorization'];
+          const suppliedToken = authHeader?.startsWith('Bearer ')
+            ? authHeader.substring(7)
+            : '';
+          if (suppliedToken !== options.token) {
+            sendJson(
+              res,
+              { error: 'Unauthorized', message: 'Valid Access Token is required.' },
+              401,
+            );
+            return;
+          }
+        }
+
         try {
           await handler(req, res);
         } catch (err) {

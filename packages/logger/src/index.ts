@@ -96,7 +96,9 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
   };
 
   app.addHook('onRequest', (req) => {
-    req.state.startTime = process.hrtime.bigint();
+    if (req.state.startTime === undefined) {
+      req.state.startTime = process.hrtime.bigint();
+    }
 
     emit('info', 'Incoming Request', {
       requestId: req.id,

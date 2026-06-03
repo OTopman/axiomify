@@ -261,6 +261,21 @@ export class RoomManager extends TypedEmitter {
     this._rooms.clear();
   }
 
+  /**
+   * Get dynamic statistics of active rooms and connections.
+   * Required for integration with @axiomify/metrics.
+   */
+  getStats(): { connectedClients: number; rooms: Record<string, number> } {
+    const roomsStats: Record<string, number> = {};
+    for (const [name, room] of this._rooms.entries()) {
+      roomsStats[name] = room.size;
+    }
+    return {
+      connectedClients: this.clientCount,
+      rooms: roomsStats,
+    };
+  }
+
   // -------------------------------------------------------------------------
   // Internal — client lifecycle (called from the app.ws() handlers)
   // -------------------------------------------------------------------------

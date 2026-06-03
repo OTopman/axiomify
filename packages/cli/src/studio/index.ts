@@ -12,6 +12,7 @@
  * subsystem. Everything Studio-related flows through `startStudio()`.
  */
 import { type Server } from 'node:http';
+import { randomBytes } from 'node:crypto';
 import pc from 'picocolors';
 import { loadApp } from '../utils/load-app';
 import { performDiscovery, type StudioDiscoveryResult } from './discovery';
@@ -23,6 +24,8 @@ import { StudioWsServer } from './server/ws-server';
 import { StudioSyncEngine } from './sync';
 import { instrumentErrorObservatory } from './api/errors';
 import { instrumentWsAnalytics } from './api/ws-analytics';
+import { setOnReplayUpdated, instrumentRequestReplay } from './api/replay';
+import { instrumentLogs, setOnLogsUpdated } from './api/logs';
 
 export interface StudioOptions {
   /** Port to listen on. Default: 4399. */
@@ -39,6 +42,7 @@ export async function startStudio(
 ): Promise<void> {
   const port = options.port ?? DEFAULT_PORT;
   const autoOpen = options.open !== false;
+  const studioToken = randomBytes(16).toString('hex');
 
   // ── 1. Load the user's app ────────────────────────────────────────────
   console.log();
@@ -87,6 +91,21 @@ export async function startStudio(
   let currentApp = app;
   const router = new StudioRouter();
   const wsServer = new StudioWsServer();
+
+  // Set up the replay update notification to broadcast to WS clients
+  setOnReplayUpdated(() => {
+    wsServer.broadcast(JSON.stringify({ type: 'replays-updated' }));
+  });
+
+  // Set up the logs update notification to broadcast to WS clients
+  setOnLogsUpdated(() => {
+    wsServer.broadcast(JSON.stringify({ type: 'logs-updated' }));
+  });
+
+  // Instrument initial app load & console logs
+  instrumentRequestReplay(currentApp);
+  instrumentLogs();
+
   registerStudioApi(router, {
     getDiscovery: () => discovery,
     getApp: () => currentApp,
@@ -101,11 +120,14 @@ export async function startStudio(
       port,
       router,
       indexHtml,
+      token: studioToken,
       onReady: (actualPort, url) => {
+        const urlWithToken = `${url}/?token=${studioToken}`;
         console.log();
         console.log(
-          `  ${pc.green('✓')} Studio is live at ${pc.cyan(pc.bold(url))}`,
+          `  ${pc.green('✓')} Studio is live at ${pc.cyan(pc.bold(urlWithToken))}`,
         );
+        console.log(`    Access Token: ${pc.yellow(studioToken)}`);
         if (actualPort !== port) {
           console.log(
             pc.dim(
@@ -119,7 +141,7 @@ export async function startStudio(
 
         // Auto-open browser.
         if (autoOpen) {
-          openBrowser(url).catch(() => {
+          openBrowser(urlWithToken).catch(() => {
             // Non-fatal — user can open manually.
           });
         }
@@ -133,6 +155,12 @@ export async function startStudio(
         `http://${req.headers.host ?? 'localhost'}`,
       );
       if (parsedUrl.pathname === '/__studio/ws') {
+        const tokenParam = parsedUrl.searchParams.get('token');
+        if (tokenParam !== studioToken) {
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+          socket.destroy();
+          return;
+        }
         wsServer.handleUpgrade(req, socket);
       } else {
         socket.destroy();
@@ -155,6 +183,7 @@ export async function startStudio(
       currentApp = newApp;
       instrumentErrorObservatory(newApp);
       instrumentWsAnalytics();
+      instrumentRequestReplay(newApp);
     },
   });
 
