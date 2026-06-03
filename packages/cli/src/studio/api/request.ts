@@ -77,7 +77,12 @@ export async function handlePostRequest(
     const fullUrl = path + (queryString ? '?' + queryString : '');
 
     // Setup mock stream for request
-    const bodyStr = body !== undefined ? (typeof body === 'string' ? body : JSON.stringify(body)) : '';
+    const bodyStr =
+      body !== undefined
+        ? typeof body === 'string'
+          ? body
+          : JSON.stringify(body)
+        : '';
     const mockStream = Readable.from(bodyStr ? [bodyStr] : []);
 
     const mockReq: any = {
@@ -88,7 +93,7 @@ export async function handlePostRequest(
       ip: '127.0.0.1',
       headers: headers || {},
       body: body,
-      query: (query && typeof query === 'object') ? query : {},
+      query: query && typeof query === 'object' ? query : {},
       params: {},
       state: {},
       raw: {},
@@ -157,7 +162,7 @@ export async function handlePostRequest(
 
     // Patch hooks if dispatcher exists
     if (app.dispatcher && app.dispatcher.hooks) {
-      app.dispatcher.hooks.run = function(type: any, ...args: any[]) {
+      app.dispatcher.hooks.run = function (type: any, ...args: any[]) {
         const req = args[0];
         if (req && req._profile) {
           const list = this.hooks[type];
@@ -204,7 +209,7 @@ export async function handlePostRequest(
         return originalRun.apply(this, arguments);
       };
 
-      app.dispatcher.hooks.runSafe = function(type: any, ...args: any[]) {
+      app.dispatcher.hooks.runSafe = function (type: any, ...args: any[]) {
         const req = type === 'onError' ? args[1] : args[0];
         if (req && req._profile) {
           const list = this.hooks[type];
@@ -231,7 +236,7 @@ export async function handlePostRequest(
                       type: 'hook',
                       duration: performance.now() - start,
                     });
-                  }
+                  },
                 );
               } else {
                 req._profile.timeline.push({
@@ -275,18 +280,21 @@ export async function handlePostRequest(
     }
 
     // Dynamic database services patching
-    const databaseServices: { obj: any; originalMethods: { path: string[]; fn: any }[] }[] = [];
+    const databaseServices: {
+      obj: any;
+      originalMethods: { path: string[]; fn: any }[];
+    }[] = [];
     try {
       if (app._services instanceof Map) {
         for (const [token, service] of app._services.entries()) {
           const tokenStr = String(token).toLowerCase();
           let isDb = false;
-          
+
           let constructorName = '';
           if (service && typeof service === 'object') {
             constructorName = service.constructor?.name || '';
           }
-          
+
           if (
             tokenStr.includes('db') ||
             tokenStr.includes('prisma') ||
@@ -301,35 +309,57 @@ export async function handlePostRequest(
 
           if (isDb && service && typeof service === 'object') {
             const originalMethods: { path: string[]; fn: any }[] = [];
-            
+
             for (const key of Object.keys(service)) {
               const val = service[key];
               if (typeof val === 'function') {
-                if (key.startsWith('$') || key === 'query' || key === 'execute') {
+                if (
+                  key.startsWith('$') ||
+                  key === 'query' ||
+                  key === 'execute'
+                ) {
                   originalMethods.push({ path: [key], fn: val });
                 }
               } else if (val && typeof val === 'object') {
                 for (const modelKey of Object.keys(val)) {
                   if (typeof val[modelKey] === 'function') {
-                    originalMethods.push({ path: [key, modelKey], fn: val[modelKey] });
+                    originalMethods.push({
+                      path: [key, modelKey],
+                      fn: val[modelKey],
+                    });
                   }
                 }
                 const modelProto = Object.getPrototypeOf(val);
                 if (modelProto && modelProto !== Object.prototype) {
-                  for (const modelKey of Object.getOwnPropertyNames(modelProto)) {
-                    if (typeof val[modelKey] === 'function' && modelKey !== 'constructor') {
-                      originalMethods.push({ path: [key, modelKey], fn: val[modelKey] });
+                  for (const modelKey of Object.getOwnPropertyNames(
+                    modelProto,
+                  )) {
+                    if (
+                      typeof val[modelKey] === 'function' &&
+                      modelKey !== 'constructor'
+                    ) {
+                      originalMethods.push({
+                        path: [key, modelKey],
+                        fn: val[modelKey],
+                      });
                     }
                   }
                 }
               }
             }
-            
+
             const serviceProto = Object.getPrototypeOf(service);
             if (serviceProto && serviceProto !== Object.prototype) {
               for (const key of Object.getOwnPropertyNames(serviceProto)) {
-                if (typeof service[key] === 'function' && key !== 'constructor') {
-                  if (key.startsWith('$') || key === 'query' || key === 'execute') {
+                if (
+                  typeof service[key] === 'function' &&
+                  key !== 'constructor'
+                ) {
+                  if (
+                    key.startsWith('$') ||
+                    key === 'query' ||
+                    key === 'execute'
+                  ) {
                     originalMethods.push({ path: [key], fn: service[key] });
                   }
                 }
@@ -355,18 +385,20 @@ export async function handlePostRequest(
         }
         const lastKey = methodPath[methodPath.length - 1];
 
-        parent[lastKey] = function(...args: any[]) {
+        parent[lastKey] = function (...args: any[]) {
           if (activeProfile) {
             const start = performance.now();
             const formatQueryArgs = () => {
               try {
                 const targetName = methodPath.join('.');
-                const serializedArgs = args.map(arg => {
-                  if (typeof arg === 'object') {
-                    return JSON.stringify(arg);
-                  }
-                  return String(arg);
-                }).join(', ');
+                const serializedArgs = args
+                  .map((arg) => {
+                    if (typeof arg === 'object') {
+                      return JSON.stringify(arg);
+                    }
+                    return String(arg);
+                  })
+                  .join(', ');
                 return `${targetName}(${serializedArgs})`;
               } catch {
                 return `${methodPath.join('.')}(...)`;
@@ -374,7 +406,7 @@ export async function handlePostRequest(
             };
             const queryStr = formatQueryArgs();
             const ret = fn.apply(this, args);
-            
+
             if (ret instanceof Promise) {
               return ret.then(
                 (result) => {
@@ -394,7 +426,7 @@ export async function handlePostRequest(
                     timestamp: new Date().toISOString(),
                   });
                   throw err;
-                }
+                },
               );
             } else {
               const duration = performance.now() - start;
@@ -420,63 +452,76 @@ export async function handlePostRequest(
         matchedRoute = match.route;
         originalState = compiledStates.get(matchedRoute);
         if (originalState) {
-          const wrappedPipeline = originalState.pipeline.map((fn: any, index: number) => {
-            let stepName = fn.name || `anonymous`;
-            const isHandler = index === originalState.pipeline.length - 1;
-            const typeStr = isHandler ? 'handler' : 'middleware';
-            const name = isHandler ? `Handler: ${stepName}` : `Middleware: ${stepName}`;
-            
-            return async function(req: any, res: any) {
-              if (req && req._profile) {
-                const start = performance.now();
-                try {
-                  const ret = fn(req, res);
-                  if (ret instanceof Promise) {
-                    await ret;
-                  }
-                } catch (err: any) {
-                  if (err.name === 'ValidationError') {
-                    const validationErrors: Array<{ location: string; field: string; reason: string; received: any }> = [];
-                    if (err.errors) {
-                      for (const [location, fieldErrors] of Object.entries(err.errors)) {
-                        if (fieldErrors && typeof fieldErrors === 'object') {
-                          for (const [field, reason] of Object.entries(fieldErrors as any)) {
-                            let received: any = undefined;
-                            const reqSource = (req as any)[location];
-                            if (reqSource && typeof reqSource === 'object') {
-                              const parts = field.split('.');
-                              let current = reqSource;
-                              for (const p of parts) {
-                                current = (current as any)?.[p];
+          const wrappedPipeline = originalState.pipeline.map(
+            (fn: any, index: number) => {
+              const stepName = fn.name || `anonymous`;
+              const isHandler = index === originalState.pipeline.length - 1;
+              const typeStr = isHandler ? 'handler' : 'middleware';
+              const name = isHandler
+                ? `Handler: ${stepName}`
+                : `Middleware: ${stepName}`;
+
+              return async function (req: any, res: any) {
+                if (req && req._profile) {
+                  const start = performance.now();
+                  try {
+                    const ret = fn(req, res);
+                    if (ret instanceof Promise) {
+                      await ret;
+                    }
+                  } catch (err: any) {
+                    if (err.name === 'ValidationError') {
+                      const validationErrors: Array<{
+                        location: string;
+                        field: string;
+                        reason: string;
+                        received: any;
+                      }> = [];
+                      if (err.errors) {
+                        for (const [location, fieldErrors] of Object.entries(
+                          err.errors,
+                        )) {
+                          if (fieldErrors && typeof fieldErrors === 'object') {
+                            for (const [field, reason] of Object.entries(
+                              fieldErrors as any,
+                            )) {
+                              let received: any = undefined;
+                              const reqSource = (req as any)[location];
+                              if (reqSource && typeof reqSource === 'object') {
+                                const parts = field.split('.');
+                                let current = reqSource;
+                                for (const p of parts) {
+                                  current = (current as any)?.[p];
+                                }
+                                received = current;
                               }
-                              received = current;
+                              validationErrors.push({
+                                location,
+                                field,
+                                reason: String(reason),
+                                received,
+                              });
                             }
-                            validationErrors.push({
-                              location,
-                              field,
-                              reason: String(reason),
-                              received,
-                            });
                           }
                         }
                       }
+                      req._profile.validationErrors = validationErrors;
                     }
-                    req._profile.validationErrors = validationErrors;
+                    throw err;
+                  } finally {
+                    const duration = performance.now() - start;
+                    req._profile.timeline.push({
+                      name,
+                      type: typeStr,
+                      duration,
+                    });
                   }
-                  throw err;
-                } finally {
-                  const duration = performance.now() - start;
-                  req._profile.timeline.push({
-                    name,
-                    type: typeStr,
-                    duration,
-                  });
+                } else {
+                  return fn(req, res);
                 }
-              } else {
-                return fn(req, res);
-              }
-            };
-          });
+              };
+            },
+          );
           compiledStates.set(matchedRoute, {
             ...originalState,
             pipeline: wrappedPipeline,
@@ -516,9 +561,13 @@ export async function handlePostRequest(
       profile: mockReq._profile,
     });
   } catch (err) {
-    sendJson(res, {
-      error: 'Failed to proxy request',
-      message: (err as Error).message,
-    }, 500);
+    sendJson(
+      res,
+      {
+        error: 'Failed to proxy request',
+        message: (err as Error).message,
+      },
+      500,
+    );
   }
 }

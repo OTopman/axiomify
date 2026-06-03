@@ -149,6 +149,7 @@ Launches Axiomify Studio — a premium visual developer dashboard that serves as
 The dashboard uses **Live Sync** (WebSockets) powered by esbuild's watch context to automatically re-compile and refresh the browser interface in real time as you edit your project files.
 
 Flags:
+
 - `-p, --port <number>`: Port to start the Studio server on (default: `4399`, falls back to a random port if busy).
 - `--no-open`: Disable auto-opening the dashboard in the browser.
 

@@ -103,14 +103,18 @@ describe('Studio Discovery Engine', () => {
     it('should warn when app.enableRequestId() is not called', () => {
       const app = new Axiomify();
       const health = discoverHealth(app);
-      const reqIdCheck = health.findings.find(f => f.message.includes('enableRequestId'));
+      const reqIdCheck = health.findings.find((f) =>
+        f.message.includes('enableRequestId'),
+      );
       expect(reqIdCheck?.severity).toBe('warn');
     });
 
     it('should warn when health-check route is missing', () => {
       const app = new Axiomify();
       const health = discoverHealth(app);
-      const healthCheck = health.findings.find(f => f.message.includes('health-check'));
+      const healthCheck = health.findings.find((f) =>
+        f.message.includes('health-check'),
+      );
       expect(healthCheck?.severity).toBe('warn');
     });
 
@@ -122,7 +126,9 @@ describe('Studio Discovery Engine', () => {
         handler: async () => {},
       });
       const health = discoverHealth(app);
-      const healthCheck = health.findings.find(f => f.message.includes('health-check'));
+      const healthCheck = health.findings.find((f) =>
+        f.message.includes('health-check'),
+      );
       expect(healthCheck?.severity).toBe('ok');
     });
 
@@ -132,12 +138,14 @@ describe('Studio Discovery Engine', () => {
         method: 'POST',
         path: '/user',
         schema: {
-          body: z.object({ username: z.string() })
+          body: z.object({ username: z.string() }),
         },
         handler: async () => {},
       });
       const health = discoverHealth(app);
-      const schemaCheck = health.findings.find(f => f.message.includes('response schema'));
+      const schemaCheck = health.findings.find((f) =>
+        f.message.includes('response schema'),
+      );
       expect(schemaCheck?.severity).toBe('warn');
     });
 
@@ -147,12 +155,14 @@ describe('Studio Discovery Engine', () => {
         method: 'GET',
         path: '/deprecated',
         handler: async () => {},
-        meta: { description: 'old' }
+        meta: { description: 'old' },
       } as any;
       app.route(routeDef);
 
       const health = discoverHealth(app);
-      const metaCheck = health.findings.find(f => f.message.includes('meta:'));
+      const metaCheck = health.findings.find((f) =>
+        f.message.includes('meta:'),
+      );
       expect(metaCheck?.severity).toBe('fail');
     });
   });
@@ -194,13 +204,13 @@ describe('Studio Discovery Engine', () => {
       public testMethod2() {}
       private _privateMethod() {}
     }
-    
+
     (app as any)._services.set('dummyService', new DummyService());
 
     const result = await performDiscovery(app);
     expect(result.services).toBeDefined();
-    
-    const service = result.services?.find(s => s.token === 'dummyService');
+
+    const service = result.services?.find((s) => s.token === 'dummyService');
     expect(service).toBeDefined();
     expect(service?.type).toBe('DummyService');
     expect(service?.methods).toContain('testMethod1');
@@ -212,32 +222,34 @@ describe('Studio Discovery Engine', () => {
   it('should check OpenAPI drift when file does not exist', async () => {
     const app = new Axiomify();
     const result = await performDiscovery(app);
-    
+
     expect(result.drift).toBeDefined();
     expect(result.drift?.hasFile).toBe(false);
     expect(result.drift?.synced).toBe(false);
-    expect(result.drift?.diffs[0]).toContain('Local openapi.json file does not exist');
+    expect(result.drift?.diffs[0]).toContain(
+      'Local openapi.json file does not exist',
+    );
   });
 
   it('should check OpenAPI drift and report hasFile is true when openapi.json exists', async () => {
     const app = new Axiomify();
-    
+
     const fs = await import('node:fs');
     const path = await import('node:path');
-    
+
     const filePath = path.resolve(process.cwd(), 'openapi.json');
     const mockSpec = {
       openapi: '3.1.0',
       info: { title: 'Test API', version: '1.0.0' },
       paths: {
         '/test': {
-          get: { summary: 'Get Test' }
-        }
-      }
+          get: { summary: 'Get Test' },
+        },
+      },
     };
-    
+
     fs.writeFileSync(filePath, JSON.stringify(mockSpec, null, 2), 'utf8');
-    
+
     try {
       app.route({
         method: 'GET',
@@ -268,7 +280,7 @@ describe('Studio Discovery Engine', () => {
     expect(result.events).toBeDefined();
     expect(result.events?.length).toBeGreaterThanOrEqual(2);
 
-    const createdEvent = result.events?.find(e => e.event === 'user.created');
+    const createdEvent = result.events?.find((e) => e.event === 'user.created');
     expect(createdEvent).toBeDefined();
     expect(createdEvent?.emitterToken).toBe('eventEmitter');
     expect(createdEvent?.listenerCount).toBe(1);
@@ -276,7 +288,7 @@ describe('Studio Discovery Engine', () => {
 
   it('should discover architecture layers (controllers, services, databases)', async () => {
     const app = new Axiomify();
-    
+
     // Set up database, service, repository
     class DatabaseClient {}
     class UserRepository {}
@@ -296,10 +308,16 @@ describe('Studio Discovery Engine', () => {
     expect(result.archMap).toBeDefined();
     expect(result.archMap?.length).toBeGreaterThan(0);
 
-    const dbNode = result.archMap?.find(n => n.id === 'service:database');
-    const repoNode = result.archMap?.find(n => n.id === 'service:userRepository');
-    const serviceNode = result.archMap?.find(n => n.id === 'service:userService');
-    const controllerNode = result.archMap?.find(n => n.id === 'controller:GET:/users');
+    const dbNode = result.archMap?.find((n) => n.id === 'service:database');
+    const repoNode = result.archMap?.find(
+      (n) => n.id === 'service:userRepository',
+    );
+    const serviceNode = result.archMap?.find(
+      (n) => n.id === 'service:userService',
+    );
+    const controllerNode = result.archMap?.find(
+      (n) => n.id === 'controller:GET:/users',
+    );
 
     expect(dbNode?.type).toBe('database');
     expect(repoNode?.type).toBe('repository');

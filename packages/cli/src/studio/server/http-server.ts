@@ -104,7 +104,10 @@ export function createStudioServer(options: StudioServerOptions): Server {
           if (suppliedToken !== options.token) {
             sendJson(
               res,
-              { error: 'Unauthorized', message: 'Valid Access Token is required.' },
+              {
+                error: 'Unauthorized',
+                message: 'Valid Access Token is required.',
+              },
               401,
             );
             return;

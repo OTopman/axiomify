@@ -37,17 +37,11 @@ export function instrumentLogs(): void {
   if (isInstrumented) return;
   isInstrumented = true;
 
-  const methods: Array<'log' | 'info' | 'warn' | 'error' | 'debug' | 'trace'> = [
-    'log',
-    'info',
-    'warn',
-    'error',
-    'debug',
-    'trace',
-  ];
+  const methods: Array<'log' | 'info' | 'warn' | 'error' | 'debug' | 'trace'> =
+    ['log', 'info', 'warn', 'error', 'debug', 'trace'];
 
   methods.forEach((method) => {
-    console[method] = function(...args: any[]) {
+    console[method] = function (...args: any[]) {
       // 1. Invoke the original console function
       originalConsole[method].apply(console, args);
 
@@ -94,11 +88,14 @@ export function instrumentLogs(): void {
       const err = new Error();
       const rawStack = err.stack || '';
       const lines = rawStack.split('\n');
-      
+
       // Filter out internal wrapper/console interception stack frames
       const cleanedStack = lines
         .slice(2)
-        .filter((line) => !line.includes('node:internal') && !line.includes('console.ts'))
+        .filter(
+          (line) =>
+            !line.includes('node:internal') && !line.includes('console.ts'),
+        )
         .join('\n');
 
       recordedLogs.push({

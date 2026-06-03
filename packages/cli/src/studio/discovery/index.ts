@@ -8,7 +8,14 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { DiscoveredConfig, StudioDiscoveryResult, DiscoveredService, OpenApiDriftResult, DiscoveredEvent, ArchComponentNode } from './types';
+import type {
+  DiscoveredConfig,
+  StudioDiscoveryResult,
+  DiscoveredService,
+  OpenApiDriftResult,
+  DiscoveredEvent,
+  ArchComponentNode,
+} from './types';
 import { discoverRoutes } from './route-discovery';
 import { discoverSchemas } from './schema-discovery';
 import { discoverHooks } from './hook-discovery';
@@ -87,11 +94,18 @@ function discoverServices(app: any): DiscoveredService[] {
     const servicesMap = app._services;
     if (servicesMap instanceof Map) {
       for (const [token, value] of servicesMap.entries()) {
-        const tokenStr = typeof token === 'symbol' ? (token.description || token.toString()) : String(token);
-        
+        const tokenStr =
+          typeof token === 'symbol'
+            ? token.description || token.toString()
+            : String(token);
+
         let typeStr = 'unknown';
         if (value && typeof value === 'object') {
-          if (value.constructor && value.constructor.name && value.constructor.name !== 'Object') {
+          if (
+            value.constructor &&
+            value.constructor.name &&
+            value.constructor.name !== 'Object'
+          ) {
             typeStr = value.constructor.name;
           } else {
             typeStr = 'Object';
@@ -135,37 +149,49 @@ function checkOpenApiDrift(liveSpec: any): OpenApiDriftResult {
 
     for (const pathKey of Object.keys(livePaths)) {
       if (!localPaths[pathKey]) {
-        diffs.push(`Path "${pathKey}" exists in live API but is missing in local openapi.json.`);
+        diffs.push(
+          `Path "${pathKey}" exists in live API but is missing in local openapi.json.`,
+        );
         continue;
       }
       const liveMethods = livePaths[pathKey] || {};
       const localMethods = localPaths[pathKey] || {};
       for (const method of Object.keys(liveMethods)) {
         if (!localMethods[method]) {
-          diffs.push(`Method "${method.toUpperCase()} ${pathKey}" exists in live API but is missing in local openapi.json.`);
+          diffs.push(
+            `Method "${method.toUpperCase()} ${pathKey}" exists in live API but is missing in local openapi.json.`,
+          );
         }
       }
     }
 
     for (const pathKey of Object.keys(localPaths)) {
       if (!livePaths[pathKey]) {
-        diffs.push(`Path "${pathKey}" exists in local openapi.json but is missing in live API.`);
+        diffs.push(
+          `Path "${pathKey}" exists in local openapi.json but is missing in live API.`,
+        );
         continue;
       }
       const liveMethods = livePaths[pathKey] || {};
       const localMethods = localPaths[pathKey] || {};
       for (const method of Object.keys(localMethods)) {
         if (!liveMethods[method]) {
-          diffs.push(`Method "${method.toUpperCase()} ${pathKey}" exists in local openapi.json but is missing in live API.`);
+          diffs.push(
+            `Method "${method.toUpperCase()} ${pathKey}" exists in local openapi.json but is missing in live API.`,
+          );
         }
       }
     }
 
     if (liveSpec?.info?.title !== localSpec?.info?.title) {
-      diffs.push(`API Title drift: Live "${liveSpec?.info?.title || ''}" vs Local "${localSpec?.info?.title || ''}"`);
+      diffs.push(
+        `API Title drift: Live "${liveSpec?.info?.title || ''}" vs Local "${localSpec?.info?.title || ''}"`,
+      );
     }
     if (liveSpec?.info?.version !== localSpec?.info?.version) {
-      diffs.push(`API Version drift: Live "${liveSpec?.info?.version || ''}" vs Local "${localSpec?.info?.version || ''}"`);
+      diffs.push(
+        `API Version drift: Live "${liveSpec?.info?.version || ''}" vs Local "${localSpec?.info?.version || ''}"`,
+      );
     }
 
     return {
@@ -188,14 +214,27 @@ function discoverEvents(app: any): DiscoveredEvent[] {
     const servicesMap = app._services;
     if (servicesMap instanceof Map) {
       for (const [token, value] of servicesMap.entries()) {
-        if (value && typeof value === 'object' && typeof value.eventNames === 'function') {
-          const tokenStr = typeof token === 'symbol' ? (token.description || token.toString()) : String(token);
+        if (
+          value &&
+          typeof value === 'object' &&
+          typeof value.eventNames === 'function'
+        ) {
+          const tokenStr =
+            typeof token === 'symbol'
+              ? token.description || token.toString()
+              : String(token);
           const events = value.eventNames();
           for (const ev of events) {
             const evStr = String(ev);
-            const count = typeof value.listenerCount === 'function' ? value.listenerCount(ev) : 0;
-            const listenersList = typeof value.listeners === 'function' ? value.listeners(ev) : [];
-            const listeners = listenersList.map((f: any) => f.name || 'anonymous');
+            const count =
+              typeof value.listenerCount === 'function'
+                ? value.listenerCount(ev)
+                : 0;
+            const listenersList =
+              typeof value.listeners === 'function' ? value.listeners(ev) : [];
+            const listeners = listenersList.map(
+              (f: any) => f.name || 'anonymous',
+            );
             discovered.push({
               emitterToken: tokenStr,
               event: evStr,
@@ -250,7 +289,10 @@ function discoverArchMap(app: any, routes: any[]): ArchComponentNode[] {
     const servicesMap = app._services;
     if (servicesMap instanceof Map) {
       for (const [token, value] of servicesMap.entries()) {
-        const tokenStr = typeof token === 'symbol' ? (token.description || token.toString()) : String(token);
+        const tokenStr =
+          typeof token === 'symbol'
+            ? token.description || token.toString()
+            : String(token);
         serviceTokens.push(tokenStr);
         tokenToService.set(tokenStr, value);
       }
@@ -260,7 +302,7 @@ function discoverArchMap(app: any, routes: any[]): ArchComponentNode[] {
   for (const token of serviceTokens) {
     const value = tokenToService.get(token);
     let type: 'service' | 'repository' | 'database' = 'service';
-    
+
     let constructorName = '';
     if (value && typeof value === 'object') {
       constructorName = value.constructor?.name || '';
@@ -279,9 +321,15 @@ function discoverArchMap(app: any, routes: any[]): ArchComponentNode[] {
       lowerName.includes('database')
     ) {
       type = 'database';
-    } else if (lowerToken.endsWith('repository') || lowerName.endsWith('repository')) {
+    } else if (
+      lowerToken.endsWith('repository') ||
+      lowerName.endsWith('repository')
+    ) {
       type = 'repository';
-    } else if (lowerToken.endsWith('service') || lowerName.endsWith('service')) {
+    } else if (
+      lowerToken.endsWith('service') ||
+      lowerName.endsWith('service')
+    ) {
       type = 'service';
     }
 
@@ -291,7 +339,7 @@ function discoverArchMap(app: any, routes: any[]): ArchComponentNode[] {
       id: `service:${token}`,
       label: token,
       type,
-      dependencies: dependencies.map(dep => `service:${dep}`),
+      dependencies: dependencies.map((dep) => `service:${dep}`),
     });
   }
 
@@ -344,7 +392,16 @@ export async function performDiscovery(
   for (const [key, value] of Object.entries(process.env)) {
     if (value === undefined) continue;
     const upperKey = key.toUpperCase();
-    const isSensitive = ['SECRET', 'PASSWORD', 'TOKEN', 'KEY', 'AUTH', 'PASS', 'CREDENTIAL', 'PWD'].some(word => upperKey.includes(word));
+    const isSensitive = [
+      'SECRET',
+      'PASSWORD',
+      'TOKEN',
+      'KEY',
+      'AUTH',
+      'PASS',
+      'CREDENTIAL',
+      'PWD',
+    ].some((word) => upperKey.includes(word));
     env[key] = isSensitive ? '••••••••' : value;
   }
 

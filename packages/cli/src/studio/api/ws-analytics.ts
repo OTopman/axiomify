@@ -28,7 +28,7 @@ setInterval(() => {
   const current = wsMetrics.messagesReceived;
   const rate = current - lastReceived;
   lastReceived = current;
-  
+
   messageRates.push({
     timestamp: new Date().toISOString(),
     rate,
@@ -45,10 +45,14 @@ export function instrumentWsAnalytics(): void {
       const wsPkg = require(wsPath);
       if (wsPkg && wsPkg.RoomManager) {
         const originalEmit = wsPkg.RoomManager.prototype.emit;
-        wsPkg.RoomManager.prototype.emit = function(event: string, ...args: any[]) {
+        wsPkg.RoomManager.prototype.emit = function (
+          event: string,
+          ...args: any[]
+        ) {
           wsMetrics.messagesReceived++;
-          wsMetrics.eventsCount[event] = (wsMetrics.eventsCount[event] || 0) + 1;
-          
+          wsMetrics.eventsCount[event] =
+            (wsMetrics.eventsCount[event] || 0) + 1;
+
           try {
             const payloadStr = JSON.stringify(args);
             const size = Buffer.byteLength(payloadStr, 'utf8');
@@ -62,7 +66,10 @@ export function instrumentWsAnalytics(): void {
           try {
             const ret = originalEmit.apply(this, arguments);
             const duration = performance.now() - start;
-            if (!wsMetrics.slowestHandler || duration > wsMetrics.slowestHandler.duration) {
+            if (
+              !wsMetrics.slowestHandler ||
+              duration > wsMetrics.slowestHandler.duration
+            ) {
               wsMetrics.slowestHandler = { event, duration };
             }
             return ret;

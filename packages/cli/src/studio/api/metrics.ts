@@ -21,7 +21,9 @@ export async function handleGetAppMetrics(
   let metricsPath = '/metrics';
   if (Array.isArray(app.registeredRoutes)) {
     const found = app.registeredRoutes.find(
-      (r: any) => r.method === 'GET' && (r.path === '/metrics' || r.path.endsWith('/metrics'))
+      (r: any) =>
+        r.method === 'GET' &&
+        (r.path === '/metrics' || r.path.endsWith('/metrics')),
     );
     if (found) {
       metricsPath = found.path;
@@ -85,7 +87,8 @@ export async function handleGetAppMetrics(
     if (responseStatus === 404) {
       sendJson(res, {
         available: false,
-        message: 'Metrics plugin is not active in the application. To enable, call useMetrics(app) from @axiomify/metrics.',
+        message:
+          'Metrics plugin is not active in the application. To enable, call useMetrics(app) from @axiomify/metrics.',
       });
       return;
     }
@@ -97,9 +100,13 @@ export async function handleGetAppMetrics(
       path: metricsPath,
     });
   } catch (err: any) {
-    sendJson(res, {
-      available: false,
-      error: err.message,
-    }, 500);
+    sendJson(
+      res,
+      {
+        available: false,
+        error: err.message,
+      },
+      500,
+    );
   }
 }

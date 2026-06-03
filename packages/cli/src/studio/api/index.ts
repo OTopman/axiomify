@@ -19,7 +19,12 @@ import { handlePostRequest } from './request';
 import { handleGetSystem } from './system';
 import { handleGetErrors } from './errors';
 import { handleGetWsAnalytics } from './ws-analytics';
-import { handlePostRequestReplay, handleGetRequestReplays, handleDeleteRequestReplay, handleDeleteAllRequestReplays } from './replay';
+import {
+  handlePostRequestReplay,
+  handleGetRequestReplays,
+  handleDeleteRequestReplay,
+  handleDeleteAllRequestReplays,
+} from './replay';
 import { handleGetLogs, handleDeleteLogs } from './logs';
 import { handleGetAppMetrics } from './metrics';
 

@@ -17,7 +17,16 @@ export function handleGetConfig(
   for (const [key, value] of Object.entries(process.env)) {
     if (value === undefined) continue;
     const upperKey = key.toUpperCase();
-    const isSensitive = ['SECRET', 'PASSWORD', 'TOKEN', 'KEY', 'AUTH', 'PASS', 'CREDENTIAL', 'PWD'].some(word => upperKey.includes(word));
+    const isSensitive = [
+      'SECRET',
+      'PASSWORD',
+      'TOKEN',
+      'KEY',
+      'AUTH',
+      'PASS',
+      'CREDENTIAL',
+      'PWD',
+    ].some((word) => upperKey.includes(word));
     env[key] = isSensitive ? '••••••••' : value;
   }
 

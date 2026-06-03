@@ -29,7 +29,11 @@ function loadHistory(): ReplayItem[] {
 
 export function saveHistory(): void {
   try {
-    fs.writeFileSync(HISTORY_FILE, JSON.stringify(requestHistory, null, 2), 'utf8');
+    fs.writeFileSync(
+      HISTORY_FILE,
+      JSON.stringify(requestHistory, null, 2),
+      'utf8',
+    );
   } catch (err) {
     console.warn('[Studio] Failed to save request history:', err);
   }
@@ -37,11 +41,14 @@ export function saveHistory(): void {
 
 export const requestHistory: ReplayItem[] = loadHistory();
 
-export async function handlePostRequestReplay(req: IncomingMessage, res: ServerResponse): Promise<void> {
+export async function handlePostRequestReplay(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
   try {
     const rawBody = await readBody(req);
     const payload = JSON.parse(rawBody);
-    
+
     if (payload.id && payload.method && payload.path) {
       requestHistory.push({
         id: payload.id,
@@ -82,7 +89,9 @@ export function instrumentRequestReplay(app: any): void {
     app.addHook('onRequest', (req: any) => {
       if (!req) return;
 
-      const reqPath = req.path || (req.url ? new URL(req.url, 'http://localhost').pathname : '/');
+      const reqPath =
+        req.path ||
+        (req.url ? new URL(req.url, 'http://localhost').pathname : '/');
 
       // Avoid tracking studio's internal API requests
       if (reqPath.startsWith('/__studio/')) return;
@@ -116,15 +125,21 @@ export function handleGetRequestReplays(_req: any, res: ServerResponse): void {
   sendJson(res, { history: requestHistory });
 }
 
-export function handleDeleteRequestReplay(req: IncomingMessage, res: ServerResponse): void {
+export function handleDeleteRequestReplay(
+  req: IncomingMessage,
+  res: ServerResponse,
+): void {
   try {
-    const url = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
+    const url = new URL(
+      req.url || '',
+      `http://${req.headers.host || 'localhost'}`,
+    );
     const id = url.searchParams.get('id');
     if (!id) {
       sendJson(res, { error: 'Missing "id" parameter' }, 400);
       return;
     }
-    const index = requestHistory.findIndex(item => item.id === id);
+    const index = requestHistory.findIndex((item) => item.id === id);
     if (index !== -1) {
       requestHistory.splice(index, 1);
       saveHistory();
@@ -138,7 +153,10 @@ export function handleDeleteRequestReplay(req: IncomingMessage, res: ServerRespo
   }
 }
 
-export function handleDeleteAllRequestReplays(_req: IncomingMessage, res: ServerResponse): void {
+export function handleDeleteAllRequestReplays(
+  _req: IncomingMessage,
+  res: ServerResponse,
+): void {
   try {
     requestHistory.length = 0;
     saveHistory();

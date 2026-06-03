@@ -72,10 +72,7 @@ export class StudioSyncEngine {
             // Broadcast refresh signal to the browser.
             this.options.wsServer.broadcast(JSON.stringify({ type: 'reload' }));
           } catch (err) {
-            console.error(
-              pc.red('  ✗ Reload failed:'),
-              (err as Error).message,
-            );
+            console.error(pc.red('  ✗ Reload failed:'), (err as Error).message);
             this.options.wsServer.broadcast(
               JSON.stringify({
                 type: 'reload-error',

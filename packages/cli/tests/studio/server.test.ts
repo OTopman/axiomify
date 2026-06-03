@@ -73,23 +73,31 @@ describe('Studio Server & Router', () => {
       const port = typeof addr === 'object' && addr ? addr.port : 0;
 
       // 1. Request without token should fail with 401
-      const resNoToken = await fetch(`http://127.0.0.1:${port}/__studio/api/test`);
+      const resNoToken = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/test`,
+      );
       expect(resNoToken.status).toBe(401);
-      const bodyNoToken = await resNoToken.json() as any;
+      const bodyNoToken = (await resNoToken.json()) as any;
       expect(bodyNoToken.error).toBe('Unauthorized');
 
       // 2. Request with invalid token should fail with 401
-      const resBadToken = await fetch(`http://127.0.0.1:${port}/__studio/api/test`, {
-        headers: { 'Authorization': 'Bearer bad-token' },
-      });
+      const resBadToken = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/test`,
+        {
+          headers: { Authorization: 'Bearer bad-token' },
+        },
+      );
       expect(resBadToken.status).toBe(401);
 
       // 3. Request with valid token should succeed with 200
-      const resOkToken = await fetch(`http://127.0.0.1:${port}/__studio/api/test`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
+      const resOkToken = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/test`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
       expect(resOkToken.status).toBe(200);
-      const bodyOkToken = await resOkToken.json() as any;
+      const bodyOkToken = (await resOkToken.json()) as any;
       expect(bodyOkToken.ok).toBe(true);
 
       // 4. Request for non-API route should still succeed with 200 indexHtml without token
@@ -246,7 +254,10 @@ describe('Studio Server & Router', () => {
       const ws = new WebSocket(`ws://127.0.0.1:${port}/__studio/ws`);
 
       const messagePromise = new Promise<string>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Timeout waiting for message')), 2000);
+        const timeout = setTimeout(
+          () => reject(new Error('Timeout waiting for message')),
+          2000,
+        );
         ws.onmessage = (event) => {
           clearTimeout(timeout);
           resolve(event.data);
@@ -258,7 +269,10 @@ describe('Studio Server & Router', () => {
       });
 
       await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Timeout connecting')), 2000);
+        const timeout = setTimeout(
+          () => reject(new Error('Timeout connecting')),
+          2000,
+        );
         ws.onopen = () => {
           clearTimeout(timeout);
           resolve();
@@ -301,7 +315,7 @@ describe('Studio Server & Router', () => {
 
     const router = new StudioRouter();
     registerStudioApi(router, {
-      getDiscovery: () => ({} as any),
+      getDiscovery: () => ({}) as any,
       getApp: () => app,
     });
 
@@ -320,14 +334,17 @@ describe('Studio Server & Router', () => {
       const port = typeof addr === 'object' && addr ? addr.port : 0;
 
       // 1. Test proxying a GET request
-      const resGet = await fetch(`http://127.0.0.1:${port}/__studio/api/request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          method: 'GET',
-          path: '/hello',
-        }),
-      });
+      const resGet = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/request`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            method: 'GET',
+            path: '/hello',
+          }),
+        },
+      );
 
       expect(resGet.status).toBe(200);
       const dataGet = await resGet.json();
@@ -336,15 +353,18 @@ describe('Studio Server & Router', () => {
       expect(dataGet.body).toEqual({ hello: 'world' });
 
       // 2. Test proxying a POST request with body
-      const resPost = await fetch(`http://127.0.0.1:${port}/__studio/api/request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const resPost = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/request`,
+        {
           method: 'POST',
-          path: '/echo',
-          body: { foo: 'bar' },
-        }),
-      });
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            method: 'POST',
+            path: '/echo',
+            body: { foo: 'bar' },
+          }),
+        },
+      );
 
       expect(resPost.status).toBe(200);
       const dataPost = await resPost.json();
@@ -367,7 +387,7 @@ describe('Studio Server & Router', () => {
 
     const router = new StudioRouter();
     registerStudioApi(router, {
-      getDiscovery: () => ({} as any),
+      getDiscovery: () => ({}) as any,
       getApp: () => app,
     });
 
@@ -399,8 +419,10 @@ describe('Studio Server & Router', () => {
       expect(result.profile).toBeDefined();
       expect(result.profile.timeline).toBeDefined();
       expect(result.profile.timeline.length).toBeGreaterThan(0);
-      
-      const handlerStep = result.profile.timeline.find((t: any) => t.type === 'handler');
+
+      const handlerStep = result.profile.timeline.find(
+        (t: any) => t.type === 'handler',
+      );
       expect(handlerStep).toBeDefined();
       expect(handlerStep.name).toContain('Handler:');
     } finally {
@@ -417,11 +439,14 @@ describe('Studio Server & Router', () => {
     }
     const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(tempDir);
 
-    const mockSpec = { openapi: '3.0.0', info: { title: 'Test', version: '1' } };
+    const mockSpec = {
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1' },
+    };
     const router = new StudioRouter();
     registerStudioApi(router, {
-      getDiscovery: () => ({ openapi: mockSpec } as any),
-      getApp: () => ({} as any),
+      getDiscovery: () => ({ openapi: mockSpec }) as any,
+      getApp: () => ({}) as any,
     });
 
     const server = createStudioServer({
@@ -438,9 +463,12 @@ describe('Studio Server & Router', () => {
       const addr = server.address();
       const port = typeof addr === 'object' && addr ? addr.port : 0;
 
-      const res = await fetch(`http://127.0.0.1:${port}/__studio/api/openapi/sync`, {
-        method: 'POST',
-      });
+      const res = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/openapi/sync`,
+        {
+          method: 'POST',
+        },
+      );
 
       expect(res.status).toBe(200);
       const result = await res.json();
@@ -467,8 +495,8 @@ describe('Studio Server & Router', () => {
   it('should serve system metrics endpoint GET /__studio/api/system', async () => {
     const router = new StudioRouter();
     registerStudioApi(router, {
-      getDiscovery: () => ({} as any),
-      getApp: () => ({} as any),
+      getDiscovery: () => ({}) as any,
+      getApp: () => ({}) as any,
     });
 
     const server = createStudioServer({
@@ -501,17 +529,20 @@ describe('Studio Server & Router', () => {
 
   it('should serve app metrics endpoint GET /__studio/api/metrics', async () => {
     const mockApp = {
-      registeredRoutes: [
-        { method: 'GET', path: '/metrics' }
-      ],
+      registeredRoutes: [{ method: 'GET', path: '/metrics' }],
       handle: async (req: any, res: any) => {
-        res.status(200).sendRaw('http_requests_total{method="GET",route="/test"} 10', 'text/plain');
-      }
+        res
+          .status(200)
+          .sendRaw(
+            'http_requests_total{method="GET",route="/test"} 10',
+            'text/plain',
+          );
+      },
     };
 
     const router = new StudioRouter();
     registerStudioApi(router, {
-      getDiscovery: () => ({} as any),
+      getDiscovery: () => ({}) as any,
       getApp: () => mockApp as any,
     });
 
@@ -544,8 +575,8 @@ describe('Studio Server & Router', () => {
   it('should serve recorded errors endpoint GET /__studio/api/errors', async () => {
     const router = new StudioRouter();
     registerStudioApi(router, {
-      getDiscovery: () => ({} as any),
-      getApp: () => ({} as any),
+      getDiscovery: () => ({}) as any,
+      getApp: () => ({}) as any,
     });
 
     const server = createStudioServer({
@@ -576,8 +607,8 @@ describe('Studio Server & Router', () => {
   it('should serve websocket analytics endpoint GET /__studio/api/ws-analytics', async () => {
     const router = new StudioRouter();
     registerStudioApi(router, {
-      getDiscovery: () => ({} as any),
-      getApp: () => ({} as any),
+      getDiscovery: () => ({}) as any,
+      getApp: () => ({}) as any,
     });
 
     const server = createStudioServer({
@@ -594,7 +625,9 @@ describe('Studio Server & Router', () => {
       const addr = server.address();
       const port = typeof addr === 'object' && addr ? addr.port : 0;
 
-      const res = await fetch(`http://127.0.0.1:${port}/__studio/api/ws-analytics`);
+      const res = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/ws-analytics`,
+      );
       const body = await res.json();
 
       expect(res.status).toBe(200);
@@ -608,8 +641,8 @@ describe('Studio Server & Router', () => {
   it('should support request replays via POST/GET /__studio/api/request/replay(s)', async () => {
     const router = new StudioRouter();
     registerStudioApi(router, {
-      getDiscovery: () => ({} as any),
-      getApp: () => ({} as any),
+      getDiscovery: () => ({}) as any,
+      getApp: () => ({}) as any,
     });
 
     const server = createStudioServer({
@@ -635,17 +668,22 @@ describe('Studio Server & Router', () => {
         body: { test: true },
       };
 
-      const resPost = await fetch(`http://127.0.0.1:${port}/__studio/api/request/replay`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const resPost = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/request/replay`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        },
+      );
 
       expect(resPost.status).toBe(200);
       const resPostJson = await resPost.json();
       expect(resPostJson.success).toBe(true);
 
-      const resGet = await fetch(`http://127.0.0.1:${port}/__studio/api/request/replays`);
+      const resGet = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/request/replays`,
+      );
       const resGetJson = await resGet.json();
 
       expect(resGet.status).toBe(200);
@@ -655,34 +693,49 @@ describe('Studio Server & Router', () => {
       expect(found).toBeDefined();
 
       // 1. Delete single replay item
-      const resDeleteOne = await fetch(`http://127.0.0.1:${port}/__studio/api/request/replay?id=test-id`, {
-        method: 'DELETE',
-      });
+      const resDeleteOne = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/request/replay?id=test-id`,
+        {
+          method: 'DELETE',
+        },
+      );
       expect(resDeleteOne.status).toBe(200);
       const resDeleteOneJson = await resDeleteOne.json();
       expect(resDeleteOneJson.success).toBe(true);
 
-      const resGetAfterDelete = await fetch(`http://127.0.0.1:${port}/__studio/api/request/replays`);
+      const resGetAfterDelete = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/request/replays`,
+      );
       const resGetAfterDeleteJson = await resGetAfterDelete.json();
-      const foundAfterDelete = resGetAfterDeleteJson.history.find((h: any) => h.id === 'test-id');
+      const foundAfterDelete = resGetAfterDeleteJson.history.find(
+        (h: any) => h.id === 'test-id',
+      );
       expect(foundAfterDelete).toBeUndefined();
 
       // 2. Clear all replay items
-      const resClearAll = await fetch(`http://127.0.0.1:${port}/__studio/api/request/replays`, {
-        method: 'DELETE',
-      });
+      const resClearAll = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/request/replays`,
+        {
+          method: 'DELETE',
+        },
+      );
       expect(resClearAll.status).toBe(200);
       const resClearAllJson = await resClearAll.json();
       expect(resClearAllJson.success).toBe(true);
 
-      const resGetAfterClear = await fetch(`http://127.0.0.1:${port}/__studio/api/request/replays`);
+      const resGetAfterClear = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/request/replays`,
+      );
       const resGetAfterClearJson = await resGetAfterClear.json();
       expect(resGetAfterClearJson.history.length).toBe(0);
     } finally {
       server.close();
       const fs = require('node:fs');
       const path = require('node:path');
-      const histFile = path.join(process.cwd(), '.axiomify-studio-history.json');
+      const histFile = path.join(
+        process.cwd(),
+        '.axiomify-studio-history.json',
+      );
       if (fs.existsSync(histFile)) {
         try {
           fs.unlinkSync(histFile);
@@ -692,8 +745,9 @@ describe('Studio Server & Router', () => {
   });
 
   it('should auto-capture requests via onRequest hook and notify updates', async () => {
-    const { instrumentRequestReplay, setOnReplayUpdated } = await import('../../src/studio/api/replay');
-    
+    const { instrumentRequestReplay, setOnReplayUpdated } =
+      await import('../../src/studio/api/replay');
+
     const app = new Axiomify();
     instrumentRequestReplay(app);
 
@@ -741,7 +795,7 @@ describe('Studio Server & Router', () => {
     expect(notified).toBe(true);
 
     const { requestHistory } = await import('../../src/studio/api/replay');
-    const captured = requestHistory.find(h => h.path === '/api/test-capture');
+    const captured = requestHistory.find((h) => h.path === '/api/test-capture');
     expect(captured).toBeDefined();
     expect(captured?.method).toBe('GET');
 
@@ -759,7 +813,8 @@ describe('Studio Server & Router', () => {
   });
 
   it('should intercept console logs and serve them via API', async () => {
-    const { instrumentLogs, setOnLogsUpdated, recordedLogs } = await import('../../src/studio/api/logs');
+    const { instrumentLogs, setOnLogsUpdated, recordedLogs } =
+      await import('../../src/studio/api/logs');
 
     instrumentLogs();
 
@@ -772,7 +827,7 @@ describe('Studio Server & Router', () => {
 
     expect(notified).toBe(true);
 
-    const found = recordedLogs.find(l => l.message === 'Hello warning test');
+    const found = recordedLogs.find((l) => l.message === 'Hello warning test');
     expect(found).toBeDefined();
     expect(found?.level).toBe('warn');
     expect(found?.stack).toBeDefined();
@@ -780,8 +835,8 @@ describe('Studio Server & Router', () => {
     // Test API GET /__studio/api/logs
     const router = new StudioRouter();
     registerStudioApi(router, {
-      getDiscovery: () => ({} as any),
-      getApp: () => ({} as any),
+      getDiscovery: () => ({}) as any,
+      getApp: () => ({}) as any,
     });
 
     const server = createStudioServer({
@@ -802,7 +857,9 @@ describe('Studio Server & Router', () => {
       const bodyGet = await resGet.json();
       expect(resGet.status).toBe(200);
       expect(bodyGet.logs).toBeInstanceOf(Array);
-      expect(bodyGet.logs.some((l: any) => l.message === 'Hello warning test')).toBe(true);
+      expect(
+        bodyGet.logs.some((l: any) => l.message === 'Hello warning test'),
+      ).toBe(true);
 
       // Test API DELETE /__studio/api/logs
       const resDel = await fetch(`http://127.0.0.1:${port}/__studio/api/logs`, {

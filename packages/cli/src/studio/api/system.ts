@@ -8,10 +8,7 @@ import type { ServerResponse } from 'node:http';
 import os from 'node:os';
 import { sendJson } from '../server/http-server';
 
-export function handleGetSystem(
-  _req: any,
-  res: ServerResponse,
-): void {
+export function handleGetSystem(_req: any, res: ServerResponse): void {
   const memory = process.memoryUsage();
   const uptime = process.uptime();
 

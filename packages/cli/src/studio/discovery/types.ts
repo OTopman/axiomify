@@ -132,7 +132,13 @@ export interface DiscoveredEvent {
 
 export interface RouteDependencyNode {
   name: string;
-  type: 'route' | 'middleware' | 'validation' | 'controller' | 'service' | 'database';
+  type:
+    | 'route'
+    | 'middleware'
+    | 'validation'
+    | 'controller'
+    | 'service'
+    | 'database';
   children?: RouteDependencyNode[];
 }
 

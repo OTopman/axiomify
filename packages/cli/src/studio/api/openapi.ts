@@ -44,7 +44,8 @@ export function handlePostOpenApiSync(
       res,
       {
         success: false,
-        message: 'No OpenAPI spec available to sync. Check if @axiomify/openapi is installed.',
+        message:
+          'No OpenAPI spec available to sync. Check if @axiomify/openapi is installed.',
       },
       400,
     );
@@ -53,7 +54,11 @@ export function handlePostOpenApiSync(
 
   try {
     const filePath = path.resolve(process.cwd(), 'openapi.json');
-    fs.writeFileSync(filePath, JSON.stringify(discovery.openapi, null, 2), 'utf8');
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify(discovery.openapi, null, 2),
+      'utf8',
+    );
     sendJson(res, {
       success: true,
       message: 'Successfully synced OpenAPI specification to openapi.json.',

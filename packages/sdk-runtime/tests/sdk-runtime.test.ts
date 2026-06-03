@@ -908,11 +908,9 @@ describe('@axiomify/sdk-runtime tests', () => {
         }),
         close: vi.fn(),
       };
-      (globalThis as any).WebSocket = vi
-        .fn()
-        .mockImplementation(function () {
-          return mockWsInstance;
-        });
+      (globalThis as any).WebSocket = vi.fn().mockImplementation(function () {
+        return mockWsInstance;
+      });
 
       const client = new WebSocketClient('ws://test', {
         heartbeatIntervalMs: 5,

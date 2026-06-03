@@ -21,7 +21,18 @@ export function sanitizePayload(payload: any): any {
     const mask = (obj: any) => {
       for (const key of Object.keys(obj)) {
         const upperKey = key.toUpperCase();
-        if (['SECRET', 'PASSWORD', 'TOKEN', 'KEY', 'AUTH', 'PASS', 'CREDENTIAL', 'PWD'].some(word => upperKey.includes(word))) {
+        if (
+          [
+            'SECRET',
+            'PASSWORD',
+            'TOKEN',
+            'KEY',
+            'AUTH',
+            'PASS',
+            'CREDENTIAL',
+            'PWD',
+          ].some((word) => upperKey.includes(word))
+        ) {
           obj[key] = '••••••••';
         } else if (obj[key] && typeof obj[key] === 'object') {
           mask(obj[key]);
@@ -70,12 +81,15 @@ export function instrumentErrorObservatory(app: any): void {
       const errName = err?.name || err?.constructor?.name || 'Error';
       const errMsg = err?.message || String(err);
       const errStack = err?.stack || '';
-      
+
       const payload = {
         body: sanitizePayload(req.body),
         query: sanitizePayload(req.query),
         params: req.params,
-        validationErrors: errName === 'ValidationError' ? formatValidationErrors(err, req) : undefined,
+        validationErrors:
+          errName === 'ValidationError'
+            ? formatValidationErrors(err, req)
+            : undefined,
       };
 
       recordedErrors.push({
@@ -88,7 +102,7 @@ export function instrumentErrorObservatory(app: any): void {
         payload,
         timestamp: new Date().toISOString(),
       });
-      
+
       if (recordedErrors.length > 200) {
         recordedErrors.shift();
       }
@@ -100,12 +114,12 @@ export function instrumentErrorObservatory(app: any): void {
 
 export function handleGetErrors(_req: any, res: ServerResponse): void {
   const errorsToday = recordedErrors.length;
-  
+
   const frequencyMap = new Map<string, number>();
   for (const err of recordedErrors) {
     frequencyMap.set(err.name, (frequencyMap.get(err.name) || 0) + 1);
   }
-  
+
   let topError = 'None';
   let topErrorCount = 0;
   for (const [name, count] of frequencyMap.entries()) {
