@@ -6,5 +6,6 @@ export default defineConfig({
   clean: true,
   treeshake: true,
   sourcemap: false,
+  external: ['@axiomify/sdk-runtime'],
   noExternal: ['commander'],
 });
