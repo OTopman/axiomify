@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { DiscoveryData, RouteItem, SchemaItem, FindingItem, ServiceItem } from '../types';
+import React, { useEffect, useRef, useState } from 'react';
+import { DiscoveryData } from '../types';
 import { apiFetch, getToken } from '../utils/api';
 
 // ==========================================

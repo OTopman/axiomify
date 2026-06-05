@@ -19,11 +19,11 @@ import { createReadStream, existsSync } from 'fs';
 import { GraphQLInt, GraphQLList, GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
 import path from 'path';
 
-export const app = new Axiomify(); 
- 
-const room = wsRooms(app,{
+export const app = new Axiomify();
+
+const room = wsRooms(app, {
   path: '/ws',
-  schema:  z.object({
+  schema: z.object({
     action: z.string(),
     room: z.string().optional(),
     data: z.any().optional(),
@@ -31,10 +31,10 @@ const room = wsRooms(app,{
   onConnect(client) {
     client.join('lobby');
     console.log('A client connected.');
-    
+
   },
   onMessage(client, data) {
-    console.log('A client sent a message.',data);
+    console.log('A client sent a message.', data);
     console.log(client.rooms);
   },
 });
@@ -97,7 +97,7 @@ const servicesModule: AppModule = {
   name: 'services',
   register: (_app, ctx) => {
     ctx.provide('userService', new UserService());
-    
+
   },
 };
 
@@ -229,7 +229,7 @@ app.route({
   path: '/ping',
   schema: {
     response: z.object({ message: z.string() }),
-    
+
   },
   handler: async (_req, res) => {
     res.status(200).send({ message: 'pong' });

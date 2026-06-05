@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { DiscoveryData, RouteItem, ArchNode } from '../types';
+import { DiscoveryData, RouteItem } from '../types';
 
 interface DashboardProps {
   discovery: DiscoveryData;

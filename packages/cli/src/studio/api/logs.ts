@@ -1,7 +1,7 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ServerResponse } from 'node:http';
 import * as path from 'node:path';
 import { sendJson } from '../server/http-server';
-import { AsyncLocalStorage } from 'node:async_hooks';
 
 export interface RecordedLog {
   id: string;

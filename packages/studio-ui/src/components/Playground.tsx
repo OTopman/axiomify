@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
 import Editor, { Monaco } from '@monaco-editor/react';
+import React, { useEffect, useRef, useState } from 'react';
 import { DiscoveryData } from '../types';
 import { apiFetch } from '../utils/api';
 

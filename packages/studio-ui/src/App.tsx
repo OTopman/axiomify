@@ -1,32 +1,32 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { DiscoveryData, RouteItem, WsLogItem, FindingItem } from './types';
-import { apiFetch, getToken, setToken, removeToken } from './utils/api';
+import React, { useEffect, useRef, useState } from 'react';
+import { DiscoveryData, FindingItem } from './types';
+import { apiFetch, getToken, removeToken, setToken } from './utils/api';
 
 // Components
 import { Dashboard } from './components/Dashboard';
-import { RequestBuilder } from './components/RequestBuilder';
-import { Playground } from './components/Playground';
 import { Logs } from './components/Logs';
-import { WebSocketTester } from './components/WebSocketTester';
-import { Recorder } from './components/Recorder';
 import {
-  SchemasPanel,
-  OpenApiPanel,
-  ServicesPanel,
-  HooksPanel,
-  HealthPanel,
-  ConfigPanel,
-  EventsPanel,
-  ArchitecturePanel,
-  WsAnalyticsPanel,
-  MetricsPanel,
-  PerformancePanel,
-  SdkImpactPanel,
-  ContractsPanel,
-  QualityPanel,
   AiAssistantPanel,
-  MiddlewaresPanel
+  ArchitecturePanel,
+  ConfigPanel,
+  ContractsPanel,
+  EventsPanel,
+  HealthPanel,
+  HooksPanel,
+  MetricsPanel,
+  MiddlewaresPanel,
+  OpenApiPanel,
+  PerformancePanel,
+  QualityPanel,
+  SchemasPanel,
+  SdkImpactPanel,
+  ServicesPanel,
+  WsAnalyticsPanel
 } from './components/OtherPanels';
+import { Playground } from './components/Playground';
+import { Recorder } from './components/Recorder';
+import { RequestBuilder } from './components/RequestBuilder';
+import { WebSocketTester } from './components/WebSocketTester';
 
 function App() {
   const [token, setTokenState] = useState<string>(() => {

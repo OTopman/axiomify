@@ -89,7 +89,7 @@ export function instrumentWsAnalytics(): void {
         if (size > wsMetrics.largestPayloadSize) {
           wsMetrics.largestPayloadSize = size;
         }
-      } catch {}
+      } catch { }
 
       const start = performance.now();
       try {

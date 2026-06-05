@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { DiscoveryData, RouteItem, SchemaItem } from '../types';
+import React, { useEffect, useState } from 'react';
+import { DiscoveryData } from '../types';
 import { apiFetch } from '../utils/api';
 
 interface RequestBuilderProps {

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
-import { DiscoveryData, WsLogItem, AssertionRule } from '../types';
+import React, { useEffect, useRef, useState } from 'react';
+import { io } from 'socket.io-client';
+import { AssertionRule, DiscoveryData, WsLogItem } from '../types';
 import { apiFetch } from '../utils/api';
 
 interface WebSocketTesterProps {
