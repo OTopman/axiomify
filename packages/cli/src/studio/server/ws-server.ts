@@ -11,6 +11,8 @@ import type { Duplex } from 'node:stream';
  */
 export class StudioWsServer {
   private sockets = new Set<Duplex>();
+  private awaitingPong = new Set<Duplex>();
+  private heartbeatInterval: NodeJS.Timeout | null = null;
 
   /**
    * Upgrades an incoming HTTP connection to a WebSocket connection.
@@ -38,19 +40,57 @@ export class StudioWsServer {
 
     socket.write(headers.join('\r\n'));
     this.sockets.add(socket);
+    this.awaitingPong.delete(socket);
+    this.startHeartbeat();
 
     socket.on('close', () => {
       this.sockets.delete(socket);
+      this.awaitingPong.delete(socket);
     });
 
     socket.on('error', () => {
       this.sockets.delete(socket);
+      this.awaitingPong.delete(socket);
       socket.destroy();
     });
 
-    // Consume incoming data to avoid buffering, but ignore client messages
-    // as Studio communication is strictly server -> client (push model).
-    socket.on('data', () => {});
+    socket.on('data', (chunk: Buffer) => {
+      this.handleFrame(socket, chunk);
+    });
+  }
+
+  private startHeartbeat(): void {
+    if (this.heartbeatInterval) return;
+
+    this.heartbeatInterval = setInterval(() => {
+      const pingFrame = Buffer.from([0x89, 0x00]);
+      for (const socket of this.sockets) {
+        if (!socket.writable || this.awaitingPong.has(socket)) {
+          this.sockets.delete(socket);
+          this.awaitingPong.delete(socket);
+          socket.destroy();
+          continue;
+        }
+
+        this.awaitingPong.add(socket);
+        socket.write(pingFrame);
+      }
+    }, 30_000);
+    this.heartbeatInterval.unref?.();
+  }
+
+  private handleFrame(socket: Duplex, chunk: Buffer): void {
+    if (chunk.length < 2) return;
+
+    const opcode = chunk[0] & 0x0f;
+    if (opcode === 0x0a) {
+      this.awaitingPong.delete(socket);
+      return;
+    }
+
+    if (opcode === 0x09 && socket.writable) {
+      socket.write(Buffer.from([0x8a, 0x00]));
+    }
   }
 
   /**
@@ -89,9 +129,15 @@ export class StudioWsServer {
    * Closes all active connections.
    */
   public close(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+
     for (const socket of this.sockets) {
       socket.destroy();
     }
     this.sockets.clear();
+    this.awaitingPong.clear();
   }
 }

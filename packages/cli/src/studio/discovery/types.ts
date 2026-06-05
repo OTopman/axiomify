@@ -13,6 +13,8 @@ export interface DiscoveredRoute {
   path: string;
   /** Whether this is a WebSocket route (method will be 'WS'). */
   isWs: boolean;
+  /** Realtime transport for WS-style routes. */
+  realtimeProtocol?: 'ws' | 'socket.io';
   /** Zod validation field names present on this route. */
   validation: string[];
   /** OpenAPI tags from `schema.tags`. */
@@ -80,6 +82,8 @@ export interface DiscoveredConfig {
   httpRouteCount: number;
   /** Total number of registered WebSocket routes. */
   wsRouteCount: number;
+  /** Total number of registered Socket.IO endpoints. */
+  socketIoRouteCount?: number;
   /** Total number of registered hooks (across all types). */
   hookCount: number;
   /** Total number of registered DI services. */

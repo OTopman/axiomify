@@ -874,4 +874,126 @@ describe('Studio Server & Router', () => {
       setOnLogsUpdated(() => {});
     }
   });
+
+  it('should support exporting logs via GET /__studio/api/logs/export', async () => {
+    const { recordedLogs } = await import('../../src/studio/api/logs');
+    recordedLogs.length = 0;
+    recordedLogs.push({
+      id: 'test-log-1',
+      level: 'info',
+      message: 'Export log test message',
+      timestamp: new Date().toISOString(),
+    });
+
+    const router = new StudioRouter();
+    registerStudioApi(router, {
+      getDiscovery: () => ({}) as any,
+      getApp: () => ({}) as any,
+    });
+
+    const server = createStudioServer({
+      port: 0,
+      router,
+      indexHtml: 'index',
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      const res = await fetch(`http://127.0.0.1:${port}/__studio/api/logs/export`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toContain('application/json');
+      expect(res.headers.get('content-disposition')).toContain('attachment');
+      const body = await res.json();
+      expect(body.logs).toBeDefined();
+      expect(body.logs.length).toBe(1);
+      expect(body.logs[0].message).toBe('Export log test message');
+    } finally {
+      server.close();
+    }
+  });
+
+  it('should enforce token auth on export endpoints', async () => {
+    const router = new StudioRouter();
+    registerStudioApi(router, {
+      getDiscovery: () => ({
+        routes: [],
+        schemas: [],
+        hooks: [],
+        config: {
+          timeout: 3000,
+          routeConflict: 'throw',
+          strictSchema: true,
+          httpRouteCount: 0,
+          wsRouteCount: 0,
+          hookCount: 0,
+          serviceCount: 0,
+        },
+        openapi: null,
+        health: { findings: [], summary: { passes: 0, warnings: 0, failures: 0 } },
+        discoveredAt: new Date().toISOString(),
+      }) as any,
+      getApp: () => ({}) as any,
+    });
+
+    const token = 'my-secret-token';
+    const server = createStudioServer({
+      port: 0,
+      router,
+      indexHtml: 'index',
+      token,
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      // 1. Without token, should fail with 401 Unauthorized and specific JSON payload
+      const resNoToken = await fetch(`http://127.0.0.1:${port}/__studio/api/export/html`);
+      expect(resNoToken.status).toBe(401);
+      const json = await resNoToken.json() as any;
+      expect(json).toEqual({
+        error: 'Unauthorized',
+        message: 'Valid Access Token is required.',
+      });
+
+      // 2. With invalid token, should fail with 401 Unauthorized
+      const resBadToken = await fetch(`http://127.0.0.1:${port}/__studio/api/export/html?token=bad`);
+      expect(resBadToken.status).toBe(401);
+
+      // 3. With valid token (query param), should succeed with 200
+      const resOkToken = await fetch(`http://127.0.0.1:${port}/__studio/api/export/html?token=${token}`);
+      expect(resOkToken.status).toBe(200);
+      const text = await resOkToken.text();
+      expect(text).toContain('Axiomify Studio Report');
+    } finally {
+      server.close();
+    }
+  });
+
+  it('should trace logs to request ID correlation', async () => {
+    const { instrumentLogs, recordedLogs, logCorrelationStorage } =
+      await import('../../src/studio/api/logs');
+
+    instrumentLogs();
+    recordedLogs.length = 0;
+
+    const reqId = 'my-test-request-id-123';
+    logCorrelationStorage.run(reqId, () => {
+      console.log('correlation trace message');
+    });
+
+    const found = recordedLogs.find((l) => l.message === 'correlation trace message');
+    expect(found).toBeDefined();
+    expect(found?.requestId).toBe(reqId);
+  });
 });

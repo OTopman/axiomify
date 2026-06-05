@@ -5,7 +5,7 @@ import { NodeSDK } from '@opentelemetry/sdk-node';
 
 
 import { createAuthPlugin } from '@axiomify/auth';
-import { Axiomify, z, AppModule } from '@axiomify/core';
+import { AppModule, Axiomify, z } from '@axiomify/core';
 import { useGraphQL } from '@axiomify/graphql';
 import { useHelmet } from '@axiomify/helmet';
 import { useLogger } from '@axiomify/logger';
@@ -16,10 +16,10 @@ import { useUpload } from '@axiomify/upload';
 import { wsRooms } from '@axiomify/ws';
 import { randomUUID } from 'crypto';
 import { createReadStream, existsSync } from 'fs';
-import { GraphQLObjectType, GraphQLSchema, GraphQLString, GraphQLList, GraphQLInt } from 'graphql';
+import { GraphQLInt, GraphQLList, GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
 import path from 'path';
 
-export const app = new Axiomify();
+export const app = new Axiomify(); 
 
 const room = wsRooms(app,{
   path: '/ws',

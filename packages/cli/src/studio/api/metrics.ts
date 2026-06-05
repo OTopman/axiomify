@@ -4,13 +4,14 @@
  * Serves live Prometheus metrics collected by @axiomify/metrics.
  * `GET /__studio/api/metrics`
  */
+import type { Axiomify } from '@axiomify/core';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { sendJson } from '../server/http-server';
 
 export async function handleGetAppMetrics(
   _req: IncomingMessage,
   res: ServerResponse,
-  app: any,
+  app: Axiomify,
 ): Promise<void> {
   if (!app) {
     sendJson(res, { available: false, error: 'App not loaded' }, 503);
@@ -21,7 +22,7 @@ export async function handleGetAppMetrics(
   let metricsPath = '/metrics';
   if (Array.isArray(app.registeredRoutes)) {
     const found = app.registeredRoutes.find(
-      (r: any) =>
+      (r) =>
         r.method === 'GET' &&
         (r.path === '/metrics' || r.path.endsWith('/metrics')),
     );
@@ -31,7 +32,20 @@ export async function handleGetAppMetrics(
   }
 
   // Create a mock request/response to dispatch in-memory against the application
-  const mockReq: any = {
+  interface MockRequest {
+    id: string;
+    method: string;
+    url: string;
+    path: string;
+    headers: Record<string, string>;
+    body: Record<string, never>;
+    query: Record<string, never>;
+    params: Record<string, never>;
+    state: Record<string, never>;
+    raw: Record<string, never>;
+  }
+
+  const mockReq: MockRequest = {
     id: `studio-metrics-${Date.now()}`,
     method: 'GET',
     url: metricsPath,
@@ -49,17 +63,30 @@ export async function handleGetAppMetrics(
   let contentType = 'text/plain';
 
   const responseHeaders: Record<string, string> = {};
-  const mockRes: any = {
+
+  interface MockResponse {
+    status(code: number): MockResponse;
+    sendRaw(data: unknown, type?: string): void;
+    send(data: unknown): void;
+    header(key: string, value: string): MockResponse;
+    getHeader(key: string): string | undefined;
+    removeHeader(key: string): MockResponse;
+    capabilities: { sse: boolean; streaming: boolean };
+    readonly statusCode: number;
+    readonly headersSent: boolean;
+  }
+
+  const mockRes: MockResponse = {
     status(code: number) {
       responseStatus = code;
       return this;
     },
-    sendRaw(data: any, type?: string) {
-      responseBody = data;
+    sendRaw(data: unknown, type?: string) {
+      responseBody = String(data);
       if (type) contentType = type;
     },
-    send(data: any) {
-      responseBody = data;
+    send(data: unknown) {
+      responseBody = String(data);
     },
     header(key: string, value: string) {
       responseHeaders[key.toLowerCase()] = value;
@@ -81,8 +108,14 @@ export async function handleGetAppMetrics(
     },
   };
 
+  // The mock objects satisfy the duck-typed contract of app.handle at runtime
+  // but not the full AxiomifyRequest/AxiomifyResponse structural types.
+  // Bridge through unknown to invoke with partial mock objects.
+  const indexed = app as unknown as Record<string, unknown>;
+  const handleRequest = (indexed['handle'] as (req: unknown, res: unknown) => Promise<void>).bind(app);
+
   try {
-    await app.handle(mockReq, mockRes);
+    await handleRequest(mockReq, mockRes);
 
     if (responseStatus === 404) {
       sendJson(res, {

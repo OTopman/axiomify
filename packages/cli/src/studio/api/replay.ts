@@ -1,19 +1,24 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { Axiomify } from '@axiomify/core';
 import fs from 'node:fs';
 import path from 'node:path';
 import { sendJson, readBody } from '../server/http-server';
+
+type RequestFields = Record<string, string | string[] | undefined>;
 
 export interface ReplayItem {
   id: string;
   method: string;
   path: string;
-  headers: any;
-  query: any;
-  body: any;
+  headers: RequestFields;
+  query: RequestFields;
+  body: unknown;
   timestamp: string;
 }
 
 const HISTORY_FILE = path.join(process.cwd(), '.axiomify-studio-history.json');
+const instrumentedApps = new WeakSet<object>();
+let debounceTimer: NodeJS.Timeout | null = null;
 
 function loadHistory(): ReplayItem[] {
   try {
@@ -28,15 +33,19 @@ function loadHistory(): ReplayItem[] {
 }
 
 export function saveHistory(): void {
-  try {
-    fs.writeFileSync(
-      HISTORY_FILE,
-      JSON.stringify(requestHistory, null, 2),
-      'utf8',
-    );
-  } catch (err) {
-    console.warn('[Studio] Failed to save request history:', err);
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
   }
+
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null;
+    fs.promises
+      .writeFile(HISTORY_FILE, JSON.stringify(requestHistory, null, 2), 'utf8')
+      .catch((err) => {
+        console.warn('[Studio] Failed to save request history:', err);
+      });
+  }, 200);
+  debounceTimer.unref?.();
 }
 
 export const requestHistory: ReplayItem[] = loadHistory();
@@ -84,7 +93,10 @@ export function notifyReplaysUpdated(): void {
   }
 }
 
-export function instrumentRequestReplay(app: any): void {
+export function instrumentRequestReplay(app: Axiomify): void {
+  if (instrumentedApps.has(app)) return;
+  instrumentedApps.add(app);
+
   try {
     app.addHook('onRequest', (req: any) => {
       if (!req) return;

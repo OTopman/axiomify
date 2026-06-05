@@ -34,6 +34,7 @@ export type { DiscoveredConfig } from './types';
 function discoverConfig(app: any): DiscoveredConfig {
   const httpRoutes = app.registeredRoutes ?? [];
   const wsRoutes = app.registeredWsRoutes ?? [];
+  const socketIoRoutes = app.registeredSocketIoRoutes ?? [];
 
   // Hook count is the sum of all hook arrays.
   const hooks = app.hooks?.hooks;
@@ -61,7 +62,8 @@ function discoverConfig(app: any): DiscoveredConfig {
     routeConflict: app.routeConflict ?? 'throw',
     strictSchema: app.strictSchema ?? false,
     httpRouteCount: httpRoutes.length,
-    wsRouteCount: wsRoutes.length,
+    wsRouteCount: wsRoutes.length + socketIoRoutes.length,
+    socketIoRouteCount: socketIoRoutes.length,
     hookCount,
     serviceCount,
   };

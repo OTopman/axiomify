@@ -14,15 +14,49 @@ import type { DiscoveredRoute } from './types';
  */
 export function discoverRoutes(app: any): DiscoveredRoute[] {
   const httpRoutes: DiscoveredRoute[] = (app.registeredRoutes ?? []).map(
-    (r: any) => normaliseRoute(r, false),
+    (r: any) => normaliseRoute(r, false, undefined),
   );
   const wsRoutes: DiscoveredRoute[] = (app.registeredWsRoutes ?? []).map(
-    (r: any) => normaliseRoute(r, true),
+    (r: any) => normaliseRoute(r, true, 'ws'),
   );
-  return [...httpRoutes, ...wsRoutes];
+  const socketIoRoutes: DiscoveredRoute[] = (
+    app.registeredSocketIoRoutes ?? []
+  ).map((r: any) => normaliseSocketIoRoute(r));
+  return [...httpRoutes, ...wsRoutes, ...socketIoRoutes];
 }
 
-function normaliseRoute(raw: any, isWs: boolean): DiscoveredRoute {
+function normaliseSocketIoRoute(raw: any): DiscoveredRoute {
+  const path = typeof raw.path === 'string' ? raw.path : '/socket.io/';
+
+  return {
+    method: 'WS',
+    path,
+    isWs: true,
+    realtimeProtocol: 'socket.io',
+    validation: [],
+    tags: ['socket.io'],
+    operationId:
+      typeof raw.operationId === 'string' ? raw.operationId : 'socketIo',
+    summary:
+      typeof raw.summary === 'string'
+        ? raw.summary
+        : 'Socket.IO endpoint',
+    description:
+      typeof raw.description === 'string'
+        ? raw.description
+        : 'Socket.IO connection endpoint attached to the native adapter.',
+    deprecated: false,
+    pluginCount: 0,
+    plugins: [],
+    hasResponseSchema: false,
+  };
+}
+
+function normaliseRoute(
+  raw: any,
+  isWs: boolean,
+  realtimeProtocol: DiscoveredRoute['realtimeProtocol'],
+): DiscoveredRoute {
   const validation: string[] = [];
   if (raw.schema?.body) validation.push('body');
   if (raw.schema?.query) validation.push('query');
@@ -37,6 +71,7 @@ function normaliseRoute(raw: any, isWs: boolean): DiscoveredRoute {
     method: isWs ? 'WS' : raw.method,
     path: raw.path,
     isWs,
+    realtimeProtocol,
     validation,
     tags: Array.isArray(s.tags) ? s.tags : [],
     operationId: typeof s.operationId === 'string' ? s.operationId : undefined,

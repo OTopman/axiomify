@@ -1,15 +1,17 @@
+import type { Axiomify } from '@axiomify/core';
 import * as esbuild from 'esbuild';
 import path from 'node:path';
 import pc from 'picocolors';
-import { loadApp } from '../../utils/load-app';
 import { getUserExternals } from '../../utils/externals';
+import { loadApp } from '../../utils/load-app';
+import { computeImpacts, pendingImpacts } from '../api/sdk-impact';
 import { performDiscovery, type StudioDiscoveryResult } from '../discovery';
 import { StudioWsServer } from '../server/ws-server';
 
 export interface SyncEngineOptions {
   entry: string;
   wsServer: StudioWsServer;
-  onReload: (newDiscovery: StudioDiscoveryResult, newApp: any) => void;
+  onReload: (newDiscovery: StudioDiscoveryResult, newApp: Axiomify) => void;
 }
 
 /**
@@ -62,15 +64,29 @@ export class StudioSyncEngine {
             // Reload the app and run discovery.
             const loaded = await loadApp(this.options.entry);
             const discovery = await performDiscovery(loaded.app);
-            await loaded.cleanup();
+
+            // Compute SDK changes/impacts
+            const beforeCount = pendingImpacts.length;
+            computeImpacts(discovery);
+            const afterCount = pendingImpacts.length;
 
             // Update discovery cache in the router.
             this.options.onReload(discovery, loaded.app);
+            await loaded.cleanup();
 
             console.log(pc.green('  ✓ App reloaded successfully.'));
 
             // Broadcast refresh signal to the browser.
             this.options.wsServer.broadcast(JSON.stringify({ type: 'reload' }));
+
+            if (afterCount > beforeCount) {
+              this.options.wsServer.broadcast(
+                JSON.stringify({
+                  type: 'sdk-impact',
+                  count: pendingImpacts.length,
+                }),
+              );
+            }
           } catch (err) {
             console.error(pc.red('  ✗ Reload failed:'), (err as Error).message);
             this.options.wsServer.broadcast(
@@ -92,7 +108,7 @@ export class StudioSyncEngine {
       outfile: tempPath,
       external: [...new Set([...userExternals, 'node:*'])],
       plugins: [watchPlugin],
-      logLevel: 'mute',
+      logLevel: 'silent',
     });
 
     await this.ctx.watch();

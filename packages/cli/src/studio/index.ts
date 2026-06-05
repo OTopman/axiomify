@@ -11,21 +11,26 @@
  * This module is the interface between the CLI command and the Studio
  * subsystem. Everything Studio-related flows through `startStudio()`.
  */
-import { type Server } from 'node:http';
+import type { Axiomify } from '@axiomify/core';
 import { randomBytes } from 'node:crypto';
+import { type Server } from 'node:http';
 import pc from 'picocolors';
 import { loadApp } from '../utils/load-app';
-import { performDiscovery, type StudioDiscoveryResult } from './discovery';
-import { StudioRouter } from './server/router';
-import { createStudioServer } from './server/http-server';
 import { registerStudioApi } from './api';
-import { buildIndexHtml } from './client/index-html';
+import { getContractsAutoRun, runAllContractTests, setOnContractsUpdated } from './api/contracts';
+import { instrumentErrorObservatory } from './api/errors';
+import { instrumentLogs, setOnLogsUpdated } from './api/logs';
+import { setOnPerfUpdated } from './api/perf';
+import { setOnRecorderUpdated } from './api/recorder';
+import { instrumentRequestReplay, setOnReplayUpdated } from './api/replay';
+import { setBaselineDiscovery } from './api/sdk-impact';
+import { instrumentTrafficProfiling } from './api/traffic-interceptor';
+import { instrumentWsAnalytics, stopWsMetricsInterval } from './api/ws-analytics';
+import { performDiscovery, type StudioDiscoveryResult } from './discovery';
+import { createStudioServer } from './server/http-server';
+import { StudioRouter } from './server/router';
 import { StudioWsServer } from './server/ws-server';
 import { StudioSyncEngine } from './sync';
-import { instrumentErrorObservatory } from './api/errors';
-import { instrumentWsAnalytics } from './api/ws-analytics';
-import { setOnReplayUpdated, instrumentRequestReplay } from './api/replay';
-import { instrumentLogs, setOnLogsUpdated } from './api/logs';
 
 export interface StudioOptions {
   /** Port to listen on. Default: 4399. */
@@ -50,7 +55,7 @@ export async function startStudio(
   console.log();
   console.log(pc.dim('  Loading application...'));
 
-  let app: any;
+  let app: Axiomify;
   let cleanup: () => Promise<void>;
   try {
     const loaded = await loadApp(entry);
@@ -87,6 +92,9 @@ export async function startStudio(
     ),
   );
 
+  // Set baseline discovery for SDK impact tracking
+  setBaselineDiscovery(discovery);
+
   // ── 3. Set up the router, WebSocket server and API ───────────────────
   let currentApp = app;
   const router = new StudioRouter();
@@ -102,9 +110,23 @@ export async function startStudio(
     wsServer.broadcast(JSON.stringify({ type: 'logs-updated' }));
   });
 
-  // Instrument initial app load & console logs
+  // Set up recorder & perf WS notifications
+  setOnRecorderUpdated(() => {
+    wsServer.broadcast(JSON.stringify({ type: 'recorder-updated' }));
+  });
+
+  setOnPerfUpdated(() => {
+    wsServer.broadcast(JSON.stringify({ type: 'perf-updated' }));
+  });
+
+  setOnContractsUpdated(() => {
+    wsServer.broadcast(JSON.stringify({ type: 'contracts-updated' }));
+  });
+
+  // Instrument initial app load, console logs, and traffic profiling
   instrumentRequestReplay(currentApp);
   instrumentLogs();
+  instrumentTrafficProfiling(currentApp);
 
   registerStudioApi(router, {
     getDiscovery: () => discovery,
@@ -112,14 +134,12 @@ export async function startStudio(
   });
 
   // ── 4. Boot the HTTP server ──────────────────────────────────────────
-  const indexHtml = buildIndexHtml();
   let server: Server;
 
   try {
     server = createStudioServer({
       port,
       router,
-      indexHtml,
       token: studioToken,
       onReady: (actualPort, url) => {
         const urlWithToken = `${url}/?token=${studioToken}`;
@@ -184,6 +204,11 @@ export async function startStudio(
       instrumentErrorObservatory(newApp);
       instrumentWsAnalytics();
       instrumentRequestReplay(newApp);
+      instrumentTrafficProfiling(newApp);
+      
+      if (getContractsAutoRun()) {
+        runAllContractTests(newDiscovery, newApp).catch(() => {});
+      }
     },
   });
 
@@ -202,6 +227,7 @@ export async function startStudio(
     shuttingDown = true;
     console.log(`\n  ${pc.dim(`Received ${signal}, shutting down Studio...`)}`);
 
+    stopWsMetricsInterval();
     await syncEngine.stop();
     wsServer.close();
     server!.close();
@@ -216,21 +242,29 @@ export async function startStudio(
 
 /**
  * Opens a URL in the user's default browser.
- * Uses platform-specific commands; non-fatal if it fails.
+ * Uses platform-specific commands with execFile (args array) to avoid
+ * shell command injection. Non-fatal if it fails.
  */
 async function openBrowser(url: string): Promise<void> {
-  const { exec } = await import('node:child_process');
+  const { execFile } = await import('node:child_process');
   const platform = process.platform;
 
-  const command =
-    platform === 'darwin'
-      ? `open "${url}"`
-      : platform === 'win32'
-        ? `start "${url}"`
-        : `xdg-open "${url}"`;
+  let cmd: string;
+  let args: string[];
+
+  if (platform === 'darwin') {
+    cmd = 'open';
+    args = [url];
+  } else if (platform === 'win32') {
+    cmd = 'cmd';
+    args = ['/c', 'start', '', url];
+  } else {
+    cmd = 'xdg-open';
+    args = [url];
+  }
 
   return new Promise((resolve) => {
-    exec(command, (err) => {
+    execFile(cmd, args, () => {
       // Silently resolve — failing to open the browser is non-fatal.
       resolve();
     });

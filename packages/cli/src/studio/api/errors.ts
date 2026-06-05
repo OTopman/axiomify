@@ -1,5 +1,8 @@
 import type { ServerResponse } from 'node:http';
+import type { Axiomify } from '@axiomify/core';
 import { sendJson } from '../server/http-server';
+import { extractValidationErrors } from '../utils/validation-errors';
+import { recordSessionError } from './recorder';
 
 export interface RecordedError {
   id: string;
@@ -46,41 +49,15 @@ export function sanitizePayload(payload: any): any {
   }
 }
 
-function formatValidationErrors(err: any, req: any): any[] {
-  const list: any[] = [];
-  if (err && err.errors) {
-    for (const [location, fieldErrors] of Object.entries(err.errors)) {
-      if (fieldErrors && typeof fieldErrors === 'object') {
-        for (const [field, reason] of Object.entries(fieldErrors as any)) {
-          let received: any = undefined;
-          const reqSource = (req as any)[location];
-          if (reqSource && typeof reqSource === 'object') {
-            const parts = field.split('.');
-            let current = reqSource;
-            for (const p of parts) {
-              current = (current as any)?.[p];
-            }
-            received = current;
-          }
-          list.push({
-            location,
-            field,
-            reason: String(reason),
-            received,
-          });
-        }
-      }
-    }
-  }
-  return list;
-}
-
-export function instrumentErrorObservatory(app: any): void {
+export function instrumentErrorObservatory(app: Axiomify): void {
   try {
     app.addHook('onError', (err: any, req: any) => {
       const errName = err?.name || err?.constructor?.name || 'Error';
       const errMsg = err?.message || String(err);
       const errStack = err?.stack || '';
+      const reqPath = req?.path || '/';
+      const reqMethod = req?.method || 'GET';
+      const requestId = req?.id || req?._requestId || '';
 
       const payload = {
         body: sanitizePayload(req.body),
@@ -88,24 +65,37 @@ export function instrumentErrorObservatory(app: any): void {
         params: req.params,
         validationErrors:
           errName === 'ValidationError'
-            ? formatValidationErrors(err, req)
+            ? extractValidationErrors(err, req)
             : undefined,
       };
 
-      recordedErrors.push({
+      const entry = {
         id: `err-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         name: errName,
         message: errMsg,
         stack: errStack,
-        method: req.method || 'GET',
-        path: req.path || '/',
+        method: reqMethod,
+        path: reqPath,
         payload,
         timestamp: new Date().toISOString(),
-      });
+      };
+
+      recordedErrors.push(entry);
 
       if (recordedErrors.length > 200) {
         recordedErrors.shift();
       }
+
+      // Also push to unified session recorder
+      recordSessionError({
+        requestId,
+        name: errName,
+        message: errMsg,
+        stack: errStack,
+        method: reqMethod,
+        path: reqPath,
+        timestamp: entry.timestamp,
+      });
     });
   } catch {
     // Ignore

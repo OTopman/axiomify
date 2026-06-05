@@ -16,6 +16,8 @@ import {
   type ServerResponse,
 } from 'node:http';
 import { URL } from 'node:url';
+import { existsSync, promises as fsPromises } from 'node:fs';
+import { join, extname } from 'node:path';
 import { StudioRouter, type StudioRouteHandler } from './router';
 
 export interface StudioServerOptions {
@@ -25,11 +27,39 @@ export interface StudioServerOptions {
   router: StudioRouter;
   /** Callback invoked with the actual port and URL once the server is listening. */
   onReady?: (port: number, url: string) => void;
-  /** HTML content to serve as the SPA shell (index.html). */
-  indexHtml: string;
+  /** Optional static fallback HTML. */
+  indexHtml?: string;
   /** Optional security token to restrict API and WebSocket access. */
   token?: string;
 }
+
+const MIME_TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.webp': 'image/webp',
+};
+
+const FALLBACK_HTML = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Axiomify Studio</title>
+</head>
+<body>
+  <div style="font-family: sans-serif; padding: 40px; text-align: center;">
+    <h1>Axiomify Studio</h1>
+    <p>Loading or build assets missing. Please run <code>npm run build</code> in the workspace.</p>
+  </div>
+</body>
+</html>`;
 
 /**
  * Helper to send a JSON response with standard headers.
@@ -69,7 +99,21 @@ export function readBody(req: IncomingMessage): Promise<string> {
  * port is reported via the `onReady` callback.
  */
 export function createStudioServer(options: StudioServerOptions): Server {
-  const { router, indexHtml } = options;
+  const { router } = options;
+
+  // Resolve the ui-dist path dynamically
+  const pathsToTry = [
+    join(__dirname, '../ui-dist'),
+    join(__dirname, '../../ui-dist'),
+    join(__dirname, '../../../../ui-dist'),
+  ];
+  let uiDistPath = '';
+  for (const p of pathsToTry) {
+    if (existsSync(join(p, 'index.html'))) {
+      uiDistPath = p;
+      break;
+    }
+  }
 
   const server = createServer(
     async (req: IncomingMessage, res: ServerResponse) => {
@@ -101,7 +145,10 @@ export function createStudioServer(options: StudioServerOptions): Server {
           const suppliedToken = authHeader?.startsWith('Bearer ')
             ? authHeader.substring(7)
             : '';
-          if (suppliedToken !== options.token) {
+          // Fallback: accept token from query parameter (for browser navigations
+          // like export downloads where no Authorization header is sent).
+          const queryToken = suppliedToken || parsedUrl.searchParams.get('token') || '';
+          if (queryToken !== options.token) {
             sendJson(
               res,
               {
@@ -128,8 +175,49 @@ export function createStudioServer(options: StudioServerOptions): Server {
         return;
       }
 
+      // ── Static assets serving ──────────────────────────────────────────
+      if (uiDistPath) {
+        const safePath = join(uiDistPath, pathname);
+        if (safePath.startsWith(uiDistPath)) {
+          let fileExists = false;
+          let isFile = false;
+          try {
+            const stat = await fsPromises.stat(safePath);
+            fileExists = true;
+            isFile = stat.isFile();
+          } catch {}
+
+          if (fileExists && isFile) {
+            const ext = extname(safePath).toLowerCase();
+            const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+            try {
+              const data = await fsPromises.readFile(safePath);
+              res.writeHead(200, {
+                'Content-Type': contentType,
+                'Content-Length': data.length,
+                'Cache-Control': 'no-cache',
+                'Access-Control-Allow-Origin': '*',
+              });
+              res.end(data);
+              return;
+            } catch (err) {
+              res.writeHead(500);
+              res.end(`Internal Server Error: ${String(err)}`);
+              return;
+            }
+          }
+        }
+      }
+
       // ── SPA fallback — serve index.html for all non-API paths ───────────
       // This enables client-side routing in the SPA.
+      let indexHtml = options.indexHtml || FALLBACK_HTML;
+      if (!options.indexHtml && uiDistPath) {
+        try {
+          indexHtml = await fsPromises.readFile(join(uiDistPath, 'index.html'), 'utf8');
+        } catch {}
+      }
+
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
         'Content-Length': Buffer.byteLength(indexHtml),

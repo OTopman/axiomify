@@ -7,23 +7,120 @@
  *
  * `POST /__studio/api/request`
  */
+import { compiledStates, type Axiomify } from '@axiomify/core';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
-import { sendJson, readBody } from '../server/http-server';
-import { compiledStates } from '@axiomify/core';
-import { requestHistory, saveHistory, notifyReplaysUpdated } from './replay';
+import { readBody, sendJson } from '../server/http-server';
+import { extractValidationErrors } from '../utils/validation-errors';
+import { recordLatency } from './perf';
+import { logCorrelationStorage } from './logs';
+import { recordRequest, recordResponse } from './recorder';
+import { notifyReplaysUpdated, requestHistory, saveHistory } from './replay';
 
-let activeProfile: any = null;
+/**
+ * The Axiomify class has private `dispatcher` and `_services` fields that we
+ * need to access for profiling. We cannot intersect with `Axiomify` because
+ * TypeScript reduces the result to `never` when a private member name
+ * overlaps. Instead we define a standalone structural type and use
+ * indexed access (`Record<string, unknown>`) to bridge the gap.
+ */
+interface StudioInternalApp {
+  dispatcher?: {
+    hooks?: {
+      run?: (...args: unknown[]) => unknown;
+      runSafe?: (...args: unknown[]) => unknown;
+      hooks: Record<string, Array<(...args: unknown[]) => unknown>>;
+    };
+    router?: {
+      lookup: (method: string, path: string, params: Record<string, string>) => { route?: unknown } | null;
+    };
+  };
+  _services?: Map<unknown, unknown>;
+  handle(req: unknown, res: unknown): Promise<void>;
+}
+
+/**
+ * Bridge from the public Axiomify type to our internal structural type.
+ * Axiomify's `dispatcher` and `_services` exist at runtime but are private
+ * in the type system. We access them through `Record<string, unknown>`.
+ */
+function getInternalApp(app: Axiomify): StudioInternalApp {
+  const indexed = app as unknown as Record<string, unknown>;
+  return indexed as unknown as StudioInternalApp;
+}
+
+class AsyncLock {
+  private locked = false;
+  private queue: Array<() => void> = [];
+
+  public acquire(): Promise<() => void> {
+    if (!this.locked) {
+      this.locked = true;
+      return Promise.resolve(() => this.release());
+    }
+
+    return new Promise((resolve) => {
+      this.queue.push(() => {
+        resolve(() => this.release());
+      });
+    });
+  }
+
+  private release(): void {
+    const next = this.queue.shift();
+    if (next) {
+      next();
+      return;
+    }
+    this.locked = false;
+  }
+}
+
+const profilingLock = new AsyncLock();
+
+function safeClone(val: any): any {
+  if (val === undefined) return undefined;
+  if (val === null) return null;
+  const seen = new WeakSet();
+
+  function clone(item: any): any {
+    if (item === null || typeof item !== 'object') {
+      return item;
+    }
+    if (seen.has(item)) {
+      return '[Circular]';
+    }
+    seen.add(item);
+
+    if (Array.isArray(item)) {
+      return item.map(i => clone(i));
+    }
+
+    const obj: any = {};
+    for (const key of Object.keys(item)) {
+      try {
+        obj[key] = clone(item[key]);
+      } catch (e) {
+        obj[key] = '[Uncloneable]';
+      }
+    }
+    return obj;
+  }
+
+  return clone(val);
+}
 
 export async function handlePostRequest(
   req: IncomingMessage,
   res: ServerResponse,
-  app: any,
+  app: Axiomify,
 ): Promise<void> {
   if (!app) {
     sendJson(res, { error: 'App not loaded' }, 503);
     return;
   }
+
+  const studioApp = getInternalApp(app);
 
   try {
     const rawBody = await readBody(req);
@@ -43,6 +140,9 @@ export async function handlePostRequest(
     }
 
     const uppercaseMethod = (method || 'GET').toUpperCase();
+    const requestId = `studio-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const requestTimestamp = new Date().toISOString();
+    const proxyStart = performance.now();
 
     // Store in request history for replay
     requestHistory.push({
@@ -52,13 +152,24 @@ export async function handlePostRequest(
       headers: headers || {},
       query: query || {},
       body,
-      timestamp: new Date().toISOString(),
+      timestamp: requestTimestamp,
     });
     if (requestHistory.length > 50) {
       requestHistory.shift();
     }
     saveHistory();
     notifyReplaysUpdated();
+
+    // Record to session recorder
+    recordRequest({
+      requestId,
+      method: uppercaseMethod,
+      path,
+      headers: headers || {},
+      query: query || {},
+      body,
+      timestamp: requestTimestamp,
+    });
 
     // Reconstruct query string
     let queryString = '';
@@ -155,14 +266,19 @@ export async function handlePostRequest(
       queries: [] as any[],
     };
     mockReq._profile = profile;
-    activeProfile = profile;
 
-    const originalRun = app.dispatcher?.hooks?.run;
-    const originalRunSafe = app.dispatcher?.hooks?.runSafe;
+    // Hook, compiled-pipeline, and DB wrappers temporarily patch shared app
+    // objects, so Studio serialises profiled proxy requests while the patches
+    // are active. This keeps real traffic and concurrent tester clicks from
+    // capturing each other's wrappers as "original" functions.
+    const releaseProfileLock = await profilingLock.acquire();
+
+    const originalRun = studioApp.dispatcher?.hooks?.run;
+    const originalRunSafe = studioApp.dispatcher?.hooks?.runSafe;
 
     // Patch hooks if dispatcher exists
-    if (app.dispatcher && app.dispatcher.hooks) {
-      app.dispatcher.hooks.run = function (type: any, ...args: any[]) {
+    if (studioApp.dispatcher && studioApp.dispatcher.hooks) {
+      studioApp.dispatcher.hooks.run = function (type: any, ...args: any[]) {
         const req = args[0];
         if (req && req._profile) {
           const list = this.hooks[type];
@@ -206,10 +322,12 @@ export async function handlePostRequest(
           };
           return execute();
         }
-        return originalRun.apply(this, arguments);
+        if (originalRun) {
+          return originalRun.apply(this, Array.from(arguments));
+        }
       };
 
-      app.dispatcher.hooks.runSafe = function (type: any, ...args: any[]) {
+      studioApp.dispatcher.hooks.runSafe = function (type: any, ...args: any[]) {
         const req = type === 'onError' ? args[1] : args[0];
         if (req && req._profile) {
           const list = this.hooks[type];
@@ -275,18 +393,20 @@ export async function handlePostRequest(
           };
           return execute();
         }
-        return originalRunSafe.apply(this, arguments);
+        if (originalRunSafe) {
+          return originalRunSafe.apply(this, Array.from(arguments));
+        }
       };
     }
 
     // Dynamic database services patching
     const databaseServices: {
-      obj: any;
-      originalMethods: { path: string[]; fn: any }[];
+      obj: Record<string, unknown>;
+      originalMethods: { path: string[]; fn: (...args: unknown[]) => unknown }[];
     }[] = [];
     try {
-      if (app._services instanceof Map) {
-        for (const [token, service] of app._services.entries()) {
+      if (studioApp._services instanceof Map) {
+        for (const [token, service] of studioApp._services.entries()) {
           const tokenStr = String(token).toLowerCase();
           let isDb = false;
 
@@ -308,39 +428,41 @@ export async function handlePostRequest(
           }
 
           if (isDb && service && typeof service === 'object') {
-            const originalMethods: { path: string[]; fn: any }[] = [];
+            const svc = service as Record<string, unknown>;
+            const originalMethods: { path: string[]; fn: (...args: unknown[]) => unknown }[] = [];
 
-            for (const key of Object.keys(service)) {
-              const val = service[key];
+            for (const key of Object.keys(svc)) {
+              const val = svc[key];
               if (typeof val === 'function') {
                 if (
                   key.startsWith('$') ||
                   key === 'query' ||
                   key === 'execute'
                 ) {
-                  originalMethods.push({ path: [key], fn: val });
+                  originalMethods.push({ path: [key], fn: val as (...args: unknown[]) => unknown });
                 }
               } else if (val && typeof val === 'object') {
-                for (const modelKey of Object.keys(val)) {
-                  if (typeof val[modelKey] === 'function') {
+                const model = val as Record<string, unknown>;
+                for (const modelKey of Object.keys(model)) {
+                  if (typeof model[modelKey] === 'function') {
                     originalMethods.push({
                       path: [key, modelKey],
-                      fn: val[modelKey],
+                      fn: model[modelKey] as (...args: unknown[]) => unknown,
                     });
                   }
                 }
-                const modelProto = Object.getPrototypeOf(val);
+                const modelProto = Object.getPrototypeOf(model);
                 if (modelProto && modelProto !== Object.prototype) {
                   for (const modelKey of Object.getOwnPropertyNames(
                     modelProto,
                   )) {
                     if (
-                      typeof val[modelKey] === 'function' &&
+                      typeof model[modelKey] === 'function' &&
                       modelKey !== 'constructor'
                     ) {
                       originalMethods.push({
                         path: [key, modelKey],
-                        fn: val[modelKey],
+                        fn: model[modelKey] as (...args: unknown[]) => unknown,
                       });
                     }
                   }
@@ -348,11 +470,11 @@ export async function handlePostRequest(
               }
             }
 
-            const serviceProto = Object.getPrototypeOf(service);
+            const serviceProto = Object.getPrototypeOf(svc);
             if (serviceProto && serviceProto !== Object.prototype) {
               for (const key of Object.getOwnPropertyNames(serviceProto)) {
                 if (
-                  typeof service[key] === 'function' &&
+                  typeof svc[key] === 'function' &&
                   key !== 'constructor'
                 ) {
                   if (
@@ -360,14 +482,14 @@ export async function handlePostRequest(
                     key === 'query' ||
                     key === 'execute'
                   ) {
-                    originalMethods.push({ path: [key], fn: service[key] });
+                    originalMethods.push({ path: [key], fn: svc[key] as (...args: unknown[]) => unknown });
                   }
                 }
               }
             }
 
             if (originalMethods.length > 0) {
-              databaseServices.push({ obj: service, originalMethods });
+              databaseServices.push({ obj: svc, originalMethods });
             }
           }
         }
@@ -379,66 +501,63 @@ export async function handlePostRequest(
     // Wrap database methods
     for (const { obj, originalMethods } of databaseServices) {
       for (const { path: methodPath, fn } of originalMethods) {
-        let parent = obj;
+        let parent: Record<string, unknown> = obj;
         for (let i = 0; i < methodPath.length - 1; i++) {
-          parent = parent[methodPath[i]];
+          parent = parent[methodPath[i]] as Record<string, unknown>;
         }
         const lastKey = methodPath[methodPath.length - 1];
 
-        parent[lastKey] = function (...args: any[]) {
-          if (activeProfile) {
-            const start = performance.now();
-            const formatQueryArgs = () => {
-              try {
-                const targetName = methodPath.join('.');
-                const serializedArgs = args
-                  .map((arg) => {
-                    if (typeof arg === 'object') {
-                      return JSON.stringify(arg);
-                    }
-                    return String(arg);
-                  })
-                  .join(', ');
-                return `${targetName}(${serializedArgs})`;
-              } catch {
-                return `${methodPath.join('.')}(...)`;
-              }
-            };
-            const queryStr = formatQueryArgs();
-            const ret = fn.apply(this, args);
-
-            if (ret instanceof Promise) {
-              return ret.then(
-                (result) => {
-                  const duration = performance.now() - start;
-                  activeProfile.queries.push({
-                    query: queryStr,
-                    duration,
-                    timestamp: new Date().toISOString(),
-                  });
-                  return result;
-                },
-                (err) => {
-                  const duration = performance.now() - start;
-                  activeProfile.queries.push({
-                    query: `${queryStr} -> FAILED: ${err.message}`,
-                    duration,
-                    timestamp: new Date().toISOString(),
-                  });
-                  throw err;
-                },
-              );
-            } else {
-              const duration = performance.now() - start;
-              activeProfile.queries.push({
-                query: queryStr,
-                duration,
-                timestamp: new Date().toISOString(),
-              });
-              return ret;
+        parent[lastKey] = function (...args: unknown[]) {
+          const start = performance.now();
+          const formatQueryArgs = () => {
+            try {
+              const targetName = methodPath.join('.');
+              const serializedArgs = args
+                .map((arg) => {
+                  if (typeof arg === 'object') {
+                    return JSON.stringify(arg);
+                  }
+                  return String(arg);
+                })
+                .join(', ');
+              return `${targetName}(${serializedArgs})`;
+            } catch {
+              return `${methodPath.join('.')}(...)`;
             }
+          };
+          const queryStr = formatQueryArgs();
+          const ret = fn.apply(this, args);
+
+          if (ret instanceof Promise) {
+            return ret.then(
+              (result) => {
+                const duration = performance.now() - start;
+                profile.queries.push({
+                  query: queryStr,
+                  duration,
+                  timestamp: new Date().toISOString(),
+                });
+                return result;
+              },
+              (err: unknown) => {
+                const duration = performance.now() - start;
+                profile.queries.push({
+                  query: `${queryStr} -> FAILED: ${(err instanceof Error) ? err.message : String(err)}`,
+                  duration,
+                  timestamp: new Date().toISOString(),
+                });
+                throw err;
+              },
+            );
           }
-          return fn.apply(this, args);
+
+          const duration = performance.now() - start;
+          profile.queries.push({
+            query: queryStr,
+            duration,
+            timestamp: new Date().toISOString(),
+          });
+          return ret;
         };
       }
     }
@@ -446,8 +565,8 @@ export async function handlePostRequest(
     // Pipeline/Handler interception
     let originalState: any = null;
     let matchedRoute: any = null;
-    if (app.dispatcher && app.dispatcher.router) {
-      const match = app.dispatcher.router.lookup(uppercaseMethod, path, {});
+    if (studioApp.dispatcher && studioApp.dispatcher.router) {
+      const match = studioApp.dispatcher.router.lookup(uppercaseMethod, path, {});
       if (match && match.route) {
         matchedRoute = match.route;
         originalState = compiledStates.get(matchedRoute);
@@ -464,6 +583,13 @@ export async function handlePostRequest(
               return async function (req: any, res: any) {
                 if (req && req._profile) {
                   const start = performance.now();
+                  const cloneBefore = {
+                    headers: safeClone(req.headers || {}),
+                    body: safeClone(req.body || {}),
+                    query: safeClone(req.query || {}),
+                    params: safeClone(req.params || {}),
+                    state: safeClone(req.state || {}),
+                  };
                   try {
                     const ret = fn(req, res);
                     if (ret instanceof Promise) {
@@ -471,49 +597,27 @@ export async function handlePostRequest(
                     }
                   } catch (err: any) {
                     if (err.name === 'ValidationError') {
-                      const validationErrors: Array<{
-                        location: string;
-                        field: string;
-                        reason: string;
-                        received: any;
-                      }> = [];
-                      if (err.errors) {
-                        for (const [location, fieldErrors] of Object.entries(
-                          err.errors,
-                        )) {
-                          if (fieldErrors && typeof fieldErrors === 'object') {
-                            for (const [field, reason] of Object.entries(
-                              fieldErrors as any,
-                            )) {
-                              let received: any = undefined;
-                              const reqSource = (req as any)[location];
-                              if (reqSource && typeof reqSource === 'object') {
-                                const parts = field.split('.');
-                                let current = reqSource;
-                                for (const p of parts) {
-                                  current = (current as any)?.[p];
-                                }
-                                received = current;
-                              }
-                              validationErrors.push({
-                                location,
-                                field,
-                                reason: String(reason),
-                                received,
-                              });
-                            }
-                          }
-                        }
-                      }
-                      req._profile.validationErrors = validationErrors;
+                      req._profile.validationErrors = extractValidationErrors(
+                        err,
+                        req,
+                      );
                     }
                     throw err;
                   } finally {
                     const duration = performance.now() - start;
+                    const cloneAfter = {
+                      headers: safeClone(req.headers || {}),
+                      body: safeClone(req.body || {}),
+                      query: safeClone(req.query || {}),
+                      params: safeClone(req.params || {}),
+                      state: safeClone(req.state || {}),
+                    };
                     req._profile.timeline.push({
                       name,
                       type: typeStr,
                       duration,
+                      before: cloneBefore,
+                      after: cloneAfter,
                     });
                   }
                 } else {
@@ -531,27 +635,48 @@ export async function handlePostRequest(
     }
 
     try {
-      await app.handle(mockReq, mockRes);
+      await logCorrelationStorage.run(requestId, async () => {
+        await studioApp.handle(mockReq, mockRes);
+      });
     } finally {
-      activeProfile = null;
       if (matchedRoute && originalState) {
         compiledStates.set(matchedRoute, originalState);
       }
-      if (app.dispatcher && app.dispatcher.hooks) {
-        app.dispatcher.hooks.run = originalRun;
-        app.dispatcher.hooks.runSafe = originalRunSafe;
+      if (studioApp.dispatcher && studioApp.dispatcher.hooks) {
+        studioApp.dispatcher.hooks.run = originalRun;
+        studioApp.dispatcher.hooks.runSafe = originalRunSafe;
       }
       for (const { obj, originalMethods } of databaseServices) {
         for (const { path: methodPath, fn } of originalMethods) {
-          let parent = obj;
+          let parent: Record<string, unknown> = obj;
           for (let i = 0; i < methodPath.length - 1; i++) {
-            parent = parent[methodPath[i]];
+            parent = parent[methodPath[i]] as Record<string, unknown>;
           }
           const lastKey = methodPath[methodPath.length - 1];
           parent[lastKey] = fn;
         }
       }
+      releaseProfileLock();
     }
+
+    // Push to recorder and perf observatory
+    const proxyDuration = performance.now() - proxyStart;
+    recordResponse({
+      requestId,
+      status: responseStatus,
+      headers: responseHeaders,
+      body: responseBody,
+      durationMs: Math.round(proxyDuration * 100) / 100,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Feed perf stats from the profiled timeline
+    const timeline = (mockReq._profile?.timeline || []) as { name: string; type: string; duration: number }[];
+    const queryDurations = (mockReq._profile?.queries || []).map((q: any) => ({
+      query: String(q.query),
+      durationMs: q.duration,
+    }));
+    recordLatency(path, uppercaseMethod, proxyDuration, timeline, queryDurations);
 
     // Respond back to the studio client
     sendJson(res, {
