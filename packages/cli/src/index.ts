@@ -12,6 +12,33 @@ import { inspectRoutes, RoutesOptions } from './commands/routes';
 import { scaffoldRoute } from './commands/scaffold';
 import { generateSdk } from './commands/sdk/generate';
 import { runStudio, StudioCommandOptions } from './commands/studio';
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+
+function loadEnv() {
+  const envPath = join(process.cwd(), '.env');
+  if (existsSync(envPath)) {
+    try {
+      const content = readFileSync(envPath, 'utf8');
+      for (const line of content.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const idx = trimmed.indexOf('=');
+        if (idx === -1) continue;
+        const key = trimmed.substring(0, idx).trim();
+        let val = trimmed.substring(idx + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.substring(1, val.length - 1);
+        }
+        if (!(key in process.env)) {
+          process.env[key] = val;
+        }
+      }
+    } catch {}
+  }
+}
+
+loadEnv();
 
 const program = new Command();
 

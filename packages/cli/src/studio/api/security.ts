@@ -299,6 +299,19 @@ async function mockRequest(
     const responseHeaders: Record<string, string> = {};
     let responseBody = '';
 
+    const timeout = setTimeout(() => {
+      resolve({
+        status: 500,
+        headers: {},
+        body: 'Timeout during mock request',
+      });
+    }, 2000);
+
+    const resolveWithCleanup = (val: any) => {
+      clearTimeout(timeout);
+      resolve(val);
+    };
+
     const req: any = {
       id: `studio-security-${Date.now()}`,
       method: method.toUpperCase(),
@@ -330,9 +343,32 @@ async function mockRequest(
         responseHeaders[name.toLowerCase()] = value;
         return this;
       },
+      setHeader(name: string, value: string) {
+        responseHeaders[name.toLowerCase()] = value;
+        return this;
+      },
+      writeHead(code: number, headers?: any) {
+        responseStatus = code;
+        if (headers) {
+          Object.entries(headers).forEach(([k, v]) => {
+            responseHeaders[k.toLowerCase()] = String(v);
+          });
+        }
+        return this;
+      },
       send(data: any) {
         responseBody = typeof data === 'object' ? JSON.stringify(data) : String(data);
-        resolve({
+        resolveWithCleanup({
+          status: responseStatus,
+          headers: responseHeaders,
+          body: responseBody,
+        });
+      },
+      end(data?: any) {
+        if (data) {
+          responseBody = typeof data === 'object' ? JSON.stringify(data) : String(data);
+        }
+        resolveWithCleanup({
           status: responseStatus,
           headers: responseHeaders,
           body: responseBody,
@@ -347,9 +383,19 @@ async function mockRequest(
     };
 
     try {
-      app.handle(req, res);
-    } catch {
-      resolve(null);
+      app.handle(req, res).catch((err: any) => {
+        resolveWithCleanup({
+          status: 500,
+          headers: {},
+          body: err.message || 'Error during mock handle',
+        });
+      });
+    } catch (err: any) {
+      resolveWithCleanup({
+        status: 500,
+        headers: {},
+        body: err.message || 'Sync error during mock handle',
+      });
     }
   });
 }

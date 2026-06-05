@@ -528,12 +528,12 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
         </div>
 
         {/* Column 2: Composer & Rules */}
-        <div className="tester-section" style={{ height: '700px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div className="tester-section-title">
+        <div className="tester-section" style={{ height: '700px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
+          <div className="tester-section-title" style={{ flexShrink: 0 }}>
             <span>📝</span> Message Composer
           </div>
 
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flexShrink: 0 }}>
             {protocol === 'socketio' && (
               <div className="form-group">
                 <label className="form-label">Event Name</label>
@@ -546,11 +546,11 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                 />
               </div>
             )}
-            <div className="form-group" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div className="form-group" style={{ display: 'flex', flexDirection: 'column' }}>
               <label className="form-label">Message Payload (String or JSON)</label>
               <textarea 
                 className="textarea-input" 
-                style={{ flex: 1, minHeight: '100px', resize: 'none' }} 
+                style={{ minHeight: '120px', resize: 'none' }} 
                 placeholder={protocol === 'socketio' ? '{\n  "key": "value"\n}' : 'Hello WebSocket'} 
                 value={messagePayload}
                 onChange={e => setMessagePayload(e.target.value)}
@@ -562,7 +562,7 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
           </div>
 
           {/* Assertion Rules Box */}
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', display: 'flex', flexDirection: 'column', height: '240px' }}>
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', display: 'flex', flexDirection: 'column', height: '240px', flexShrink: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <span className="form-label" style={{ fontWeight: 600 }}>📐 Assertion Rules</span>
               <button className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: '10px', margin: 0 }} onClick={addAssertionRule}>+ Add Rule</button>
@@ -599,8 +599,8 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
         </div>
 
         {/* Column 3: Live Traffic Stream */}
-        <div className="tester-section" style={{ height: '700px', display: 'flex', flexDirection: 'column' }}>
-          <div className="tester-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="tester-section" style={{ height: '700px', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          <div className="tester-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
             <span>💬 Live Traffic Stream</span>
             <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '11px', margin: 0 }} onClick={clearLogs}>Clear Stream</button>
           </div>

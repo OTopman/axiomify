@@ -50,6 +50,8 @@ export function stopWsMetricsInterval(): void {
   metricsInterval = null;
 }
 
+export const roomManagers: any[] = [];
+
 export function instrumentWsAnalytics(): void {
   if (isWsAnalyticsInstrumented) return;
 
@@ -59,6 +61,17 @@ export function instrumentWsAnalytics(): void {
 
     const wsPkg = require(wsPath);
     if (!wsPkg?.RoomManager) return;
+
+    // Proxy the RoomManager constructor to collect instances
+    const originalRoomManager = wsPkg.RoomManager;
+    const roomManagerProxy = function (this: any, ...args: any[]) {
+      const instance = Reflect.construct(originalRoomManager, args, (new.target || originalRoomManager) as any);
+      roomManagers.push(instance);
+      return instance;
+    };
+    roomManagerProxy.prototype = originalRoomManager.prototype;
+    Object.setPrototypeOf(roomManagerProxy, originalRoomManager);
+    wsPkg.RoomManager = roomManagerProxy as any;
 
     const originalEmit = wsPkg.RoomManager.prototype.emit;
     wsPkg.RoomManager.prototype.emit = function (
@@ -80,7 +93,7 @@ export function instrumentWsAnalytics(): void {
 
       const start = performance.now();
       try {
-        const ret = originalEmit.apply(this, arguments);
+        const ret = originalEmit.apply(this, arguments as any);
         const duration = performance.now() - start;
         if (
           !wsMetrics.slowestHandler ||
@@ -110,7 +123,36 @@ export function instrumentWsAnalytics(): void {
 }
 
 export function handleGetWsAnalytics(_req: any, res: ServerResponse): void {
+  let activeConnections = 0;
+  let totalRooms = 0;
+  const clients: any[] = [];
+  const rooms: Record<string, number> = {};
+
+  roomManagers.forEach((manager) => {
+    activeConnections += manager.clientCount;
+    totalRooms += manager.roomCount;
+    manager.clientIds.forEach((id: string) => {
+      const c = manager.client(id);
+      if (c) {
+        clients.push({
+          id: c.id,
+          protocol: 'uWS',
+        });
+      }
+    });
+    const stats = manager.getStats();
+    Object.entries(stats.rooms).forEach(([name, size]) => {
+      rooms[name] = (rooms[name] || 0) + (size as number);
+    });
+  });
+
   sendJson(res, {
+    activeConnections,
+    totalRooms,
+    totalFramesReceived: wsMetrics.messagesReceived,
+    totalFramesSent: wsMetrics.messagesSent,
+    clients,
+    rooms,
     metrics: wsMetrics,
     rates: messageRates,
   });

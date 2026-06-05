@@ -24,11 +24,25 @@ import {
   SdkImpactPanel,
   ContractsPanel,
   QualityPanel,
-  AiAssistantPanel
+  AiAssistantPanel,
+  MiddlewaresPanel
 } from './components/OtherPanels';
 
 function App() {
-  const [token, setTokenState] = useState<string>(getToken());
+  const [token, setTokenState] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlToken = params.get('token');
+    if (urlToken) {
+      setToken(urlToken);
+      const nextParams = new URLSearchParams(window.location.search);
+      nextParams.delete('token');
+      const searchStr = nextParams.toString();
+      const newUrl = window.location.pathname + (searchStr ? `?${searchStr}` : '') + window.location.hash;
+      window.history.replaceState({}, document.title, newUrl);
+      return urlToken;
+    }
+    return getToken();
+  });
   const [loginInput, setLoginInput] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
   
@@ -63,6 +77,19 @@ function App() {
 
   // Sync token-level events and theme setting
   useEffect(() => {
+    // Check URL query parameter for token
+    const params = new URLSearchParams(window.location.search);
+    const urlToken = params.get('token');
+    if (urlToken) {
+      setToken(urlToken);
+      setTokenState(urlToken);
+      const nextParams = new URLSearchParams(window.location.search);
+      nextParams.delete('token');
+      const searchStr = nextParams.toString();
+      const newUrl = window.location.pathname + (searchStr ? `?${searchStr}` : '') + window.location.hash;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+
     // Read theme from localStorage or document
     const savedTheme = localStorage.getItem('axiomify_studio_theme') as 'light' | 'dark' | null;
     const initialTheme = savedTheme || 'light';
@@ -83,7 +110,7 @@ function App() {
     window.addEventListener('axiomify-filter-request-id', handleFilterRequestId);
 
     // Initial load
-    if (token) {
+    if (token || urlToken) {
       loadDiscovery();
     }
 
@@ -152,7 +179,7 @@ function App() {
         } else if (data.type === 'reload-error') {
           setReloadError(data.message);
         } else if (data.type === 'replays-updated') {
-          // Replays list state will refetch inside component via polling/mount or custom event
+          window.dispatchEvent(new CustomEvent('axiomify-replays-updated'));
         } else if (data.type === 'recorder-updated') {
           // recorder component automatically polls or updates badge
           apiFetch('/__studio/api/session').then(r => r.json()).then(d => {
@@ -300,6 +327,8 @@ function App() {
         return <OpenApiPanel discovery={discovery} onRefresh={loadDiscovery} />;
       case 'services':
         return <ServicesPanel discovery={discovery} />;
+      case 'middlewares':
+        return <MiddlewaresPanel discovery={discovery} onNavigateToRoute={handleQuickTest} />;
       case 'events':
         return <EventsPanel discovery={discovery} />;
       case 'architecture':
@@ -459,6 +488,15 @@ function App() {
           <span className="nav-icon">🧩</span>
           <span>Services</span>
           {discovery && <span className="nav-badge">{discovery.services?.length || 0}</span>}
+        </a>
+        <a className={`nav-item ${activePanel === 'middlewares' ? 'active' : ''}`} href="#middlewares" onClick={(e) => { e.preventDefault(); setActivePanel('middlewares'); }}>
+          <span className="nav-icon">🧱</span>
+          <span>Middlewares</span>
+          {discovery && (
+            <span className="nav-badge">
+              {Array.from(new Set(discovery.routes?.flatMap(r => r.plugins || []) || [])).length}
+            </span>
+          )}
         </a>
         <a className={`nav-item ${activePanel === 'events' ? 'active' : ''}`} href="#events" onClick={(e) => { e.preventDefault(); setActivePanel('events'); }}>
           <span className="nav-icon">📣</span>
@@ -639,7 +677,11 @@ const SecurityPanel: React.FC<SecurityPanelProps> = ({ discovery }) => {
     try {
       const res = await apiFetch('/__studio/api/security');
       if (res.ok) {
-        setData(await res.json());
+        const payload = await res.json();
+        setData(payload);
+        if (payload.isProbing) {
+          setTimeout(fetchSecurity, 1000);
+        }
       }
     } catch {}
   };
@@ -649,7 +691,7 @@ const SecurityPanel: React.FC<SecurityPanelProps> = ({ discovery }) => {
     try {
       const res = await apiFetch('/__studio/api/security/probe', { method: 'POST' });
       if (res.ok) {
-        fetchSecurity();
+        setTimeout(fetchSecurity, 500);
       }
     } catch {
     } finally {
@@ -680,10 +722,22 @@ const SecurityPanel: React.FC<SecurityPanelProps> = ({ discovery }) => {
           <div className="panel-title">Security Center</div>
           <div className="panel-subtitle">Static and dynamic security validation tests</div>
         </div>
-        <button className="btn" onClick={handleProbe} disabled={probing}>
-          {probing ? 'Probing...' : 'Run Dynamic Probe'}
+        <button className="btn" onClick={handleProbe} disabled={probing || data.isProbing}>
+          {probing || data.isProbing ? `Probing (${data.progress || 0}%)...` : 'Run Dynamic Probe'}
         </button>
       </div>
+
+      {data.isProbing && (
+        <div style={{ marginBottom: '20px', textAlign: 'left' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px', color: 'var(--text-secondary)' }}>
+            <span>Dynamic Vulnerability Scanning...</span>
+            <span>{data.progress || 0}%</span>
+          </div>
+          <div className="metric-progress-container">
+            <div className="metric-progress-bar success" style={{ width: `${data.progress || 0}%`, transition: 'width 0.3s ease' }} />
+          </div>
+        </div>
+      )}
 
       <div className="info-grid" style={{ marginBottom: '24px' }}>
         <div className="info-card" style={{ margin: 0 }}>

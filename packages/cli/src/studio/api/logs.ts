@@ -26,6 +26,8 @@ const originalConsole = {
   debug: console.debug,
   trace: console.trace,
 };
+const originalStdoutWrite = process.stdout.write;
+const originalStderrWrite = process.stderr.write;
 
 let onLogsUpdatedCallback: (() => void) | null = null;
 
@@ -39,6 +41,76 @@ export function notifyLogsUpdated(): void {
   }
 }
 
+let inConsoleCall = false;
+
+function recordRawLog(level: RecordedLog['level'], message: string): void {
+  try {
+    const err = new Error();
+    const rawStack = err.stack || '';
+    const lines = rawStack.split('\n');
+    const cleanedStack = lines
+      .slice(2)
+      .filter(
+        (line) =>
+          !line.includes('node:internal') && !line.includes('console.ts') && !line.includes('logs.ts'),
+      )
+      .join('\n');
+
+    let isInternal = false;
+    if (
+      message.includes('Studio Live Sync') ||
+      message.includes('🎨 Axiomify Studio') ||
+      message.includes('Studio is live at') ||
+      message.includes('Axiomify Dev Engine') ||
+      message.startsWith('[axiomify/') ||
+      message.includes('[Axiomify]') ||
+      rawStack.includes('packages/cli/src/studio/')
+    ) {
+      isInternal = true;
+    }
+
+    let source = 'unknown';
+    const stackLines = cleanedStack.split('\n');
+    for (const line of stackLines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const match = /(?:\(|at\s+)([^\s()]+?):(\d+)(?::(\d+))?\)?$/.exec(trimmed);
+      if (match) {
+        const filePath = match[1];
+        if (filePath.includes('node:internal') || filePath.includes('node_modules')) {
+          continue;
+        }
+        const relativePath = path.isAbsolute(filePath)
+          ? path.relative(process.cwd(), filePath)
+          : filePath;
+        source = `${relativePath}:${match[2]}`;
+        break;
+      }
+    }
+
+    const requestId = logCorrelationStorage.getStore();
+
+    recordedLogs.push({
+      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      level,
+      message: message.trim(),
+      stack: cleanedStack,
+      timestamp: new Date().toISOString(),
+      source,
+      isInternal,
+      requestId,
+    });
+
+    if (recordedLogs.length > 500) {
+      recordedLogs.shift();
+    }
+
+    notifyLogsUpdated();
+  } catch {
+    // Ignore internal log recording errors
+  }
+}
+
 export function instrumentLogs(): void {
   if (isInstrumented) return;
   isInstrumented = true;
@@ -46,18 +118,16 @@ export function instrumentLogs(): void {
   const methods: Array<'log' | 'info' | 'warn' | 'error' | 'debug' | 'trace'> =
     ['log', 'info', 'warn', 'error', 'debug', 'trace'];
 
-  let inHook = false;
-
   methods.forEach((method) => {
     console[method] = function (...args: any[]) {
-      // 1. Invoke the original console function
-      originalConsole[method].apply(console, args);
-
-      if (inHook) return;
-      inHook = true;
-
+      if (inConsoleCall) {
+        originalConsole[method].apply(console, args);
+        return;
+      }
+      inConsoleCall = true;
       try {
-        // 2. Format the message payload safely
+        originalConsole[method].apply(console, args);
+
         let message = '';
         try {
           message = args
@@ -79,87 +149,56 @@ export function instrumentLogs(): void {
           message = '[Unformattable Log Message]';
         }
 
-        // Map method to a normalized log level
         let level: RecordedLog['level'] = 'info';
         if (method === 'warn') level = 'warn';
         else if (method === 'error') level = 'error';
         else if (method === 'debug') level = 'debug';
         else if (method === 'trace') level = 'trace';
 
-        // 3. Extract call stack trace
-        const err = new Error();
-        const rawStack = err.stack || '';
-        const lines = rawStack.split('\n');
-
-        // Filter out internal wrapper/console interception stack frames
-        const cleanedStack = lines
-          .slice(2)
-          .filter(
-            (line) =>
-              !line.includes('node:internal') && !line.includes('console.ts'),
-          )
-          .join('\n');
-
-        // Determine if log is internal to Axiomify framework or Studio
-        let isInternal = false;
-        if (
-          message.includes('Studio Live Sync') ||
-          message.includes('🎨 Axiomify Studio') ||
-          message.includes('Studio is live at') ||
-          message.includes('Axiomify Dev Engine') ||
-          message.startsWith('[axiomify/') ||
-          message.includes('[Axiomify]') ||
-          rawStack.includes('packages/cli/src/studio/')
-        ) {
-          isInternal = true;
-        }
-
-        // Parse source file and line from stack
-        let source = 'unknown';
-        const stackLines = cleanedStack.split('\n');
-        for (const line of stackLines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          // Matches typical "at functionName (/path/to/file.ts:12:34)" or "at /path/to/file.ts:12:34"
-          const match = /(?:\(|at\s+)([^\s()]+?):(\d+)(?::(\d+))?\)?$/.exec(trimmed);
-          if (match) {
-            const filePath = match[1];
-            if (filePath.includes('node:internal') || filePath.includes('node_modules')) {
-              continue;
-            }
-            const relativePath = path.isAbsolute(filePath)
-              ? path.relative(process.cwd(), filePath)
-              : filePath;
-            source = `${relativePath}:${match[2]}`;
-            break;
-          }
-        }
-
-        const requestId = logCorrelationStorage.getStore();
-
-        recordedLogs.push({
-          id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-          level,
-          message,
-          stack: cleanedStack,
-          timestamp: new Date().toISOString(),
-          source,
-          isInternal,
-          requestId,
-        });
-
-        if (recordedLogs.length > 500) {
-          recordedLogs.shift();
-        }
-
-        notifyLogsUpdated();
-      } catch (e) {
-        // ignore errors during logging
+        recordRawLog(level, message);
       } finally {
-        inHook = false;
+        inConsoleCall = false;
       }
     };
   });
+
+  // Intercept process.stdout.write
+  process.stdout.write = function (chunk: any, encoding?: any, callback?: any): boolean {
+    if (inConsoleCall) {
+      return originalStdoutWrite.call(process.stdout, chunk, encoding, callback);
+    }
+    inConsoleCall = true;
+    try {
+      const message = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      if (message.trim()) {
+        recordRawLog('info', message);
+      }
+    } catch {
+      // Ignore
+    } finally {
+      inConsoleCall = false;
+    }
+    return originalStdoutWrite.call(process.stdout, chunk, encoding, callback);
+  } as any;
+
+  // Intercept process.stderr.write
+  process.stderr.write = function (chunk: any, encoding?: any, callback?: any): boolean {
+    if (inConsoleCall) {
+      return originalStderrWrite.call(process.stderr, chunk, encoding, callback);
+    }
+    inConsoleCall = true;
+    try {
+      const message = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      if (message.trim()) {
+        recordRawLog('error', message);
+      }
+    } catch {
+      // Ignore
+    } finally {
+      inConsoleCall = false;
+    }
+    return originalStderrWrite.call(process.stderr, chunk, encoding, callback);
+  } as any;
 }
 
 export function handleGetLogs(_req: any, res: ServerResponse): void {

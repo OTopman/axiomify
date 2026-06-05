@@ -11,6 +11,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ discovery, onQuickTest, on
   const [searchTerm, setSearchTerm] = useState('');
   const [activeMethodFilter, setActiveMethodFilter] = useState('ALL');
   const [expandedRoutes, setExpandedRoutes] = useState<Record<string, boolean>>({});
+  const [activeTabs, setActiveTabs] = useState<Record<string, 'flow' | 'request' | 'responses'>>({});
 
   const toggleRouteDetail = (method: string, path: string) => {
     const key = `${method}:${path}`;
@@ -25,16 +26,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ discovery, onQuickTest, on
     const controllerNode = archMap.find(n => n.id === `controller:${r.method}:${r.path}`);
     const depFlow: { name: string; type: string; icon: string }[] = [];
 
-    depFlow.push({ name: `Route: ${r.method} ${r.path}`, type: 'route', icon: '🧭' });
+    depFlow.push({ name: `${r.method} ${r.path}`, type: 'route', icon: '🧭' });
 
     if (r.plugins && r.plugins.length > 0) {
       for (const p of r.plugins) {
-        depFlow.push({ name: `Middleware: ${p}`, type: 'middleware', icon: '🛡️' });
+        depFlow.push({ name: p, type: 'middleware', icon: '🛡️' });
       }
     }
 
     if (r.validation && r.validation.length > 0) {
-      depFlow.push({ name: `Validation: ${r.validation.join(', ')}`, type: 'validation', icon: '📐' });
+      depFlow.push({ name: r.validation.join(', '), type: 'validation', icon: '📐' });
     }
 
     depFlow.push({ name: r.operationId || 'Handler', type: 'controller', icon: '⚙️' });
@@ -42,7 +43,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ discovery, onQuickTest, on
     if (controllerNode && controllerNode.dependencies) {
       for (const dep of controllerNode.dependencies) {
         const sToken = dep.split(':')[1] || dep;
-        depFlow.push({ name: `Service: ${sToken}`, type: 'service', icon: '🧩' });
+        depFlow.push({ name: sToken, type: 'service', icon: '🧩' });
 
         const sNode = archMap.find(n => n.id === dep);
         if (sNode && sNode.dependencies) {
@@ -51,7 +52,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ discovery, onQuickTest, on
             const subNode = archMap.find(n => n.id === sDep);
             const subType = subNode ? subNode.type : 'service';
             const subIcon = subType === 'repository' ? '📦' : subType === 'database' ? '🛢️' : '🧩';
-            depFlow.push({ name: `${subType.toUpperCase()}: ${subToken}`, type: subType, icon: subIcon });
+            depFlow.push({ name: subToken, type: subType, icon: subIcon });
           }
         }
       }
@@ -146,7 +147,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ discovery, onQuickTest, on
               const routeProtocol = r.realtimeProtocol || (r.isWs ? 'ws' : 'http');
               const key = `${r.method}:${r.path}`;
               const isExpanded = !!expandedRoutes[key];
+              const activeTab = activeTabs[key] || 'flow';
               const flowCards = getPipelineFlow(r);
+              const routeSchema = discovery.schemas?.find(s => s.method === r.method && s.path === r.path);
 
               // Linkify path params :id -> span
               const pathParts = r.path.split(/(:[a-zA-Z0-9_]+)/g);
@@ -244,31 +247,126 @@ export const Dashboard: React.FC<DashboardProps> = ({ discovery, onQuickTest, on
                     <tr className="route-detail-row" style={{ background: 'var(--bg-tertiary)' }}>
                       <td colSpan={6} style={{ padding: '16px', borderBottom: '1px solid var(--border)' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
-                            Route Pipeline Dependency Graph
+                          
+                          {/* Tabs Navigation */}
+                          <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
+                            {(['flow', 'request', 'responses'] as const).map(tab => {
+                              const isActive = activeTab === tab;
+                              const label = tab === 'flow' ? 'Flow Pipeline' : tab === 'request' ? 'Request Validation' : 'Responses';
+                              return (
+                                <button
+                                  key={tab}
+                                  style={{
+                                    background: isActive ? 'var(--bg-secondary)' : 'transparent',
+                                    border: isActive ? '1px solid var(--border)' : '1px solid transparent',
+                                    borderBottomColor: isActive ? 'var(--bg-tertiary)' : 'transparent',
+                                    color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                    padding: '6px 12px',
+                                    fontSize: '12px',
+                                    fontWeight: 600,
+                                    borderRadius: 'var(--radius-sm)',
+                                    cursor: 'pointer',
+                                    marginBottom: '-9px',
+                                    zIndex: 1,
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveTabs(prev => ({ ...prev, [key]: tab }));
+                                  }}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
                           </div>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '16px', overflowX: 'auto' }}>
-                            {flowCards.map((card, cardIdx) => (
-                              <React.Fragment key={cardIdx}>
-                                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: 'var(--shadow-sm)', minWidth: '180px' }}>
-                                  <span style={{ fontSize: '16px' }}>{card.icon}</span>
-                                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <span style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: getBadgeColor(card.type) }}>
-                                      {card.type}
-                                    </span>
-                                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                                      {card.name}
-                                    </span>
-                                  </div>
+
+                          {/* Tab content 1: Flow Pipeline */}
+                          {activeTab === 'flow' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+                              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+                                Route Pipeline Dependency Graph
+                              </div>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '16px', overflowX: 'auto' }}>
+                                {flowCards.map((card, cardIdx) => (
+                                  <React.Fragment key={cardIdx}>
+                                    <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: 'var(--shadow-sm)', minWidth: '180px' }}>
+                                      <span style={{ fontSize: '16px' }}>{card.icon}</span>
+                                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                        <span style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', color: getBadgeColor(card.type) }}>
+                                          {card.type}
+                                        </span>
+                                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                          {card.name}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    {cardIdx < flowCards.length - 1 && (
+                                      <div style={{ fontSize: '18px', color: 'var(--text-muted)', fontWeight: 'bold', userSelect: 'none' }}>
+                                        →
+                                      </div>
+                                    )}
+                                  </React.Fragment>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Tab content 2: Request Validation */}
+                          {activeTab === 'request' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px', textAlign: 'left' }}>
+                              {(!routeSchema || (!routeSchema.params && !routeSchema.query && !routeSchema.body)) ? (
+                                <div style={{ color: 'var(--text-muted)', fontSize: '12px', padding: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', textAlign: 'center' }}>
+                                  No validation schemas configured for request params, query, or body.
                                 </div>
-                                {cardIdx < flowCards.length - 1 && (
-                                  <div style={{ fontSize: '18px', color: 'var(--text-muted)', fontWeight: 'bold', userSelect: 'none' }}>
-                                    →
-                                  </div>
-                                )}
-                              </React.Fragment>
-                            ))}
-                          </div>
+                              ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '12px' }}>
+                                  {routeSchema.params && (
+                                    <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px' }}>
+                                      <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', marginBottom: '8px' }}>Path Parameters Schema</div>
+                                      <pre style={{ margin: 0, fontSize: '11px', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '250px', overflowY: 'auto' }}>
+                                        {JSON.stringify(routeSchema.params, null, 2)}
+                                      </pre>
+                                    </div>
+                                  )}
+                                  {routeSchema.query && (
+                                    <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px' }}>
+                                      <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--info)', textTransform: 'uppercase', marginBottom: '8px' }}>Query Parameters Schema</div>
+                                      <pre style={{ margin: 0, fontSize: '11px', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '250px', overflowY: 'auto' }}>
+                                        {JSON.stringify(routeSchema.query, null, 2)}
+                                      </pre>
+                                    </div>
+                                  )}
+                                  {routeSchema.body && (
+                                    <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px' }}>
+                                      <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--success)', textTransform: 'uppercase', marginBottom: '8px' }}>Request Body Schema</div>
+                                      <pre style={{ margin: 0, fontSize: '11px', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '250px', overflowY: 'auto' }}>
+                                        {JSON.stringify(routeSchema.body, null, 2)}
+                                      </pre>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Tab content 3: Responses */}
+                          {activeTab === 'responses' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px', textAlign: 'left' }}>
+                              {!routeSchema || !routeSchema.response ? (
+                                <div style={{ color: 'var(--text-muted)', fontSize: '12px', padding: '16px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', textAlign: 'center' }}>
+                                  No response schema configured for this route.
+                                </div>
+                              ) : (
+                                <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px' }}>
+                                  <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--success)', textTransform: 'uppercase', marginBottom: '8px' }}>Response Schema</div>
+                                  <pre style={{ margin: 0, fontSize: '11px', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '350px', overflowY: 'auto' }}>
+                                    {JSON.stringify(routeSchema.response, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
                         </div>
                       </td>
                     </tr>

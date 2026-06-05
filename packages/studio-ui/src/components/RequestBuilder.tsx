@@ -33,6 +33,7 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
   const [method, setMethod] = useState('GET');
   const [path, setPath] = useState('');
   const [queryParams, setQueryParams] = useState<KeyVal[]>([]);
+  const [pathParams, setPathParams] = useState<KeyVal[]>([]);
   const [headers, setHeaders] = useState<KeyVal[]>([
     { key: 'Content-Type', value: 'application/json' }
   ]);
@@ -45,6 +46,14 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
   // Load replays list on mount
   useEffect(() => {
     fetchReplays();
+
+    const handleReplaysUpdated = () => {
+      fetchReplays();
+    };
+    window.addEventListener('axiomify-replays-updated', handleReplaysUpdated);
+    return () => {
+      window.removeEventListener('axiomify-replays-updated', handleReplaysUpdated);
+    };
   }, []);
 
   // Handle pre-fill from quick test click
@@ -62,7 +71,7 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
       const res = await apiFetch('/__studio/api/request/replays');
       if (res.ok) {
         const data = await res.json();
-        setReplays(data.replays || []);
+        setReplays(data.history || data.replays || []);
       }
     } catch (err) {
       console.error('Failed to fetch request replays:', err);
@@ -81,23 +90,55 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
     }
   };
 
-  const generateJsonTemplate = (schema: any): any => {
+  const generateMockData = (keyName: string, schema: any): any => {
     if (!schema) return null;
+    const lowerKey = keyName.toLowerCase();
+
     if (schema.type === 'object' && schema.properties) {
       const obj: Record<string, any> = {};
       for (const [k, prop] of Object.entries(schema.properties)) {
-        obj[k] = generateJsonTemplate(prop);
+        obj[k] = generateMockData(k, prop);
       }
       return obj;
     }
     if (schema.type === 'array') {
-      return [generateJsonTemplate(schema.items)];
+      return [generateMockData(keyName, schema.items)];
     }
     if (schema.type === 'string') {
-      return schema.description || 'string';
+      if (lowerKey.includes('email')) {
+        return `john.doe.${Math.floor(Math.random() * 1000)}@example.com`;
+      }
+      if (lowerKey.includes('name')) {
+        if (lowerKey.includes('first')) return 'John';
+        if (lowerKey.includes('last')) return 'Doe';
+        return 'John Doe';
+      }
+      if (lowerKey.includes('uuid') || lowerKey.includes('id')) {
+        return '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d';
+      }
+      if (lowerKey.includes('phone') || lowerKey.includes('tel')) {
+        return '+1-555-0199';
+      }
+      if (lowerKey.includes('address') || lowerKey.includes('street')) {
+        return '123 Main Street, Springfield';
+      }
+      if (lowerKey.includes('date') || lowerKey.includes('time') || lowerKey.includes('at')) {
+        return new Date().toISOString();
+      }
+      if (lowerKey.includes('avatar') || lowerKey.includes('url') || lowerKey.includes('image')) {
+        return 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150';
+      }
+      if (schema.enum && schema.enum.length > 0) {
+        return schema.enum[0];
+      }
+      return schema.description || 'Sample String';
     }
     if (schema.type === 'number' || schema.type === 'integer') {
-      return 0;
+      if (lowerKey.includes('age')) return 30;
+      if (lowerKey.includes('price')) return 19.99;
+      if (lowerKey.includes('quantity') || lowerKey.includes('count')) return 5;
+      if (lowerKey.includes('year')) return 2026;
+      return 42;
     }
     if (schema.type === 'boolean') {
       return true;
@@ -105,24 +146,57 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
     return null;
   };
 
+  const getPathParamsList = (pathStr: string): string[] => {
+    const matches: string[] = [];
+    const colonRegex = /:([a-zA-Z0-9_]+)/g;
+    let match;
+    while ((match = colonRegex.exec(pathStr)) !== null) {
+      matches.push(match[1]);
+    }
+    const braceRegex = /{([a-zA-Z0-9_]+)}/g;
+    while ((match = braceRegex.exec(pathStr)) !== null) {
+      matches.push(match[1]);
+    }
+    return Array.from(new Set(matches));
+  };
+
   const prefillFromRoute = (m: string, p: string) => {
     const schema = discovery.schemas.find(s => s.method === m && s.path === p);
+    
+    // Fill request body
     if (schema && schema.body) {
-      const template = generateJsonTemplate(schema.body);
+      const template = generateMockData('body', schema.body);
       setReqBody(JSON.stringify(template, null, 2));
     } else {
       setReqBody('');
     }
 
+    // Fill query parameters
     if (schema && schema.query && schema.query.properties) {
-      const q: KeyVal[] = Object.keys(schema.query.properties).map(k => ({
-        key: k,
-        value: '',
-      }));
+      const props = schema.query.properties;
+      const q: KeyVal[] = Object.keys(props).map(k => {
+        const val = generateMockData(k, props[k]);
+        return {
+          key: k,
+          value: val !== null ? String(val) : '',
+        };
+      });
       setQueryParams(q);
     } else {
       setQueryParams([]);
     }
+
+    // Fill path parameters
+    const parsedParams = getPathParamsList(p);
+    const paramsList: KeyVal[] = parsedParams.map(paramName => {
+      const paramSchema = schema?.params?.properties?.[paramName];
+      const val = generateMockData(paramName, paramSchema || { type: 'string' });
+      return {
+        key: paramName,
+        value: val !== null ? String(val) : '',
+      };
+    });
+    setPathParams(paramsList);
   };
 
   const handleRouteSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -136,14 +210,15 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
     prefillFromRoute(m, p);
   };
 
-  const handleReplayClick = async (replay: ReplayHistoryItem) => {
+  const handleReplayClick = async (replay: any) => {
     setMethod(replay.method);
     setPath(replay.path);
+    setPathParams([]); // Replays have concrete paths, clear path params input
     
     // Parse query params
     const q: KeyVal[] = [];
-    if (replay.request?.query) {
-      Object.entries(replay.request.query).forEach(([k, v]) => {
+    if (replay.query) {
+      Object.entries(replay.query).forEach(([k, v]) => {
         q.push({ key: k, value: String(v) });
       });
     }
@@ -151,16 +226,16 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
 
     // Parse headers
     const h: KeyVal[] = [];
-    if (replay.request?.headers) {
-      Object.entries(replay.request.headers).forEach(([k, v]) => {
+    if (replay.headers) {
+      Object.entries(replay.headers).forEach(([k, v]) => {
         h.push({ key: k, value: String(v) });
       });
     }
     setHeaders(h);
 
     // Parse body
-    if (replay.request?.body) {
-      setReqBody(JSON.stringify(replay.request.body, null, 2));
+    if (replay.body) {
+      setReqBody(typeof replay.body === 'string' ? replay.body : JSON.stringify(replay.body, null, 2));
     } else {
       setReqBody('');
     }
@@ -210,11 +285,21 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
       }
     }
 
+    // Substitute path parameter values in the path
+    let finalPath = path.trim();
+    pathParams.forEach(p => {
+      if (p.key.trim()) {
+        finalPath = finalPath
+          .replace(`:${p.key.trim()}`, p.value.trim())
+          .replace(`{${p.key.trim()}}`, p.value.trim());
+      }
+    });
+
     try {
       const res = await apiFetch('/__studio/api/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ method, path, headers: hdrs, query, body }),
+        body: JSON.stringify({ method, path: finalPath, headers: hdrs, query, body }),
       });
 
       const result = await res.json();
@@ -390,6 +475,24 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
               <input className="text-input" type="text" placeholder="/api/v1/resource" value={path} onChange={e => setPath(e.target.value)} />
             </div>
           </div>
+
+          {/* Path Parameters */}
+          {pathParams.length > 0 && (
+            <div className="form-group">
+              <label className="form-label">Path Parameters</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {pathParams.map((p, i) => (
+                  <div key={i} className="kv-row">
+                    <input className="text-input" type="text" readOnly value={p.key} style={{ opacity: 0.7, background: 'var(--bg-secondary)', flex: 1 }} />
+                    <input className="text-input" type="text" placeholder="Value" value={p.value} style={{ flex: 2 }} onChange={e => {
+                      const nextVal = e.target.value;
+                      setPathParams(prev => prev.map((item, idx) => idx === i ? { ...item, value: nextVal } : item));
+                    }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Query Params */}
           <div className="form-group">

@@ -126,14 +126,29 @@ export const Playground: React.FC<PlaygroundProps> = ({ discovery, isDark }) => 
       noEmit: true
     });
 
-    // Clean up old extra libs if possible or re-add
+    // Clear old extra libs to avoid duplicates
+    monaco.languages.typescript.typescriptDefaults.setExtraLibs([]);
+
+    // Register mock dependencies
+    monaco.languages.typescript.typescriptDefaults.addExtraLib(
+      'declare module "zod" { export const z: any; export type ZodTypeAny = any; }',
+      'file:///node_modules/zod/index.d.ts'
+    );
+    monaco.languages.typescript.typescriptDefaults.addExtraLib(
+      'declare module "@axiomify/sdk-runtime" { export const AxiomifyClient: any; export const AxiomifyError: any; }',
+      'file:///node_modules/@axiomify/sdk-runtime/index.d.ts'
+    );
+
+    // Register each generated SDK file
     sdkFiles.forEach(file => {
       const filePath = `file:///node_modules/@axiomify/playground-client/${file.path}`;
       monaco.languages.typescript.typescriptDefaults.addExtraLib(file.content, filePath);
     });
 
     monaco.languages.typescript.typescriptDefaults.addExtraLib(
-      'declare module "./sdk" { export * from "@axiomify/playground-client"; }',
+      `export * from './node_modules/@axiomify/playground-client/client';
+export * from './node_modules/@axiomify/playground-client/types';
+export * from './node_modules/@axiomify/playground-client/validators';`,
       'file:///sdk.d.ts'
     );
   };
@@ -294,6 +309,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ discovery, isDark }) => 
                   language={target === 'typescript' ? 'typescript' : target}
                   theme={isDark ? 'vs-dark' : 'light'}
                   value={code}
+                  path={target === 'typescript' ? 'file:///main.ts' : undefined}
                   onChange={val => setCode(val || '')}
                   onMount={handleEditorDidMount}
                   options={{

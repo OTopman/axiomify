@@ -20,7 +20,7 @@ import { GraphQLInt, GraphQLList, GraphQLObjectType, GraphQLSchema, GraphQLStrin
 import path from 'path';
 
 export const app = new Axiomify(); 
-
+ 
 const room = wsRooms(app,{
   path: '/ws',
   schema:  z.object({

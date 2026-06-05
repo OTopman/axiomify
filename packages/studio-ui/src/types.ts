@@ -29,7 +29,8 @@ export interface SchemaItem {
 }
 
 export interface HookItem {
-  name: string;
+  type: string;
+  name?: string;
   count: number;
   handlers: string[];
 }
@@ -68,7 +69,8 @@ export interface HealthData {
 
 export interface ArchNode {
   id: string;
-  name: string;
+  name?: string;
+  label?: string;
   type: 'route' | 'middleware' | 'validation' | 'controller' | 'service' | 'repository' | 'database' | string;
   dependencies?: string[];
 }

@@ -145,7 +145,7 @@ export async function handlePostRequest(
     const proxyStart = performance.now();
 
     // Store in request history for replay
-    requestHistory.push({
+    const replayItem: any = {
       id: `replay-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       method: uppercaseMethod,
       path,
@@ -153,7 +153,10 @@ export async function handlePostRequest(
       query: query || {},
       body,
       timestamp: requestTimestamp,
-    });
+      status: undefined,
+      duration: undefined,
+    };
+    requestHistory.push(replayItem);
     if (requestHistory.length > 50) {
       requestHistory.shift();
     }
@@ -669,6 +672,12 @@ export async function handlePostRequest(
       durationMs: Math.round(proxyDuration * 100) / 100,
       timestamp: new Date().toISOString(),
     });
+
+    // Update the replay item in history on request completion
+    replayItem.status = responseStatus;
+    replayItem.duration = Math.round(proxyDuration * 100) / 100;
+    saveHistory();
+    notifyReplaysUpdated();
 
     // Feed perf stats from the profiled timeline
     const timeline = (mockReq._profile?.timeline || []) as { name: string; type: string; duration: number }[];
