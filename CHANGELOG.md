@@ -1,11 +1,20 @@
 # Changelog
 
-## 6.2.1
+## 6.3.0
 
-### 🐛 Bug Fixes
+### ✨ New Features
+
+#### Axiomify Studio Control Plane
+- **Axiomify Studio Server (`@axiomify/cli`)**: Integrated an embedded HTTP/WS control-plane server via `axiomify studio <entry>` to inspect, test, and profile local running applications.
+- **Embedded Studio UI (`@axiomify/studio-ui`)**: Created a beautiful, rich developer console featuring:
+  - **Analytics Panel**: Unified WebSocket and HTTP traffic metrics with real-time rolling SVG sparkline charts, active connection monitoring, and websocket room statistics.
+  - **Interactive SDK Playground**: Write and run TypeScript/Python/Go client SDK test scripts with live autocomplete and dependency resolution.
+  - **OpenAPI Analyzer**: Browse, mock-test, and run a quality/conformance audit on API routes.
+  - **Error Logs Observatory**: Real-time high-performance log-streaming monitor.
+  - **Endpoint Request Tester & Recorder**: Execute HTTP/WS requests and record sequences for automated integration test generation.
+* **WebSocket dynamic telemetry**: Added live telemetry instrumentation within `@axiomify/ws` (measuring `messagesReceived` and `messagesSent`) and integrated room presence statistics within `@axiomify/metrics`.
 
 #### `@axiomify/core` — Type Coercion in Validation Pipeline
-
 - **Automatic type coercion for query, params, and body.** Schemas declaring `z.number()` or `z.boolean()` no longer reject valid string representations from the HTTP transport layer. The framework now coerces castable values before validation and only throws `ValidationError` when coercion is impossible.
 
   Previously, a query parameter like `?limit=5` with schema `z.object({ limit: z.number() })` threw a `ValidationError` because AJV (configured with `coerceTypes: false`) rejected the string `"5"` before Zod could parse it.
@@ -26,11 +35,11 @@
 
   No code changes required — existing schemas work as-is. Users who already used `z.coerce.number()` as a workaround can optionally simplify to `z.number()`.
 
-### 🧪 Tests
-
-687 passing across 59 files · 0 failures. +19 new coercion tests covering query params, URL params, body (flat, nested, arrays), edge cases (`"0"`, negative, float), and non-castable rejection.
-
----
+### 🔒 Security & Correctness Fixes
+* **Static Server Directory Escape (CWE-22)**: Hardened path checks in `@axiomify/static` to prevent relative directory traversal escapes via URL manipulation.
+* **Playground VM Escape Mitigation**: Sandboxed code execution in the Studio playground by executing script code in isolated, low-privilege child processes instead of insecure `node:vm` instances.
+* **Process Exit Signal Cleanup**: Removed signal listener leaks in `@axiomify/native` by cleanly removing process event listeners on exit/close.
+* **Telemetry Discovery Fix**: Fixed a bug in `@axiomify/ws` where WebSocket managers were not visible to telemetry scanners by attaching the room manager reference dynamically to the route definition object.
 
 ## 6.2.0
  

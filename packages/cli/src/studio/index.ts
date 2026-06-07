@@ -60,10 +60,12 @@ export async function startStudio(
 
   let app: Axiomify;
   let cleanup: () => Promise<void>;
+  let loadedExports: Record<string, any> = {};
   try {
     const loaded = await loadApp(entry);
     app = loaded.app;
     cleanup = loaded.cleanup;
+    loadedExports = loaded.exports;
     instrumentErrorObservatory(app);
     // Scan module exports for RoomManager instances after app loading
     instrumentWsAnalytics(app, loaded.exports);
@@ -202,7 +204,7 @@ export async function startStudio(
   const syncEngine = new StudioSyncEngine({
     entry,
     wsServer,
-    initialExports: loaded.exports,
+    initialExports: loadedExports,
     onReload: (newDiscovery, newApp, newExports) => {
       // Clear old WS RoomManager cache instances
       clearRoomManagers();
