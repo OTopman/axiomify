@@ -110,7 +110,10 @@ function isZodSchema(value: unknown): value is ZodTypeAny {
  *   - string → boolean           (`"true"` → true, `"false"` → false)
  *   - arrays of the above
  */
-function preCoerce(data: unknown, jsonSchema: Record<string, unknown>): unknown {
+function preCoerce(
+  data: unknown,
+  jsonSchema: Record<string, unknown>,
+): unknown {
   if (data === null || data === undefined) return data;
 
   const schemaType = jsonSchema.type as string | string[] | undefined;

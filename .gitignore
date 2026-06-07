@@ -32,9 +32,11 @@ node_modules/
 # =========================
 dist/
 build/
+packages/cli/ui-dist/
 out/
 lib/
 *.tsbuildinfo
+examples/my-app/generated-sdks/
 
 # =========================
 # Logs & Testing
@@ -70,6 +72,7 @@ coverage/
 
 # Axiomify CLI temporary artifacts
 .axiomify/
+.axiomify-studio-history.json
 
 # Codecov local binaries and verification files
 codecov
@@ -80,4 +83,3 @@ codecov.SHA256SUM.sig
 review.md
 update.sh
 reports/
-next.md

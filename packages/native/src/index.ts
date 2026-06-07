@@ -956,6 +956,7 @@ export class NativeAdapter {
    * regardless of which method the caller invokes first.
    */
   private _crashGuardInstalled = false;
+  private _exitCleanupFn: (() => void) | null = null;
   private _crashSignalHandlers: {
     sig: 'SIGINT' | 'SIGTERM';
     fn: () => void;
@@ -964,10 +965,10 @@ export class NativeAdapter {
     if (this._crashGuardInstalled) return;
     this._crashGuardInstalled = true;
 
-    const cleanup = () => this.close();
+    this._exitCleanupFn = () => this.close();
 
     // 'exit' is the last chance — runs synchronously, no async allowed.
-    process.once('exit', cleanup);
+    process.once('exit', this._exitCleanupFn);
 
     // If gracefulShutdown() already claimed signal ownership, stop here —
     // the 'exit' guard above still runs if anything else kills the process.
@@ -976,7 +977,7 @@ export class NativeAdapter {
     // Interactive stop (Ctrl+C) and orchestrator signals.
     for (const sig of ['SIGINT', 'SIGTERM'] as const) {
       const fn = () => {
-        cleanup();
+        if (this._exitCleanupFn) this._exitCleanupFn();
         process.exit(0);
       };
       this._crashSignalHandlers.push({ sig, fn });
@@ -1265,6 +1266,17 @@ export class NativeAdapter {
     if (this._listenSocket) {
       uWS.us_listen_socket_close(this._listenSocket);
       this._listenSocket = null;
+    }
+    if (this._crashGuardInstalled) {
+      if (this._exitCleanupFn) {
+        process.removeListener('exit', this._exitCleanupFn);
+        this._exitCleanupFn = null;
+      }
+      for (const { sig, fn } of this._crashSignalHandlers) {
+        process.removeListener(sig, fn);
+      }
+      this._crashSignalHandlers = [];
+      this._crashGuardInstalled = false;
     }
   }
 

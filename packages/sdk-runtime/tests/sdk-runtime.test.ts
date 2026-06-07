@@ -770,7 +770,9 @@ describe('@axiomify/sdk-runtime tests', () => {
         close: vi.fn(),
       };
 
-      const WSClassMock = vi.fn().mockImplementation(() => mockWsInstance);
+      const WSClassMock = vi.fn().mockImplementation(function () {
+        return mockWsInstance;
+      });
       (globalThis as any).WebSocket = WSClassMock;
 
       const openSpy = vi.fn();
@@ -824,7 +826,7 @@ describe('@axiomify/sdk-runtime tests', () => {
       };
 
       let wsInstantiationCount = 0;
-      const WSClassMock = vi.fn().mockImplementation(() => {
+      const WSClassMock = vi.fn().mockImplementation(function () {
         wsInstantiationCount++;
         if (wsInstantiationCount === 2) {
           resolveReconnect();
@@ -857,7 +859,7 @@ describe('@axiomify/sdk-runtime tests', () => {
     });
 
     it('should handle constructor throw and reconnect', async () => {
-      const WSClassMock = vi.fn().mockImplementation(() => {
+      const WSClassMock = vi.fn().mockImplementation(function () {
         throw new Error('Constructor failed');
       });
       (globalThis as any).WebSocket = WSClassMock;
@@ -876,7 +878,7 @@ describe('@axiomify/sdk-runtime tests', () => {
     });
 
     it('should handle max retries exceeded', async () => {
-      const WSClassMock = vi.fn().mockImplementation(() => {
+      const WSClassMock = vi.fn().mockImplementation(function () {
         throw new Error('Connection failed');
       });
       (globalThis as any).WebSocket = WSClassMock;
@@ -906,9 +908,9 @@ describe('@axiomify/sdk-runtime tests', () => {
         }),
         close: vi.fn(),
       };
-      (globalThis as any).WebSocket = vi
-        .fn()
-        .mockImplementation(() => mockWsInstance);
+      (globalThis as any).WebSocket = vi.fn().mockImplementation(function () {
+        return mockWsInstance;
+      });
 
       const client = new WebSocketClient('ws://test', {
         heartbeatIntervalMs: 5,

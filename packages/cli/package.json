@@ -11,7 +11,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "ui-dist"
   ],
   "bin": {
     "axiomify": "./dist/index.js"

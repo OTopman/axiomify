@@ -66,6 +66,44 @@ export interface AttachSocketIOOptions extends Partial<IOServerOptions> {
  */
 const ATTACHED = new WeakSet<NativeAdapter>();
 
+interface SocketIoStudioRoute {
+  path: string;
+  operationId: string;
+  summary: string;
+  description: string;
+}
+
+function registerStudioSocketIoRoute(
+  adapter: NativeAdapter,
+  path: string,
+): void {
+  const holder = adapter as unknown as {
+    _app?: { registeredSocketIoRoutes?: SocketIoStudioRoute[] };
+  };
+  const app = holder._app;
+  if (!app) return;
+
+  if (!Array.isArray(app.registeredSocketIoRoutes)) {
+    Object.defineProperty(app, 'registeredSocketIoRoutes', {
+      value: [],
+      enumerable: false,
+      configurable: true,
+      writable: true,
+    });
+  }
+
+  const routes = app.registeredSocketIoRoutes;
+  if (!routes || routes.some((route) => route.path === path)) return;
+
+  routes.push({
+    path,
+    operationId: 'socketIo',
+    summary: 'Socket.IO endpoint',
+    description:
+      'Socket.IO connection endpoint attached to the Axiomify native adapter.',
+  });
+}
+
 /**
  * Bridge Socket.IO onto the existing NativeAdapter's uWS server.
  *
@@ -147,6 +185,10 @@ export async function attachSocketIO(
   // It registers the upgrade handler under `options.path` (default
   // `/socket.io/`) and shares the event loop with our HTTP routes.
   io.attachApp(uwsApp as any);
+  registerStudioSocketIoRoute(
+    adapter,
+    typeof ioOptions.path === 'string' ? ioOptions.path : '/socket.io/',
+  );
 
   // Register a shutdown callback so the adapter's drain sequence closes
   // open Socket.IO connections before `process.exit()`. Without this,

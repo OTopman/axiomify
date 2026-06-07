@@ -23,8 +23,11 @@
     "graphql": "^16.14.1"
   },
   "devDependencies": {
-    "typescript": "^6.0.2",
-    "@types/node": "^20.0.0"
+    "@opentelemetry/auto-instrumentations-node": "^0.76.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.218.0",
+    "@opentelemetry/sdk-node": "^0.218.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^6.0.2"
   },
   "keywords": [
     "axiomify",
