@@ -25,7 +25,7 @@ export interface QualityReport {
   resetAt: string;
 }
 
-let qualityHistory: { timestamp: string; score: number }[] = [];
+const qualityHistory: { timestamp: string; score: number }[] = [];
 const statsResetAt = new Date().toISOString();
 
 export function getQualityHistory(): { timestamp: string; score: number }[] {

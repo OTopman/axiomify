@@ -488,7 +488,9 @@ describe('Studio Server & Router', () => {
         if (fs.existsSync(tempDir)) {
           fs.rmdirSync(tempDir);
         }
-      } catch {}
+      } catch {
+        // ignore
+      }
     }
   });
 
@@ -739,7 +741,9 @@ describe('Studio Server & Router', () => {
       if (fs.existsSync(histFile)) {
         try {
           fs.unlinkSync(histFile);
-        } catch {}
+        } catch {
+          // ignore
+        }
       }
     }
   });
@@ -807,7 +811,9 @@ describe('Studio Server & Router', () => {
     if (fs.existsSync(histFile)) {
       try {
         fs.unlinkSync(histFile);
-      } catch {}
+      } catch {
+        // ignore
+      }
     }
     requestHistory.length = 0;
   });
@@ -824,6 +830,8 @@ describe('Studio Server & Router', () => {
     });
 
     console.warn('Hello warning test');
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
 
     expect(notified).toBe(true);
 

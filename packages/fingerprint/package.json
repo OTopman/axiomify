@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/fingerprint",
-  "version": "6.2.0",
+  "version": "6.2.1",
   "description": "Server-side request fingerprinting for Axiomify — confidence-scored client identification from headers, IP, and TLS hints.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

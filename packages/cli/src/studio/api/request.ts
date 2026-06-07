@@ -277,10 +277,21 @@ export async function handlePostRequest(
     // objects, so Studio serialises profiled proxy requests while the patches
     // are active. This keeps real traffic and concurrent tester clicks from
     // capturing each other's wrappers as "original" functions.
-    const releaseProfileLock = await profilingLock.acquire();
+    let releaseProfileLock: (() => void) | null = null;
+    let originalRun: any = null;
+    let originalRunSafe: any = null;
+    let matchedRoute: any = null;
+    let originalState: any = null;
+    let databaseServices: {
+      obj: Record<string, unknown>;
+      originalMethods: { path: string[]; fn: (...args: unknown[]) => unknown }[];
+    }[] = [];
 
-    const originalRun = studioApp.dispatcher?.hooks?.run;
-    const originalRunSafe = studioApp.dispatcher?.hooks?.runSafe;
+    try {
+      releaseProfileLock = await profilingLock.acquire();
+
+      originalRun = studioApp.dispatcher?.hooks?.run;
+      originalRunSafe = studioApp.dispatcher?.hooks?.runSafe;
 
     // Patch hooks if dispatcher exists
     if (studioApp.dispatcher && studioApp.dispatcher.hooks) {
@@ -329,7 +340,7 @@ export async function handlePostRequest(
           return execute();
         }
         if (originalRun) {
-          return originalRun.apply(this, Array.from(arguments));
+          return originalRun.apply(this, [type, ...args]);
         }
       };
 
@@ -347,20 +358,20 @@ export async function handlePostRequest(
               const ret = fn(...args);
               if (ret instanceof Promise) {
                 return ret.then(
-                  () => {
-                    req._profile.timeline.push({
-                      name: `Hook: ${type} (${fnName})`,
-                      type: 'hook',
-                      duration: performance.now() - start,
-                    });
-                  },
-                  () => {
-                    req._profile.timeline.push({
-                      name: `Hook: ${type} (${fnName})`,
-                      type: 'hook',
-                      duration: performance.now() - start,
-                    });
-                  },
+                   () => {
+                     req._profile.timeline.push({
+                       name: `Hook: ${type} (${fnName})`,
+                       type: 'hook',
+                       duration: performance.now() - start,
+                     });
+                   },
+                   () => {
+                     req._profile.timeline.push({
+                       name: `Hook: ${type} (${fnName})`,
+                       type: 'hook',
+                       duration: performance.now() - start,
+                     });
+                   },
                 );
               } else {
                 req._profile.timeline.push({
@@ -400,16 +411,13 @@ export async function handlePostRequest(
           return execute();
         }
         if (originalRunSafe) {
-          return originalRunSafe.apply(this, Array.from(arguments));
+          return originalRunSafe.apply(this, [type, ...args]);
         }
       };
     }
 
     // Dynamic database services patching
-    const databaseServices: {
-      obj: Record<string, unknown>;
-      originalMethods: { path: string[]; fn: (...args: unknown[]) => unknown }[];
-    }[] = [];
+    databaseServices = [];
     try {
       if (studioApp._services instanceof Map) {
         for (const [token, service] of studioApp._services.entries()) {
@@ -569,8 +577,6 @@ export async function handlePostRequest(
     }
 
     // Pipeline/Handler interception
-    let originalState: any = null;
-    let matchedRoute: any = null;
     if (studioApp.dispatcher && studioApp.dispatcher.router) {
       const match = studioApp.dispatcher.router.lookup(uppercaseMethod, path, {});
       if (match && match.route) {
@@ -640,7 +646,6 @@ export async function handlePostRequest(
       }
     }
 
-    try {
       await logCorrelationStorage.run(requestId, async () => {
         await studioApp.handle(mockReq, mockRes);
       });
@@ -662,7 +667,9 @@ export async function handlePostRequest(
           parent[lastKey] = fn;
         }
       }
-      releaseProfileLock();
+      if (releaseProfileLock) {
+        releaseProfileLock();
+      }
     }
 
     // Push to recorder and perf observatory

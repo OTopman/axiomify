@@ -7,21 +7,20 @@ import { Dashboard } from './components/Dashboard';
 import { Logs } from './components/Logs';
 import {
   AiAssistantPanel,
+  AnalyticsPanel,
   ArchitecturePanel,
   ConfigPanel,
   ContractsPanel,
   EventsPanel,
   HealthPanel,
   HooksPanel,
-  MetricsPanel,
   MiddlewaresPanel,
   OpenApiPanel,
   PerformancePanel,
   QualityPanel,
   SchemasPanel,
   SdkImpactPanel,
-  ServicesPanel,
-  WsAnalyticsPanel
+  ServicesPanel
 } from './components/OtherPanels';
 import { Playground } from './components/Playground';
 import { Recorder } from './components/Recorder';
@@ -344,10 +343,8 @@ function App() {
             onClearRequestIdFilter={() => setFilterRequestId(null)}
           />
         );
-      case 'ws-analytics':
-        return <WsAnalyticsPanel />;
-      case 'metrics':
-        return <MetricsPanel />;
+      case 'analytics':
+        return <AnalyticsPanel />;
       case 'recorder':
         return <Recorder />;
       case 'profiler':
@@ -521,13 +518,9 @@ function App() {
           <span>Logs</span>
           <span className="nav-badge" id="badge-logs">0</span>
         </a>
-        <a className={`nav-item ${activePanel === 'ws-analytics' ? 'active' : ''}`} href="#ws-analytics" onClick={(e) => { e.preventDefault(); setActivePanel('ws-analytics'); }}>
+        <a className={`nav-item ${activePanel === 'analytics' ? 'active' : ''}`} href="#analytics" onClick={(e) => { e.preventDefault(); setActivePanel('analytics'); }}>
           <span className="nav-icon">📊</span>
-          <span>WS Traffic</span>
-        </a>
-        <a className={`nav-item ${activePanel === 'metrics' ? 'active' : ''}`} href="#metrics" onClick={(e) => { e.preventDefault(); setActivePanel('metrics'); }}>
-          <span className="nav-icon">📈</span>
-          <span>Metrics</span>
+          <span>Analytics</span>
         </a>
         <a className={`nav-item ${activePanel === 'recorder' ? 'active' : ''}`} href="#recorder" onClick={(e) => { e.preventDefault(); setActivePanel('recorder'); }}>
           <span className="nav-icon">🔴</span>

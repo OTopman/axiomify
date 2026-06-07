@@ -79,6 +79,10 @@ function recordInbound(event: string, payloadArgs: any[]): void {
 // ── @axiomify/ws RoomManager ─────────────────────────────────────────────
 export const roomManagers: any[] = [];
 
+export function clearRoomManagers(): void {
+  roomManagers.length = 0;
+}
+
 function instrumentAxiomifyWs(app?: any, moduleExports?: Record<string, any>): boolean {
   try {
     const wsPath = require.resolve('@axiomify/ws', { paths: [process.cwd()] });
@@ -95,7 +99,7 @@ function instrumentAxiomifyWs(app?: any, moduleExports?: Record<string, any>): b
         recordInbound(event, args);
         const start = performance.now();
         try {
-          const ret = originalEmit.apply(this, arguments as any);
+          const ret = originalEmit.apply(this, [event, ...args]);
           const duration = performance.now() - start;
           if (!wsMetrics.slowestHandler || duration > wsMetrics.slowestHandler.duration) {
             wsMetrics.slowestHandler = { event, duration };

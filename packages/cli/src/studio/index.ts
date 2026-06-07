@@ -25,7 +25,7 @@ import { setOnRecorderUpdated } from './api/recorder';
 import { instrumentRequestReplay, setOnReplayUpdated } from './api/replay';
 import { setBaselineDiscovery } from './api/sdk-impact';
 import { instrumentTrafficProfiling } from './api/traffic-interceptor';
-import { instrumentWsAnalytics, stopWsMetricsInterval } from './api/ws-analytics';
+import { instrumentWsAnalytics, stopWsMetricsInterval, clearRoomManagers } from './api/ws-analytics';
 import { performDiscovery, type StudioDiscoveryResult } from './discovery';
 import { createStudioServer } from './server/http-server';
 import { StudioRouter } from './server/router';
@@ -202,11 +202,16 @@ export async function startStudio(
   const syncEngine = new StudioSyncEngine({
     entry,
     wsServer,
-    onReload: (newDiscovery, newApp) => {
+    initialExports: loaded.exports,
+    onReload: (newDiscovery, newApp, newExports) => {
+      // Clear old WS RoomManager cache instances
+      clearRoomManagers();
+
       discovery = newDiscovery;
       currentApp = newApp;
       instrumentErrorObservatory(newApp);
-      instrumentWsAnalytics();
+      // Re-instrument WS analytics with new exports
+      instrumentWsAnalytics(newApp, newExports);
       instrumentRequestReplay(newApp);
       instrumentTrafficProfiling(newApp);
       

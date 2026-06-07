@@ -299,7 +299,9 @@ function discoverArchMap(app: any, routes: any[]): ArchComponentNode[] {
         tokenToService.set(tokenStr, value);
       }
     }
-  } catch {}
+  } catch {
+    // ignore
+  }
 
   for (const token of serviceTokens) {
     const value = tokenToService.get(token);
@@ -359,7 +361,9 @@ function discoverArchMap(app: any, routes: any[]): ArchComponentNode[] {
           }
         }
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
 
     nodes.push({
       id: routeId,
@@ -403,6 +407,13 @@ export async function performDiscovery(
       'PASS',
       'CREDENTIAL',
       'PWD',
+      'URL',
+      'URI',
+      'DSN',
+      'CONNECTION',
+      'JWT',
+      'SIGNATURE',
+      'HASH',
     ].some((word) => upperKey.includes(word));
     env[key] = isSensitive ? '••••••••' : value;
   }

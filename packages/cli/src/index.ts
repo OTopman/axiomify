@@ -34,7 +34,9 @@ function loadEnv() {
           process.env[key] = val;
         }
       }
-    } catch { }
+    } catch {
+      // ignore
+    }
   }
 }
 

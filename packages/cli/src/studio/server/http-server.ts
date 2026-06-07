@@ -17,7 +17,7 @@ import {
 } from 'node:http';
 import { URL } from 'node:url';
 import { existsSync, promises as fsPromises } from 'node:fs';
-import { join, extname } from 'node:path';
+import { join, extname, sep, resolve, normalize } from 'node:path';
 import { StudioRouter, type StudioRouteHandler } from './router';
 
 export interface StudioServerOptions {
@@ -69,12 +69,21 @@ export function sendJson(
   data: unknown,
   statusCode = 200,
 ): void {
+  const req = (res as any).req;
+  const origin = req?.headers?.origin;
+  const isLocal = origin && (
+    origin.startsWith('http://localhost:') ||
+    origin.startsWith('http://127.0.0.1:') ||
+    origin === 'http://localhost' ||
+    origin === 'http://127.0.0.1'
+  );
+  const corsOrigin = isLocal ? origin : 'http://localhost:4399';
   const body = JSON.stringify(data, (_, v) => typeof v === 'bigint' ? v.toString() : v);
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
     'Cache-Control': 'no-store',
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': corsOrigin,
   });
   res.end(body);
 }
@@ -127,8 +136,15 @@ export function createStudioServer(options: StudioServerOptions): Server {
 
       // ── CORS preflight ──────────────────────────────────────────────────
       if (method === 'OPTIONS') {
+        const origin = req.headers.origin;
+        const isLocal = origin && (
+          origin.startsWith('http://localhost:') ||
+          origin.startsWith('http://127.0.0.1:') ||
+          origin === 'http://localhost' ||
+          origin === 'http://127.0.0.1'
+        );
         res.writeHead(204, {
-          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Origin': isLocal ? origin : 'http://localhost:4399',
           'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           'Access-Control-Max-Age': '86400',
@@ -177,26 +193,36 @@ export function createStudioServer(options: StudioServerOptions): Server {
 
       // ── Static assets serving ──────────────────────────────────────────
       if (uiDistPath) {
-        const safePath = join(uiDistPath, pathname);
-        if (safePath.startsWith(uiDistPath)) {
+        const resolvedPath = resolve(uiDistPath, '.' + normalize(pathname));
+        const safePrefix = uiDistPath.endsWith(sep) ? uiDistPath : uiDistPath + sep;
+        if (resolvedPath.startsWith(safePrefix) || resolvedPath === uiDistPath) {
           let fileExists = false;
           let isFile = false;
           try {
-            const stat = await fsPromises.stat(safePath);
+            const stat = await fsPromises.stat(resolvedPath);
             fileExists = true;
             isFile = stat.isFile();
-          } catch {}
+          } catch {
+            // ignore
+          }
 
           if (fileExists && isFile) {
-            const ext = extname(safePath).toLowerCase();
+            const ext = extname(resolvedPath).toLowerCase();
             const contentType = MIME_TYPES[ext] || 'application/octet-stream';
             try {
-              const data = await fsPromises.readFile(safePath);
+              const data = await fsPromises.readFile(resolvedPath);
+              const origin = req.headers.origin;
+              const isLocal = origin && (
+                origin.startsWith('http://localhost:') ||
+                origin.startsWith('http://127.0.0.1:') ||
+                origin === 'http://localhost' ||
+                origin === 'http://127.0.0.1'
+              );
               res.writeHead(200, {
                 'Content-Type': contentType,
                 'Content-Length': data.length,
                 'Cache-Control': 'no-cache',
-                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Origin': isLocal ? origin : 'http://localhost:4399',
               });
               res.end(data);
               return;
@@ -215,7 +241,9 @@ export function createStudioServer(options: StudioServerOptions): Server {
       if (!options.indexHtml && uiDistPath) {
         try {
           indexHtml = await fsPromises.readFile(join(uiDistPath, 'index.html'), 'utf8');
-        } catch {}
+        } catch {
+          // ignore
+        }
       }
 
       res.writeHead(200, {

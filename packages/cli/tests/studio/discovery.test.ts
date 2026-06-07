@@ -29,7 +29,9 @@ describe('Studio Discovery Engine', () => {
       if (fs.existsSync(tempDir)) {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
   });
   it('should handle an empty app instance', async () => {
     const app = new Axiomify();

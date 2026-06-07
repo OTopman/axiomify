@@ -312,6 +312,7 @@ function buildMarkdownReport(
 function sanitizePdfText(text: string): string {
   return text
     .replace(/[\u{1f300}-\u{1faff}]/gu, '')
+    // eslint-disable-next-line no-control-regex
     .replace(/[^\x09\x0a\x0d\x20-\x7e]/g, '')
     .replace(/\\/g, '\\\\')
     .replace(/\(/g, '\\(')

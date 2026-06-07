@@ -101,38 +101,38 @@ export function instrumentTrafficProfiling(app: any): void {
         let responseBody: any = null;
 
         const originalStatus = res.status;
-        res.status = function(code: number) {
-          responseStatus = code;
-          return originalStatus.apply(this, arguments);
+        res.status = function(...args: any[]) {
+          responseStatus = args[0];
+          return originalStatus.apply(this, args);
         };
 
         const originalHeader = res.header;
-        res.header = function(key: string, value: string) {
-          responseHeaders[key.toLowerCase()] = value;
-          return originalHeader.apply(this, arguments);
+        res.header = function(...args: any[]) {
+          responseHeaders[args[0].toLowerCase()] = args[1];
+          return originalHeader.apply(this, args);
         };
 
         const originalSend = res.send;
-        res.send = function(data: any) {
-          responseBody = data;
-          return originalSend.apply(this, arguments);
+        res.send = function(...args: any[]) {
+          responseBody = args[0];
+          return originalSend.apply(this, args);
         };
 
         const originalSendRaw = res.sendRaw;
         if (originalSendRaw) {
-          res.sendRaw = function(data: any, contentType?: string) {
-            responseBody = data;
-            if (contentType) responseHeaders['content-type'] = contentType;
-            return originalSendRaw.apply(this, arguments);
+          res.sendRaw = function(...args: any[]) {
+            responseBody = args[0];
+            if (args[1]) responseHeaders['content-type'] = args[1];
+            return originalSendRaw.apply(this, args);
           };
         }
 
         const originalStream = res.stream;
         if (originalStream) {
-          res.stream = function(streamable: any, contentType?: string) {
+          res.stream = function(...args: any[]) {
             responseBody = '[Streamed Content]';
-            if (contentType) responseHeaders['content-type'] = contentType;
-            return originalStream.apply(this, arguments);
+            if (args[1]) responseHeaders['content-type'] = args[1];
+            return originalStream.apply(this, args);
           };
         }
 

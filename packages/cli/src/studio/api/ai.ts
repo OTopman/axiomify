@@ -258,7 +258,7 @@ Instructions:
 5. All PII and credentials have been redacted on the server before transmitting. Do not mention the redactions unless directly asked about security masking.`;
 
   let fetchUrl = '';
-  let fetchHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+  const fetchHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
   let fetchBody: any = {};
 
   if (provider === 'gemini') {

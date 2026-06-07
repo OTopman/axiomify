@@ -789,6 +789,7 @@ export function wsRooms(
   };
 
   // Register the WebSocket route on the Axiomify app.
+  wsDefinition.manager = manager;
   app.ws(wsDefinition);
 
   // Start presence heartbeat if configured.

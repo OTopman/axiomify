@@ -1246,101 +1246,7 @@ export const MiddlewaresPanel: React.FC<{ discovery: DiscoveryData; onNavigateTo
 };
 
 // ==========================================
-// 9. WS ANALYTICS PANEL
-// ==========================================
-export const WsAnalyticsPanel: React.FC = () => {
-  const [data, setData] = useState<any | null>(null);
-
-  useEffect(() => {
-    fetchAnalytics();
-    const interval = setInterval(fetchAnalytics, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchAnalytics = async () => {
-    try {
-      const res = await apiFetch('/__studio/api/ws-analytics');
-      if (res.ok) {
-        setData(await res.json());
-      }
-    } catch {}
-  };
-
-  return (
-    <div>
-      <div className="panel-header">
-        <div className="panel-title">WebSocket Traffic Analytics</div>
-        <div className="panel-subtitle">Real-time stats of connections, rooms, and frame throughput</div>
-      </div>
-
-      {data ? (
-        <div>
-          <div className="info-grid" style={{ marginBottom: '24px' }}>
-            <div className="info-card" style={{ margin: 0 }}>
-              <div className="info-card-label">Active Connections</div>
-              <div className="info-card-value">{data.activeConnections}</div>
-            </div>
-            <div className="info-card" style={{ margin: 0 }}>
-              <div className="info-card-label">Total Rooms</div>
-              <div className="info-card-value">{data.totalRooms}</div>
-            </div>
-            <div className="info-card" style={{ margin: 0 }}>
-              <div className="info-card-label">Total Frames Recv</div>
-              <div className="info-card-value">{data.totalFramesReceived}</div>
-            </div>
-            <div className="info-card" style={{ margin: 0 }}>
-              <div className="info-card-label">Total Frames Sent</div>
-              <div className="info-card-value">{data.totalFramesSent}</div>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', textAlign: 'left', flexWrap: 'wrap' }}>
-            {/* Active Clients */}
-            <div className="tester-section">
-              <div className="tester-section-title">🔌 Active WebSockets Client List</div>
-              {data.clients && data.clients.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {data.clients.map((c: any) => (
-                    <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '8px 12px', fontSize: '12px' }}>
-                      <div>
-                        <strong>ID:</strong> <code style={{ fontFamily: 'var(--font-mono)' }}>{c.id.substring(0, 10)}...</code>
-                      </div>
-                      <span className="tag-pill">{c.protocol}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '12px' }}>No active connections.</div>
-              )}
-            </div>
-
-            {/* Rooms list */}
-            <div className="tester-section">
-              <div className="tester-section-title">🏠 Active Rooms</div>
-              {data.rooms && Object.keys(data.rooms).length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {Object.entries(data.rooms).map(([name, size]: [string, any]) => (
-                    <div key={name} style={{ display: 'flex', justifyContent: 'space-between', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '8px 12px', fontSize: '12px' }}>
-                      <strong>Room: {name}</strong>
-                      <span className="validation-pill">{size} client{size === 1 ? '' : 's'}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '12px' }}>No active rooms.</div>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '12px' }}>Analytics loading...</div>
-      )}
-    </div>
-  );
-};
-
-// ==========================================
-// 10. METRICS PANEL
+// 9. UNIFIED ANALYTICS PANEL & CHARTS
 // ==========================================
 interface ParsedMetric {
   name: string;
@@ -1379,13 +1285,107 @@ function parsePrometheus(raw: string): ParsedMetric[] {
   return results;
 }
 
-export const MetricsPanel: React.FC = () => {
-  const [data, setData] = useState<any | null>(null);
+interface AnalyticsHistoryItem {
+  time: string;
+  requests: number;
+  avgResponseTime: number;
+  wsClients: number;
+}
+
+const AnalyticsChart: React.FC<{
+  history: AnalyticsHistoryItem[];
+  dataKey: 'requests' | 'avgResponseTime' | 'wsClients';
+  color: string;
+  label: string;
+  unit?: string;
+}> = ({ history, dataKey, color, label, unit = '' }) => {
+  if (history.length < 2) {
+    return (
+      <div className="card" style={{ height: '180px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '12px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', margin: 0 }}>
+        <div style={{ marginBottom: '8px', fontSize: '16px' }}>📊</div>
+        <div>Gathering live data points...</div>
+      </div>
+    );
+  }
+
+  const values = history.map(h => h[dataKey]);
+  const minVal = Math.min(...values);
+  const maxVal = Math.max(...values, 1);
+  const valRange = maxVal - minVal || 1;
+
+  const height = 120;
+  const width = 500;
+  const padding = 12;
+
+  const points = history.map((item, idx) => {
+    const x = (idx / (history.length - 1)) * (width - padding * 2) + padding;
+    const y = height - ((item[dataKey] - minVal) / valRange) * (height - padding * 2) - padding;
+    return { x, y };
+  });
+
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+  const areaD = `${pathD} L ${points[points.length - 1].x.toFixed(1)} ${height} L ${points[0].x.toFixed(1)} ${height} Z`;
+
+  return (
+    <div className="card" style={{ padding: '16px', margin: 0, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', alignItems: 'center' }}>
+        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{label}</div>
+        <div style={{ fontSize: '13px', fontFamily: 'var(--font-mono)', fontWeight: 'bold', color }}>
+          {values[values.length - 1].toFixed(dataKey === 'avgResponseTime' ? 1 : 0)}{unit}
+        </div>
+      </div>
+      <div style={{ position: 'relative', height: `${height}px` }}>
+        <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: '100%', overflow: 'visible' }}>
+          <defs>
+            <linearGradient id={`grad-${dataKey}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+              <stop offset="100%" stopColor={color} stopOpacity="0.00" />
+            </linearGradient>
+          </defs>
+          
+          {/* Grid lines */}
+          <line x1="0" y1={height / 2} x2={width} y2={height / 2} stroke="var(--border)" strokeWidth="0.5" strokeDasharray="3 3" />
+          <line x1="0" y1={padding} x2={width} y2={padding} stroke="var(--border)" strokeWidth="0.5" strokeDasharray="3 3" />
+          <line x1="0" y1={height - padding} x2={width} y2={height - padding} stroke="var(--border)" strokeWidth="0.5" strokeDasharray="3 3" />
+
+          {/* Area */}
+          <path d={areaD} fill={`url(#grad-${dataKey})`} />
+
+          {/* Line */}
+          <path d={pathD} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+
+          {/* Dots on points */}
+          {points.map((p, i) => (
+            <circle
+              key={i}
+              cx={p.x}
+              cy={p.y}
+              r={i === points.length - 1 ? 5 : 2.5}
+              fill={color}
+              stroke="var(--bg-secondary)"
+              strokeWidth={i === points.length - 1 ? 2 : 1}
+            />
+          ))}
+        </svg>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '9px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+        <span>{history[0].time}</span>
+        <span>Live ({history.length} pts)</span>
+        <span>{history[history.length - 1].time}</span>
+      </div>
+    </div>
+  );
+};
+
+export const AnalyticsPanel: React.FC = () => {
+  const [subTab, setSubTab] = useState<'overview' | 'http' | 'websocket'>('overview');
+  const [metricsData, setMetricsData] = useState<any | null>(null);
   const [wsData, setWsData] = useState<any | null>(null);
+  const [history, setHistory] = useState<AnalyticsHistoryItem[]>([]);
 
   useEffect(() => {
     fetchAll();
-    const interval = setInterval(fetchAll, 3000);
+    const interval = setInterval(fetchAll, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -1395,202 +1395,367 @@ export const MetricsPanel: React.FC = () => {
         apiFetch('/__studio/api/metrics'),
         apiFetch('/__studio/api/ws-analytics'),
       ]);
-      if (metricsRes.ok) setData(await metricsRes.json());
-      if (wsRes.ok) setWsData(await wsRes.json());
+
+      let rawMetrics = '';
+      let isMetricsAvailable = false;
+      let path = '/metrics';
+
+      if (metricsRes.ok) {
+        const d = await metricsRes.json();
+        rawMetrics = d.raw || '';
+        isMetricsAvailable = d.available;
+        path = d.path || '/metrics';
+      }
+
+      let ws = null;
+      if (wsRes.ok) {
+        ws = await wsRes.json();
+      }
+
+      const parsed = parsePrometheus(rawMetrics);
+      let totalRequests = 0;
+      let totalDurationMs = 0;
+      let wsConnectedClients = 0;
+      let hasWsStats = false;
+
+      const routeMetricsMap = new Map<string, any>();
+      for (const m of parsed) {
+        if (m.name === 'http_requests_total') {
+          totalRequests += m.value;
+          const key = `${m.labels.method}:${m.labels.route}`;
+          let rm = routeMetricsMap.get(key);
+          if (!rm) {
+            rm = { method: m.labels.method || 'GET', route: m.labels.route || '/', requests: 0, durationMs: 0, statuses: {} };
+            routeMetricsMap.set(key, rm);
+          }
+          rm.requests += m.value;
+          const status = m.labels.status || '200';
+          rm.statuses[status] = (rm.statuses[status] || 0) + m.value;
+        } else if (m.name === 'http_request_duration_ms') {
+          totalDurationMs += m.value;
+          const key = `${m.labels.method}:${m.labels.route}`;
+          let rm = routeMetricsMap.get(key);
+          if (!rm) {
+            rm = { method: m.labels.method || 'GET', route: m.labels.route || '/', requests: 0, durationMs: 0, statuses: {} };
+            routeMetricsMap.set(key, rm);
+          }
+          rm.durationMs += m.value;
+        } else if (m.name === 'ws_connected_clients') {
+          wsConnectedClients = m.value;
+          hasWsStats = true;
+        }
+      }
+
+      const wsAnalyticsConnections: number = ws?.activeConnections ?? 0;
+      if (!hasWsStats && wsAnalyticsConnections > 0) {
+        wsConnectedClients = wsAnalyticsConnections;
+        hasWsStats = true;
+      }
+
+      const avgLatency = totalRequests > 0 ? totalDurationMs / totalRequests : 0;
+      const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      setHistory(prev => {
+        const next = [...prev, {
+          time: timeString,
+          requests: totalRequests,
+          avgResponseTime: avgLatency,
+          wsClients: wsConnectedClients
+        }];
+        return next.slice(-15);
+      });
+
+      setMetricsData({
+        available: isMetricsAvailable,
+        path,
+        raw: rawMetrics,
+        totalRequests,
+        avgResponseTime: avgLatency,
+        wsConnectedClients,
+        hasWsStats,
+        routesList: Array.from(routeMetricsMap.values()).sort((a, b) => b.requests - a.requests)
+      });
+      setWsData(ws);
     } catch {}
   };
 
-  if (!data) {
-    return (
-      <div>
-        <div className="panel-header">
-          <div className="panel-title">Metrics Dashboard</div>
-          <div className="panel-subtitle">Latency metrics and request throughput checks</div>
-        </div>
-        <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '12px' }}>Metrics loading...</div>
-      </div>
-    );
-  }
+  const wsFramesReceived: number = wsData?.totalFramesReceived ?? 0;
+  const wsFramesSent: number = wsData?.totalFramesSent ?? 0;
+  const totalWsMessages = wsFramesReceived + wsFramesSent;
 
-  if (!data.available) {
-    return (
-      <div>
-        <div className="panel-header">
-          <div className="panel-title">Metrics Dashboard</div>
-          <div className="panel-subtitle">Latency metrics and request throughput checks</div>
+  return (
+    <div>
+      <div className="panel-header" style={{ marginBottom: '16px' }}>
+        <div className="panel-title">Analytics & Performance</div>
+        <div className="panel-subtitle">Consolidated live metrics, route performance, and real-time WebSocket traffic</div>
+      </div>
+
+      {/* Sub-tab selection */}
+      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '20px' }}>
+        <button
+          style={{
+            background: subTab === 'overview' ? 'var(--bg-secondary)' : 'transparent',
+            border: subTab === 'overview' ? '1px solid var(--border)' : '1px solid transparent',
+            borderBottomColor: subTab === 'overview' ? 'var(--bg-primary)' : 'transparent',
+            color: subTab === 'overview' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            padding: '8px 16px',
+            fontSize: '12px',
+            fontWeight: 600,
+            borderRadius: 'var(--radius-sm)',
+            cursor: 'pointer',
+            marginBottom: '-9px',
+            zIndex: 1,
+            outline: 'none',
+            transition: 'all var(--transition)',
+          }}
+          onClick={() => setSubTab('overview')}
+        >
+          👁️ Overview Dashboard
+        </button>
+        <button
+          style={{
+            background: subTab === 'http' ? 'var(--bg-secondary)' : 'transparent',
+            border: subTab === 'http' ? '1px solid var(--border)' : '1px solid transparent',
+            borderBottomColor: subTab === 'http' ? 'var(--bg-primary)' : 'transparent',
+            color: subTab === 'http' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            padding: '8px 16px',
+            fontSize: '12px',
+            fontWeight: 600,
+            borderRadius: 'var(--radius-sm)',
+            cursor: 'pointer',
+            marginBottom: '-9px',
+            zIndex: 1,
+            outline: 'none',
+            transition: 'all var(--transition)',
+          }}
+          onClick={() => setSubTab('http')}
+        >
+          📈 HTTP Performance
+        </button>
+        <button
+          style={{
+            background: subTab === 'websocket' ? 'var(--bg-secondary)' : 'transparent',
+            border: subTab === 'websocket' ? '1px solid var(--border)' : '1px solid transparent',
+            borderBottomColor: subTab === 'websocket' ? 'var(--bg-primary)' : 'transparent',
+            color: subTab === 'websocket' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            padding: '8px 16px',
+            fontSize: '12px',
+            fontWeight: 600,
+            borderRadius: 'var(--radius-sm)',
+            cursor: 'pointer',
+            marginBottom: '-9px',
+            zIndex: 1,
+            outline: 'none',
+            transition: 'all var(--transition)',
+          }}
+          onClick={() => setSubTab('websocket')}
+        >
+          🔌 WebSocket Traffic
+        </button>
+      </div>
+
+      {subTab === 'overview' && (
+        <div style={{ textAlign: 'left' }}>
+          {metricsData && !metricsData.available && (
+            <div className="card" style={{ padding: '12px 16px', background: 'var(--warning)15', border: '1px solid var(--warning)', color: 'var(--warning)', borderRadius: 'var(--radius-md)', fontSize: '13px', marginBottom: '20px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span>⚠️</span>
+              <span><strong>HTTP Metrics Plugin is inactive.</strong> Enable it in your app to unlock live HTTP throughput/latency graphs.</span>
+            </div>
+          )}
+
+          {metricsData || wsData ? (
+            <div>
+              {/* KPI cards grid */}
+              <div className="info-grid" style={{ marginBottom: '24px' }}>
+                <div className="info-card" style={{ margin: 0 }}>
+                  <div className="info-card-label">HTTP Requests</div>
+                  <div className="info-card-value">{metricsData?.totalRequests ?? 0}</div>
+                </div>
+                <div className="info-card" style={{ margin: 0 }}>
+                  <div className="info-card-label">Avg HTTP Latency</div>
+                  <div className="info-card-value">{(metricsData?.avgResponseTime ?? 0).toFixed(1)} ms</div>
+                </div>
+                <div className="info-card" style={{ margin: 0 }}>
+                  <div className="info-card-label">Active WebSockets</div>
+                  <div className="info-card-value" style={{ color: 'var(--method-ws)' }}>{metricsData?.wsConnectedClients ?? wsData?.activeConnections ?? 0}</div>
+                </div>
+                <div className="info-card" style={{ margin: 0 }}>
+                  <div className="info-card-label">Total WS Traffic</div>
+                  <div className="info-card-value" style={{ color: 'var(--method-ws)' }}>
+                    {totalWsMessages} <span style={{ fontSize: '11px', fontWeight: 'normal', color: 'var(--text-secondary)' }}>frames</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sparklines grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+                {(!metricsData || metricsData.available) && (
+                  <>
+                    <AnalyticsChart history={history} dataKey="requests" color="var(--accent)" label="📈 Live HTTP Throughput" unit=" reqs" />
+                    <AnalyticsChart history={history} dataKey="avgResponseTime" color="var(--warning)" label="⏱️ Average Latency" unit=" ms" />
+                  </>
+                )}
+                <AnalyticsChart history={history} dataKey="wsClients" color="var(--method-ws)" label="🔌 Active WebSocket Clients" unit=" clients" />
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '12px' }}>Analytics loading...</div>
+          )}
         </div>
-        <div className="empty-state" style={{ textAlign: 'left', display: 'block', padding: '32px' }}>
-          <div style={{ fontSize: '20px', fontWeight: 700, marginBottom: '12px' }}>📊 Metrics Plugin Inactive</div>
-          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '20px' }}>
-            The metrics collection plugin is not active in this application. To enable real-time Prometheus throughput and latency analysis, register the metrics plugin on your application instance:
-          </p>
-          <pre style={{ padding: '16px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', fontFamily: 'var(--font-mono)', fontSize: '12px', overflowX: 'auto', marginBottom: '20px' }}>
+      )}
+
+      {subTab === 'http' && (
+        <div style={{ textAlign: 'left' }}>
+          {!metricsData ? (
+            <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '12px' }}>Metrics loading...</div>
+          ) : !metricsData.available ? (
+            <div className="empty-state" style={{ textAlign: 'left', display: 'block', padding: '32px' }}>
+              <div style={{ fontSize: '20px', fontWeight: 700, marginBottom: '12px' }}>📊 Metrics Plugin Inactive</div>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: '20px' }}>
+                The metrics collection plugin is not active in this application. To enable real-time Prometheus throughput and latency analysis, register the metrics plugin on your application instance:
+              </p>
+              <pre style={{ padding: '16px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', fontFamily: 'var(--font-mono)', fontSize: '12px', overflowX: 'auto', marginBottom: '20px' }}>
 {`import { useMetrics } from '@axiomify/metrics';
 
 // Register the metrics plugin in your app entrypoint
 useMetrics(app);`}
-          </pre>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            Note: By default, metrics are exposed at the <code style={{ fontFamily: 'var(--font-mono)' }}>{data.path || '/metrics'}</code> route.
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Parse Prometheus text payload
-  const metrics = parsePrometheus(data.raw || '');
-
-  // Calculate totals
-  let totalRequests = 0;
-  let totalDurationMs = 0;
-  let wsConnectedClients = 0;
-  let hasWsStats = false;
-
-  interface RouteMetric {
-    method: string;
-    route: string;
-    requests: number;
-    durationMs: number;
-    statuses: Record<string, number>;
-  }
-  const routeMetricsMap = new Map<string, RouteMetric>();
-
-  for (const m of metrics) {
-    if (m.name === 'http_requests_total') {
-      totalRequests += m.value;
-      const key = `${m.labels.method}:${m.labels.route}`;
-      let rm = routeMetricsMap.get(key);
-      if (!rm) {
-        rm = { method: m.labels.method || 'GET', route: m.labels.route || '/', requests: 0, durationMs: 0, statuses: {} };
-        routeMetricsMap.set(key, rm);
-      }
-      rm.requests += m.value;
-      const status = m.labels.status || '200';
-      rm.statuses[status] = (rm.statuses[status] || 0) + m.value;
-    } else if (m.name === 'http_request_duration_ms') {
-      totalDurationMs += m.value;
-      const key = `${m.labels.method}:${m.labels.route}`;
-      let rm = routeMetricsMap.get(key);
-      if (!rm) {
-        rm = { method: m.labels.method || 'GET', route: m.labels.route || '/', requests: 0, durationMs: 0, statuses: {} };
-        routeMetricsMap.set(key, rm);
-      }
-      rm.durationMs += m.value;
-    } else if (m.name === 'ws_connected_clients') {
-      wsConnectedClients = m.value;
-      hasWsStats = true;
-    }
-  }
-
-  // Also incorporate ws-analytics data if Prometheus doesn't export ws metrics
-  const wsAnalyticsConnections: number = wsData?.activeConnections ?? 0;
-  const wsFramesReceived: number = wsData?.totalFramesReceived ?? 0;
-  const wsFramesSent: number = wsData?.totalFramesSent ?? 0;
-  if (!hasWsStats && wsAnalyticsConnections > 0) {
-    wsConnectedClients = wsAnalyticsConnections;
-    hasWsStats = true;
-  }
-
-  const routesList = Array.from(routeMetricsMap.values()).sort((a, b) => b.requests - a.requests);
-  const globalAvgResponseTimeMs = totalRequests > 0 ? totalDurationMs / totalRequests : 0;
-
-  return (
-    <div>
-      <div className="panel-header">
-        <div className="panel-title">Metrics Dashboard</div>
-        <div className="panel-subtitle">Latency metrics and request throughput checks</div>
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', textAlign: 'left' }}>
-        <div className="info-grid">
-          <div className="info-card" style={{ margin: 0 }}>
-            <div className="info-card-label">Total Requests</div>
-            <div className="info-card-value">{totalRequests}</div>
-          </div>
-          <div className="info-card" style={{ margin: 0 }}>
-            <div className="info-card-label">Average Response Time</div>
-            <div className="info-card-value">{globalAvgResponseTimeMs.toFixed(1)} ms</div>
-          </div>
-          {(hasWsStats || wsAnalyticsConnections > 0) && (
-            <div className="info-card" style={{ margin: 0 }}>
-              <div className="info-card-label">Active WebSockets</div>
-              <div className="info-card-value" style={{ color: 'var(--method-ws)' }}>{wsConnectedClients}</div>
-            </div>
-          )}
-          {(hasWsStats || wsAnalyticsConnections > 0 || wsFramesReceived > 0 || wsFramesSent > 0) && (
-            <>
-              <div className="info-card" style={{ margin: 0 }}>
-                <div className="info-card-label">WS Frames Recv</div>
-                <div className="info-card-value">{wsFramesReceived}</div>
+              </pre>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Note: By default, metrics are exposed at the <code style={{ fontFamily: 'var(--font-mono)' }}>{metricsData.path || '/metrics'}</code> route.
               </div>
-              <div className="info-card" style={{ margin: 0 }}>
-                <div className="info-card-label">WS Frames Sent</div>
-                <div className="info-card-value">{wsFramesSent}</div>
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="tester-section">
-          <div className="tester-section-title">📊 HTTP Route Throughput & Latency</div>
-          {routesList.length === 0 ? (
-            <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '12px' }}>
-              No traffic requests captured by the metrics collector yet. Send some requests to see statistics!
             </div>
           ) : (
-            <div className="card" style={{ padding: '8px', margin: 0, overflowX: 'auto', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                <thead>
-                  <tr style={{ background: 'var(--bg-tertiary)' }}>
-                    <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Method</th>
-                    <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Route</th>
-                    <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Requests Count</th>
-                    <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Avg Latency</th>
-                    <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Status Breakdown</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {routesList.map((r, idx) => {
-                    const avg = r.requests > 0 ? r.durationMs / r.requests : 0;
-                    return (
-                      <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '8px' }}>
-                          <span className={`method-badge method-${r.method}`} style={{ fontSize: '9px', padding: '2px 6px' }}>{r.method}</span>
-                        </td>
-                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{r.route}</td>
-                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)' }}>{r.requests}</td>
-                        <td style={{ padding: '8px', fontFamily: 'var(--font-mono)' }}>{avg.toFixed(1)} ms</td>
-                        <td style={{ padding: '8px' }}>
-                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                            {Object.entries(r.statuses).map(([status, count]) => {
-                              const isSuccess = status.startsWith('2');
-                              const isError = status.startsWith('4') || status.startsWith('5');
-                              const color = isSuccess ? 'var(--success)' : isError ? 'var(--error)' : 'var(--warning)';
-                              return (
-                                <span key={status} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: `${color}15`, color }}>
-                                  {status}: {count}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div>
+              <div className="tester-section" style={{ marginBottom: '24px' }}>
+                <div className="tester-section-title">📊 HTTP Route Throughput & Latency</div>
+                {metricsData.routesList.length === 0 ? (
+                  <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '12px' }}>
+                    No traffic requests captured by the metrics collector yet. Send some requests to see statistics!
+                  </div>
+                ) : (
+                  <div className="card" style={{ padding: '8px', margin: 0, overflowX: 'auto', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg-tertiary)' }}>
+                          <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Method</th>
+                          <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Route</th>
+                          <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Requests Count</th>
+                          <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Avg Latency</th>
+                          <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid var(--border)' }}>Status Breakdown</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {metricsData.routesList.map((r: any, idx: number) => {
+                          const avg = r.requests > 0 ? r.durationMs / r.requests : 0;
+                          return (
+                            <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                              <td style={{ padding: '8px' }}>
+                                <span className={`method-badge method-${r.method}`} style={{ fontSize: '9px', padding: '2px 6px' }}>{r.method}</span>
+                              </td>
+                              <td style={{ padding: '8px', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{r.route}</td>
+                              <td style={{ padding: '8px', fontFamily: 'var(--font-mono)' }}>{r.requests}</td>
+                              <td style={{ padding: '8px', fontFamily: 'var(--font-mono)' }}>{avg.toFixed(1)} ms</td>
+                              <td style={{ padding: '8px' }}>
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                  {Object.entries(r.statuses).map(([status, count]: [string, any]) => {
+                                    const isSuccess = status.startsWith('2');
+                                    const isError = status.startsWith('4') || status.startsWith('5');
+                                    const color = isSuccess ? 'var(--success)' : isError ? 'var(--error)' : 'var(--warning)';
+                                    return (
+                                      <span key={status} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: `${color}15`, color }}>
+                                        {status}: {count}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="tester-section">
+                <div className="tester-section-title">🔌 Raw Prometheus Data</div>
+                <pre style={{ maxHeight: '250px', overflowY: 'auto', padding: '16px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', fontFamily: 'var(--font-mono)', fontSize: '12px', margin: 0 }}>
+                  {metricsData.raw}
+                </pre>
+              </div>
             </div>
           )}
         </div>
+      )}
 
-        <div className="tester-section">
-          <div className="tester-section-title">🔌 Raw Prometheus Data</div>
-          <pre style={{ maxHeight: '250px', overflowY: 'auto', padding: '16px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
-            {data.raw}
-          </pre>
+      {subTab === 'websocket' && (
+        <div style={{ textAlign: 'left' }}>
+          {!wsData ? (
+            <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '12px' }}>WebSocket traffic loading...</div>
+          ) : (
+            <div>
+              {/* WS details cards */}
+              <div className="info-grid" style={{ marginBottom: '24px' }}>
+                <div className="info-card" style={{ margin: 0 }}>
+                  <div className="info-card-label">Active Connections</div>
+                  <div className="info-card-value">{wsData.activeConnections}</div>
+                </div>
+                <div className="info-card" style={{ margin: 0 }}>
+                  <div className="info-card-label">Total Rooms</div>
+                  <div className="info-card-value">{wsData.totalRooms}</div>
+                </div>
+                <div className="info-card" style={{ margin: 0 }}>
+                  <div className="info-card-label">Total Frames Recv</div>
+                  <div className="info-card-value">{wsData.totalFramesReceived}</div>
+                </div>
+                <div className="info-card" style={{ margin: 0 }}>
+                  <div className="info-card-label">Total Frames Sent</div>
+                  <div className="info-card-value">{wsData.totalFramesSent}</div>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+                {/* Active Clients */}
+                <div className="tester-section" style={{ margin: 0 }}>
+                  <div className="tester-section-title">🔌 Active WebSockets Client List</div>
+                  {wsData.clients && wsData.clients.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {wsData.clients.map((c: any) => (
+                        <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '8px 12px', fontSize: '12px' }}>
+                          <div>
+                            <strong>ID:</strong> <code style={{ fontFamily: 'var(--font-mono)' }}>{c.id.substring(0, 10)}...</code>
+                          </div>
+                          <span className="tag-pill" style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>{c.protocol}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '12px' }}>No active connections.</div>
+                  )}
+                </div>
+
+                {/* Rooms list */}
+                <div className="tester-section" style={{ margin: 0 }}>
+                  <div className="tester-section-title">🏠 Active Rooms</div>
+                  {wsData.rooms && Object.keys(wsData.rooms).length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {Object.entries(wsData.rooms).map(([name, size]: [string, any]) => (
+                        <div key={name} style={{ display: 'flex', justifyContent: 'space-between', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '8px 12px', fontSize: '12px' }}>
+                          <strong>Room: {name}</strong>
+                          <span className="validation-pill" style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>{size} client{size === 1 ? '' : 's'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '12px' }}>No active rooms.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 };

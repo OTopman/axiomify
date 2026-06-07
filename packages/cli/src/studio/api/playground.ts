@@ -201,43 +201,22 @@ export async function handlePostPlaygroundExecute(
         throw new Error('Bundling failed, no output file generated');
       }
 
-      // 4. Execute bundled JS in sandboxed VM
-      const logs: string[] = [];
-      const errors: string[] = [];
+      // 4. Execute bundled JS in child process
+      await fs.writeFile(path.join(tmpDir, 'run.js'), bundledJs, 'utf8');
 
-      const customConsole = {
-        log: (...args: any[]) => logs.push(args.map((a) => (typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a))).join(' ')),
-        error: (...args: any[]) => errors.push(args.map((a) => (typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a))).join(' ')),
-        warn: (...args: any[]) => logs.push(`[WARN] ` + args.map((a) => (typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a))).join(' ')),
-        info: (...args: any[]) => logs.push(`[INFO] ` + args.map((a) => (typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a))).join(' ')),
-      };
-
-      const sandbox = {
-        require: (name: string) => {
-          if (name === 'zod') return require('zod');
-          if (name === '@axiomify/sdk-runtime') return require('@axiomify/sdk-runtime');
-          throw new Error(`Cannot find module '${name}' inside playground sandbox`);
-        },
-        console: customConsole,
-        fetch: globalThis.fetch,
-        Headers: globalThis.Headers,
-        Request: globalThis.Request,
-        Response: globalThis.Response,
-        setTimeout,
-        clearTimeout,
-        setInterval,
-        clearInterval,
-      };
-
-      const script = new vm.Script(bundledJs);
-      
-      // Execute with 5s timeout
-      await script.runInNewContext(sandbox, {
-        timeout: 5000,
-        displayErrors: true,
-      });
-
-      sendJson(res, { logs, errors });
+      try {
+        const { stdout, stderr } = await execPromise('node run.js', {
+          cwd: tmpDir,
+          timeout: 5000,
+        });
+        const logs = stdout ? stdout.trim().split('\n') : [];
+        const errors = stderr ? stderr.trim().split('\n') : [];
+        sendJson(res, { logs, errors });
+      } catch (err: any) {
+        const logs = err.stdout ? err.stdout.trim().split('\n') : [];
+        const errors = err.stderr ? err.stderr.trim().split('\n') : [err.message || String(err)];
+        sendJson(res, { logs, errors });
+      }
     } else if (target === 'python') {
       await fs.writeFile(path.join(tmpDir, 'main.py'), code, 'utf8');
       try {

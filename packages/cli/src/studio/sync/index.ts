@@ -11,7 +11,8 @@ import { StudioWsServer } from '../server/ws-server';
 export interface SyncEngineOptions {
   entry: string;
   wsServer: StudioWsServer;
-  onReload: (newDiscovery: StudioDiscoveryResult, newApp: Axiomify) => void;
+  initialExports?: any;
+  onReload: (newDiscovery: StudioDiscoveryResult, newApp: Axiomify, exports: any) => void;
 }
 
 /**
@@ -23,8 +24,11 @@ export interface SyncEngineOptions {
  */
 export class StudioSyncEngine {
   private ctx: esbuild.BuildContext | null = null;
+  private lastExports: any = null;
 
-  constructor(private options: SyncEngineOptions) {}
+  constructor(private options: SyncEngineOptions) {
+    this.lastExports = options.initialExports || null;
+  }
 
   /**
    * Starts watching project files for changes.
@@ -58,11 +62,28 @@ export class StudioSyncEngine {
           console.log(pc.dim('  Changes detected, reloading app...'));
 
           try {
+            // Close any closeable exports from the previous run
+            if (this.lastExports) {
+              for (const key of Object.keys(this.lastExports)) {
+                try {
+                  const val = this.lastExports[key];
+                  if (val && typeof val.close === 'function') {
+                    val.close();
+                  } else if (val && typeof val.cleanup === 'function') {
+                    await val.cleanup();
+                  }
+                } catch {
+                  // ignore
+                }
+              }
+            }
+
             // Clear CommonJS cache for the compiled app file.
             delete require.cache[require.resolve(tempPath)];
 
             // Reload the app and run discovery.
             const loaded = await loadApp(this.options.entry);
+            this.lastExports = loaded.exports;
             const discovery = await performDiscovery(loaded.app);
 
             // Compute SDK changes/impacts
@@ -71,7 +92,7 @@ export class StudioSyncEngine {
             const afterCount = pendingImpacts.length;
 
             // Update discovery cache in the router.
-            this.options.onReload(discovery, loaded.app);
+            this.options.onReload(discovery, loaded.app, loaded.exports);
             await loaded.cleanup();
 
             console.log(pc.green('  ✓ App reloaded successfully.'));

@@ -146,10 +146,12 @@ export async function runStaticAnalysis(
           description: 'The application does not send a Content-Security-Policy header, leaving it vulnerable to XSS and clickjacking.',
           remediation: 'Enable useHelmet() or configure explicit Content-Security-Policy headers.',
           cwe: 'CWE-1021',
-        });
-      }
+      });
     }
-  } catch {}
+  }
+} catch {
+  // ignore
+}
 
   // 5. GraphQL Introspection check
   const hasGraphql = discovery.routes.some((r) => r.path === '/graphql');
@@ -174,7 +176,9 @@ export async function runStaticAnalysis(
           });
         }
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   staticFindings = findings;
