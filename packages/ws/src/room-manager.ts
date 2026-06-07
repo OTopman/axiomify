@@ -34,9 +34,9 @@ import type {
   RequestState,
   WsClient,
 } from '@axiomify/core';
+import { wsClientMap } from './client-map';
 import { Room } from './room';
 import type { RoomClient, RoomEvents, WsRoomOptions } from './types';
-import { wsClientMap } from './client-map';
 
 // Optional dynamic dependency on @axiomify/security for WebSocket message sanitization
 let sanitizeInput: any = null;
@@ -140,6 +140,9 @@ export class RoomManager extends TypedEmitter {
   private readonly _presenceIntervalMs: number;
   private readonly _beforeJoin?: WsRoomOptions['beforeJoin'];
   private readonly _allowlist?: RegExp;
+
+  private _messagesReceived = 0;
+  private _messagesSent = 0;
 
   constructor(options: WsRoomOptions = {}) {
     super();
@@ -261,6 +264,23 @@ export class RoomManager extends TypedEmitter {
     this._rooms.clear();
   }
 
+  /**
+   * Get dynamic statistics of active rooms and connections.
+   * Required for integration with @axiomify/metrics.
+   */
+  getStats(): { connectedClients: number; rooms: Record<string, number>; messagesReceived?: number; messagesSent?: number } {
+    const roomsStats: Record<string, number> = {};
+    for (const [name, room] of this._rooms.entries()) {
+      roomsStats[name] = room.size;
+    }
+    return {
+      connectedClients: this.clientCount,
+      rooms: roomsStats,
+      messagesReceived: this._messagesReceived,
+      messagesSent: this._messagesSent,
+    };
+  }
+
   // -------------------------------------------------------------------------
   // Internal — client lifecycle (called from the app.ws() handlers)
   // -------------------------------------------------------------------------
@@ -273,6 +293,18 @@ export class RoomManager extends TypedEmitter {
     this._wsClients.set(clientId, wsClient);
 
     const manager = this;
+
+    // Track messages sent at transport level by proxying publish
+    if (wsClient && typeof wsClient.publish === 'function' && !(wsClient as any).__axiomifyWrapped) {
+      const originalPublish = wsClient.publish;
+      (wsClient as any).__axiomifyWrapped = true;
+      wsClient.publish = function (topic: string, data: any, isBinary?: boolean) {
+        const room = manager.room(topic);
+        const count = room ? room.size : 1;
+        manager._messagesSent += count;
+        return originalPublish.call(this, topic, data, isBinary);
+      };
+    }
 
     const roomClient: RoomClient = {
       get id() {
@@ -288,6 +320,7 @@ export class RoomManager extends TypedEmitter {
       send(data: string | Buffer | object, isBinary?: boolean): boolean {
         try {
           wsClient.send(data, isBinary);
+          manager._messagesSent++;
           return true;
         } catch {
           return false;
@@ -350,22 +383,24 @@ export class RoomManager extends TypedEmitter {
   }
 
   _processAction(clientId: string, data: unknown): boolean {
-    if (typeof data !== 'string' && !Buffer.isBuffer(data)) {
-      return false;
-    }
+    this._messagesReceived++;
     let parsed: any;
-    if (Buffer.isBuffer(data)) {
+    if (typeof data === 'object' && data !== null && !Buffer.isBuffer(data)) {
+      parsed = data;
+    } else if (Buffer.isBuffer(data)) {
       try {
         parsed = JSON.parse(data.toString('utf8'));
       } catch {
         return false;
       }
-    } else {
+    } else if (typeof data === 'string') {
       try {
         parsed = JSON.parse(data);
       } catch {
         return false;
       }
+    } else {
+      return false;
     }
 
     if (typeof parsed !== 'object' || parsed === null) return false;
@@ -557,7 +592,7 @@ export class RoomManager extends TypedEmitter {
     if (clientRoomSet.size >= this._maxRoomsPerClient) {
       throw new Error(
         `Room limit exceeded: client ${clientId} is already in ${clientRoomSet.size} rooms ` +
-          `(max: ${this._maxRoomsPerClient}). Leave a room before joining a new one.`,
+        `(max: ${this._maxRoomsPerClient}). Leave a room before joining a new one.`,
       );
     }
 
@@ -754,6 +789,7 @@ export function wsRooms(
   };
 
   // Register the WebSocket route on the Axiomify app.
+  wsDefinition.manager = manager;
   app.ws(wsDefinition);
 
   // Start presence heartbeat if configured.

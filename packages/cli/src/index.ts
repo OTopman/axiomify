@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import pkg from '../package.json';
 import { buildProject } from './commands/build';
 import { runCheck } from './commands/check';
@@ -11,6 +13,34 @@ import { emitOpenApi } from './commands/openapi';
 import { inspectRoutes, RoutesOptions } from './commands/routes';
 import { scaffoldRoute } from './commands/scaffold';
 import { generateSdk } from './commands/sdk/generate';
+import { runStudio, StudioCommandOptions } from './commands/studio';
+
+function loadEnv() {
+  const envPath = join(process.cwd(), '.env');
+  if (existsSync(envPath)) {
+    try {
+      const content = readFileSync(envPath, 'utf8');
+      for (const line of content.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const idx = trimmed.indexOf('=');
+        if (idx === -1) continue;
+        const key = trimmed.substring(0, idx).trim();
+        let val = trimmed.substring(idx + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.substring(1, val.length - 1);
+        }
+        if (!(key in process.env)) {
+          process.env[key] = val;
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+}
+
+loadEnv();
 
 const program = new Command();
 
@@ -151,6 +181,18 @@ scaffold
   );
 
 program
+  .command('studio')
+  .description(
+    'Launch Axiomify Studio — a visual control centre for inspecting routes, schemas, hooks, and more',
+  )
+  .argument('[entry]', 'Entry file', 'src/index.ts')
+  .option('-p, --port <port>', 'Port for the Studio server (default: 4399)')
+  .option('--no-open', 'Do not auto-open the browser')
+  .action((entry: string, options: StudioCommandOptions) =>
+    runStudio(entry, options),
+  );
+
+program
   .command('migrate')
   .description(
     'v5 → v6 codemod: merge meta: fields into schema:, fix routePrefix → prefix, etc',
@@ -196,15 +238,15 @@ sdk
     await generateSdk({ input, ...options });
   });
 
-import { registerSdkDiffCommand } from './commands/sdk/diff';
-import { registerSdkValidateCommand } from './commands/sdk/validate';
-import { registerSdkBuildCommand } from './commands/sdk/build';
-import { registerSdkPublishCommand } from './commands/sdk/publish';
-import { registerSdkDoctorCommand } from './commands/sdk/doctor';
 import { registerSdkBenchmarkCommand } from './commands/sdk/benchmark';
-import { registerSdkWatchCommand } from './commands/sdk/watch';
+import { registerSdkBuildCommand } from './commands/sdk/build';
+import { registerSdkDiffCommand } from './commands/sdk/diff';
+import { registerSdkDoctorCommand } from './commands/sdk/doctor';
 import { registerSdkMigrateCommand } from './commands/sdk/migrate';
+import { registerSdkPublishCommand } from './commands/sdk/publish';
 import { registerSdkUpgradeCommand } from './commands/sdk/upgrade';
+import { registerSdkValidateCommand } from './commands/sdk/validate';
+import { registerSdkWatchCommand } from './commands/sdk/watch';
 
 registerSdkDiffCommand(sdk);
 registerSdkValidateCommand(sdk);

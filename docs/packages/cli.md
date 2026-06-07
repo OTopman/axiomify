@@ -23,6 +23,7 @@ same major version as the rest of your `@axiomify/*` packages — recommended.
 | `axiomify routes [entry]`                 | Inspect every registered HTTP + WebSocket route                            |
 | `axiomify openapi [entry]`                | Generate the OpenAPI spec to stdout or file                                |
 | `axiomify check [entry]`                  | Static production-readiness audit                                          |
+| `axiomify studio [entry]`                 | Launch Axiomify Studio visual dashboard                                    |
 | `axiomify doctor`                         | Diagnose the host environment                                              |
 | `axiomify scaffold route <method> <path>` | Generate a new route file under `src/routes/`                              |
 | `axiomify migrate`                        | v4 → v5 codemod (rename `meta`→`openapi`, `useSwagger`→`useOpenAPI`, etc.) |
@@ -183,6 +184,35 @@ Output uses three severities:
 
 **Exit code 0** when no fails; **exit 1** when at least one fail. Run in
 CI to gate deploys.
+
+## `axiomify studio`
+
+```bash
+axiomify studio
+axiomify studio src/index.ts --port 5000
+```
+
+Launches **Axiomify Studio** — a premium visual developer dashboard for inspecting and testing your API.
+
+### Features
+
+- **Route Inspector**: Search, filter, and drill down into HTTP & WebSocket routes.
+- **Schema Inspector**: Browse and inspect JSON schemas compiled from Zod validators.
+- **OpenAPI Spec Viewer**: Render collapsible tree views of OpenAPI paths and operations.
+- **Lifecycle Hooks**: Review registered hook handlers across request lifecycle phases.
+- **Health Dashboard**: Inspect production-readiness finding audits (pass/warn/fail).
+- **Request Tester**: Construct and send test requests (GET, POST, etc.) directly against your in-memory Axiomify app instance, capturing response status, headers, and body.
+
+### Live Sync
+
+The dashboard uses WebSockets powered by esbuild's watch context to automatically re-compile and refresh the browser interface in real time as you edit your project files.
+
+### Flags
+
+| Flag                  | Description                                                                     |
+| --------------------- | ------------------------------------------------------------------------------- |
+| `-p, --port <number>` | Port to start the Studio server on (default: `4399`, falls back to random port) |
+| `--no-open`           | Disable auto-opening the dashboard in the browser                               |
 
 ## `axiomify scaffold route`
 

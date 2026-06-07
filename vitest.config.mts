@@ -42,6 +42,10 @@ export default defineConfig({
         // Type-only declarations
         'packages/core/src/types.ts',
         'packages/native/src/uws.d.ts',
+        // studio-ui: client-side React SPA
+        'packages/studio-ui/src/**',
+        // Module re-export entry points
+        'packages/*/src/index.ts',
       ],
       thresholds: {
         lines:      95,

@@ -17,6 +17,8 @@ import { getUserExternals } from './externals';
 
 export interface LoadedApp {
   app: any;
+  /** All named exports from the user's entry module. */
+  exports: Record<string, any>;
   /** Cleanup callback — removes the temp build directory. Always call it. */
   cleanup: () => Promise<void>;
 }
@@ -72,7 +74,7 @@ export async function loadApp(entry: string): Promise<LoadedApp> {
 
   const app = mod.app ?? mod.default;
   if (!app || typeof app.registeredRoutes === 'undefined') {
-    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    await fs.rm(tempPath, { force: true }).catch(() => {});
     throw new Error(
       'Could not find an exported Axiomify instance.\n' +
         'Ensure your entry file exports the app:\n' +
@@ -83,8 +85,8 @@ export async function loadApp(entry: string): Promise<LoadedApp> {
   }
 
   const cleanup = async () => {
-    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    await fs.rm(tempPath, { force: true }).catch(() => {});
   };
 
-  return { app, cleanup };
+  return { app, exports: mod, cleanup };
 }

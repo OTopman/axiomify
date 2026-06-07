@@ -16,7 +16,7 @@ jobs:
       contents: read   # checkout
     strategy:
       matrix:
-        node-version: [20, 22]
+        node-version: [22, 23, 24]
     steps:
       - name: Checkout Code
         # Pin to SHA instead of floating tag to prevent supply-chain attacks.

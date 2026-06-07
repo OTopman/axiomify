@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/cli",
-  "version": "6.2.0",
+  "version": "6.2.1",
   "description": "Official CLI for Axiomify — scaffold, dev, build, route inspection, OpenAPI generation, production-readiness checks, host diagnostics, codemod migrations.",
   "module": "./dist/index.mjs",
   "exports": {
@@ -11,7 +11,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "ui-dist"
   ],
   "bin": {
     "axiomify": "./dist/index.js"

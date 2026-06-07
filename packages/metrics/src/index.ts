@@ -206,10 +206,30 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
       }
 
       if (options.wsManager) {
-        const wsStats = options.wsManager.getStats();
+        const wsStats = options.wsManager.getStats() as any;
         output += '\n# HELP ws_connected_clients WebSocket clients\n';
         output += '# TYPE ws_connected_clients gauge\n';
         output += `ws_connected_clients ${wsStats.connectedClients}\n`;
+
+        if (wsStats.messagesReceived !== undefined) {
+          output += '\n# HELP ws_messages_received_total Total WebSocket messages received\n';
+          output += '# TYPE ws_messages_received_total counter\n';
+          output += `ws_messages_received_total ${wsStats.messagesReceived}\n`;
+        }
+        if (wsStats.messagesSent !== undefined) {
+          output += '\n# HELP ws_messages_sent_total Total WebSocket messages sent\n';
+          output += '# TYPE ws_messages_sent_total counter\n';
+          output += `ws_messages_sent_total ${wsStats.messagesSent}\n`;
+        }
+
+        if (wsStats.rooms) {
+          output += '\n# HELP ws_room_clients WebSocket room client count\n';
+          output += '# TYPE ws_room_clients gauge\n';
+          for (const [roomName, count] of Object.entries(wsStats.rooms)) {
+            const safeRoom = escapeLabelValue(roomName);
+            output += `ws_room_clients{room="${safeRoom}"} ${count}\n`;
+          }
+        }
       }
 
       // Do NOT mutate res.headersSent — sendRaw handles response state.
