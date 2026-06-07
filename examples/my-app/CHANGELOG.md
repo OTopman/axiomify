@@ -1,5 +1,31 @@
 # axiomify-app
 
+## 6.1.0
+
+### Minor Changes
+
+- 959e7b5: Axiomify Studio: A complete control plane web interface (`/studio`) featuring:
+  - **Interactive SDK Playground**: Running client code securely inside sandboxed child processes with autocomplete.
+  - **WebSocket & API Traffic Interceptor**: A unified Analytics panel replacing separate traffic/metrics tabs with real-time SVG sparklines.
+  - **Real-time Server Metrics**: Integrated telemetry including active WebSocket room and connection statistics.
+  - **OpenAPI Interactive Contracts**: Analyzer and quality auditor for routes.
+  - **Error Logs Observer**: High-performance streaming logger.
+  - **Automatic Type Coercion**: Schema validation automatically coerces parameters (query, params, body) before evaluation.
+  - **Security & Stability Hardening**: Static server path traversal mitigation, process signal cleanup fixes, and request concurrency deadlocks resolved.
+
+### Patch Changes
+
+- Updated dependencies [959e7b5]
+  - @axiomify/core@6.3.0
+  - @axiomify/auth@6.3.0
+  - @axiomify/graphql@6.3.0
+  - @axiomify/helmet@6.3.0
+  - @axiomify/logger@6.3.0
+  - @axiomify/native@6.3.0
+  - @axiomify/openapi@6.3.0
+  - @axiomify/static@6.3.0
+  - @axiomify/upload@6.3.0
+
 ## 6.0.0
 
 ### Patch Changes

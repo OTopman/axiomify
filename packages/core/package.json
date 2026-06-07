@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/core",
-  "version": "6.2.1",
+  "version": "6.3.0",
   "description": "Axiomify framework core — router, AJV-compiled Zod validation, hook manager, dispatcher, module system. The foundation @axiomify/* packages build on.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
