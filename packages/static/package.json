@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/static",
-  "version": "6.2.1",
+  "version": "6.3.0",
   "description": "Static file serving for Axiomify — 36 MIME types, ETag, SPA index fallback, realpath containment, immutable cache-control.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
