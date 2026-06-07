@@ -94,8 +94,25 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
     const route = wsRoutes.find(r => r.path === pathVal);
     if (!route) return;
 
-    // Auto-detect protocol
-    const autoProtocol = (pathVal.includes('socket.io') || pathVal.includes('socket')) ? 'socketio' : 'ws';
+    // Auto-detect protocol using parsed/normalized path (avoid raw URL substring matching)
+    let normalizedPath = pathVal;
+    try {
+      if (/^https?:\/\//i.test(pathVal)) {
+        normalizedPath = new URL(pathVal).pathname;
+      }
+    } catch {
+      normalizedPath = pathVal;
+    }
+    const lowerPath = normalizedPath.toLowerCase();
+    const isSocketIoPath =
+      lowerPath.startsWith('/socket.io') ||
+      lowerPath.includes('/socket.io/') ||
+      lowerPath === '/socket.io';
+    const isSocketPath =
+      lowerPath === '/socket' ||
+      lowerPath.startsWith('/socket/') ||
+      lowerPath.includes('/socket/');
+    const autoProtocol = (isSocketIoPath || isSocketPath) ? 'socketio' : 'ws';
     setProtocol(autoProtocol);
 
     // Pre-fill payload placeholder
