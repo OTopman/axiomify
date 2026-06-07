@@ -69,7 +69,7 @@ export function sendJson(
   data: unknown,
   statusCode = 200,
 ): void {
-  const body = JSON.stringify(data);
+  const body = JSON.stringify(data, (_, v) => typeof v === 'bigint' ? v.toString() : v);
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),

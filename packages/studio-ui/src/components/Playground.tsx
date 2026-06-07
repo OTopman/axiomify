@@ -139,17 +139,18 @@ export const Playground: React.FC<PlaygroundProps> = ({ discovery, isDark }) => 
       'file:///node_modules/@axiomify/sdk-runtime/index.d.ts'
     );
 
-    // Register each generated SDK file
+    // Register each generated SDK file in the root namespace
     sdkFiles.forEach(file => {
-      const filePath = `file:///node_modules/@axiomify/playground-client/${file.path}`;
+      const filePath = `file:///${file.path}`;
       monaco.languages.typescript.typescriptDefaults.addExtraLib(file.content, filePath);
     });
 
+    // Register sdk.ts to map the export paths in root namespace
     monaco.languages.typescript.typescriptDefaults.addExtraLib(
-      `export * from './node_modules/@axiomify/playground-client/client';
-export * from './node_modules/@axiomify/playground-client/types';
-export * from './node_modules/@axiomify/playground-client/validators';`,
-      'file:///sdk.d.ts'
+      `export * from './client';
+export * from './types';
+export * from './validators';`,
+      'file:///sdk.ts'
     );
   };
 

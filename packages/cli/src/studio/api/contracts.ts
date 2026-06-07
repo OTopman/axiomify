@@ -1,6 +1,7 @@
 import type { ServerResponse } from 'node:http';
 import type { DiscoveredRoute, DiscoveredSchema, StudioDiscoveryResult } from '../discovery/types';
 import { sendJson } from '../server/http-server';
+import { logCorrelationStorage } from './logs';
 
 export interface ContractTestResult {
   routeId: string;
@@ -181,7 +182,7 @@ async function mockRequest(
         ...headers,
       },
       state: {},
-      signal: { addEventListener: () => {} },
+      signal: { addEventListener: () => { } },
       on: (event: string, callback: any) => {
         if (event === 'data' && body) {
           callback(Buffer.from(JSON.stringify(body)));
@@ -218,7 +219,9 @@ async function mockRequest(
     };
 
     try {
-      app.handle(req, res);
+      logCorrelationStorage.run(req.id, () => {
+        app.handle(req, res);
+      });
     } catch {
       resolve(null);
     }

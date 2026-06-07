@@ -17,6 +17,8 @@ import { getUserExternals } from './externals';
 
 export interface LoadedApp {
   app: any;
+  /** All named exports from the user's entry module. */
+  exports: Record<string, any>;
   /** Cleanup callback — removes the temp build directory. Always call it. */
   cleanup: () => Promise<void>;
 }
@@ -86,5 +88,5 @@ export async function loadApp(entry: string): Promise<LoadedApp> {
     await fs.rm(tempPath, { force: true }).catch(() => {});
   };
 
-  return { app, cleanup };
+  return { app, exports: mod, cleanup };
 }

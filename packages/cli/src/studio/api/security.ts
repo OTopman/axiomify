@@ -1,6 +1,7 @@
 import type { ServerResponse } from 'node:http';
 import type { StudioDiscoveryResult } from '../discovery/types';
 import { sendJson } from '../server/http-server';
+import { logCorrelationStorage } from './logs';
 
 export interface SecurityFinding {
   id: string;
@@ -383,11 +384,13 @@ async function mockRequest(
     };
 
     try {
-      app.handle(req, res).catch((err: any) => {
-        resolveWithCleanup({
-          status: 500,
-          headers: {},
-          body: err.message || 'Error during mock handle',
+      logCorrelationStorage.run(req.id, () => {
+        app.handle(req, res).catch((err: any) => {
+          resolveWithCleanup({
+            status: 500,
+            headers: {},
+            body: err.message || 'Error during mock handle',
+          });
         });
       });
     } catch (err: any) {

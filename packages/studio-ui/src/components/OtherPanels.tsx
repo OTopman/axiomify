@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { DiscoveryData } from '../types';
 import { apiFetch, getToken } from '../utils/api';
+import { ProfilerPanel } from './ProfilerPanel';
 
 // ==========================================
 // 1. SCHEMAS PANEL
@@ -942,7 +943,7 @@ export const ArchitecturePanel: React.FC<{ discovery: DiscoveryData }> = ({ disc
               placeholder="Search nodes..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              style={{ width: '100%', margin: 0 }}
+              style={{ width: '100%', margin: 0, padding: '4px 8px', fontSize: '12px', height: '26px', boxSizing: 'border-box' }}
             />
             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
               <button
@@ -1380,19 +1381,22 @@ function parsePrometheus(raw: string): ParsedMetric[] {
 
 export const MetricsPanel: React.FC = () => {
   const [data, setData] = useState<any | null>(null);
+  const [wsData, setWsData] = useState<any | null>(null);
 
   useEffect(() => {
-    fetchMetrics();
-    const interval = setInterval(fetchMetrics, 3000);
+    fetchAll();
+    const interval = setInterval(fetchAll, 3000);
     return () => clearInterval(interval);
   }, []);
 
-  const fetchMetrics = async () => {
+  const fetchAll = async () => {
     try {
-      const res = await apiFetch('/__studio/api/metrics');
-      if (res.ok) {
-        setData(await res.json());
-      }
+      const [metricsRes, wsRes] = await Promise.all([
+        apiFetch('/__studio/api/metrics'),
+        apiFetch('/__studio/api/ws-analytics'),
+      ]);
+      if (metricsRes.ok) setData(await metricsRes.json());
+      if (wsRes.ok) setWsData(await wsRes.json());
     } catch {}
   };
 
@@ -1479,6 +1483,15 @@ useMetrics(app);`}
     }
   }
 
+  // Also incorporate ws-analytics data if Prometheus doesn't export ws metrics
+  const wsAnalyticsConnections: number = wsData?.activeConnections ?? 0;
+  const wsFramesReceived: number = wsData?.totalFramesReceived ?? 0;
+  const wsFramesSent: number = wsData?.totalFramesSent ?? 0;
+  if (!hasWsStats && wsAnalyticsConnections > 0) {
+    wsConnectedClients = wsAnalyticsConnections;
+    hasWsStats = true;
+  }
+
   const routesList = Array.from(routeMetricsMap.values()).sort((a, b) => b.requests - a.requests);
   const globalAvgResponseTimeMs = totalRequests > 0 ? totalDurationMs / totalRequests : 0;
 
@@ -1499,11 +1512,23 @@ useMetrics(app);`}
             <div className="info-card-label">Average Response Time</div>
             <div className="info-card-value">{globalAvgResponseTimeMs.toFixed(1)} ms</div>
           </div>
-          {hasWsStats && (
+          {(hasWsStats || wsAnalyticsConnections > 0) && (
             <div className="info-card" style={{ margin: 0 }}>
               <div className="info-card-label">Active WebSockets</div>
               <div className="info-card-value" style={{ color: 'var(--method-ws)' }}>{wsConnectedClients}</div>
             </div>
+          )}
+          {(hasWsStats || wsAnalyticsConnections > 0 || wsFramesReceived > 0 || wsFramesSent > 0) && (
+            <>
+              <div className="info-card" style={{ margin: 0 }}>
+                <div className="info-card-label">WS Frames Recv</div>
+                <div className="info-card-value">{wsFramesReceived}</div>
+              </div>
+              <div className="info-card" style={{ margin: 0 }}>
+                <div className="info-card-label">WS Frames Sent</div>
+                <div className="info-card-value">{wsFramesSent}</div>
+              </div>
+            </>
           )}
         </div>
 
@@ -1574,6 +1599,7 @@ useMetrics(app);`}
 // 11. PERFORMANCE OBSERVATORY
 // ==========================================
 export const PerformancePanel: React.FC = () => {
+  const [activeSubTab, setActiveSubTab] = useState<'metrics' | 'profiler'>('metrics');
   const [data, setData] = useState<any | null>(null);
 
   useEffect(() => {
@@ -1647,40 +1673,86 @@ export const PerformancePanel: React.FC = () => {
 
   return (
     <div>
-      <div className="panel-header">
+      <div className="panel-header" style={{ marginBottom: '16px' }}>
         <div className="panel-title">Performance Observatory</div>
         <div className="panel-subtitle">Slowest HTTP routes, middlewares, dependencies, and database queries</div>
       </div>
 
-      {data ? (
-        <div>
-          {renderTable(
-            'Slowest HTTP Routes', 
-            data.routes || [], 
-            ['method', 'route', 'count', 'avg', 'p50', 'p95', 'p99'],
-            ['Method', 'Route Path', 'Invocations', 'Avg Duration', 'P50', 'P95', 'P99']
-          )}
-          {renderTable(
-            'Slowest Middlewares', 
-            data.middleware || [], 
-            ['name', 'count', 'avg', 'p50', 'p95', 'p99'],
-            ['Middleware Name', 'Invocations', 'Avg Duration', 'P50', 'P95', 'P99']
-          )}
-          {renderTable(
-            'Slowest DI Services', 
-            data.services || [], 
-            ['token', 'method', 'count', 'avg', 'p50', 'p95', 'p99'],
-            ['Service Token', 'Method', 'Invocations', 'Avg Duration', 'P50', 'P95', 'P99']
-          )}
-          {renderTable(
-            'Slowest Database Queries', 
-            data.queries?.slowest || [], 
-            ['query', 'durationMs', 'timestamp'],
-            ['Query Statement', 'Duration', 'Timestamp']
-          )}
-        </div>
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '20px' }}>
+        <button
+          style={{
+            background: activeSubTab === 'metrics' ? 'var(--bg-secondary)' : 'transparent',
+            border: activeSubTab === 'metrics' ? '1px solid var(--border)' : '1px solid transparent',
+            borderBottomColor: activeSubTab === 'metrics' ? 'var(--bg-primary)' : 'transparent',
+            color: activeSubTab === 'metrics' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            padding: '8px 16px',
+            fontSize: '12px',
+            fontWeight: 600,
+            borderRadius: 'var(--radius-sm)',
+            cursor: 'pointer',
+            marginBottom: '-9px',
+            zIndex: 1,
+            outline: 'none',
+          }}
+          onClick={() => setActiveSubTab('metrics')}
+        >
+          ⏱️ Slow Requests & Queries
+        </button>
+        <button
+          style={{
+            background: activeSubTab === 'profiler' ? 'var(--bg-secondary)' : 'transparent',
+            border: activeSubTab === 'profiler' ? '1px solid var(--border)' : '1px solid transparent',
+            borderBottomColor: activeSubTab === 'profiler' ? 'var(--bg-primary)' : 'transparent',
+            color: activeSubTab === 'profiler' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            padding: '8px 16px',
+            fontSize: '12px',
+            fontWeight: 600,
+            borderRadius: 'var(--radius-sm)',
+            cursor: 'pointer',
+            marginBottom: '-9px',
+            zIndex: 1,
+            outline: 'none',
+          }}
+          onClick={() => setActiveSubTab('profiler')}
+        >
+          🔥 Execution Profiler
+        </button>
+      </div>
+
+      {activeSubTab === 'metrics' ? (
+        data ? (
+          <div>
+            {renderTable(
+              'Slowest HTTP Routes', 
+              data.routes || [], 
+              ['method', 'route', 'count', 'avg', 'p50', 'p95', 'p99'],
+              ['Method', 'Route Path', 'Invocations', 'Avg Duration', 'P50', 'P95', 'P99']
+            )}
+            {renderTable(
+              'Slowest Middlewares', 
+              data.middleware || [], 
+              ['name', 'count', 'avg', 'p50', 'p95', 'p99'],
+              ['Middleware Name', 'Invocations', 'Avg Duration', 'P50', 'P95', 'P99']
+            )}
+            {renderTable(
+              'Slowest DI Services', 
+              data.services || [], 
+              ['token', 'method', 'count', 'avg', 'p50', 'p95', 'p99'],
+              ['Service Token', 'Method', 'Invocations', 'Avg Duration', 'P50', 'P95', 'P99']
+            )}
+            {renderTable(
+              'Slowest Database Queries', 
+              data.queries?.slowest || [], 
+              ['query', 'durationMs', 'timestamp'],
+              ['Query Statement', 'Duration', 'Timestamp']
+            )}
+          </div>
+        ) : (
+          <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '12px' }}>Performance metrics loading...</div>
+        )
       ) : (
-        <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '12px' }}>Performance metrics loading...</div>
+        <ProfilerPanel />
       )}
     </div>
   );

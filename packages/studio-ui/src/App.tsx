@@ -27,6 +27,7 @@ import { Playground } from './components/Playground';
 import { Recorder } from './components/Recorder';
 import { RequestBuilder } from './components/RequestBuilder';
 import { WebSocketTester } from './components/WebSocketTester';
+import { ProfilerPanel } from './components/ProfilerPanel';
 
 function App() {
   const [token, setTokenState] = useState<string>(() => {
@@ -349,6 +350,8 @@ function App() {
         return <MetricsPanel />;
       case 'recorder':
         return <Recorder />;
+      case 'profiler':
+        return <ProfilerPanel />;
       case 'performance':
         return <PerformancePanel />;
       case 'sdk-impact':

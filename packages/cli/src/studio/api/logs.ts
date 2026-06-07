@@ -45,32 +45,92 @@ let inConsoleCall = false;
 
 function recordRawLog(level: RecordedLog['level'], message: string): void {
   try {
+    const requestId = logCorrelationStorage.getStore();
     const err = new Error();
     const rawStack = err.stack || '';
     const lines = rawStack.split('\n');
-    const cleanedStack = lines
+    const filteredLines = lines
       .slice(2)
       .filter(
         (line) =>
           !line.includes('node:internal') && !line.includes('console.ts') && !line.includes('logs.ts'),
-      )
-      .join('\n');
+      );
+
+    // The full cleaned stack (for display)
+    const cleanedStack = filteredLines.join('\n');
+
+    // For classification, skip the first frame which is always the
+    // console.<computed> wrapper living in packages/cli/dist/index.js.
+    // We need to look at the *real caller* frames to decide if the log
+    // originates from studio code or app code.
+    const callerLines = filteredLines.filter(
+      (line) => !line.includes('console.<computed>') && !line.includes('console.value'),
+    );
+    const callerStack = callerLines.join('\n');
+
+    // A log is "studio code" only if the CALLER frames (not the wrapper)
+    // are exclusively from the CLI/Studio internals.
+    const studioPatterns = [
+      '/packages/cli/src/studio/',
+      '/packages/cli/dist/',
+      'node_modules/@axiomify/cli',
+      '/@axiomify/cli/',
+    ];
+
+    // Check if the caller frames reference app-related code
+    const appPatterns = [
+      'inspect.cjs',
+      '.axiomify/',
+      'packages/core',
+      'packages/logger',
+      'packages/ws',
+      'packages/auth',
+      'packages/metrics',
+      'packages/openapi',
+      'packages/graphql',
+      'packages/helmet',
+      'packages/static',
+      'packages/upload',
+      'packages/native',
+      'node_modules/@axiomify/core',
+      'node_modules/@axiomify/logger',
+      'node_modules/@axiomify/ws',
+      'node_modules/@axiomify/auth',
+      'node_modules/@axiomify/metrics',
+    ];
+
+    const hasAppFrame = appPatterns.some((p) => callerStack.includes(p));
+    const hasRequestId = !!requestId;
+
+    // Determine if the log is truly from studio internals
+    // A log is internal ONLY if:
+    // 1. ALL caller frames are from studio/cli code, AND
+    // 2. There is no request correlation ID (which indicates app dispatch), AND
+    // 3. No app-related frames are present
+    const isOnlyStudioFrames = callerLines.length > 0 && callerLines.every((line) =>
+      studioPatterns.some((p) => line.includes(p)) ||
+      line.includes('node:') ||
+      line.trim() === '',
+    );
+
+    // Logs triggered by Studio's internal mock dispatches (metrics polling,
+    // contract tests, security scan probes, etc.) should be treated as internal
+    // even though they pass through app code paths.
+    const isStudioMockRequest = !!requestId && (
+      requestId.startsWith('studio-metrics-') ||
+      requestId.startsWith('studio-ws-metrics-') ||
+      requestId.startsWith('studio-contract-') ||
+      requestId.startsWith('studio-security-')
+    );
 
     let isInternal = false;
-    if (
-      message.includes('Studio Live Sync') ||
-      message.includes('🎨 Axiomify Studio') ||
-      message.includes('Studio is live at') ||
-      message.includes('Axiomify Dev Engine') ||
-      message.startsWith('[axiomify/') ||
-      message.includes('[Axiomify]') ||
-      rawStack.includes('packages/cli/src/studio/')
-    ) {
+    if ((isOnlyStudioFrames && !hasAppFrame && !hasRequestId) || isStudioMockRequest) {
       isInternal = true;
     }
 
     let source = 'unknown';
-    const stackLines = cleanedStack.split('\n');
+    // For source detection, skip frames from cli/dist to find the real caller
+    const stackLines = callerLines.length > 0 ? callerLines : filteredLines;
     for (const line of stackLines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
@@ -80,6 +140,10 @@ function recordRawLog(level: RecordedLog['level'], message: string): void {
         if (filePath.includes('node:internal') || filePath.includes('node_modules')) {
           continue;
         }
+        // Skip frames from the CLI dist bundle for source attribution
+        if (filePath.includes('packages/cli/dist/')) {
+          continue;
+        }
         const relativePath = path.isAbsolute(filePath)
           ? path.relative(process.cwd(), filePath)
           : filePath;
@@ -87,8 +151,6 @@ function recordRawLog(level: RecordedLog['level'], message: string): void {
         break;
       }
     }
-
-    const requestId = logCorrelationStorage.getStore();
 
     recordedLogs.push({
       id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,

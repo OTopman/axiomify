@@ -7,6 +7,7 @@
 import type { Axiomify } from '@axiomify/core';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { sendJson } from '../server/http-server';
+import { logCorrelationStorage } from './logs';
 
 export async function handleGetAppMetrics(
   _req: IncomingMessage,
@@ -29,6 +30,30 @@ export async function handleGetAppMetrics(
     if (found) {
       metricsPath = found.path;
     }
+  }
+
+  // Try fetching metrics from the running application (dev server) first
+  try {
+    const { getAppBaseUrl } = require('./ws-tester');
+    const baseUrl = getAppBaseUrl();
+    if (baseUrl) {
+      const response = await fetch(`${baseUrl}${metricsPath}`, {
+        // Use AbortSignal.timeout if supported, otherwise normal signal
+        signal: (AbortSignal as any).timeout ? (AbortSignal as any).timeout(800) : undefined,
+      });
+      if (response.ok) {
+        const rawText = await response.text();
+        sendJson(res, {
+          available: true,
+          raw: rawText,
+          contentType: response.headers.get('content-type') || 'text/plain; version=0.0.4',
+          path: metricsPath,
+        });
+        return;
+      }
+    }
+  } catch {
+    // Fail silently and fall back to in-memory mock request execution
   }
 
   // Create a mock request/response to dispatch in-memory against the application
@@ -115,7 +140,7 @@ export async function handleGetAppMetrics(
   const handleRequest = (indexed['handle'] as (req: unknown, res: unknown) => Promise<void>).bind(app);
 
   try {
-    await handleRequest(mockReq, mockRes);
+    await logCorrelationStorage.run(mockReq.id, () => handleRequest(mockReq, mockRes));
 
     if (responseStatus === 404) {
       sendJson(res, {

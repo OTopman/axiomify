@@ -113,7 +113,7 @@ export function registerStudioApi(
   });
 
   router.get('/__studio/api/ws-analytics', (req, res) => {
-    handleGetWsAnalytics(req, res);
+    handleGetWsAnalytics(req, res, ctx.getApp());
   });
 
   router.post('/__studio/api/request/replay', (req, res) => {

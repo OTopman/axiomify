@@ -14,17 +14,18 @@ export const Recorder: React.FC<RecorderProps> = () => {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    if (sessionData?.entries?.length > 0 && !selectedRequestId) {
+      setSelectedRequestId(sessionData.entries[0].requestId);
+    }
+  }, [sessionData, selectedRequestId]);
+
   const fetchSession = async () => {
     try {
       const res = await apiFetch('/__studio/api/session');
       if (res.ok) {
         const data = await res.json();
         setSessionData(data);
-
-        // Auto select first entry if nothing is selected
-        if (data.entries && data.entries.length > 0 && !selectedRequestId) {
-          setSelectedRequestId(data.entries[0].requestId);
-        }
 
         // Update badge if present
         const badge = document.getElementById('badge-recorder');

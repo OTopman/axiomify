@@ -84,6 +84,9 @@ function safeClone(val: any): any {
   const seen = new WeakSet();
 
   function clone(item: any): any {
+    if (typeof item === 'bigint') {
+      return String(item);
+    }
     if (item === null || typeof item !== 'object') {
       return item;
     }
@@ -195,7 +198,7 @@ export async function handlePostRequest(
       body !== undefined
         ? typeof body === 'string'
           ? body
-          : JSON.stringify(body)
+          : JSON.stringify(body, (_, v) => typeof v === 'bigint' ? v.toString() : v)
         : '';
     const mockStream = Readable.from(bodyStr ? [bodyStr] : []);
 
@@ -518,7 +521,7 @@ export async function handlePostRequest(
               const serializedArgs = args
                 .map((arg) => {
                   if (typeof arg === 'object') {
-                    return JSON.stringify(arg);
+                    return JSON.stringify(arg, (_, v) => typeof v === 'bigint' ? v.toString() : v);
                   }
                   return String(arg);
                 })
@@ -671,6 +674,7 @@ export async function handlePostRequest(
       body: responseBody,
       durationMs: Math.round(proxyDuration * 100) / 100,
       timestamp: new Date().toISOString(),
+      timeline: mockReq._profile?.timeline,
     });
 
     // Update the replay item in history on request completion

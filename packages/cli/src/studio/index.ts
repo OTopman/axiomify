@@ -55,6 +55,9 @@ export async function startStudio(
   console.log();
   console.log(pc.dim('  Loading application...'));
 
+  // Pre-instrument WS/Socket.io prototypes before loading the app bundle
+  instrumentWsAnalytics();
+
   let app: Axiomify;
   let cleanup: () => Promise<void>;
   try {
@@ -62,7 +65,8 @@ export async function startStudio(
     app = loaded.app;
     cleanup = loaded.cleanup;
     instrumentErrorObservatory(app);
-    instrumentWsAnalytics();
+    // Scan module exports for RoomManager instances after app loading
+    instrumentWsAnalytics(app, loaded.exports);
   } catch (err) {
     console.error(pc.red('  ✗ Failed to load app:'));
     console.error('   ', (err as Error).message);

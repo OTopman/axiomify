@@ -32,9 +32,11 @@ node_modules/
 # =========================
 dist/
 build/
+packages/cli/ui-dist/
 out/
 lib/
 *.tsbuildinfo
+examples/my-app/generated-sdks/
 
 # =========================
 # Logs & Testing

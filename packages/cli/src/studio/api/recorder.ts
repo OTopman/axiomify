@@ -13,6 +13,10 @@
 import type { ServerResponse } from 'node:http';
 import { sendJson } from '../server/http-server';
 
+function safeStringify(val: any, space?: number): string {
+  return JSON.stringify(val, (_, v) => typeof v === 'bigint' ? v.toString() : v, space);
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface RecordedRequest {
@@ -34,6 +38,7 @@ export interface RecordedResponse {
   body: unknown;
   durationMs: number;
   timestamp: string;
+  timeline?: TimelineEntry[];
 }
 
 export interface RecordedSessionError {
@@ -68,6 +73,8 @@ export interface TimelineEntry {
   name: string;
   type: string;
   duration: number;
+  before?: any;
+  after?: any;
 }
 
 export interface FullRecordedEntry {
@@ -159,7 +166,12 @@ function buildFullEntries(): FullRecordedEntry[] {
 
   for (const res of responses) {
     const entry = byId.get(res.requestId);
-    if (entry) entry.response = res;
+    if (entry) {
+      entry.response = res;
+      if (res.timeline) {
+        entry.timeline = res.timeline;
+      }
+    }
   }
 
   for (const err of errors) {
@@ -198,10 +210,10 @@ function buildHar() {
             queryString: Object.entries(req.query || {}).map(([n, v]) => ({ name: n, value: String(v) })),
             postData: req.body ? {
               mimeType: 'application/json',
-              text: typeof req.body === 'string' ? req.body : JSON.stringify(req.body),
+              text: typeof req.body === 'string' ? req.body : safeStringify(req.body),
             } : undefined,
             headersSize: -1,
-            bodySize: req.body ? JSON.stringify(req.body).length : 0,
+            bodySize: req.body ? safeStringify(req.body).length : 0,
           },
           response: res ? {
             status: res.status,
@@ -210,9 +222,9 @@ function buildHar() {
             cookies: [],
             headers: Object.entries(res.headers || {}).map(([n, v]) => ({ name: n, value: String(v) })),
             content: {
-              size: JSON.stringify(res.body ?? '').length,
+              size: safeStringify(res.body ?? '').length,
               mimeType: res.headers?.['content-type'] ?? 'application/json',
-              text: typeof res.body === 'string' ? res.body : JSON.stringify(res.body),
+              text: typeof res.body === 'string' ? res.body : safeStringify(res.body),
             },
             redirectURL: '',
             headersSize: -1,
@@ -269,7 +281,7 @@ export function handleDeleteSession(_req: any, res: ServerResponse): void {
 }
 
 export function handleExportSession(_req: any, res: ServerResponse): void {
-  const payload = JSON.stringify({
+  const payload = safeStringify({
     exportedAt: new Date().toISOString(),
     startedAt: sessionStartTime,
     nodeVersion: process.version,
@@ -280,7 +292,7 @@ export function handleExportSession(_req: any, res: ServerResponse): void {
     events,
     queries,
     entries: buildFullEntries(),
-  }, null, 2);
+  }, 2);
 
   res.writeHead(200, {
     'Content-Type': 'application/json',
@@ -291,7 +303,7 @@ export function handleExportSession(_req: any, res: ServerResponse): void {
 
 export function handleExportHar(_req: any, res: ServerResponse): void {
   const har = buildHar();
-  const payload = JSON.stringify(har, null, 2);
+  const payload = safeStringify(har, 2);
   res.writeHead(200, {
     'Content-Type': 'application/json',
     'Content-Disposition': `attachment; filename="axiomify-session-${Date.now()}.har"`,
