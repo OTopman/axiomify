@@ -2687,20 +2687,39 @@ export const AiAssistantPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
                       ✨
                     </div>
                   )}
-                  <div 
-                    style={{
-                      background: isUser ? 'var(--accent)' : 'var(--bg-primary)',
-                      color: isUser ? '#fff' : (m.isError ? 'var(--error)' : 'var(--text-primary)'),
-                      border: isUser ? 'none' : '1px solid var(--border)',
-                      borderRadius: isUser ? 'var(--radius-md) 0 var(--radius-md) var(--radius-md)' : '0 var(--radius-md) var(--radius-md) var(--radius-md)',
-                      padding: '12px 16px',
-                      fontSize: '13px',
-                      maxWidth: '85%',
-                      lineHeight: 1.5,
-                      fontStyle: m.loading ? 'italic' : 'normal',
-                    }}
-                    dangerouslySetInnerHTML={{ __html: isUser ? m.text.replace(/\n/g, '<br>') : formatMarkdown(m.text) }}
-                  />
+                  {isUser ? (
+                    <div 
+                      style={{
+                        background: 'var(--accent)',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 'var(--radius-md) 0 var(--radius-md) var(--radius-md)',
+                        padding: '12px 16px',
+                        fontSize: '13px',
+                        maxWidth: '85%',
+                        lineHeight: 1.5,
+                        fontStyle: m.loading ? 'italic' : 'normal',
+                        whiteSpace: 'pre-wrap',
+                      }}
+                    >
+                      {m.text}
+                    </div>
+                  ) : (
+                    <div 
+                      style={{
+                        background: 'var(--bg-primary)',
+                        color: m.isError ? 'var(--error)' : 'var(--text-primary)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '0 var(--radius-md) var(--radius-md) var(--radius-md)',
+                        padding: '12px 16px',
+                        fontSize: '13px',
+                        maxWidth: '85%',
+                        lineHeight: 1.5,
+                        fontStyle: m.loading ? 'italic' : 'normal',
+                      }}
+                      dangerouslySetInnerHTML={{ __html: formatMarkdown(m.text) }}
+                    />
+                  )}
                   {isUser && (
                     <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'var(--border-active)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 }}>
                       👤
