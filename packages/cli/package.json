@@ -28,7 +28,7 @@
     "enquirer": "^2.4.1",
     "esbuild": "^0.28.0",
     "execa": "^8.0.1",
-    "graphql": "^16.14.0",
+    "graphql": "^16.14.1",
     "picocolors": "^1.1.1",
     "yaml": "^2.9.0",
     "zod-to-json-schema": "^3.25.2"
