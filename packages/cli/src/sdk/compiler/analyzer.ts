@@ -362,7 +362,7 @@ export class Analyzer {
       for (const req of ep.security || []) {
         if (!this.schema.securitySchemes.has(req.schemeName)) {
           this.diagnostics.push({
-            severity: 'error',
+            severity: 'warning',
             code: 'MISSING_SECURITY_SCHEME',
             message: `Endpoint "${ep.operationId}" references security scheme "${req.schemeName}" which is not defined.`,
           });
@@ -373,7 +373,7 @@ export class Analyzer {
     for (const req of this.schema.globalSecurity || []) {
       if (!this.schema.securitySchemes.has(req.schemeName)) {
         this.diagnostics.push({
-          severity: 'error',
+          severity: 'warning',
           code: 'MISSING_GLOBAL_SECURITY_SCHEME',
           message: `Global security references scheme "${req.schemeName}" which is not defined.`,
         });

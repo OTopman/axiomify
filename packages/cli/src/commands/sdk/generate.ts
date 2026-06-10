@@ -154,11 +154,17 @@ export async function generateSdk(opts: GenerateOptions): Promise<boolean> {
   const compiler = new CompilerPipeline();
   const compilation = await compiler.compile(ingestionResult.schema);
 
-  if (compilation.hasErrors) {
+  if (compilation.diagnostics.length > 0) {
     for (const d of compilation.diagnostics) {
-      if (d.severity === 'error')
+      if (d.severity === 'error') {
         console.error(pc.red(`  [Error] ${d.code}: ${d.message}`));
+      } else if (d.severity === 'warning') {
+        console.warn(pc.yellow(`  [Warn] ${d.code}: ${d.message}`));
+      }
     }
+  }
+
+  if (compilation.hasErrors) {
     console.error(pc.red(`\n✗ Compilation failed.`));
     if (opts.exitOnError !== false) process.exit(1);
     return false;

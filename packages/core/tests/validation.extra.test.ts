@@ -629,4 +629,55 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
     const req = makeReq({ method: 'POST', body: { id: 'test-id' } });
     expect(() => compiler.execute('POST:/fallback-catch', req)).not.toThrow();
   });
+
+  it('allows and strips additional properties for default non-strict Zod object schemas', () => {
+    const compiler = new ValidationCompiler();
+    compiler.compile('POST:/non-strict', {
+      body: z.object({
+        name: z.string(),
+        nested: z.object({
+          age: z.number(),
+        }),
+      }),
+    });
+
+    const req = makeReq({
+      method: 'POST',
+      body: {
+        name: 'John',
+        extraField: 'should be stripped',
+        nested: {
+          age: 30,
+          nestedExtra: 'should also be stripped',
+        },
+      },
+    });
+
+    expect(() => compiler.execute('POST:/non-strict', req)).not.toThrow();
+    expect(req.body).toEqual({
+      name: 'John',
+      nested: {
+        age: 30,
+      },
+    });
+  });
+
+  it('rejects additional properties with ValidationError for strict Zod object schemas', () => {
+    const compiler = new ValidationCompiler();
+    compiler.compile('POST:/strict', {
+      body: z.object({
+        name: z.string(),
+      }).strict(),
+    });
+
+    const req = makeReq({
+      method: 'POST',
+      body: {
+        name: 'John',
+        extraField: 'should trigger error',
+      },
+    });
+
+    expect(() => compiler.execute('POST:/strict', req)).toThrow(ValidationError);
+  });
 });

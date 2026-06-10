@@ -1,5 +1,14 @@
 # Changelog
 
+
+## 6.3.1
+
+### 🩹 Bug Fixes
+
+#### `@axiomify/core`
+- Fix AJV validation failing with additional properties on default schemas by dynamically adjusting the `additionalProperties` mapping to match Zod's default/strict object semantics.
+---
+
 ## 6.3.0
 
 ### ✨ New Features

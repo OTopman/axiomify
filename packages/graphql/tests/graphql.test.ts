@@ -529,4 +529,90 @@ describeGQL('GraphQL execution paths', () => {
       (globalThis as any).__mockExecute = undefined;
     }
   });
+
+  it('maxDepth correctly handles fragment spreads (prevents bypass)', async () => {
+    if (!gql) return;
+    const inner2 = new gql.GraphQLObjectType({
+      name: 'Inner2',
+      fields: { val: { type: gql.GraphQLString, resolve: () => 'v' } },
+    });
+    const inner = new gql.GraphQLObjectType({
+      name: 'Inner',
+      fields: {
+        nested2: { type: inner2, resolve: () => ({}) },
+      },
+    });
+    const schema = new gql.GraphQLSchema({
+      query: new gql.GraphQLObjectType({
+        name: 'Query',
+        fields: {
+          nested: { type: inner, resolve: () => ({}) },
+        },
+      }),
+    });
+
+    const app = new Axiomify();
+    useGraphQL(app, { schema, maxDepth: 2 });
+    const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
+    const res = makeRes();
+
+    await route.handler(
+      makeReq({
+        query: `
+          query {
+            nested {
+              ...MyFrag
+            }
+          }
+          fragment MyFrag on Inner {
+            nested2 {
+              val
+            }
+          }
+        `,
+      }),
+      res,
+    );
+
+    expect(res._code).toBe(400);
+    const body = JSON.parse(res._raw);
+    expect(body.errors[0].message).toContain('Query depth 3 exceeds maximum of 2');
+  });
+
+  it('rejects subscription operations with 405 Method Not Allowed', async () => {
+    if (!gql) return;
+    const subSchema = new gql.GraphQLSchema({
+      query: new gql.GraphQLObjectType({
+        name: 'Query',
+        fields: { hello: { type: gql.GraphQLString, resolve: () => 'world' } },
+      }),
+      subscription: new gql.GraphQLObjectType({
+        name: 'Subscription',
+        fields: {
+          onHello: { type: gql.GraphQLString, resolve: () => 'world' },
+        },
+      }),
+    });
+
+    const app = new Axiomify();
+    useGraphQL(app, { schema: subSchema });
+    const route = app.registeredRoutes.find((r) => r.method === 'POST')!;
+    const res = makeRes();
+
+    await route.handler(
+      makeReq({
+        query: `
+          subscription {
+            onHello
+          }
+        `,
+      }),
+      res,
+    );
+
+    expect(res._code).toBe(405);
+    expect(res._headers?.Allow).toBe('POST');
+    const body = JSON.parse(res._raw);
+    expect(body.errors[0].message).toContain('is not allowed on this endpoint');
+  });
 });
