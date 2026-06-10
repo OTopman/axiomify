@@ -71,7 +71,8 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
       const res = await apiFetch('/__studio/api/request/replays');
       if (res.ok) {
         const data = await res.json();
-        setReplays(data.history || data.replays || []);
+        const history = data.history || data.replays || [];
+        setReplays([...history].reverse());
       }
     } catch (err) {
       console.error('Failed to fetch request replays:', err);

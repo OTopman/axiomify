@@ -1,6 +1,17 @@
 # Changelog
 
 
+## 6.3.2
+
+### 🩹 Bug Fixes
+
+#### `@axiomify/cli`
+- Fix missing response body formatting (`[Empty Response Body]`) on status codes `>= 400` in the Request Tester by executing the application response serializer inside the mock dispatcher.
+
+#### `@axiomify/studio-ui`
+- Change Request Tester replay execution history to be sorted in descending chronological order (newest first).
+---
+
 ## 6.3.1
 
 ### 🩹 Bug Fixes

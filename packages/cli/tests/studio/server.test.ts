@@ -350,7 +350,11 @@ describe('Studio Server & Router', () => {
       const dataGet = await resGet.json();
       expect(dataGet.status).toBe(200);
       expect(dataGet.headers['x-response-hello']).toBe('world');
-      expect(dataGet.body).toEqual({ hello: 'world' });
+      expect(dataGet.body).toEqual({
+        status: 'success',
+        message: 'Operation successful',
+        data: { hello: 'world' },
+      });
 
       // 2. Test proxying a POST request with body
       const resPost = await fetch(
@@ -369,7 +373,11 @@ describe('Studio Server & Router', () => {
       expect(resPost.status).toBe(200);
       const dataPost = await resPost.json();
       expect(dataPost.status).toBe(200);
-      expect(dataPost.body).toEqual({ bodyReceived: { foo: 'bar' } });
+      expect(dataPost.body).toEqual({
+        status: 'success',
+        message: 'Operation successful',
+        data: { bodyReceived: { foo: 'bar' } },
+      });
     } finally {
       server.close();
     }
