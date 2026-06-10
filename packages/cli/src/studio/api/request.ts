@@ -238,9 +238,19 @@ export async function handlePostRequest(
         delete responseHeaders[key.toLowerCase()];
         return this;
       },
-      send(data: any, _message?: string) {
+      send(data: any, message?: string) {
         responseSent = true;
-        responseBody = data;
+        try {
+          responseBody = app.serializer({
+            data,
+            message,
+            statusCode: responseStatus,
+            isError: responseStatus >= 400,
+            req: mockReq,
+          });
+        } catch {
+          responseBody = data;
+        }
       },
       sendRaw(data: any, contentType?: string) {
         responseSent = true;

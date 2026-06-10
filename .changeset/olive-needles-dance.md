@@ -21,4 +21,6 @@
 '@axiomify/ws': patch
 ---
 
-Fix AJV validation failing with additional properties on default schemas by dynamically adjusting the `additionalProperties` mapping to match Zod's default/strict object semantics.
+- **@axiomify/cli**: Fix missing response body formatting (`[Empty Response Body]`) on status codes `>= 400` in the Request Tester by running the configured response serializer on mock responses.
+- **@axiomify/studio-ui**: Update Request Tester replay execution history to be displayed in descending chronological order (newest first).
+
