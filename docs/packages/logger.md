@@ -18,7 +18,12 @@ npm install @axiomify/logger
 - `level` (`debug` | `info` | `warn` | `error`)
 - `beautify`
 - `includeHeaders`
-- `includePayload`
+- `includeParams`
+- `includeQuery`
+- `includeBody`
+- `includeResponseHeaders`
+- `includeResponsePayload` (or `includePayload`)
+- `includeState`
 
 ## Example
 
@@ -27,7 +32,12 @@ useLogger(app, {
   level: 'info',
   beautify: true,
   includeHeaders: true,
-  includePayload: false,
+  includeParams: true,
+  includeQuery: true,
+  includeBody: true,
+  includeResponseHeaders: true,
+  includeResponsePayload: true,
+  includeState: true,
   sensitiveFields: ['password', 'token', 'authorization'],
 });
 ```

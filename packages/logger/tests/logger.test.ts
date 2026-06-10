@@ -114,4 +114,81 @@ describe('useLogger Plugin', () => {
     expect(parsedLog.durationMs).toBe('0.000');
     expect(parsedLog.error.message).toBe('Crash');
   });
+
+  it('includes params, query, body, state, responseHeaders, and responsePayload in logs when enabled', async () => {
+    const mockApp = { addHook: vi.fn() } as any;
+    useLogger(mockApp, {
+      beautify: false,
+      includeHeaders: true,
+      includeParams: true,
+      includeQuery: true,
+      includeBody: true,
+      includeResponseHeaders: true,
+      includeResponsePayload: true,
+      includeState: true,
+    });
+
+    const onRequestHook = mockApp.addHook.mock.calls[0][1];
+    const onPostHandlerHook = mockApp.addHook.mock.calls[1][1];
+    const onErrorHook = mockApp.addHook.mock.calls[2][1];
+
+    const mockReq = {
+      id: 'req_123',
+      method: 'POST',
+      path: '/api/users',
+      ip: '127.0.0.1',
+      headers: { 'user-agent': 'vitest' },
+      params: { id: '456' },
+      query: { active: 'true' },
+      body: { name: 'Alice' },
+      state: { role: 'admin' },
+    } as any;
+
+    const mockRes = {
+      statusCode: 201,
+      _headers: { 'content-type': 'application/json' },
+      payload: { id: '456', name: 'Alice' },
+    } as any;
+
+    // 1. Test onRequest
+    await onRequestHook(mockReq, mockRes);
+    let parsedLog = JSON.parse(stdoutSpy.mock.calls[0][0]);
+    expect(parsedLog.headers).toEqual({ 'user-agent': 'vitest' });
+    expect(parsedLog.params).toEqual({ id: '456' });
+    expect(parsedLog.query).toEqual({ active: 'true' });
+    expect(parsedLog.body).toEqual({ name: 'Alice' });
+    expect(parsedLog.state.role).toBe('admin');
+    expect(parsedLog.state.startTime).toBeDefined();
+
+    // Clear calls
+    stdoutSpy.mockClear();
+
+    // 2. Test onPostHandler
+    await onPostHandlerHook(mockReq, mockRes);
+    parsedLog = JSON.parse(stdoutSpy.mock.calls[0][0]);
+    expect(parsedLog.headers).toEqual({ 'user-agent': 'vitest' });
+    expect(parsedLog.params).toEqual({ id: '456' });
+    expect(parsedLog.query).toEqual({ active: 'true' });
+    expect(parsedLog.body).toEqual({ name: 'Alice' });
+    expect(parsedLog.state.role).toBe('admin');
+    expect(parsedLog.state.startTime).toBeDefined();
+    expect(parsedLog.responseHeaders).toEqual({ 'content-type': 'application/json' });
+    expect(parsedLog.payload).toEqual({ id: '456', name: 'Alice' });
+
+    // Clear calls
+    stdoutSpy.mockClear();
+
+    // 3. Test onError
+    await onErrorHook(new Error('something went wrong'), mockReq, mockRes);
+    parsedLog = JSON.parse(stdoutSpy.mock.calls[0][0]);
+    expect(parsedLog.headers).toEqual({ 'user-agent': 'vitest' });
+    expect(parsedLog.params).toEqual({ id: '456' });
+    expect(parsedLog.query).toEqual({ active: 'true' });
+    expect(parsedLog.body).toEqual({ name: 'Alice' });
+    expect(parsedLog.state.role).toBe('admin');
+    expect(parsedLog.state.startTime).toBeDefined();
+    expect(parsedLog.responseHeaders).toEqual({ 'content-type': 'application/json' });
+    expect(parsedLog.payload).toEqual({ id: '456', name: 'Alice' });
+    expect(parsedLog.statusCode).toBe(201);
+  });
 });
