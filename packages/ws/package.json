@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/ws",
-  "version": "6.3.1",
+  "version": "6.3.2",
   "description": "Native pub/sub room utility for @axiomify/native — O(1) broadcast, presence tracking, and typed rooms powered by uWebSockets.js topics. Not a wrapper for the ws npm package.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
