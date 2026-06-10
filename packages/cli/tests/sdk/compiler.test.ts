@@ -106,4 +106,41 @@ describe('CompilerPipeline', () => {
     expect(result.diagnostics.length).toBeGreaterThan(0);
     expect(result.diagnostics[0].message).toMatch(/missing an operationId/i);
   });
+
+  it('should warn but not fail compilation for missing security schemes', async () => {
+    const rawSchema: IRSchema = {
+      info: { title: 'Test API', version: '1.0.0', sourceFormat: 'openapi' },
+      types: new Map(),
+      securitySchemes: new Map(),
+      endpoints: [
+        {
+          operationId: 'getProtected',
+          method: 'GET',
+          path: '/protected',
+          description: '',
+          parameters: [],
+          pathParams: [],
+          queryParams: [],
+          headerParams: [],
+          responses: {},
+          security: [
+            { schemeName: 'bearer', scopes: [] },
+          ],
+        },
+      ],
+      servers: [],
+      globalSecurity: [],
+      events: [],
+      reactiveContracts: [],
+    };
+
+    const pipeline = new CompilerPipeline();
+    const result = await pipeline.compile(rawSchema);
+
+    expect(result.hasErrors).toBe(false);
+    expect(result.diagnostics.length).toBeGreaterThan(0);
+    const warnings = result.diagnostics.filter((d: any) => d.severity === 'warning');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].code).toBe('MISSING_SECURITY_SCHEME');
+  });
 });

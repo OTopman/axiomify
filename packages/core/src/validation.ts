@@ -187,6 +187,107 @@ function asZodV4(schema: ZodTypeAny): ZodV4Schema | null {
     : null;
 }
 
+function isStrictZodObject(schema: any): boolean {
+  if (!schema || typeof schema !== 'object') return false;
+  if (schema._def && schema._def.unknownKeys === 'strict') {
+    return true;
+  }
+  if (schema.def && schema.def.catchall && schema.def.catchall.type === 'never') {
+    return true;
+  }
+  return false;
+}
+
+function isPassthroughZodObject(schema: any): boolean {
+  if (!schema || typeof schema !== 'object') return false;
+  if (schema._def && schema._def.unknownKeys === 'passthrough') {
+    return true;
+  }
+  if (schema.def && schema.def.catchall && schema.def.catchall.type === 'unknown') {
+    return true;
+  }
+  return false;
+}
+
+function isZodObject(schema: any): boolean {
+  if (!schema || typeof schema !== 'object') return false;
+  const typeName = schema.constructor?.name || schema._def?.typeName || schema.def?.type;
+  if (typeName === 'ZodObject' || schema._def?.typeName === 'ZodObject' || schema.def?.type === 'object') return true;
+  return false;
+}
+
+function unwrapZodSchema(schema: any): any {
+  if (!schema || typeof schema !== 'object') return schema;
+  const typeName = schema.constructor?.name || schema._def?.typeName || schema.def?.type;
+  
+  if (typeName === 'ZodOptional' || typeName === 'ZodNullable' || typeName === 'ZodDefault') {
+    return unwrapZodSchema(schema.def?.inner || schema._def?.innerType);
+  }
+  if (typeName === 'ZodEffects') {
+    return unwrapZodSchema(schema.def?.schema || schema._def?.schema);
+  }
+  return schema;
+}
+
+function adjustAdditionalProperties(jsonSchema: any, zodSchema: any): void {
+  if (!jsonSchema || typeof jsonSchema !== 'object') return;
+  if (!zodSchema || typeof zodSchema !== 'object') return;
+
+  const unwrapped = unwrapZodSchema(zodSchema);
+  const typeName = unwrapped.constructor?.name || unwrapped._def?.typeName || unwrapped.def?.type;
+
+  // 1. Recurse if the jsonSchema contains composite fields (anyOf, oneOf)
+  if (jsonSchema.anyOf && Array.isArray(jsonSchema.anyOf)) {
+    const options = unwrapped.options || unwrapped.def?.options || unwrapped._def?.options;
+    for (let i = 0; i < jsonSchema.anyOf.length; i++) {
+      const subZod = Array.isArray(options) ? options[i] : unwrapped;
+      adjustAdditionalProperties(jsonSchema.anyOf[i], subZod);
+    }
+    return;
+  }
+  if (jsonSchema.oneOf && Array.isArray(jsonSchema.oneOf)) {
+    const options = unwrapped.options || unwrapped.def?.options || unwrapped._def?.options;
+    for (let i = 0; i < jsonSchema.oneOf.length; i++) {
+      const subZod = Array.isArray(options) ? options[i] : unwrapped;
+      adjustAdditionalProperties(jsonSchema.oneOf[i], subZod);
+    }
+    return;
+  }
+
+  // 2. Handle object schemas
+  if (isZodObject(unwrapped)) {
+    const strict = isStrictZodObject(unwrapped);
+    const passthrough = isPassthroughZodObject(unwrapped);
+
+    if (jsonSchema.type === 'object') {
+      if (!strict && !passthrough) {
+        jsonSchema.additionalProperties = true;
+      }
+      
+      if (jsonSchema.properties && unwrapped.shape) {
+        const shape = typeof unwrapped.shape === 'function' ? unwrapped.shape() : unwrapped.shape;
+        for (const key of Object.keys(jsonSchema.properties)) {
+          if (shape[key]) {
+            adjustAdditionalProperties(jsonSchema.properties[key], shape[key]);
+          }
+        }
+      }
+    }
+  } else if (typeName === 'ZodArray' && jsonSchema.type === 'array') {
+    const element = unwrapped.element || unwrapped.def?.element || unwrapped._def?.type;
+    if (element && jsonSchema.items) {
+      adjustAdditionalProperties(jsonSchema.items, element);
+    }
+  } else if (typeName === 'ZodIntersection') {
+    const left = unwrapped.left || unwrapped.def?.left || unwrapped._def?.left;
+    const right = unwrapped.right || unwrapped.def?.right || unwrapped._def?.right;
+    if (jsonSchema.allOf && Array.isArray(jsonSchema.allOf)) {
+      if (jsonSchema.allOf[0] && left) adjustAdditionalProperties(jsonSchema.allOf[0], left);
+      if (jsonSchema.allOf[1] && right) adjustAdditionalProperties(jsonSchema.allOf[1], right);
+    }
+  }
+}
+
 /**
  * Extracts the JSON Schema from a Zod schema. Tries Zod v4's built-in
  * `toJSONSchema()` first, then falls back to `zod-to-json-schema`.
@@ -194,23 +295,31 @@ function asZodV4(schema: ZodTypeAny): ZodV4Schema | null {
  */
 function extractJsonSchema(schema: ZodTypeAny): object | null {
   const v4 = asZodV4(schema);
+  let jsonSchema: object | null = null;
   if (v4) {
     try {
-      return v4.toJSONSchema();
+      jsonSchema = v4.toJSONSchema();
     } catch {
-      return null;
+      jsonSchema = null;
     }
   }
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { zodToJsonSchema } = require('zod-to-json-schema');
-    return zodToJsonSchema(schema, {
-      target: 'jsonSchema7',
-      $refStrategy: 'none',
-    });
-  } catch {
-    return null;
+  if (!jsonSchema) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { zodToJsonSchema } = require('zod-to-json-schema');
+      jsonSchema = zodToJsonSchema(schema, {
+        target: 'jsonSchema7',
+        $refStrategy: 'none',
+      });
+    } catch {
+      jsonSchema = null;
+    }
   }
+
+  if (jsonSchema) {
+    adjustAdditionalProperties(jsonSchema, schema);
+  }
+  return jsonSchema;
 }
 
 // ─── Validator source hint ────────────────────────────────────────────────────

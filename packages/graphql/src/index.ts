@@ -6,13 +6,16 @@ import type {
 import {
   DocumentNode,
   execute,
+  FragmentDefinitionNode,
   GraphQLError,
   GraphQLSchema,
   NoSchemaIntrospectionCustomRule,
   OperationDefinitionNode,
   parse,
+  SelectionSetNode,
   specifiedRules,
   validate,
+  ValidationContext,
 } from 'graphql';
 
 export type GraphQLContextFactory<TContext = Record<string, unknown>> = (
@@ -61,61 +64,121 @@ export interface GraphQLResult {
   extensions?: Record<string, unknown>;
 }
 
-function measureDepth(node: Record<string, unknown>, current = 0): number {
-  if (node.selectionSet) {
-    const children = (
-      node.selectionSet as { selections: Record<string, unknown>[] }
-    ).selections;
-    return children.reduce(
-      (max: number, s) => Math.max(max, measureDepth(s, current + 1)),
-      current,
-    );
-  }
-  return current;
+interface Metrics {
+  depth: number;
+  fields: number;
+  aliases: number;
 }
 
-function countAliases(node: Record<string, unknown>): number {
-  let count = node.alias ? 1 : 0;
-  if (node.selectionSet) {
-    const children = (
-      node.selectionSet as { selections: Record<string, unknown>[] }
-    ).selections;
-    count += children.reduce((sum: number, s) => sum + countAliases(s), 0);
-  }
-  return count;
-}
+export function createAbusePreventionRule(options: {
+  maxDepth?: number;
+  maxAliases?: number;
+  maxFields?: number;
+}) {
+  const { maxDepth, maxAliases, maxFields } = options;
 
-function countFields(node: Record<string, unknown>): number {
-  let count = node.kind === 'Field' ? 1 : 0;
-  if (node.selectionSet) {
-    const children = (
-      node.selectionSet as { selections: Record<string, unknown>[] }
-    ).selections;
-    count += children.reduce((sum: number, s) => sum + countFields(s), 0);
-  }
-  return count;
-}
+  return (context: ValidationContext) => {
+    const document = context.getDocument();
 
-function getQueryDepth(doc: DocumentNode): number {
-  return doc.definitions.reduce(
-    (max, def) =>
-      Math.max(max, measureDepth(def as unknown as Record<string, unknown>)),
-    0,
-  );
-}
+    const fragments = new Map<string, FragmentDefinitionNode>();
+    for (const def of document.definitions) {
+      if (def.kind === 'FragmentDefinition') {
+        fragments.set(def.name.value, def);
+      }
+    }
 
-function getQueryAliases(doc: DocumentNode): number {
-  return doc.definitions.reduce(
-    (sum, def) => sum + countAliases(def as unknown as Record<string, unknown>),
-    0,
-  );
-}
+    const fragmentMetricsCache = new Map<string, Metrics>();
+    const visitedFragments = new Set<string>();
 
-function getQueryFields(doc: DocumentNode): number {
-  return doc.definitions.reduce(
-    (sum, def) => sum + countFields(def as unknown as Record<string, unknown>),
-    0,
-  );
+    function getFragmentMetrics(fragName: string): Metrics {
+      if (fragmentMetricsCache.has(fragName)) {
+        return fragmentMetricsCache.get(fragName)!;
+      }
+      const fragDef = fragments.get(fragName);
+      if (!fragDef) {
+        return { depth: 0, fields: 0, aliases: 0 };
+      }
+      if (visitedFragments.has(fragName)) {
+        return { depth: 0, fields: 0, aliases: 0 };
+      }
+      visitedFragments.add(fragName);
+      const metrics = analyzeSelectionSet(fragDef.selectionSet);
+      visitedFragments.delete(fragName);
+      fragmentMetricsCache.set(fragName, metrics);
+      return metrics;
+    }
+
+    function analyzeSelectionSet(selectionSet: SelectionSetNode): Metrics {
+      let maxD = 0;
+      let totalF = 0;
+      let totalA = 0;
+
+      for (const selection of selectionSet.selections) {
+        if (selection.kind === 'Field') {
+          let fieldDepth = 1;
+          let fieldFields = 1;
+          let fieldAliases = selection.alias ? 1 : 0;
+
+          if (selection.selectionSet) {
+            const sub = analyzeSelectionSet(selection.selectionSet);
+            fieldDepth += sub.depth;
+            fieldFields += sub.fields;
+            fieldAliases += sub.aliases;
+          }
+
+          maxD = Math.max(maxD, fieldDepth);
+          totalF += fieldFields;
+          totalA += fieldAliases;
+        } else if (selection.kind === 'FragmentSpread') {
+          const fragName = selection.name.value;
+          const sub = getFragmentMetrics(fragName);
+          maxD = Math.max(maxD, sub.depth);
+          totalF += sub.fields;
+          totalA += sub.aliases;
+        } else if (selection.kind === 'InlineFragment') {
+          const sub = analyzeSelectionSet(selection.selectionSet);
+          maxD = Math.max(maxD, sub.depth);
+          totalF += sub.fields;
+          totalA += sub.aliases;
+        }
+      }
+
+      return { depth: maxD, fields: totalF, aliases: totalA };
+    }
+
+    return {
+      OperationDefinition(node: OperationDefinitionNode) {
+        const metrics = analyzeSelectionSet(node.selectionSet);
+
+        if (maxDepth !== undefined && metrics.depth > maxDepth) {
+          context.reportError(
+            new GraphQLError(
+              `Query depth ${metrics.depth} exceeds maximum of ${maxDepth}.`,
+              node,
+            ),
+          );
+        }
+
+        if (maxAliases !== undefined && metrics.aliases > maxAliases) {
+          context.reportError(
+            new GraphQLError(
+              `Query has ${metrics.aliases} aliases, exceeding maximum of ${maxAliases}.`,
+              node,
+            ),
+          );
+        }
+
+        if (maxFields !== undefined && metrics.fields > maxFields) {
+          context.reportError(
+            new GraphQLError(
+              `Query has ${metrics.fields} fields, exceeding maximum of ${maxFields}.`,
+              node,
+            ),
+          );
+        }
+      },
+    };
+  };
 }
 
 function formatGraphQLErrors(errors: ReadonlyArray<GraphQLError>) {
@@ -226,6 +289,16 @@ export function useGraphQL<TContext = Record<string, unknown>>(
     ...validationRules,
   ];
 
+  if (
+    maxDepth !== undefined ||
+    maxAliases !== undefined ||
+    maxFields !== undefined
+  ) {
+    allRules.push(
+      createAbusePreventionRule({ maxDepth, maxAliases, maxFields }),
+    );
+  }
+
   async function executeGraphQL(
     req: AxiomifyRequest,
     res: AxiomifyResponse,
@@ -237,7 +310,6 @@ export function useGraphQL<TContext = Record<string, unknown>>(
     allowedOperations: ('query' | 'mutation' | 'subscription')[] = [
       'query',
       'mutation',
-      'subscription',
     ],
   ): Promise<void> {
     const { query, operationName, variables } = body;
@@ -283,53 +355,7 @@ export function useGraphQL<TContext = Record<string, unknown>>(
       }
     }
 
-    if (maxDepth !== undefined) {
-      const depth = getQueryDepth(document);
-      if (depth > maxDepth) {
-        return res.status(400).sendRaw(
-          JSON.stringify({
-            errors: [
-              {
-                message: `Query depth ${depth} exceeds maximum of ${maxDepth}.`,
-              },
-            ],
-          }),
-          'application/json',
-        );
-      }
-    }
-
-    if (maxAliases !== undefined) {
-      const aliases = getQueryAliases(document);
-      if (aliases > maxAliases) {
-        return res.status(400).sendRaw(
-          JSON.stringify({
-            errors: [
-              {
-                message: `Query has ${aliases} aliases, exceeding maximum of ${maxAliases}.`,
-              },
-            ],
-          }),
-          'application/json',
-        );
-      }
-    }
-
-    if (maxFields !== undefined) {
-      const fields = getQueryFields(document);
-      if (fields > maxFields) {
-        return res.status(400).sendRaw(
-          JSON.stringify({
-            errors: [
-              {
-                message: `Query has ${fields} fields, exceeding maximum of ${maxFields}.`,
-              },
-            ],
-          }),
-          'application/json',
-        );
-      }
-    }
+    // Abuse prevention limits are evaluated dynamically via validation rules in the validate pass.
 
     const validationErrors = validate(schema, document, allRules);
     if (validationErrors.length > 0) {

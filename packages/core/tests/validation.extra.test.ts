@@ -629,4 +629,198 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
     const req = makeReq({ method: 'POST', body: { id: 'test-id' } });
     expect(() => compiler.execute('POST:/fallback-catch', req)).not.toThrow();
   });
+
+  it('allows and strips additional properties for default non-strict Zod object schemas', () => {
+    const compiler = new ValidationCompiler();
+    compiler.compile('POST:/non-strict', {
+      body: z.object({
+        name: z.string(),
+        nested: z.object({
+          age: z.number(),
+        }),
+      }),
+    });
+
+    const req = makeReq({
+      method: 'POST',
+      body: {
+        name: 'John',
+        extraField: 'should be stripped',
+        nested: {
+          age: 30,
+          nestedExtra: 'should also be stripped',
+        },
+      },
+    });
+
+    expect(() => compiler.execute('POST:/non-strict', req)).not.toThrow();
+    expect(req.body).toEqual({
+      name: 'John',
+      nested: {
+        age: 30,
+      },
+    });
+  });
+
+  it('rejects additional properties with ValidationError for strict Zod object schemas', () => {
+    const compiler = new ValidationCompiler();
+    compiler.compile('POST:/strict', {
+      body: z.object({
+        name: z.string(),
+      }).strict(),
+    });
+
+    const req = makeReq({
+      method: 'POST',
+      body: {
+        name: 'John',
+        extraField: 'should trigger error',
+      },
+    });
+
+    expect(() => compiler.execute('POST:/strict', req)).toThrow(ValidationError);
+  });
+
+  describe('adjustAdditionalProperties coverage extension', () => {
+    it('covers Zod v4 passthrough schema', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('POST:/passthrough', {
+        body: z.object({ name: z.string() }).passthrough(),
+      });
+      const req = makeReq({ body: { name: 'John', extra: 123 } });
+      expect(() => compiler.execute('POST:/passthrough', req)).not.toThrow();
+    });
+
+    it('covers ZodEffects (transforms/refines) unwrapping with toJSONSchema', () => {
+      const compiler = new ValidationCompiler();
+      const mockZodEffects = {
+        constructor: { name: 'ZodEffects' },
+        def: {
+          schema: z.object({ name: z.string() }),
+        },
+        parse: (x: any) => x,
+        safeParse: (x: any) => ({ success: true, data: x }),
+        toJSONSchema: () => ({
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+          additionalProperties: false,
+        }),
+      } as any;
+
+      compiler.compile('POST:/effects', {
+        body: mockZodEffects,
+      });
+      const req = makeReq({ body: { name: 'John', extra: 123 } });
+      expect(() => compiler.execute('POST:/effects', req)).not.toThrow();
+    });
+
+    it('covers ZodUnion (anyOf)', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('POST:/union', {
+        body: z.union([
+          z.object({ a: z.string() }),
+          z.object({ b: z.number() }),
+        ]),
+      });
+      const req = makeReq({ body: { a: 'test', extra: 123 } });
+      expect(() => compiler.execute('POST:/union', req)).not.toThrow();
+    });
+
+    it('covers oneOf with mock schema', () => {
+      const compiler = new ValidationCompiler();
+      const mockOneOfSchema = {
+        def: {
+          type: 'union',
+          options: [z.object({ a: z.string() })],
+        },
+        parse: (x: any) => x,
+        safeParse: (x: any) => ({ success: true, data: x }),
+        toJSONSchema: () => ({
+          oneOf: [
+            {
+              type: 'object',
+              properties: { a: { type: 'string' } },
+              required: ['a'],
+              additionalProperties: false,
+            },
+          ],
+        }),
+      } as any;
+
+      compiler.compile('POST:/oneof', {
+        body: mockOneOfSchema,
+      });
+      const req = makeReq({ body: { a: 'test', extra: 123 } });
+      expect(() => compiler.execute('POST:/oneof', req)).not.toThrow();
+    });
+
+    it('covers ZodIntersection (allOf)', () => {
+      const compiler = new ValidationCompiler();
+      compiler.compile('POST:/intersection', {
+        body: z.intersection(
+          z.object({ a: z.string() }),
+          z.object({ b: z.number() }),
+        ),
+      });
+      const req = makeReq({ body: { a: 'test', b: 42, extra: 123 } });
+      expect(() => compiler.execute('POST:/intersection', req)).not.toThrow();
+    });
+
+    it('covers Zod v3 strict and passthrough mocks', () => {
+      const compiler = new ValidationCompiler();
+      
+      // Zod v3 Strict
+      const mockZod3Strict = {
+        _def: {
+          typeName: 'ZodObject',
+          unknownKeys: 'strict',
+          shape: { name: z.string() },
+        },
+        parse: (x: any) => {
+          if (x && Object.keys(x).length > 1) throw new Error('strict validation failed');
+          return x;
+        },
+        safeParse: (x: any) => ({ success: true, data: x }),
+        toJSONSchema: () => ({
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+          additionalProperties: false,
+        }),
+      } as any;
+
+      compiler.compile('POST:/zod3-strict', {
+        body: mockZod3Strict,
+      });
+      const reqStrictOk = makeReq({ body: { name: 'John' } });
+      expect(() => compiler.execute('POST:/zod3-strict', reqStrictOk)).not.toThrow();
+
+      const reqStrictFail = makeReq({ body: { name: 'John', extra: 123 } });
+      expect(() => compiler.execute('POST:/zod3-strict', reqStrictFail)).toThrow();
+
+      // Zod v3 Passthrough
+      const mockZod3Passthrough = {
+        _def: {
+          typeName: 'ZodObject',
+          unknownKeys: 'passthrough',
+          shape: { name: z.string() },
+        },
+        parse: (x: any) => x,
+        safeParse: (x: any) => ({ success: true, data: x }),
+        toJSONSchema: () => ({
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+          additionalProperties: true,
+        }),
+      } as any;
+
+      compiler.compile('POST:/zod3-passthrough', {
+        body: mockZod3Passthrough,
+      });
+      const reqPass = makeReq({ body: { name: 'John', extra: 123 } });
+      expect(() => compiler.execute('POST:/zod3-passthrough', reqPass)).not.toThrow();
+    });
+  });
 });
