@@ -693,16 +693,23 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
 
     it('covers ZodEffects (transforms/refines) unwrapping with toJSONSchema', () => {
       const compiler = new ValidationCompiler();
-      const effectSchema = z.object({ name: z.string() }).refine(() => true);
-      (effectSchema as any).toJSONSchema = () => ({
-        type: 'object',
-        properties: { name: { type: 'string' } },
-        required: ['name'],
-        additionalProperties: false,
-      });
+      const mockZodEffects = {
+        constructor: { name: 'ZodEffects' },
+        def: {
+          schema: z.object({ name: z.string() }),
+        },
+        parse: (x: any) => x,
+        safeParse: (x: any) => ({ success: true, data: x }),
+        toJSONSchema: () => ({
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+          additionalProperties: false,
+        }),
+      } as any;
 
       compiler.compile('POST:/effects', {
-        body: effectSchema,
+        body: mockZodEffects,
       });
       const req = makeReq({ body: { name: 'John', extra: 123 } });
       expect(() => compiler.execute('POST:/effects', req)).not.toThrow();
