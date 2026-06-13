@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Axiomify, z } from '@axiomify/core';
 import { AxiomifyVault, vaultModule } from '../src/index';
-import { restoreProcessEnv } from '../src/proxy';
+import { restoreProcessEnv, getCallerModuleName } from '../src/proxy';
 
 describe('Axiomify Vault', () => {
   const testRoot = join(__dirname, 'test-vault-env');
@@ -322,4 +322,249 @@ describe('Axiomify Vault', () => {
     delete process.env.MUTATED_ENV_SECRET;
     expect(process.env.MUTATED_ENV_SECRET).toBeUndefined();
   });
+
+  it('should support absolute vault path configuration', () => {
+    const absolutePath = join(testRoot, 'my-absolute-vault.json');
+    const vault = new AxiomifyVault({
+      projectRoot: testRoot,
+      vaultPath: absolutePath,
+      policy: {
+        modules: {
+          default: { allow: ['SEC'] }
+        }
+      }
+    });
+    expect(vault.vaultPath).toBe(absolutePath);
+  });
+
+  it('should throw if configured env file does not exist', () => {
+    expect(() => new AxiomifyVault({
+      projectRoot: testRoot,
+      envFiles: 'missing-file.env',
+    })).toThrow('[Axiomify Vault] Configured env file not found');
+  });
+
+  it('should throw if configured env file does not exist when loading existing vault', () => {
+    new AxiomifyVault({
+      projectRoot: testRoot,
+    });
+    expect(() => new AxiomifyVault({
+      projectRoot: testRoot,
+      envFiles: 'non-existent.env',
+    })).toThrow('[Axiomify Vault] Configured env file not found');
+  });
+
+  it('should remove keys from vault metadata if they are no longer in the policy or schema during auto-sync', () => {
+    const fs = require('node:fs');
+    if (!existsSync(testRoot)) {
+      fs.mkdirSync(testRoot, { recursive: true });
+    }
+    writeFileSync(join(testRoot, '.env'), 'VAR_A=1\nVAR_B=2\n', 'utf8');
+    new AxiomifyVault({
+      projectRoot: testRoot,
+      policy: {
+        modules: {
+          default: { allow: ['VAR_A', 'VAR_B'] }
+        }
+      }
+    });
+
+    const fileContent1 = fs.readFileSync(join(testRoot, 'axiomify-vault.json'), 'utf8');
+    const meta1 = JSON.parse(fileContent1);
+    expect(meta1.secrets.VAR_A).toBeDefined();
+    expect(meta1.secrets.VAR_B).toBeDefined();
+
+    writeFileSync(join(testRoot, '.env'), 'VAR_A=updated\n', 'utf8');
+    new AxiomifyVault({
+      projectRoot: testRoot,
+      policy: {
+        modules: {
+          default: { allow: ['VAR_A'] }
+        }
+      }
+    });
+
+    const fileContent2 = fs.readFileSync(join(testRoot, 'axiomify-vault.json'), 'utf8');
+    const meta2 = JSON.parse(fileContent2);
+    expect(meta2.secrets.VAR_A).toBeDefined();
+    expect(meta2.secrets.VAR_B).toBeUndefined();
+  });
+
+  it('should throw if loading corrupted or wrong-key vault file', () => {
+    const fs = require('node:fs');
+    fs.mkdirSync(join(testRoot, '.axiomify'), { recursive: true });
+    fs.writeFileSync(join(testRoot, 'axiomify-vault.json'), 'corrupted-data', 'utf8');
+
+    expect(() => new AxiomifyVault({
+      projectRoot: testRoot,
+    })).toThrow('[Axiomify Vault] Failed to load/decrypt vault');
+  });
+
+  it('should handle custom schema parser that throws on validation failure', () => {
+    const customSchema = {
+      parse: () => {
+        throw new Error('Custom schema error');
+      }
+    };
+    expect(() => new AxiomifyVault({
+      projectRoot: testRoot,
+      schema: customSchema,
+    })).toThrow('[Axiomify Vault] Schema Validation Failed: Custom schema error');
+  });
+
+  it('should support custom schema parser that succeeds', () => {
+    const customSchema = {
+      parse: () => {
+        return { CUSTOM_VAL: 'value' };
+      }
+    };
+    const vault = new AxiomifyVault({
+      projectRoot: testRoot,
+      schema: customSchema,
+    });
+    expect(vault.resolveSecretJIT('CUSTOM_VAL')).toBe('value');
+  });
+
+  it('should support base64 encoded KEKs in options or environment variables', () => {
+    const rawKey = require('node:crypto').randomBytes(32);
+    const keyBase64 = rawKey.toString('base64');
+
+    const vault1 = new AxiomifyVault({
+      projectRoot: testRoot,
+      kek: keyBase64,
+      policy: {
+        modules: {
+          default: { allow: ['B64_TEST'] }
+        }
+      }
+    });
+    vault1.setSecret('B64_TEST', 'ok');
+    expect(vault1.resolveSecret('B64_TEST')).toBe('ok');
+
+    process.env.AXIOMIFY_VAULT_KEK = keyBase64;
+    const vault2 = new AxiomifyVault({
+      projectRoot: testRoot,
+      policy: {
+        modules: {
+          default: { allow: ['B64_TEST_ENV'] }
+        }
+      }
+    });
+    vault2.setSecret('B64_TEST_ENV', 'ok-env');
+    expect(vault2.resolveSecret('B64_TEST_ENV')).toBe('ok-env');
+    delete process.env.AXIOMIFY_VAULT_KEK;
+  });
+
+  it('should redact secrets from stdout and stderr write streams with various inputs', () => {
+    const vault = new AxiomifyVault({
+      projectRoot: testRoot,
+      policy: {
+        modules: {
+          default: { allow: ['STDOUT_SECRET'] }
+        }
+      }
+    });
+    vault.setSecret('STDOUT_SECRET', 'my-super-secret-password-xyz');
+    vault.resolveSecret('STDOUT_SECRET');
+
+    const capturedStdout: string[] = [];
+    const capturedStderr: string[] = [];
+
+    const stdoutWriteSpy = vi.spyOn(process.stdout, '_write').mockImplementation((chunk, encoding, callback) => {
+      capturedStdout.push(chunk.toString());
+      callback();
+    });
+    const stderrWriteSpy = vi.spyOn(process.stderr, '_write').mockImplementation((chunk, encoding, callback) => {
+      capturedStderr.push(chunk.toString());
+      callback();
+    });
+
+    process.stdout.write('hello my-super-secret-password-xyz world');
+    expect(capturedStdout.some(c => c.includes('hello •••••••• world'))).toBe(true);
+
+    capturedStdout.length = 0;
+    process.stdout.write(Buffer.from('hello my-super-secret-password-xyz world'));
+    expect(capturedStdout.some(c => c.includes('hello •••••••• world'))).toBe(true);
+
+    capturedStdout.length = 0;
+    const cb = () => {};
+    process.stdout.write('hello my-super-secret-password-xyz callback', cb);
+    expect(capturedStdout.some(c => c.includes('hello •••••••• callback'))).toBe(true);
+
+    process.stderr.write('error: my-super-secret-password-xyz');
+    expect(capturedStderr.some(c => c.includes('error: ••••••••'))).toBe(true);
+
+    stdoutWriteSpy.mockRestore();
+    stderrWriteSpy.mockRestore();
+  });
+
+  it('should allow Symbol property access on process.env Proxy', () => {
+    const symbolKey = Symbol('test-symbol');
+    expect((process.env as any)[symbolKey]).toBeUndefined();
+  });
+
+  it('should remove secret from vault Cache and encrypted map when deleted from process.env', () => {
+    const vault = new AxiomifyVault({
+      projectRoot: testRoot,
+      policy: {
+        modules: {
+          default: { allow: ['DELETABLE_SECRET'] }
+        }
+      }
+    });
+    vault.setSecret('DELETABLE_SECRET', 'temp-secret');
+    expect(vault.hasSecret('DELETABLE_SECRET')).toBe(true);
+
+    delete process.env.DELETABLE_SECRET;
+    expect(vault.hasSecret('DELETABLE_SECRET')).toBe(false);
+  });
+
+  it('should get own property descriptor from process.env Proxy', () => {
+    process.env.SOME_ENV_PROP = 'val';
+    const desc = Object.getOwnPropertyDescriptor(process.env, 'SOME_ENV_PROP');
+    expect(desc).toBeDefined();
+    expect(desc?.value).toBe('val');
+    delete process.env.SOME_ENV_PROP;
+  });
+
+  it('should parse caller module name from stack trace when AsyncLocalStorage is empty', () => {
+    const caller1 = getCallerModuleName();
+    expect(caller1).toBe('default');
+
+    const OriginalError = globalThis.Error;
+    const MockError = class extends OriginalError {
+      constructor(message?: string) {
+        super(message);
+        this.stack = 'Error\n    at myAppModuleAction (file.js:10:5)\n    at AppModule.register (index.js:5:10)';
+      }
+    };
+    globalThis.Error = MockError as any;
+
+    try {
+      const caller2 = getCallerModuleName();
+      expect(caller2).toBe('myAppModuleAction');
+    } finally {
+      globalThis.Error = OriginalError;
+    }
+  });
+
+  it('should default to permissive access when no policy is configured', () => {
+    const vault = new AxiomifyVault({
+      projectRoot: testRoot,
+    });
+    expect(vault.isAllowed('any-module', 'ANY_SECRET')).toBe(true);
+  });
+
+  it('should support wildcard secret key matching in policy rules', () => {
+    const vault = new AxiomifyVault({
+      projectRoot: testRoot,
+      policy: {
+        modules: {
+          'billing': { allow: ['*'] }
+        }
+      }
+    });
+    expect(vault.isAllowed('billing', 'ANY_KEY_AT_ALL')).toBe(true);
+  });
 });
+

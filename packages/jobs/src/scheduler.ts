@@ -16,7 +16,13 @@ export interface SagaStep {
   compensate: (context: any) => Promise<any>;
 }
 
+let _tracingEnabled = true;
+export function setTracingEnabledForTesting(enabled: boolean) {
+  _tracingEnabled = enabled;
+}
+
 function getTracerApi(): any | null {
+  if (!_tracingEnabled) return null;
   try {
     return require('@opentelemetry/api');
   } catch {
