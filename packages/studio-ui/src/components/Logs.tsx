@@ -28,6 +28,8 @@ export const Logs: React.FC<LogsProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [showInternal, setShowInternal] = useState(false);
   const [expandedStacks, setExpandedStacks] = useState<Record<string, boolean>>({});
+  const [isRegexSearch, setIsRegexSearch] = useState(false);
+  const [timeFilterRange, setTimeFilterRange] = useState('ALL');
 
   useEffect(() => {
     fetchLogs();
@@ -118,20 +120,46 @@ export const Logs: React.FC<LogsProps> = ({
     return msg;
   };
 
-  // Filter list
-  const filteredLogs = logsList.filter(log => {
-    const matchesLevel = logFilterLevel === 'ALL' || log.level.toUpperCase() === logFilterLevel;
-    
-    const cleanSearch = searchTerm.toLowerCase().trim();
-    const matchesSearch = !cleanSearch || 
-      log.message.toLowerCase().includes(cleanSearch) || 
-      (log.stack && log.stack.toLowerCase().includes(cleanSearch));
-    
-    const matchesInternal = showInternal || !log.isInternal;
-    const matchesRequestId = !filterRequestId || log.requestId === filterRequestId;
+  // Filter list and reverse so that the newly added entry is at the top
+  const filteredLogs = logsList
+    .filter(log => {
+      const matchesLevel = logFilterLevel === 'ALL' || log.level.toUpperCase() === logFilterLevel;
+      
+      let matchesSearch = true;
+      if (searchTerm.trim()) {
+        if (isRegexSearch) {
+          try {
+            const regex = new RegExp(searchTerm, 'i');
+            matchesSearch = regex.test(log.message) || !!(log.stack && regex.test(log.stack));
+          } catch {
+            const cleanSearch = searchTerm.toLowerCase().trim();
+            matchesSearch = log.message.toLowerCase().includes(cleanSearch) || 
+              !!(log.stack && log.stack.toLowerCase().includes(cleanSearch));
+          }
+        } else {
+          const cleanSearch = searchTerm.toLowerCase().trim();
+          matchesSearch = log.message.toLowerCase().includes(cleanSearch) || 
+            !!(log.stack && log.stack.toLowerCase().includes(cleanSearch));
+        }
+      }
+      
+      const matchesInternal = showInternal || !log.isInternal;
+      const matchesRequestId = !filterRequestId || log.requestId === filterRequestId;
 
-    return matchesLevel && matchesSearch && matchesInternal && matchesRequestId;
-  });
+      let matchesTime = true;
+      if (timeFilterRange !== 'ALL') {
+        const logTime = new Date(log.timestamp).getTime();
+        const diffMs = Date.now() - logTime;
+        if (timeFilterRange === '1M') matchesTime = diffMs <= 60 * 1000;
+        else if (timeFilterRange === '5M') matchesTime = diffMs <= 5 * 60 * 1000;
+        else if (timeFilterRange === '15M') matchesTime = diffMs <= 15 * 60 * 1000;
+        else if (timeFilterRange === '1H') matchesTime = diffMs <= 60 * 60 * 1000;
+      }
+
+      return matchesLevel && matchesSearch && matchesInternal && matchesRequestId && matchesTime;
+    })
+    .slice()
+    .reverse();
 
   return (
     <div>
@@ -175,24 +203,50 @@ export const Logs: React.FC<LogsProps> = ({
             )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexGrow: 1, justifyContent: 'flex-end' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexGrow: 1, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            {/* Time range selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Time:</span>
+              <select
+                className="select-input"
+                style={{ margin: 0, padding: '4px 8px', fontSize: '11px', height: '28px', width: '110px' }}
+                value={timeFilterRange}
+                onChange={e => setTimeFilterRange(e.target.value)}
+              >
+                <option value="ALL">All Time</option>
+                <option value="1M">Last 1 min</option>
+                <option value="5M">Last 5 mins</option>
+                <option value="15M">Last 15 mins</option>
+                <option value="1H">Last 1 hour</option>
+              </select>
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)' }}>
               <input
                 type="checkbox"
                 checked={showInternal}
                 onChange={e => setShowInternal(e.target.checked)}
               />
-              Show Framework Logs
+              Framework
             </label>
-            <div style={{ width: '220px', margin: 0 }}>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '260px' }}>
               <input
                 type="text"
                 className="text-input"
-                placeholder="Search logs..."
+                placeholder={isRegexSearch ? "Regex search..." : "Search logs..."}
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                style={{ width: '100%', margin: 0, padding: '8px 10px' }}
+                style={{ flexGrow: 1, margin: 0, padding: '6px 10px', fontSize: '12px', height: '28px', boxSizing: 'border-box' }}
               />
+              <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                <input
+                  type="checkbox"
+                  checked={isRegexSearch}
+                  onChange={e => setIsRegexSearch(e.target.checked)}
+                />
+                Regex
+              </label>
             </div>
           </div>
         </div>
@@ -245,43 +299,54 @@ export const Logs: React.FC<LogsProps> = ({
                 );
               }
 
+              let messageColor = 'var(--text-primary)';
+              if (log.level === 'warn') messageColor = 'var(--warning)';
+              else if (log.level === 'error' || log.level === 'fatal') messageColor = 'var(--error)';
+              else if (log.level === 'debug' || log.level === 'trace') messageColor = 'var(--text-secondary)';
+
+              const dateObj = new Date(log.timestamp);
+              const formattedTime = dateObj.toLocaleTimeString() + '.' + String(dateObj.getMilliseconds()).padStart(3, '0');
+
               return (
-                <div key={log.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px 16px', margin: 0, textAlign: 'left', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+                <div key={log.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '10px 14px', margin: 0, textAlign: 'left', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+                  {/* Log Metadata Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: '1px dashed var(--border)', paddingBottom: '6px', marginBottom: '2px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span className={`method-badge ${levelBadgeClass}`} style={{ fontSize: '10px', padding: '2px 6px' }}>
+                      <span className={`method-badge ${levelBadgeClass}`} style={{ fontSize: '9px', padding: '2px 6px', fontWeight: 700, minWidth: '48px', textAlign: 'center' }}>
                         {log.level.toUpperCase()}
                       </span>
                       {log.isInternal && (
-                        <span style={{ background: 'rgba(245, 158, 11, 0.08)', color: 'var(--warning)', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 500 }}>
+                        <span style={{ background: 'rgba(245, 158, 11, 0.08)', color: 'var(--warning)', fontSize: '9px', padding: '2px 6px', borderRadius: '4px', fontWeight: 500 }}>
                           Framework
                         </span>
                       )}
                       {sourceBadge}
                       {requestIdBadge}
-                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)', wordBreak: 'break-all' }}>
-                        {formatLogMessage(log.message)}
-                      </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
-                        {new Date(log.timestamp).toLocaleTimeString()}
+                        {formattedTime}
                       </span>
                       {hasStack && (
                         <button
                           className="btn btn-secondary"
-                          style={{ padding: '2px 8px', fontSize: '10px', borderRadius: 'var(--radius-sm)', margin: 0 }}
+                          style={{ padding: '2px 6px', fontSize: '9px', borderRadius: 'var(--radius-sm)', margin: 0 }}
                           onClick={() => setExpandedStacks(prev => ({ ...prev, [log.id]: !isStackOpen }))}
                         >
-                          Toggle Stack
+                          {isStackOpen ? 'Hide Stack' : 'Show Stack'}
                         </button>
                       )}
                     </div>
                   </div>
 
+                  {/* Log Message Body */}
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 500, color: messageColor, wordBreak: 'break-all', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                    {formatLogMessage(log.message)}
+                  </div>
+
                   {hasStack && isStackOpen && (
                     <pre
-                      style={{ fontSize: '11px', marginTop: '8px', padding: '10px', background: 'var(--bg-primary)', border: '1px solid var(--border)', maxHeight: '250px', overflowY: 'auto', overflowX: 'auto', fontFamily: 'var(--font-mono)', textAlign: 'left', lineHeight: 1.5 }}
+                      style={{ fontSize: '11px', marginTop: '4px', padding: '10px', background: 'var(--bg-primary)', border: '1px solid var(--border)', maxHeight: '250px', overflowY: 'auto', overflowX: 'auto', fontFamily: 'var(--font-mono)', textAlign: 'left', lineHeight: 1.5 }}
                     >
                       {formatStack(log.stack || '')}
                     </pre>

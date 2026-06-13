@@ -1078,6 +1078,16 @@ pre.schema-json {
   box-shadow: none;
 }
 
+.btn-secondary.active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+.btn-secondary.active:hover {
+  background: #4338ca;
+}
+
 .kv-row {
   display: flex;
   gap: 8px;
@@ -1399,3 +1409,41 @@ pre.schema-json {
   overflow: auto;
   max-height: 300px;
 }
+
+/* ── Distributed Tracing Panel ────────────────────────────────── */
+.trace-item {
+  transition: all 0.2s ease;
+}
+.trace-item:hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-active) !important;
+}
+.trace-item.active {
+  background: var(--bg-secondary) !important;
+  border-color: var(--accent) !important;
+  box-shadow: var(--shadow-sm);
+}
+.badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+.badge-error {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--error);
+}
+.badge-success {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--success);
+}
+.badge-warn {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--warning);
+}
+.badge-info {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--info);
+}
+

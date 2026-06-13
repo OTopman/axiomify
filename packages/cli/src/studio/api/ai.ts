@@ -67,6 +67,23 @@ export function buildContext(
   securityFindings: any[],
   contractResults: any[],
 ): any {
+  // Load active application package.json details
+  let packageMetadata: any = {};
+  try {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const pkgPath = path.resolve(process.cwd(), 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      packageMetadata = {
+        name: pkg.name,
+        version: pkg.version,
+        dependencies: pkg.dependencies ? Object.keys(pkg.dependencies) : [],
+        devDependencies: pkg.devDependencies ? Object.keys(pkg.devDependencies) : [],
+      };
+    }
+  } catch {}
+
   const routesSummary = (discovery.routes || []).map((r) => ({
     method: r.method,
     path: r.path,
@@ -75,6 +92,20 @@ export function buildContext(
     hasValidation: r.validation && r.validation.length > 0,
     hasResponseSchema: !!r.hasResponseSchema,
   }));
+
+  const servicesSummary = (discovery.services || []).map((s) => ({
+    token: s.token,
+    type: s.type,
+    methods: s.methods || [],
+  }));
+
+  const eventsSummary = (discovery.events || []).map((e) => ({
+    emitterToken: e.emitterToken,
+    event: e.event,
+    listenerCount: e.listenerCount,
+  }));
+
+  const configSummary = discovery.config || {};
 
   const perfSummary = Array.from(routeLatencies.values() || []).map((b: any) => ({
     method: b.method,
@@ -140,7 +171,11 @@ export function buildContext(
     });
 
   return {
+    package: packageMetadata,
     routes: routesSummary,
+    services: servicesSummary,
+    events: eventsSummary,
+    config: configSummary,
     performance: perfSummary,
     security: securitySummary,
     contracts: contractsSummary,

@@ -28,6 +28,8 @@ import type {
 } from './types';
 
 export type { AppConfigurator, AppContext, AppModule };
+import { setupTelemetry } from './telemetry';
+
 
 function joinRoutePath(prefix: string, path: string): string {
   return (prefix + path).replace(/\/+/g, '/').replace(/\/$/, '') || '/';
@@ -169,6 +171,22 @@ export class Axiomify {
   }
 
   /**
+   * Enables native OpenTelemetry tracing, metrics, and logs collection.
+   *
+   * Automatically exports telemetry to Axiomify Studio if detected in the
+   * environment, otherwise configures standard global trace and metrics
+   * providers.
+   *
+   * @example
+   * const app = new Axiomify();
+   * app.enableTracing();
+   */
+  public enableTracing(): this {
+    setupTelemetry(this);
+    return this;
+  }
+
+  /**
    * Register a plugin (configurator function or module) with the application.
    *
    * Accepted forms:
@@ -223,7 +241,14 @@ export class Axiomify {
     const ordered = this._resolveModuleDeps(configurator);
     for (const mod of ordered) {
       if (this._modules.has(mod.name)) continue;
-      mod.register(this, context);
+      const vaultContext = (globalThis as any)._axiomifyVaultContext;
+      if (vaultContext && typeof vaultContext.run === 'function') {
+        vaultContext.run(mod.name, () => {
+          mod.register(this, context);
+        });
+      } else {
+        mod.register(this, context);
+      }
       this._modules.add(mod.name);
     }
     return this;
@@ -358,12 +383,21 @@ export class Axiomify {
     this._services.set(token, value);
   }
 
+  private _sealVault(): void {
+    const vault = this._services.get('vault');
+    if (vault && typeof (vault as any).seal === 'function') {
+      (vault as any).seal();
+    }
+  }
+
   public listen(...args: any[]): this {
+    this._sealVault();
     this._bootstrapped = true;
     return this;
   }
 
   public build(): this {
+    this._sealVault();
     this._bootstrapped = true;
     return this;
   }

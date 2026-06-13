@@ -20,6 +20,8 @@
     "@axiomify/openapi": "*",
     "@axiomify/static": "*",
     "@axiomify/upload": "*",
+    "@axiomify/vault": "*",
+    "@axiomify/jobs": "*",
     "graphql": "^16.14.1"
   },
   "devDependencies": {

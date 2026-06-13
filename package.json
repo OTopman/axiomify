@@ -11,8 +11,10 @@
     "examples/*"
   ],
   "scripts": {
-    "build": "npm run build:core && npm run build:adapters && npm run build:plugins && npm run build:studio-ui && npm run build:cli && npm run build:sdk-runtime",
+    "build": "npm run build:core && npm run build:vault && npm run build:jobs && npm run build:adapters && npm run build:plugins && npm run build:studio-ui && npm run build:cli && npm run build:sdk-runtime",
     "build:core": "npm run build -w @axiomify/core",
+    "build:vault": "npm run build -w @axiomify/vault",
+    "build:jobs": "npm run build -w @axiomify/jobs",
     "build:adapters": "npm run build -w @axiomify/native",
     "build:plugins": "npm run build -w @axiomify/auth -w @axiomify/cors -w @axiomify/fingerprint -w @axiomify/graphql -w @axiomify/helmet -w @axiomify/logger -w @axiomify/metrics -w @axiomify/openapi -w @axiomify/rate-limit -w @axiomify/security -w @axiomify/socket.io -w @axiomify/static -w @axiomify/upload -w @axiomify/ws",
     "build:cli": "npm run build -w @axiomify/cli",

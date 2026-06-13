@@ -1,7 +1,4 @@
 
-import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
-import { NodeSDK } from '@opentelemetry/sdk-node';
 
 
 import { createAuthPlugin } from '@axiomify/auth';
@@ -13,6 +10,7 @@ import { useMetrics } from '@axiomify/metrics';
 import { useOpenAPI } from '@axiomify/openapi';
 import { serveStatic } from '@axiomify/static';
 import { useUpload } from '@axiomify/upload';
+import { vaultModule } from '@axiomify/vault';
 import { wsRooms } from '@axiomify/ws';
 import { randomUUID } from 'crypto';
 import { createReadStream, existsSync } from 'fs';
@@ -20,6 +18,7 @@ import { GraphQLInt, GraphQLList, GraphQLObjectType, GraphQLSchema, GraphQLStrin
 import path from 'path';
 
 export const app = new Axiomify();
+app.enableTracing();
 
 const room = wsRooms(app, {
   path: '/ws',
@@ -55,7 +54,12 @@ useMetrics(app, {
   wsManager: room
 });
 
-useLogger(app);
+useLogger(app, {
+  includeBody: true,
+  includeHeaders: true,
+  includeResponseHeaders: true,
+  includeState: true,
+});
 serveStatic(app, {
   prefix: '/assets',
   root: path.join(process.cwd(), 'public'),
@@ -93,9 +97,23 @@ declare module '@axiomify/core' {
   }
 }
 
+app.use(vaultModule({
+  modules: {
+    services: { allow: ['JWT_SECRET'] }
+  }
+}));
+
+console.log('------------outside----------------')
+console.log(process.env.JWT_SECRET);
+console.log('------------outside----------------')
+
 const servicesModule: AppModule = {
   name: 'services',
   register: (_app, ctx) => {
+    console.log('------------inside----------------')
+    const data = process.env.JWT_SECRET;
+    console.log('JWT_SECRET', data);
+    console.log('------------inside----------------')
     ctx.provide('userService', new UserService());
 
   },
@@ -280,16 +298,8 @@ useOpenAPI(app, {
 });
 
 if (require.main === module) {
+  app.build();
 
-  const sdk = new NodeSDK({
-    traceExporter: new OTLPTraceExporter({
-      url: `http://localhost:3000/metrics` // collector endpoint
-    }),
-    instrumentations: [getNodeAutoInstrumentations()]
-  });
-
-  // Start SDK before booting Axiomify app
-  sdk.start();
   import('@axiomify/native').then(({ NativeAdapter }) => {
     const adapter = new NativeAdapter(app, { port: 3000 });
     adapter.listen(() => {

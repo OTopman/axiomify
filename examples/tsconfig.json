@@ -19,6 +19,8 @@
       "@axiomify/graphql": ["../packages/graphql/dist/index.d.ts"],
       "@axiomify/static": ["../packages/static/dist/index.d.ts"],
       "@axiomify/upload": ["../packages/upload/dist/index.d.ts"],
+      "@axiomify/vault": ["../packages/vault/dist/index.d.ts"],
+      "@axiomify/jobs": ["../packages/jobs/dist/index.d.ts"],
       "@axiomify/metrics": ["../packages/metrics/dist/index.d.ts"],
       "@axiomify/sanitizer": ["../packages/sanitizer/dist/index.d.ts"],
       "@axiomify/sdk-runtime": ["../packages/sdk-runtime/dist/index.d.ts"]
