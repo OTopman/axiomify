@@ -71,6 +71,14 @@ class ApiClient:
         return None
 
 
+    async def post_api_checkout(self, body: types.PostApiCheckoutRequest) -> None:
+        url = f"/api/checkout"
+        req_body = body.model_dump(by_alias=True) if hasattr(body, 'model_dump') else body
+        response = await self.client.post(url, json=req_body)
+        response.raise_for_status()
+        return None
+
+
     async def get_api_secure_data(self) -> None:
         url = f"/api/secure-data"
         response = await self.client.get(url)

@@ -53,9 +53,6 @@ export default defineConfig({
         lines:      95,
         statements: 95,
         functions:  95,
-        // Branch threshold is lower: remaining uncovered branches are defensive
-        // fallbacks (Zod v3 compat, ?? on hot paths, dead Kahn paths). Forcing
-        // 95% would require contrived tests that exist only to satisfy the metric.
         branches:   85,
       },
       reporter: ['text', 'json', 'html'],

@@ -164,6 +164,26 @@ describe('Axiomify Distributed Jobs', () => {
       public async mget(keys: string[]) {
         return keys.map((k) => this.store.get(k) || null);
       }
+
+      // eval is required for atomic job locking
+      public async eval(script: string | { script: string; keys: string[]; arguments: string[] }, numkeys?: number, ...args: string[]) {
+        let lockKey = '';
+        if (typeof script === 'object' && script !== null) {
+          lockKey = script.keys[0] || '';
+        } else {
+          lockKey = args[0] || '';
+        }
+        const rawJob = this.store.get(lockKey);
+        if (rawJob) {
+          const job = JSON.parse(rawJob);
+          if (job.status !== 'pending') return null;
+          job.status = 'running';
+          job.lockedAt = Date.now() + 5000;
+          this.store.set(lockKey, JSON.stringify(job));
+          return JSON.stringify(job);
+        }
+        return null;
+      }
     }
 
     const mockRedis = new MockRedis();
@@ -416,7 +436,8 @@ describe('Axiomify Distributed Jobs', () => {
 
     await storage.complete('job-lua-1');
     await storage.clear();
-    expect(mockRedis.keysCalled).toBe(true);
+    // KEYS is no longer used (replaced with SCAN for safety), verify clear works via tracked sets
+    expect(mockRedis.store.size).toBe(0);
   });
 
   it('should use Lua lock script when evalsha is present on Redis client', async () => {
@@ -603,14 +624,27 @@ describe('Axiomify Distributed Jobs', () => {
     const mockPg = {
       query: async (sql: string, params: any[] = []) => {
         const sqlUpper = sql.toUpperCase();
+        // Atomic UPDATE ... RETURNING for acquireNext (must be checked before other patterns)
+        if (sqlUpper.includes('UPDATE AXIOMIFY_JOBS') && sqlUpper.includes('RETURNING')) {
+          const [lockedAt, queue, now] = params;
+          const list = Array.from(db.values()).filter(r => r.queue === queue && r.status === 'pending' && Number(r.runAt) <= Number(now))
+            .sort((a, b) => b.priority - a.priority);
+          const target = list[0];
+          if (target) {
+            target.status = 'running';
+            target.lockedAt = lockedAt;
+            return [target];
+          }
+          return [];
+        }
         if (sqlUpper.includes('SELECT ID FROM AXIOMIFY_JOBS') && sqlUpper.includes('WHERE ID =')) {
           const id = params[0];
           const row = db.get(id);
           return row ? [row] : [];
         }
         if (sqlUpper.includes('INSERT INTO AXIOMIFY_JOBS')) {
-          const [id, queue, name, payload, status, priority, runAt, attempts, maxAttempts, error, lockedAt] = params;
-          const row = { id, queue, name, payload, status, priority, runAt, attempts, maxAttempts, error, lockedAt };
+          const [id, queue, name, payload, status, priority, runAt, attempts, maxAttempts, error, lockedAt, traceContext] = params;
+          const row = { id, queue, name, payload, status, priority, runAt, attempts, maxAttempts, error, lockedAt, traceContext };
           db.set(id, row);
           return [];
         }
@@ -624,24 +658,11 @@ describe('Axiomify Distributed Jobs', () => {
         }
         if (sqlUpper.includes('SELECT * FROM AXIOMIFY_JOBS') && sqlUpper.includes('QUEUE =')) {
           const queue = params[0];
-          const now = params[1] ?? Date.now();
           const list = Array.from(db.values()).filter(r => r.queue === queue);
-          if (sqlUpper.includes('STATUS = \'PENDING\'')) {
-            const eligible = list.filter(r => r.status === 'pending' && Number(r.runAt) <= now)
-              .sort((a, b) => b.priority - a.priority);
-            return eligible.slice(0, 1);
-          }
           return list;
         }
-        if (sqlUpper.includes('UPDATE AXIOMIFY_JOBS') && sqlUpper.includes('SET STATUS = \'RUNNING\'')) {
-          const [lockedAt, id] = params;
-          const existing = db.get(id);
-          if (existing) {
-            existing.status = 'running';
-            existing.lockedAt = lockedAt;
-          }
-          return [];
-        }
+        // Note: The old separate UPDATE SET STATUS='running' is no longer used;
+        // acquireNext now uses atomic UPDATE...RETURNING above.
         if (sqlUpper.includes('UPDATE AXIOMIFY_JOBS') && sqlUpper.includes('SET STATUS = \'COMPLETED\'')) {
           const [id] = params;
           const existing = db.get(id);
@@ -651,7 +672,7 @@ describe('Axiomify Distributed Jobs', () => {
           }
           return [];
         }
-        if (sqlUpper.includes('SELECT ATTEMPTS, MAXATTEMPTS FROM AXIOMIFY_JOBS') && sqlUpper.includes('WHERE ID =')) {
+        if (sqlUpper.includes('SELECT ATTEMPTS') && sqlUpper.includes('MAXATTEMPTS') && sqlUpper.includes('WHERE ID =')) {
           const id = params[0];
           const row = db.get(id);
           return row ? [{ attempts: row.attempts, maxAttempts: row.maxAttempts }] : [];
@@ -762,26 +783,31 @@ describe('Axiomify Distributed Jobs', () => {
 
   it('should serialize and deserialize primitive payloads in SQLJobStorage', async () => {
     let savedPayload: any = null;
+    let savedTraceContext: any = null;
     const mockPg = {
       query: async (sql: string, params: any[] = []) => {
-        if (sql.toUpperCase().includes('INSERT INTO AXIOMIFY_JOBS')) {
-          savedPayload = params[3];
-          return [];
-        }
-        if (sql.toUpperCase().includes('SELECT * FROM AXIOMIFY_JOBS') && sql.toUpperCase().includes('QUEUE =')) {
+        const sqlUpper = sql.toUpperCase();
+        // Atomic UPDATE...RETURNING for acquireNext (must check first)
+        if (sqlUpper.includes('UPDATE AXIOMIFY_JOBS') && sqlUpper.includes('RETURNING')) {
           return [{
             id: 'sql-job-2',
             queue: 'sql-queue',
             name: 'task-2',
             payload: savedPayload,
-            status: 'pending',
+            status: 'running',
             priority: 10,
             runAt: Date.now() - 100,
             attempts: 0,
-            maxAttempts: 2
+            maxAttempts: 2,
+            traceContext: savedTraceContext
           }];
         }
-        if (sql.toUpperCase().includes('UPDATE AXIOMIFY_JOBS') && sql.toUpperCase().includes('SET STATUS = \'RUNNING\'')) {
+        if (sqlUpper.includes('SELECT ID FROM AXIOMIFY_JOBS') && sqlUpper.includes('WHERE ID =')) {
+          return [];
+        }
+        if (sqlUpper.includes('INSERT INTO AXIOMIFY_JOBS')) {
+          savedPayload = params[3];
+          savedTraceContext = params[11] || null;
           return [];
         }
         return [];
@@ -851,7 +877,7 @@ describe('Axiomify Distributed Jobs', () => {
     setTracingEnabledForTesting(true);
   });
 
-  it('should support non-numeric cron patterns and fallback to minute intervals', async () => {
+  it('should support proper cron expression parsing', async () => {
     const storage = new MemoryJobStorage();
     const scheduler = new JobScheduler(storage, {
       queue: 'cron-queue-nan',
@@ -861,10 +887,12 @@ describe('Axiomify Distributed Jobs', () => {
       defaultRetryDelayMs: 10,
     });
 
-    scheduler.schedule('*/5 * * * *', 'cron-task-nan', { foo: 'bar' });
+    // Use a cron expression that matches every minute (always fires)
+    scheduler.schedule('* * * * *', 'cron-task-nan', { foo: 'bar' });
     
     const now = Date.now();
-    (scheduler as any).cronTasks[0].lastRun = now - 70000;
+    // Set lastRun to well before the current minute so it fires
+    (scheduler as any).cronTasks[0].lastRun = now - 120000;
 
     scheduler.start();
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -1060,6 +1088,28 @@ describe('Axiomify Distributed Jobs', () => {
         return keys.map((k) => this.store.get(k) || null);
       }
       public async zrem(key: string, member: string) {}
+      // eval is required for atomic job locking
+      public async eval(script: string | { script: string; keys: string[]; arguments: string[] }, numkeys?: number, ...args: string[]) {
+        let lockKey = '';
+        if (typeof script === 'object' && script !== null) {
+          lockKey = script.keys[0] || '';
+        } else {
+          lockKey = args[0] || '';
+        }
+        const rawJob = this.store.get(lockKey);
+        if (rawJob) {
+          const job = JSON.parse(rawJob);
+          if (job.status !== 'pending') return null;
+          job.status = 'running';
+          job.lockedAt = Date.now() + 5000;
+          this.store.set(lockKey, JSON.stringify(job));
+          // Also remove from pending zset
+          const queueKey = `axiomify:queue:${job.queue}:pending_zset`;
+          this.zsets.get(queueKey)?.delete(job.id);
+          return JSON.stringify(job);
+        }
+        return null;
+      }
     }
 
     const mockRedis = new MockRedis();
@@ -1146,8 +1196,8 @@ describe('Axiomify Distributed Jobs', () => {
     expect(acquired).toBeNull();
   });
 
-  it('should return null in RedisJobStorage fallback path if status is not pending', async () => {
-    class MockRedis {
+  it('should throw when Redis client does not support eval for acquireNext', async () => {
+    class MockRedisNoEval {
       public store = new Map<string, string>();
       public sets = new Map<string, Set<string>>();
       public zsets = new Map<string, Map<string, number>>();
@@ -1177,16 +1227,16 @@ describe('Axiomify Distributed Jobs', () => {
       }
     }
 
-    const mockRedis = new MockRedis();
+    const mockRedis = new MockRedisNoEval();
     const storage = new RedisJobStorage(mockRedis);
     const now = Date.now();
 
     const job = {
-      id: 'job-not-pending-fallback',
-      queue: 'fallback-queue',
+      id: 'job-no-eval',
+      queue: 'no-eval-queue',
       name: 'n',
       payload: {},
-      status: 'running' as const,
+      status: 'pending' as const,
       priority: 10,
       runAt: now - 100,
       attempts: 0,
@@ -1194,8 +1244,476 @@ describe('Axiomify Distributed Jobs', () => {
     };
     await storage.save(job);
 
-    const acquired = await storage.acquireNext('fallback-queue', 5000);
-    expect(acquired).toBeNull();
+    await expect(storage.acquireNext('no-eval-queue', 5000)).rejects.toThrow(
+      'Redis client must support EVAL for atomic job locking'
+    );
+  });
+
+  it('should validate enqueue inputs in scheduler', async () => {
+    const storage = new MemoryJobStorage();
+    const scheduler = new JobScheduler(storage);
+    await expect(scheduler.enqueue('', {})).rejects.toThrow('Job name must be a non-empty string');
+    await expect(scheduler.enqueue(null as any, {})).rejects.toThrow('Job name must be a non-empty string');
+  });
+
+  it('should validate scheduler constructor inputs', () => {
+    const storage = new MemoryJobStorage();
+    expect(() => new JobScheduler(storage, { maxConcurrency: 0 })).toThrow('maxConcurrency must be greater than 0');
+    expect(() => new JobScheduler(storage, { pollIntervalMs: -10 })).toThrow('pollIntervalMs must be greater than 0');
+  });
+
+  it('should log warning on drain timeout when stopping scheduler', async () => {
+    const storage = new MemoryJobStorage();
+    const scheduler = new JobScheduler(storage, {
+      queue: 'drain-timeout-queue',
+      maxConcurrency: 1,
+      pollIntervalMs: 5,
+      drainTimeoutMs: 10,
+    });
+    scheduler.register('slow-drain-job', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    });
+
+    await scheduler.enqueue('slow-drain-job', {});
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    scheduler.start();
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await scheduler.stop();
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Force-stopping')
+    );
+    consoleSpy.mockRestore();
+  });
+
+  it('should log error when checkCronSchedules throws an error', async () => {
+    const storage = new MemoryJobStorage();
+    const scheduler = new JobScheduler(storage, {
+      queue: 'cron-err-queue',
+      maxConcurrency: 1,
+      pollIntervalMs: 5,
+    });
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    (scheduler as any).checkCronSchedules = vi.fn().mockRejectedValue(new Error('Cron config corruption'));
+
+    scheduler.start();
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await scheduler.stop();
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[Axiomify Jobs] Cron schedule error:'),
+      expect.any(Error)
+    );
+    consoleSpy.mockRestore();
+  });
+
+  it('should handle job execution timeout by failing the job', async () => {
+    const storage = new MemoryJobStorage();
+    const scheduler = new JobScheduler(storage, {
+      queue: 'timeout-job-queue',
+      maxConcurrency: 1,
+      pollIntervalMs: 5,
+      jobTimeoutMs: 20,
+    });
+    scheduler.register('hanging-job', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    });
+
+    await scheduler.enqueue('hanging-job', {}, { attempts: 1 });
+    scheduler.start();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await scheduler.stop();
+
+    const jobs = await storage.getJobs();
+    expect(jobs[0].status).toBe('failed');
+    expect(jobs[0].error).toContain('exceeded timeout of 20ms');
+  });
+
+  it('should execute Saga compensation jobs on failure', async () => {
+    const storage = new MemoryJobStorage();
+    const scheduler = new JobScheduler(storage, {
+      queue: 'saga-comp-queue',
+      maxConcurrency: 1,
+      pollIntervalMs: 5,
+    });
+    const saga = new SagaCoordinator(scheduler);
+
+    let step1Compensated = false;
+    saga.addStep(
+      'step1',
+      async () => 'res1',
+      async (ctx) => {
+        step1Compensated = true;
+      }
+    );
+    saga.addStep(
+      'step2',
+      async () => {
+        throw new Error('step2 failed');
+      },
+      async () => {}
+    );
+
+    const result = await saga.execute({ input: 123 });
+    expect(result.success).toBe(false);
+
+    // Run scheduler to execute the compensation job
+    scheduler.start();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await scheduler.stop();
+
+    expect(step1Compensated).toBe(true);
+  });
+
+  it('should support advanced cron patterns and steps, ranges, list combinations', async () => {
+    const storage = new MemoryJobStorage();
+    const scheduler = new JobScheduler(storage, {
+      queue: 'cron-patterns-queue',
+      maxConcurrency: 1,
+      pollIntervalMs: 5,
+    });
+
+    // Determine DOW dynamically from a local test Date to be timezone-independent
+    const testDate1 = new Date();
+    testDate1.setHours(12);
+    testDate1.setMinutes(10);
+    testDate1.setDate(10);
+    testDate1.setMonth(5); // June is 5 (0-indexed)
+    const dow1 = testDate1.getDay();
+
+    // Patterns to register
+    scheduler.schedule(`*/5 12 10 6 ${dow1}`, 'cron-complex-1', { a: 1 });
+    scheduler.schedule('15-30 * * * *', 'cron-complex-2', { b: 2 });
+    scheduler.schedule('invalid-cron-pattern', 'cron-complex-3', { c: 3 });
+
+    // Mock Date.now to return testDate1 time for Case 1
+    const dateSpy = vi.spyOn(Date, 'now');
+    dateSpy.mockReturnValue(testDate1.getTime());
+    await (scheduler as any).checkCronSchedules();
+
+    // Case 2: Match complex-2 (Minute=20)
+    const testDate2 = new Date();
+    testDate2.setMinutes(20);
+    dateSpy.mockReturnValue(testDate2.getTime());
+    await (scheduler as any).checkCronSchedules();
+
+    dateSpy.mockRestore();
+
+    const jobs = await storage.getJobs();
+    expect(jobs.some(j => j.name === 'cron-complex-1')).toBe(true);
+    expect(jobs.some(j => j.name === 'cron-complex-2')).toBe(true);
+    expect(jobs.some(j => j.name === 'cron-complex-3')).toBe(false);
+  });
+
+  it('should support different Redis client styles for clear and acquireNext', async () => {
+    // 1. node-redis v4 style with scanIterator for clear
+    const mockClientV4 = {
+      scanIterator: () => {},
+      smembers: async () => ['job-1'],
+      del: async () => {},
+    };
+    const storageV4 = new RedisJobStorage(mockClientV4);
+    await storageV4.clear();
+
+    // 2. Client with scan returning object format (node-redis v4 style scan)
+    let scanCalls = 0;
+    const mockClientObjectScan = {
+      smembers: async () => [],
+      scan: async () => {
+        scanCalls++;
+        if (scanCalls === 1) {
+          return { cursor: '10', keys: ['axiomify:queue:x'] };
+        }
+        return { cursor: '0', keys: ['axiomify:queue:y'] };
+      },
+      del: async () => {},
+    };
+    const storageObjectScan = new RedisJobStorage(mockClientObjectScan);
+    await storageObjectScan.clear();
+    expect(scanCalls).toBe(2);
+
+    // 3. Client where scan throws error
+    const mockClientThrowScan = {
+      smembers: async () => [],
+      scan: async () => {
+        throw new Error('Redis scan error');
+      },
+      del: async () => {},
+    };
+    const storageThrowScan = new RedisJobStorage(mockClientThrowScan);
+    await storageThrowScan.clear();
+
+    // 4. Redis acquireNext candidate sorting (by priority)
+    const mockRedisSorted = {
+      zrangebyscore: async () => ['job-high', 'job-low'],
+      mget: async () => [
+        JSON.stringify({ id: 'job-high', queue: 'q', name: 'n', runAt: Date.now() - 50, priority: 100, attempts: 0, maxAttempts: 3, status: 'pending' }),
+        JSON.stringify({ id: 'job-low', queue: 'q', name: 'n', runAt: Date.now() - 50, priority: 5, attempts: 0, maxAttempts: 3, status: 'pending' }),
+      ],
+      // node-redis style EVAL (EVALSHA does not exist)
+      eval: async (opts: any) => {
+        return JSON.stringify({ id: opts.keys[0].split(':').pop(), status: 'running' });
+      },
+      zrem: async () => {},
+    };
+    const storageSorted = new RedisJobStorage(mockRedisSorted);
+    const acquired = await storageSorted.acquireNext('q', 5000);
+    expect(acquired?.id).toBe('job-high');
+  });
+
+  it('should warn when overwriting a registered job handler', () => {
+    const storage = new MemoryJobStorage();
+    const scheduler = new JobScheduler(storage);
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    scheduler.register('job-dup', () => {});
+    scheduler.register('job-dup', () => {});
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[Axiomify Jobs] Handler "job-dup" is being overwritten.')
+    );
+    consoleSpy.mockRestore();
+  });
+
+  it('should purge completed and failed jobs in MemoryJobStorage', async () => {
+    const storage = new MemoryJobStorage();
+    const now = Date.now();
+    
+    const job1 = {
+      id: 'job-1',
+      queue: 'default',
+      name: 'n',
+      payload: {},
+      status: 'completed' as const,
+      priority: 10,
+      runAt: now - 5000,
+      attempts: 1,
+      maxAttempts: 3,
+    };
+    const job2 = {
+      id: 'job-2',
+      queue: 'default',
+      name: 'n',
+      payload: {},
+      status: 'failed' as const,
+      priority: 10,
+      runAt: now - 1000,
+      attempts: 3,
+      maxAttempts: 3,
+    };
+    const job3 = {
+      id: 'job-3',
+      queue: 'default',
+      name: 'n',
+      payload: {},
+      status: 'pending' as const,
+      priority: 10,
+      runAt: now,
+      attempts: 0,
+      maxAttempts: 3,
+    };
+    
+    await storage.save(job1);
+    await storage.save(job2);
+    await storage.save(job3);
+
+    // Purge older than 2000ms (job1 completed 5000ms ago, job2 failed 1000ms ago)
+    const removed1 = await storage.purge(2000);
+    expect(removed1).toBe(1); // only job1 removed
+
+    const jobs = await storage.getJobs();
+    expect(jobs.some(j => j.id === 'job-1')).toBe(false);
+    expect(jobs.some(j => j.id === 'job-2')).toBe(true);
+    expect(jobs.some(j => j.id === 'job-3')).toBe(true);
+
+    // Purge all remaining completed/failed
+    const removed2 = await storage.purge();
+    expect(removed2).toBe(1); // job2 removed
+
+    const remainingJobs = await storage.getJobs();
+    expect(remainingJobs.some(j => j.id === 'job-2')).toBe(false);
+    expect(remainingJobs.some(j => j.id === 'job-3')).toBe(true);
+  });
+
+  it('should support ioredis array scan format and other scan return types', async () => {
+    // 1. Array scanning style
+    let scanCallsArray = 0;
+    const mockClientArrayScan = {
+      smembers: async () => [],
+      scan: async () => {
+        scanCallsArray++;
+        if (scanCallsArray === 1) {
+          return ['10', ['axiomify:queue:x']];
+        }
+        return ['0', []];
+      },
+      del: async () => {},
+    };
+    const storageArrayScan = new RedisJobStorage(mockClientArrayScan);
+    await storageArrayScan.clear();
+    expect(scanCallsArray).toBe(2);
+
+    // 2. Scan returning unexpected string format
+    const mockClientStringScan = {
+      smembers: async () => [],
+      scan: async () => {
+        return 'unexpected-string';
+      },
+      del: async () => {},
+    };
+    const storageStringScan = new RedisJobStorage(mockClientStringScan);
+    await storageStringScan.clear();
+
+    // 3. ScanIterator + scan combined (to hit scanIterator check on line 438)
+    const mockClientCombined = {
+      scan: () => {},
+      scanIterator: () => {},
+      smembers: async () => [],
+      del: async () => {},
+    };
+    const storageCombined = new RedisJobStorage(mockClientCombined);
+    await storageCombined.clear();
+  });
+
+  it('should fallback to SREM, DEL, SADD, ZADD camelCase/UPPERCASE methods on Redis client', async () => {
+    const mockClientUpper = {
+      GET: vi.fn().mockResolvedValue(null),
+      SET: vi.fn().mockResolvedValue('OK'),
+      DEL: vi.fn().mockResolvedValue(1),
+      SADD: vi.fn().mockResolvedValue(1),
+      SREM: vi.fn().mockResolvedValue(1),
+      SMEMBERS: vi.fn().mockResolvedValue([]),
+      ZADD: vi.fn().mockResolvedValue(1),
+      ZREM: vi.fn().mockResolvedValue(1),
+      get: undefined,
+      set: undefined,
+      zadd: undefined,
+      sadd: undefined,
+      srem: undefined,
+      smembers: undefined,
+      del: undefined,
+      zrem: undefined,
+    };
+    const storageUpper = new RedisJobStorage(mockClientUpper);
+    const job = {
+      id: 'job-upper',
+      queue: 'upper-queue',
+      name: 'n',
+      payload: {},
+      status: 'pending' as const,
+      priority: 10,
+      runAt: Date.now(),
+      attempts: 0,
+      maxAttempts: 3,
+    };
+    await storageUpper.save(job);
+    expect(mockClientUpper.ZADD).toHaveBeenCalled();
+    expect(mockClientUpper.SADD).toHaveBeenCalled();
+
+    // Trigger complete to hit ZREM/DEL/SREM UPPERCASE fallbacks
+    // We mock GET to return the job first so complete() has job data
+    mockClientUpper.GET.mockResolvedValue(JSON.stringify(job));
+    await storageUpper.complete('job-upper');
+    expect(mockClientUpper.ZREM).toHaveBeenCalled();
+
+    // Call private srem and del directly to cover UPPERCASE fallbacks
+    await (storageUpper as any).srem('axiomify:jobs:all', 'job-upper');
+    await (storageUpper as any).del('axiomify:job:job-upper');
+    expect(mockClientUpper.SREM).toHaveBeenCalled();
+    expect(mockClientUpper.DEL).toHaveBeenCalled();
+  });
+
+  it('should continue to next candidate if Lua eval throws an error for one candidate', async () => {
+    const mockRedisEvalThrow = {
+      zrangebyscore: async () => ['job-fail', 'job-success'],
+      mget: async () => [
+        JSON.stringify({ id: 'job-fail', queue: 'q', name: 'n', runAt: Date.now() - 50, priority: 10, attempts: 0, maxAttempts: 3, status: 'pending' }),
+        JSON.stringify({ id: 'job-success', queue: 'q', name: 'n', runAt: Date.now() - 50, priority: 10, attempts: 0, maxAttempts: 3, status: 'pending' }),
+      ],
+      eval: async (script: any, numkeys?: number, ...args: string[]) => {
+        let lockKey = '';
+        if (typeof script === 'object' && script !== null) {
+          lockKey = script.keys[0] || '';
+        } else {
+          lockKey = args[0] || '';
+        }
+        if (lockKey.includes('job-fail')) {
+          throw new Error('Redis eval failed for job-fail');
+        }
+        return JSON.stringify({ id: 'job-success', status: 'running' });
+      },
+      zrem: async () => {},
+    };
+    const storageEvalThrow = new RedisJobStorage(mockRedisEvalThrow);
+    const acquiredThrow = await storageEvalThrow.acquireNext('q', 5000);
+    expect(acquiredThrow?.id).toBe('job-success');
+  });
+
+  it('should fail OTel require gracefully when @opentelemetry/api throws an error during resolve', async () => {
+    const Module = require('module');
+    const originalRequire = Module.prototype.require;
+    Module.prototype.require = function (...args: any[]) {
+      if (args[0] === '@opentelemetry/api') {
+        throw new Error('OTel module missing');
+      }
+      return originalRequire.apply(this, args);
+    };
+
+    try {
+      const storage = new MemoryJobStorage();
+      const scheduler = new JobScheduler(storage, {
+        queue: 'otel-fail-queue',
+        pollIntervalMs: 5,
+      });
+      scheduler.register('otel-job', () => {});
+      await scheduler.enqueue('otel-job', {});
+      scheduler.start();
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      await scheduler.stop();
+    } finally {
+      Module.prototype.require = originalRequire;
+    }
+  });
+
+  it('should handle NaN and invalid range/step inputs in matchesCronField', async () => {
+    const storage = new MemoryJobStorage();
+    const scheduler = new JobScheduler(storage, {
+      queue: 'cron-nan-queue',
+      maxConcurrency: 1,
+      pollIntervalMs: 5,
+    });
+
+    // Patterns with different invalid NaN combinations
+    scheduler.schedule('abc/5 * * * *', 'cron-nan-complex', { a: 1 });
+    scheduler.schedule('*/abc * * * *', 'cron-nan-complex', { b: 2 });
+    scheduler.schedule('*/-5 * * * *', 'cron-nan-complex', { c: 3 });
+    scheduler.schedule('10-abc * * * *', 'cron-nan-complex', { d: 4 });
+    scheduler.schedule('abc-20 * * * *', 'cron-nan-complex', { e: 5 });
+    scheduler.schedule('abc * * * *', 'cron-nan-complex', { f: 6 });
+    scheduler.schedule('10/5 12 * * *', 'cron-step-range', { g: 7 });
+
+    const dateSpy = vi.spyOn(Date, 'now');
+    
+    // Case 1: Minutes=10, Hours=12
+    const testDate1 = new Date();
+    testDate1.setMinutes(10);
+    testDate1.setHours(12);
+    dateSpy.mockReturnValue(testDate1.getTime());
+    await (scheduler as any).checkCronSchedules();
+
+    // Case 2: Minutes=12 (should not match 10/5 range step)
+    const testDate2 = new Date();
+    testDate2.setMinutes(12);
+    testDate2.setHours(12);
+    dateSpy.mockReturnValue(testDate2.getTime());
+    await (scheduler as any).checkCronSchedules();
+
+    dateSpy.mockRestore();
+
+    const jobs = await storage.getJobs();
+    expect(jobs.some(j => j.payload.g === 7)).toBe(true);
+    expect(jobs.some(j => j.payload.g === 7 && j.runAt === testDate2.getTime())).toBe(false);
   });
 });
 

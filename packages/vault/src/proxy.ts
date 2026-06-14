@@ -1,23 +1,64 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { AxiomifyVault } from './index';
+import type { AxiomifyVault } from './index';
 
 export const vaultContext = new AsyncLocalStorage<string>();
-(globalThis as any)._axiomifyVaultContext = vaultContext;
+if (!(globalThis as any)._axiomifyVaultContext) {
+  (globalThis as any)._axiomifyVaultContext = vaultContext;
+}
 
+/**
+ * Instance-scoped set of plaintext secrets used for redaction.
+ * Shared across vault instances via the stream sanitizer.
+ */
 const activePlaintextSecrets = new Set<string>();
+let _cachedRedactionRegex: RegExp | null = null;
 let isSanitizerSetup = false;
+
+/**
+ * Invalidates the cached redaction regex so it is rebuilt on next use.
+ */
+function invalidateRedactionRegex(): void {
+  _cachedRedactionRegex = null;
+}
+
+/**
+ * Builds or returns a cached regex that matches all registered secrets in a single pass.
+ */
+function getRedactionRegex(): RegExp | null {
+  if (_cachedRedactionRegex) return _cachedRedactionRegex;
+  if (activePlaintextSecrets.size === 0) return null;
+
+  const escaped = Array.from(activePlaintextSecrets)
+    .map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  _cachedRedactionRegex = new RegExp(escaped.join('|'), 'g');
+  return _cachedRedactionRegex;
+}
 
 /**
  * Registers a plaintext secret value so that it is redacted from all stdout/stderr streams.
  */
 export function registerSecretForRedaction(secret: string): void {
   if (secret && secret.length >= 4) {
-    activePlaintextSecrets.add(secret);
+    if (!activePlaintextSecrets.has(secret)) {
+      activePlaintextSecrets.add(secret);
+      invalidateRedactionRegex();
+    }
+  }
+}
+
+/**
+ * Unregisters a plaintext secret value from the redaction set.
+ * Used during secret rotation to remove the old value.
+ */
+export function unregisterSecretForRedaction(secret: string): void {
+  if (activePlaintextSecrets.delete(secret)) {
+    invalidateRedactionRegex();
   }
 }
 
 /**
  * Wraps stdout and stderr write streams to dynamically redact registered secrets.
+ * Uses a compiled regex for single-pass O(1) pattern matching instead of per-secret iteration.
  */
 export function setupStreamSanitizer(): void {
   if (isSanitizerSetup) return;
@@ -27,11 +68,11 @@ export function setupStreamSanitizer(): void {
   const originalStderrWrite = process.stderr.write;
 
   function redact(str: string): string {
-    let sanitized = str;
-    for (const secret of activePlaintextSecrets) {
-      sanitized = sanitized.replaceAll(secret, '••••••••');
-    }
-    return sanitized;
+    const regex = getRedactionRegex();
+    if (!regex) return str;
+    // Reset lastIndex for global regex reuse
+    regex.lastIndex = 0;
+    return str.replace(regex, '••••••••');
   }
 
   process.stdout.write = function (
@@ -63,7 +104,7 @@ export function setupStreamSanitizer(): void {
   } as any;
 }
 
-let originalEnv = (process as any).__originalEnv || process.env;
+const originalEnv = (process as any).__originalEnv || process.env;
 if (!(process as any).__originalEnv) {
   (process as any).__originalEnv = originalEnv;
 }
@@ -89,7 +130,6 @@ export function setupProcessEnvProxy(vault: AxiomifyVault): void {
         return Reflect.get(target, prop, receiver);
       }
 
-      // Check if it's a sensitive vault key
       if (vault.hasSecret(prop)) {
         // Enforce default policy check or return masked value if requested generically
         // To allow direct JIT retrieval under target module rules:
@@ -105,17 +145,17 @@ export function setupProcessEnvProxy(vault: AxiomifyVault): void {
       return Reflect.get(currentEnv, prop, receiver);
     },
 
-    set(target, prop, value, receiver) {
+    set(target, prop, value) {
       if (typeof prop === 'string' && vault.hasSecret(prop)) {
         vault.rotateSecret(prop, String(value));
       }
-      return Reflect.set(target, prop, value, receiver);
+      return Reflect.set(target, prop, value);
     },
 
     deleteProperty(target, prop) {
       if (typeof prop === 'string' && vault.hasSecret(prop)) {
-        (vault as any).secretsCache.delete(prop);
-        (vault as any).encryptedSecrets.delete(prop);
+        // Use public API instead of reaching into private fields
+        vault.removeSecret(prop);
       }
       return Reflect.deleteProperty(target, prop);
     },
@@ -141,6 +181,8 @@ export function getCallerModuleName(): string {
   const store = vaultContext.getStore();
   if (store) return store;
 
+  // Best-effort fallback: parse stack trace for module context.
+  // This is fragile and depends on V8 stack format. AsyncLocalStorage is the primary mechanism.
   const stack = new Error().stack ?? '';
   const lines = stack.split('\n');
   

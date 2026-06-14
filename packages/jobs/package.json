@@ -21,9 +21,6 @@
   "peerDependencies": {
     "@axiomify/core": "*"
   },
-  "dependencies": {
-    "picocolors": "^1.1.1"
-  },
   "devDependencies": {
     "@axiomify/core": "*",
     "tsup": "^8.5.1",

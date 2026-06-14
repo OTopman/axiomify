@@ -217,19 +217,29 @@ export function setupTelemetry(app: Axiomify) {
             // ignore
           }
 
-          return api.context.with(api.trace.setSpan(api.context.active(), span), async () => {
+          return api.context.with(api.trace.setSpan(api.context.active(), span), () => {
             try {
               const ret = original.apply(this, args);
               if (ret instanceof Promise) {
-                return await ret;
+                return ret
+                  .then((val) => {
+                    span.end();
+                    return val;
+                  })
+                  .catch((err: any) => {
+                    span.recordException(err);
+                    span.setStatus({ code: api.SpanStatusCode.ERROR, message: err.message });
+                    span.end();
+                    throw err;
+                  });
               }
+              span.end();
               return ret;
             } catch (err: any) {
               span.recordException(err);
               span.setStatus({ code: api.SpanStatusCode.ERROR, message: err.message });
-              throw err;
-            } finally {
               span.end();
+              throw err;
             }
           });
         };

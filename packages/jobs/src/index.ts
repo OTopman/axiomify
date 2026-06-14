@@ -12,6 +12,10 @@ export interface JobsModuleOptions {
   maxConcurrency?: number;
   pollIntervalMs?: number;
   lockDurationMs?: number;
+  /** Maximum time (ms) a single job handler is allowed to run. Default: 30000. */
+  jobTimeoutMs?: number;
+  /** Maximum time (ms) to wait for active workers to drain during stop(). Default: 30000. */
+  drainTimeoutMs?: number;
 }
 
 /**
@@ -35,6 +39,8 @@ export const jobsModule = (options: JobsModuleOptions = {}): AppModule => ({
       pollIntervalMs: options.pollIntervalMs ?? 100,
       lockDurationMs: options.lockDurationMs ?? 30000,
       defaultRetryDelayMs: 5000,
+      jobTimeoutMs: options.jobTimeoutMs ?? 30000,
+      drainTimeoutMs: options.drainTimeoutMs ?? 30000,
     });
 
     ctx.provide('jobs', scheduler);

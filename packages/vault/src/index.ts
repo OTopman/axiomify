@@ -4,9 +4,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { decrypt, encrypt, resolveKEK, type EncryptedEnvelope } from './crypto';
 import { SecretPolicyEngine, type VaultPolicy } from './policy';
-import { registerSecretForRedaction, setupProcessEnvProxy, setupStreamSanitizer } from './proxy';
+import { registerSecretForRedaction, unregisterSecretForRedaction, setupProcessEnvProxy, setupStreamSanitizer } from './proxy';
 
 export interface VaultMetadata {
+  version: number;
   wrappedDek: EncryptedEnvelope;
   secrets: Record<string, EncryptedEnvelope>;
   sourceChecksum?: string;
@@ -51,6 +52,9 @@ export interface VaultOptions {
   kek?: Buffer | string;
 }
 
+/** Current vault metadata format version. */
+const VAULT_VERSION = 2;
+
 export class AxiomifyVault {
   private dek!: Buffer;
   private secretsCache = new Map<string, string>();
@@ -63,6 +67,8 @@ export class AxiomifyVault {
   private schema: any;
   private envFiles: string | string[] | undefined;
   private optionsKek: Buffer | string | undefined;
+  /** Cached resolved KEK — avoids re-reading filesystem on every setSecret */
+  private kek!: Buffer;
 
   constructor(options: VaultOptions = {}) {
     this.projectRoot = options.projectRoot ?? process.cwd();
@@ -94,8 +100,8 @@ export class AxiomifyVault {
       mkdirSync(parentDir, { recursive: true });
     }
 
-    // 1. Resolve Master Key (KEK)
-    const kek = resolveKEK(this.projectRoot, this.optionsKek);
+    // 1. Resolve and cache Master Key (KEK)
+    this.kek = resolveKEK(this.projectRoot, this.optionsKek);
 
     // 2. Load or Create vault metadata envelope
     if (existsSync(this.vaultPath)) {
@@ -104,8 +110,12 @@ export class AxiomifyVault {
         const metadata: VaultMetadata = JSON.parse(fileContent);
 
         // Decrypt DEK using KEK
-        const dekHex = decrypt(metadata.wrappedDek, kek);
-        this.dek = Buffer.from(dekHex, 'hex');
+        const dekEncoded = decrypt(metadata.wrappedDek, this.kek);
+        if (dekEncoded.length === 64 && /^[0-9a-fA-F]{64}$/.test(dekEncoded)) {
+          this.dek = Buffer.from(dekEncoded, 'hex');
+        } else {
+          this.dek = Buffer.from(dekEncoded, 'base64');
+        }
 
         // Load encrypted secrets map
         for (const [key, env] of Object.entries(metadata.secrets)) {
@@ -188,7 +198,8 @@ export class AxiomifyVault {
             }
 
             metadata.sourceChecksum = currentChecksum;
-            writeFileSync(this.vaultPath, JSON.stringify(metadata, null, 2), 'utf8');
+            metadata.version = VAULT_VERSION;
+            this.writeVaultFile(metadata);
           }
         }
       } catch (err: any) {
@@ -198,9 +209,10 @@ export class AxiomifyVault {
       // Create a new Vault
       this.dek = randomBytes(32);
 
-      // Wrap DEK with KEK
-      const wrappedDek = encrypt(this.dek.toString('hex'), kek);
+      // Wrap DEK with KEK using base64 encoding (v2)
+      const wrappedDek = encrypt(this.dek.toString('base64'), this.kek);
       const metadata: VaultMetadata = {
+        version: VAULT_VERSION,
         wrappedDek,
         secrets: {},
       };
@@ -249,7 +261,7 @@ export class AxiomifyVault {
       }
 
       metadata.sourceChecksum = calculateConfigChecksum(sourceEnv, targetKeys);
-      writeFileSync(this.vaultPath, JSON.stringify(metadata, null, 2), 'utf8');
+      this.writeVaultFile(metadata);
     }
 
     // 3. Inject process.env Proxy and wrap standard streams
@@ -261,6 +273,13 @@ export class AxiomifyVault {
   }
 
   /**
+   * Writes vault metadata to the vault file with restrictive permissions (0600).
+   */
+  private writeVaultFile(metadata: VaultMetadata): void {
+    writeFileSync(this.vaultPath, JSON.stringify(metadata, null, 2), { encoding: 'utf8', mode: 0o600 });
+  }
+
+  /**
    * Pre-decrypts and validates env against schema.
    */
   private validateSchema(): void {
@@ -269,8 +288,9 @@ export class AxiomifyVault {
       try {
         const decrypted = this.resolveSecretJIT(key);
         envObj[key] = decrypted;
-      } catch (err) {
-        // Ignore errors if already sealed
+      } catch (err: any) {
+        // Warn on decrypt errors so developers can see which keys failed
+        console.warn(`[Axiomify Vault] Warning: Failed to decrypt secret "${key}" during schema validation: ${err.message}`);
       }
     }
 
@@ -335,7 +355,8 @@ export class AxiomifyVault {
   }
 
   /**
-   * Seals the vault, erasing the Data Encryption Key (DEK) from memory.
+   * Seals the vault, erasing the Data Encryption Key (DEK) from memory
+   * and clearing the plaintext secrets cache.
    */
   public seal(): void {
     if (this.sealed) return;
@@ -345,6 +366,9 @@ export class AxiomifyVault {
       this.dek.fill(0);
       this.dek = undefined as any;
     }
+    // Clear plaintext secrets from cache (V8 strings can't be zero-wiped,
+    // but removing references allows GC to collect them)
+    this.secretsCache.clear();
   }
 
   /**
@@ -378,40 +402,88 @@ export class AxiomifyVault {
     if (this.sealed) {
       throw new Error(`[Axiomify Vault] Access Denied: Vault is sealed. Cannot add new secret "${key}".`);
     }
-    const kek = resolveKEK(this.projectRoot, this.optionsKek);
     const envelope = encrypt(value, this.dek);
     this.encryptedSecrets.set(key, envelope);
 
-    // Save to file
-    const wrappedDek = encrypt(this.dek.toString('hex'), kek);
+    // Save to file using cached KEK
+    const wrappedDek = encrypt(this.dek.toString('base64'), this.kek);
     const secretsObj: Record<string, EncryptedEnvelope> = {};
     for (const [k, ev] of this.encryptedSecrets.entries()) {
       secretsObj[k] = ev;
     }
 
     const metadata: VaultMetadata = {
+      version: VAULT_VERSION,
       wrappedDek,
       secrets: secretsObj,
     };
 
-    writeFileSync(this.vaultPath, JSON.stringify(metadata, null, 2), 'utf8');
+    this.writeVaultFile(metadata);
 
     // Register secret for stdout sanitization
     registerSecretForRedaction(value);
   }
 
   /**
-   * Dynamically updates/rotates a secret in memory.
-   * This updates the active cache and sanitizers, and can be called at runtime post-bootstrap (when sealed).
+   * Dynamically updates/rotates a secret in memory and persists to vault if unsealed.
+   * Removes the old secret value from the redaction set before adding the new one.
    */
   public rotateSecret(key: string, value: string): void {
+    // Remove old value from redaction set
+    const oldValue = this.secretsCache.get(key);
+    if (oldValue) {
+      unregisterSecretForRedaction(oldValue);
+    }
+
     this.secretsCache.set(key, value);
     registerSecretForRedaction(value);
+
+    // Persist to vault file if not sealed (DEK is still available)
+    if (!this.sealed && this.dek) {
+      try {
+        const envelope = encrypt(value, this.dek);
+        this.encryptedSecrets.set(key, envelope);
+
+        const wrappedDek = encrypt(this.dek.toString('base64'), this.kek);
+        const secretsObj: Record<string, EncryptedEnvelope> = {};
+        for (const [k, ev] of this.encryptedSecrets.entries()) {
+          secretsObj[k] = ev;
+        }
+        const metadata: VaultMetadata = {
+          version: VAULT_VERSION,
+          wrappedDek,
+          secrets: secretsObj,
+        };
+        this.writeVaultFile(metadata);
+      } catch {
+        // Non-critical: rotation still works in memory
+      }
+    }
+  }
+
+  /**
+   * Removes a secret from the vault's cache, encrypted secrets map, and redaction set.
+   * Used by the process.env proxy deleteProperty trap.
+   */
+  public removeSecret(key: string): void {
+    const oldValue = this.secretsCache.get(key);
+    if (oldValue) {
+      unregisterSecretForRedaction(oldValue);
+    }
+    this.secretsCache.delete(key);
+    this.encryptedSecrets.delete(key);
   }
 }
 
 /**
- * Simple .env file parser.
+ * Enhanced .env file parser.
+ * Supports:
+ * - `export` prefix stripping
+ * - Inline comment stripping (outside quotes)
+ * - Basic escape sequences (\n, \\) within double-quoted values
+ * - Single and double quoted values
+ *
+ * Does NOT support multiline values.
  */
 export function parseEnvFile(filePath: string): Record<string, string> {
   if (!existsSync(filePath)) return {};
@@ -419,15 +491,37 @@ export function parseEnvFile(filePath: string): Record<string, string> {
   const result: Record<string, string> = {};
   const lines = content.split(/\r?\n/);
   for (const line of lines) {
-    const trimmed = line.trim();
+    let trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
+
+    // Strip leading 'export ' prefix
+    if (trimmed.startsWith('export ')) {
+      trimmed = trimmed.substring(7).trim();
+    }
+
     const eqIdx = trimmed.indexOf('=');
     if (eqIdx > 0) {
       const key = trimmed.substring(0, eqIdx).trim();
       let val = trimmed.substring(eqIdx + 1).trim();
-      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+
+      if (val.startsWith('"') && val.endsWith('"')) {
+        // Double-quoted: process escape sequences
         val = val.slice(1, -1);
+        val = val.replace(/\\n/g, '\n')
+                 .replace(/\\t/g, '\t')
+                 .replace(/\\\\/g, '\\')
+                 .replace(/\\"/g, '"');
+      } else if (val.startsWith("'") && val.endsWith("'")) {
+        // Single-quoted: literal value, no escape processing
+        val = val.slice(1, -1);
+      } else {
+        // Unquoted: strip inline comments (# preceded by whitespace)
+        const commentIdx = val.search(/\s+#/);
+        if (commentIdx > 0) {
+          val = val.substring(0, commentIdx).trim();
+        }
       }
+
       result[key] = val;
     }
   }

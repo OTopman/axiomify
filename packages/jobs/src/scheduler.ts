@@ -10,6 +10,18 @@ export interface EnqueueOptions {
   retryDelayMs?: number;
 }
 
+export interface SchedulerOptions {
+  queue: string;
+  maxConcurrency: number;
+  pollIntervalMs: number;
+  lockDurationMs: number;
+  defaultRetryDelayMs: number;
+  /** Maximum time (ms) a single job handler is allowed to run before being timed out. Default: 30000. */
+  jobTimeoutMs: number;
+  /** Maximum time (ms) to wait for active workers to drain during stop(). Default: 30000. */
+  drainTimeoutMs: number;
+}
+
 export interface SagaStep {
   name: string;
   run: (context: any) => Promise<any>;
@@ -30,6 +42,72 @@ function getTracerApi(): any | null {
   }
 }
 
+/**
+ * Lightweight cron expression parser.
+ * Supports 5-field cron: minute hour day-of-month month day-of-week
+ * Field syntax: * | N | N-M | N,M,... | * /N (step)
+ */
+function matchesCronField(field: string, value: number, min: number, max: number): boolean {
+  // Wildcard
+  if (field === '*') return true;
+
+  // Step: */N or N/M
+  if (field.includes('/')) {
+    const [rangeStr, stepStr] = field.split('/');
+    const step = parseInt(stepStr, 10);
+    if (isNaN(step) || step <= 0) return false;
+    if (rangeStr === '*') {
+      return value % step === 0;
+    }
+    const start = parseInt(rangeStr, 10);
+    if (isNaN(start)) return false;
+    return value >= start && (value - start) % step === 0;
+  }
+
+  // List: N,M,...
+  if (field.includes(',')) {
+    const items = field.split(',').map((s) => s.trim());
+    return items.some((item) => matchesCronField(item, value, min, max));
+  }
+
+  // Range: N-M
+  if (field.includes('-')) {
+    const [startStr, endStr] = field.split('-');
+    const start = parseInt(startStr, 10);
+    const end = parseInt(endStr, 10);
+    if (isNaN(start) || isNaN(end)) return false;
+    return value >= start && value <= end;
+  }
+
+  // Exact: N
+  const exact = parseInt(field, 10);
+  if (isNaN(exact)) return false;
+  return value === exact;
+}
+
+/**
+ * Checks whether the given date matches a 5-field cron expression.
+ */
+function matchesCronExpression(pattern: string, date: Date): boolean {
+  const fields = pattern.trim().split(/\s+/);
+  if (fields.length !== 5) return false;
+
+  const [minuteF, hourF, domF, monthF, dowF] = fields;
+  const minute = date.getMinutes();
+  const hour = date.getHours();
+  const dom = date.getDate();
+  const month = date.getMonth() + 1; // 1-12
+  const dow = date.getDay(); // 0=Sun, 6=Sat
+
+  return (
+    matchesCronField(minuteF, minute, 0, 59) &&
+    matchesCronField(hourF, hour, 0, 23) &&
+    matchesCronField(domF, dom, 1, 31) &&
+    matchesCronField(monthF, month, 1, 12) &&
+    matchesCronField(dowF, dow, 0, 6)
+  );
+}
+
 export class JobScheduler {
   private handlers = new Map<string, JobHandler>();
   private activeWorkers = new Set<string>();
@@ -41,25 +119,36 @@ export class JobScheduler {
 
   constructor(
     private storage: JobStorage,
-    private options: {
-      queue: string;
-      maxConcurrency: number;
-      pollIntervalMs: number;
-      lockDurationMs: number;
-      defaultRetryDelayMs: number;
-    } = {
-      queue: 'default',
-      maxConcurrency: 5,
-      pollIntervalMs: 100,
-      lockDurationMs: 30000,
-      defaultRetryDelayMs: 5000,
+    opts: Partial<SchedulerOptions> = {}
+  ) {
+    this.options = {
+      queue: opts.queue ?? 'default',
+      maxConcurrency: opts.maxConcurrency ?? 5,
+      pollIntervalMs: opts.pollIntervalMs ?? 100,
+      lockDurationMs: opts.lockDurationMs ?? 30000,
+      defaultRetryDelayMs: opts.defaultRetryDelayMs ?? 5000,
+      jobTimeoutMs: opts.jobTimeoutMs ?? 30000,
+      drainTimeoutMs: opts.drainTimeoutMs ?? 30000,
+    };
+    // Input validation
+    if (this.options.maxConcurrency <= 0) {
+      throw new Error('[Axiomify Jobs] maxConcurrency must be greater than 0.');
     }
-  ) {}
+    if (this.options.pollIntervalMs <= 0) {
+      throw new Error('[Axiomify Jobs] pollIntervalMs must be greater than 0.');
+    }
+  }
+
+  private options: SchedulerOptions;
 
   /**
    * Register a job handler.
+   * Warns if a handler with the same name is being overwritten.
    */
   public register(name: string, handler: JobHandler): this {
+    if (this.handlers.has(name)) {
+      console.warn(`[Axiomify Jobs] Handler "${name}" is being overwritten.`);
+    }
     this.handlers.set(name, handler);
     return this;
   }
@@ -68,6 +157,10 @@ export class JobScheduler {
    * Enqueue a new job.
    */
   public async enqueue(name: string, payload: any, opts: EnqueueOptions = {}): Promise<string> {
+    if (!name || typeof name !== 'string') {
+      throw new Error('[Axiomify Jobs] Job name must be a non-empty string.');
+    }
+
     const id = randomUUID();
 
     // Trace context capture using OpenTelemetry API if available
@@ -95,6 +188,9 @@ export class JobScheduler {
 
   /**
    * Registers a cron schedule.
+   * Supports either:
+   * - A numeric string (interval in seconds, e.g. "60")
+   * - A standard 5-field cron expression (e.g. "* /5 * * * *")
    */
   public schedule(pattern: string, name: string, payload: any = {}): void {
     this.cronTasks.push({ pattern, name, payload });
@@ -111,14 +207,23 @@ export class JobScheduler {
 
   /**
    * Stops the worker processing loop.
+   * Waits up to `drainTimeoutMs` for active workers to complete.
    */
   public async stop(): Promise<void> {
     this.running = false;
     if (this.timer) {
       clearTimeout(this.timer);
     }
-    // Wait for active workers to complete
+    // Wait for active workers to complete, with a deadline
+    const deadline = Date.now() + this.options.drainTimeoutMs;
     while (this.activeWorkers.size > 0) {
+      if (Date.now() >= deadline) {
+        console.warn(
+          `[Axiomify Jobs] Drain timeout reached (${this.options.drainTimeoutMs}ms). ` +
+          `${this.activeWorkers.size} worker(s) still active. Force-stopping.`
+        );
+        break;
+      }
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
@@ -126,7 +231,9 @@ export class JobScheduler {
   private tick(): void {
     if (!this.running) return;
 
-    this.checkCronSchedules().catch(() => {});
+    this.checkCronSchedules().catch((err) => {
+      console.error('[Axiomify Jobs] Cron schedule error:', err);
+    });
 
     if (this.activeWorkers.size >= this.options.maxConcurrency) {
       // Re-schedule when concurrency slots open
@@ -142,7 +249,8 @@ export class JobScheduler {
           this.executeJob(job)
             .finally(() => {
               this.activeWorkers.delete(workerId);
-              process.nextTick(() => this.tick());
+              // Use setImmediate to yield to I/O between job picks, preventing event loop starvation
+              setImmediate(() => this.tick());
             });
         } else {
           this.timer = setTimeout(() => this.tick(), this.options.pollIntervalMs);
@@ -160,6 +268,8 @@ export class JobScheduler {
       await this.storage.fail(job.id, `No handler registered for job "${job.name}"`);
       return;
     }
+
+    const timeoutMs = this.options.jobTimeoutMs;
 
     const api = getTracerApi();
     if (api) {
@@ -180,8 +290,7 @@ export class JobScheduler {
 
       await api.context.with(api.trace.setSpan(parentContext, span), async () => {
         try {
-          const res = handler(job.payload);
-          if (res instanceof Promise) await res;
+          await this.runWithTimeout(handler, job.payload, job.name, timeoutMs);
           await this.storage.complete(job.id);
           span.setStatus({ code: api.SpanStatusCode.OK });
         } catch (err: any) {
@@ -195,8 +304,7 @@ export class JobScheduler {
       });
     } else {
       try {
-        const res = handler(job.payload);
-        if (res instanceof Promise) await res;
+        await this.runWithTimeout(handler, job.payload, job.name, timeoutMs);
         await this.storage.complete(job.id);
       } catch (err: any) {
         const errMsg = err.message || String(err);
@@ -205,20 +313,54 @@ export class JobScheduler {
     }
   }
 
+  /**
+   * Runs a handler with a timeout. If the handler exceeds `timeoutMs`,
+   * the promise rejects with a timeout error.
+   */
+  private async runWithTimeout(handler: JobHandler, payload: any, jobName: string, timeoutMs: number): Promise<void> {
+    const res = handler(payload);
+    if (!(res instanceof Promise)) return; // Synchronous handler completed
+
+    let timeoutHandle: NodeJS.Timeout;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => {
+        reject(new Error(`[Axiomify Jobs] Job "${jobName}" exceeded timeout of ${timeoutMs}ms.`));
+      }, timeoutMs);
+    });
+
+    try {
+      await Promise.race([res, timeoutPromise]);
+    } finally {
+      clearTimeout(timeoutHandle!);
+    }
+  }
+
+  /**
+   * Checks cron schedules and enqueues matching tasks.
+   * Supports both numeric intervals (seconds) and standard 5-field cron expressions.
+   */
   private async checkCronSchedules(): Promise<void> {
     const now = Date.now();
+    const currentDate = new Date(now);
+
     for (const task of this.cronTasks) {
+      // Check if the pattern is a simple numeric interval (seconds)
       const intervalSec = parseInt(task.pattern, 10);
-      if (!isNaN(intervalSec)) {
+      if (!isNaN(intervalSec) && String(intervalSec) === task.pattern.trim()) {
+        // Numeric-only pattern: treat as interval in seconds
         if (!task.lastRun || now - task.lastRun >= intervalSec * 1000) {
           task.lastRun = now;
           await this.enqueue(task.name, task.payload);
         }
       } else {
-        const oneMinute = 60000;
-        if (!task.lastRun || now - task.lastRun >= oneMinute) {
-          task.lastRun = now;
-          await this.enqueue(task.name, task.payload);
+        // Standard 5-field cron expression
+        if (matchesCronExpression(task.pattern, currentDate)) {
+          // Only fire once per matching minute
+          const currentMinuteStart = now - (now % 60000);
+          if (!task.lastRun || task.lastRun < currentMinuteStart) {
+            task.lastRun = now;
+            await this.enqueue(task.name, task.payload);
+          }
         }
       }
     }
@@ -227,6 +369,7 @@ export class JobScheduler {
 
 /**
  * Saga Coordinator for complex distributed flows.
+ * Compensation functions are auto-registered as job handlers when steps are added.
  */
 export class SagaCoordinator {
   private steps: SagaStep[] = [];
@@ -235,11 +378,19 @@ export class SagaCoordinator {
 
   public addStep(name: string, run: (ctx: any) => Promise<any>, compensate: (ctx: any) => Promise<any>): this {
     this.steps.push({ name, run, compensate });
+
+    // Auto-register compensation handler so that `compensate:X` jobs have handlers
+    const compensateName = `compensate:${name}`;
+    this.scheduler.register(compensateName, async (payload: any) => {
+      await compensate(payload.context);
+    });
+
     return this;
   }
 
   /**
    * Execute Saga workflow with forward run and compensation rollbacks.
+   * On failure, enqueues compensation jobs in reverse order for all completed steps.
    */
   public async execute(initialContext: any): Promise<{ success: boolean; context: any; error?: string }> {
     const executedSteps: { step: SagaStep; result: any }[] = [];

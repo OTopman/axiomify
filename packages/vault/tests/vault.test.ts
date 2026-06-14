@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { Axiomify, z } from '@axiomify/core';
 import { AxiomifyVault, vaultModule } from '../src/index';
 import { restoreProcessEnv, getCallerModuleName } from '../src/proxy';
+import { encrypt, decrypt, resolveKEK } from '../src/crypto';
 
 describe('Axiomify Vault', () => {
   const testRoot = join(__dirname, 'test-vault-env');
@@ -118,10 +119,10 @@ describe('Axiomify Vault', () => {
     // Build the application, which triggers sealing the vault
     app.build();
 
-    // Already cached secrets should still be readable
-    expect(vaultInstance.resolveSecret('DATABASE_URL')).toBe('postgresql://localhost:5432/test');
+    // After seal, ALL secrets should be inaccessible (cache is cleared for security)
+    expect(() => vaultInstance.resolveSecret('DATABASE_URL')).toThrow('Vault is sealed');
 
-    // Trying to resolve an uncached/new secret post-bootstrap must throw an Access Denied error
+    // Trying to resolve any secret post-seal must throw an Access Denied error
     expect(() => vaultInstance.resolveSecret('LATE_KEY')).toThrow('Vault is sealed');
   });
 
@@ -499,6 +500,9 @@ describe('Axiomify Vault', () => {
   });
 
   it('should allow Symbol property access on process.env Proxy', () => {
+    new AxiomifyVault({
+      projectRoot: testRoot,
+    });
     const symbolKey = Symbol('test-symbol');
     expect((process.env as any)[symbolKey]).toBeUndefined();
   });
@@ -565,6 +569,95 @@ describe('Axiomify Vault', () => {
       }
     });
     expect(vault.isAllowed('billing', 'ANY_KEY_AT_ALL')).toBe(true);
+  });
+
+  it('should throw validation errors on invalid KEK size or type', () => {
+    // 1. Not a buffer
+    expect(() => encrypt('test', 'not-a-buffer' as any)).toThrow('Expected a Buffer');
+    expect(() => decrypt({ ciphertext: 'a', iv: 'b', tag: 'c' }, 'not-a-buffer' as any)).toThrow('Expected a Buffer');
+
+    // 2. Wrong buffer size
+    const shortBuffer = Buffer.alloc(16);
+    expect(() => encrypt('test', shortBuffer)).toThrow('must be exactly 32 bytes');
+    expect(() => decrypt({ ciphertext: 'a', iv: 'b', tag: 'c' }, shortBuffer)).toThrow('must be exactly 32 bytes');
+
+    // 3. Invalid key string format / decode key failures
+    expect(() => resolveKEK(testRoot, 'invalid-hex-or-base64-length-key')).toThrow('Unable to decode key string');
+    
+    // 4. Custom options kek buffer size validation
+    expect(() => resolveKEK(testRoot, shortBuffer)).toThrow('must be exactly 32 bytes');
+  });
+
+  it('should validate loaded local key size and format', () => {
+    const fs = require('node:fs');
+    fs.mkdirSync(join(testRoot, '.axiomify'), { recursive: true });
+    // Write an invalid 16-character hex KEK file
+    fs.writeFileSync(join(testRoot, '.axiomify', 'vault.key'), '0102030405060708', 'utf8');
+
+    expect(() => new AxiomifyVault({ projectRoot: testRoot })).toThrow('must be exactly 32 bytes');
+  });
+
+  it('should cover all process.stdout and process.stderr write branches', () => {
+    new AxiomifyVault({
+      projectRoot: testRoot,
+    });
+
+    const originalStdoutWrite = process.stdout.write;
+    const originalStderrWrite = process.stderr.write;
+    const stdoutWriteSpy = vi.fn().mockReturnValue(true);
+    const stderrWriteSpy = vi.fn().mockReturnValue(true);
+    process.stdout.write = stdoutWriteSpy as any;
+    process.stderr.write = stderrWriteSpy as any;
+
+    try {
+      // 1. Buffer chunk
+      process.stdout.write(Buffer.from('hello buffer') as any);
+      process.stderr.write(Buffer.from('error buffer') as any);
+
+      // 2. Non-string, non-buffer chunk
+      process.stdout.write(123 as any);
+      process.stderr.write(true as any);
+
+      // 3. Callback with encoding
+      const cb = () => {};
+      process.stdout.write('hello utf8' as any, 'utf8', cb);
+      process.stderr.write('error utf8' as any, 'utf8', cb);
+    } finally {
+      process.stdout.write = originalStdoutWrite;
+      process.stderr.write = originalStderrWrite;
+    }
+  });
+
+  it('should handle stack trace parsing edge cases when stack is missing or weird', () => {
+    const OriginalError = globalThis.Error;
+    
+    // 1. Missing stack
+    const MockErrorNoStack = class extends OriginalError {
+      constructor() {
+        super();
+        this.stack = undefined;
+      }
+    };
+    globalThis.Error = MockErrorNoStack as any;
+    try {
+      expect(getCallerModuleName()).toBe('default');
+    } finally {
+      globalThis.Error = OriginalError;
+    }
+
+    // 2. Weird stack format (AppModule present but no 'at ')
+    const MockErrorWeirdStack = class extends OriginalError {
+      constructor() {
+        super();
+        this.stack = 'Error\n    AppModule.register (index.js:5:10)';
+      }
+    };
+    globalThis.Error = MockErrorWeirdStack as any;
+    try {
+      expect(getCallerModuleName()).toBe('default');
+    } finally {
+      globalThis.Error = OriginalError;
+    }
   });
 });
 
