@@ -1868,5 +1868,45 @@ describe('Axiomify Distributed Jobs', () => {
     expect(jobs[0].lockExpiresAt).toBeDefined();
     expect(jobs[0].lockedAt).toBe(jobs[0].lockExpiresAt);
   });
+
+  it('should test all paths of acquireCronLock in RedisJobStorage', async () => {
+    // 1. Success via standard positional arguments (SET key 1 NX PX ttlMs)
+    const mockClient1 = {
+      set: vi.fn().mockResolvedValue('OK')
+    };
+    const storage1 = new RedisJobStorage(mockClient1 as any);
+    const res1 = await storage1.acquireCronLock('key1', 5000);
+    expect(res1).toBe(true);
+    expect(mockClient1.set).toHaveBeenCalledWith('key1', '1', 'NX', 'PX', 5000);
+
+    // 2. Success via object arguments fallback
+    const mockClient2 = {
+      set: vi.fn().mockImplementation((key, val, nx, px, ttl) => {
+        if (typeof nx === 'string') throw new Error('not supported');
+        return 'OK';
+      })
+    };
+    const storage2 = new RedisJobStorage(mockClient2 as any);
+    const res2 = await storage2.acquireCronLock('key2', 5000);
+    expect(res2).toBe(true);
+    expect(mockClient2.set).toHaveBeenLastCalledWith('key2', '1', { NX: true, PX: 5000 });
+
+    // 3. Complete failure (throws on both)
+    const mockClient3 = {
+      set: vi.fn().mockRejectedValue(new Error('fail'))
+    };
+    const storage3 = new RedisJobStorage(mockClient3 as any);
+    const res3 = await storage3.acquireCronLock('key3', 5000);
+    expect(res3).toBe(false);
+
+    // 4. Client with uppercase SET
+    const mockClient4 = {
+      SET: vi.fn().mockResolvedValue('OK')
+    };
+    const storage4 = new RedisJobStorage(mockClient4 as any);
+    const res4 = await storage4.acquireCronLock('key4', 5000);
+    expect(res4).toBe(true);
+    expect(mockClient4.SET).toHaveBeenCalledWith('key4', '1', 'NX', 'PX', 5000);
+  });
 });
 

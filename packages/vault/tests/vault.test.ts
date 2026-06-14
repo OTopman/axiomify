@@ -84,6 +84,17 @@ describe('Axiomify Vault', () => {
     // Wildcard matching
     expect(vault.isAllowed('any-other', 'PUBLIC_VAR')).toBe(true);
     expect(vault.isAllowed('any-other', 'DATABASE_URL')).toBe(false);
+
+    // No direct rule and no wildcard rule
+    const vault2 = new AxiomifyVault({
+      projectRoot: testRoot,
+      policy: {
+        modules: {
+          'users': { allow: ['DATABASE_URL'] }
+        }
+      }
+    });
+    expect(vault2.isAllowed('billing', 'DATABASE_URL')).toBe(false);
   });
 
   it('should register within the Axiomify core DI container via vaultModule', async () => {
