@@ -16,6 +16,8 @@ export interface JobsModuleOptions {
   jobTimeoutMs?: number;
   /** Maximum time (ms) to wait for active workers to drain during stop(). Default: 30000. */
   drainTimeoutMs?: number;
+  /** Queue to route permanently failed jobs to. */
+  dlqQueue?: string;
 }
 
 /**
@@ -41,6 +43,7 @@ export const jobsModule = (options: JobsModuleOptions = {}): AppModule => ({
       defaultRetryDelayMs: 5000,
       jobTimeoutMs: options.jobTimeoutMs ?? 30000,
       drainTimeoutMs: options.drainTimeoutMs ?? 30000,
+      dlqQueue: options.dlqQueue,
     });
 
     ctx.provide('jobs', scheduler);

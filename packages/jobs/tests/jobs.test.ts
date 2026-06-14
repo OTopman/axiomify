@@ -1715,5 +1715,158 @@ describe('Axiomify Distributed Jobs', () => {
     expect(jobs.some(j => j.payload.g === 7)).toBe(true);
     expect(jobs.some(j => j.payload.g === 7 && j.runAt === testDate2.getTime())).toBe(false);
   });
+
+  it('should support generic typed payloads for autocomplete and verification', async () => {
+    interface EmailPayload {
+      to: string;
+      subject: string;
+    }
+
+    const storage = new MemoryJobStorage();
+    const scheduler = new JobScheduler(storage);
+
+    // Verify it compiles and enforces type
+    const handler = vi.fn();
+    scheduler.register<EmailPayload>('send-email', (payload) => {
+      handler(payload.to, payload.subject);
+    });
+
+    await scheduler.enqueue<EmailPayload>('send-email', {
+      to: 'user@example.com',
+      subject: 'Hello World',
+    });
+
+    scheduler.start();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await scheduler.stop();
+
+    expect(handler).toHaveBeenCalledWith('user@example.com', 'Hello World');
+  });
+
+  it('should route jobs to DLQ and emit dlq event on exhaustion', async () => {
+    const storage = new MemoryJobStorage();
+    const scheduler = new JobScheduler(storage, {
+      queue: 'dlq-test-queue',
+      dlqQueue: 'dlq-test-queue:dlq',
+      maxConcurrency: 1,
+      pollIntervalMs: 5,
+      lockDurationMs: 1000,
+    });
+
+    let failedEmitted = false;
+    let dlqEmitted = false;
+
+    scheduler.on('failed', () => {
+      failedEmitted = true;
+    });
+
+    scheduler.on('dlq', (job, err) => {
+      dlqEmitted = true;
+      expect(job.queue).toBe('dlq-test-queue:dlq');
+      expect(job.status).toBe('failed');
+      expect(err.message).toBe('perma-crash');
+    });
+
+    scheduler.register('always-crash', () => {
+      throw new Error('perma-crash');
+    });
+
+    await scheduler.enqueue('always-crash', {}, { attempts: 1 });
+
+    scheduler.start();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await scheduler.stop();
+
+    expect(failedEmitted).toBe(true);
+    expect(dlqEmitted).toBe(true);
+
+    const jobs = await storage.getJobs('dlq-test-queue:dlq');
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].status).toBe('failed');
+    expect(jobs[0].error).toBe('perma-crash');
+  });
+
+  it('should emit scheduler event lifecycle milestones: start, completed, failed, retry', async () => {
+    const storage = new MemoryJobStorage();
+    const scheduler = new JobScheduler(storage, {
+      queue: 'events-queue',
+      maxConcurrency: 1,
+      pollIntervalMs: 5,
+      defaultRetryDelayMs: 5,
+    });
+
+    const events: string[] = [];
+    scheduler.on('start', (job) => events.push(`start:${job.name}`));
+    scheduler.on('completed', (job) => events.push(`completed:${job.name}`));
+    scheduler.on('retry', (job) => events.push(`retry:${job.name}`));
+    scheduler.on('failed', (job) => events.push(`failed:${job.name}`));
+
+    scheduler.register('success-job', () => {});
+    let attempt = 0;
+    scheduler.register('retry-fail-job', () => {
+      attempt++;
+      throw new Error(`error-run-${attempt}`);
+    });
+
+    await scheduler.enqueue('success-job', {});
+    await scheduler.enqueue('retry-fail-job', {}, { attempts: 2 });
+
+    scheduler.start();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await scheduler.stop();
+
+    expect(events).toContain('start:success-job');
+    expect(events).toContain('completed:success-job');
+    expect(events).toContain('start:retry-fail-job');
+    expect(events).toContain('retry:retry-fail-job');
+    expect(events).toContain('failed:retry-fail-job');
+  });
+
+  it('should invoke acquireCronLock and respect locks for distributed cron scheduler', async () => {
+    const storage = new MemoryJobStorage();
+
+    const scheduler = new JobScheduler(storage, {
+      queue: 'dist-cron-queue',
+      pollIntervalMs: 5,
+    });
+
+    // Provide mock acquireCronLock method directly
+    let lockAcquired = false;
+    (storage as any).acquireCronLock = async (key: string, ttlMs: number) => {
+      lockAcquired = true;
+      return false; // prevent execution
+    };
+
+    scheduler.schedule('1', 'cron-lock-test', {});
+    scheduler.start();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await scheduler.stop();
+
+    expect(lockAcquired).toBe(true);
+    const jobs = await storage.getJobs();
+    // No job should be enqueued because lock returned false
+    expect(jobs.filter(j => j.name === 'cron-lock-test')).toHaveLength(0);
+  });
+
+  it('should map lockedAt to lockExpiresAt and support backward compatibility', async () => {
+    const storage = new MemoryJobStorage();
+    const scheduler = new JobScheduler(storage, {
+      queue: 'compat-queue',
+      maxConcurrency: 1,
+      pollIntervalMs: 5,
+      lockDurationMs: 10000,
+    });
+
+    scheduler.register('compat-job', () => {});
+    await scheduler.enqueue('compat-job', {});
+
+    scheduler.start();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    await scheduler.stop();
+
+    const jobs = await storage.getJobs();
+    expect(jobs[0].lockExpiresAt).toBeDefined();
+    expect(jobs[0].lockedAt).toBe(jobs[0].lockExpiresAt);
+  });
 });
 

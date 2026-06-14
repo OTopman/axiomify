@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { existsSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Axiomify, z } from '@axiomify/core';
-import { AxiomifyVault, vaultModule } from '../src/index';
+import { AxiomifyVault, vaultModule, vaultScope } from '../src/index';
 import { restoreProcessEnv, getCallerModuleName } from '../src/proxy';
 import { encrypt, decrypt, resolveKEK } from '../src/crypto';
 
@@ -657,6 +657,84 @@ describe('Axiomify Vault', () => {
       expect(getCallerModuleName()).toBe('default');
     } finally {
       globalThis.Error = OriginalError;
+    }
+  });
+
+  it('should list vault secret keys in Object.keys(process.env)', () => {
+    const vault = new AxiomifyVault({
+      projectRoot: testRoot,
+      policy: {
+        modules: {
+          default: { allow: ['MY_OWN_KEYS_SECRET'] }
+        }
+      }
+    });
+    vault.setSecret('MY_OWN_KEYS_SECRET', 'my-secret-val');
+    
+    const keys = Object.keys(process.env);
+    expect(keys).toContain('MY_OWN_KEYS_SECRET');
+    
+    const desc = Object.getOwnPropertyDescriptor(process.env, 'MY_OWN_KEYS_SECRET');
+    expect(desc).toBeDefined();
+    expect(desc?.value).toBe('••••••••');
+  });
+
+  it('should support vaultScope execution context and vault.scope method', () => {
+    const result = vaultScope('payments', () => {
+      return getCallerModuleName();
+    });
+    expect(result).toBe('payments');
+
+    const vault = new AxiomifyVault({ projectRoot: testRoot });
+    const methodResult = vault.scope('billing', () => {
+      return getCallerModuleName();
+    });
+    expect(methodResult).toBe('billing');
+  });
+
+  it('should support listSecretKeys', () => {
+    const vault = new AxiomifyVault({
+      projectRoot: testRoot,
+      policy: {
+        modules: {
+          default: { allow: ['SECRET_A', 'SECRET_B'] }
+        }
+      }
+    });
+    vault.setSecret('SECRET_A', 'a');
+    vault.setSecret('SECRET_B', 'b');
+    
+    expect(vault.listSecretKeys()).toContain('SECRET_A');
+    expect(vault.listSecretKeys()).toContain('SECRET_B');
+  });
+
+  it('should warn when vault.key is tracked by git in non-production, throw in production', () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    
+    const fs = require('node:fs');
+    fs.mkdirSync(join(testRoot, '.axiomify'), { recursive: true });
+    fs.writeFileSync(join(testRoot, '.axiomify', 'vault.key'), require('node:crypto').randomBytes(32).toString('hex'), 'utf8');
+    
+    const childProcess = require('node:child_process');
+    const originalExec = childProcess.execSync;
+    
+    // Mock git ls-files returning successfully (tracked)
+    childProcess.execSync = vi.fn().mockReturnValue(Buffer.from('tracked'));
+    
+    try {
+      new AxiomifyVault({ projectRoot: testRoot });
+      expect(consoleWarnSpy).toHaveBeenCalled();
+      
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        expect(() => new AxiomifyVault({ projectRoot: testRoot })).toThrow(/tracked by git/);
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
+    } finally {
+      childProcess.execSync = originalExec;
+      consoleWarnSpy.mockRestore();
     }
   });
 });

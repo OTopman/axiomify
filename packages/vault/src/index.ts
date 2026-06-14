@@ -4,7 +4,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { decrypt, encrypt, resolveKEK, type EncryptedEnvelope } from './crypto';
 import { SecretPolicyEngine, type VaultPolicy } from './policy';
-import { registerSecretForRedaction, unregisterSecretForRedaction, setupProcessEnvProxy, setupStreamSanitizer } from './proxy';
+import { registerSecretForRedaction, unregisterSecretForRedaction, setupProcessEnvProxy, setupStreamSanitizer, vaultScope } from './proxy';
+
+export { vaultScope };
 
 export interface VaultMetadata {
   version: number;
@@ -102,6 +104,11 @@ export class AxiomifyVault {
 
     // 1. Resolve and cache Master Key (KEK)
     this.kek = resolveKEK(this.projectRoot, this.optionsKek);
+
+    const isUsingLocalKeyFile = !this.optionsKek && !process.env.AXIOMIFY_VAULT_KEK;
+    if (isUsingLocalKeyFile) {
+      this.checkKeyNotGitTracked(join(this.projectRoot, '.axiomify', 'vault.key'));
+    }
 
     // 2. Load or Create vault metadata envelope
     if (existsSync(this.vaultPath)) {
@@ -472,6 +479,41 @@ export class AxiomifyVault {
     }
     this.secretsCache.delete(key);
     this.encryptedSecrets.delete(key);
+  }
+
+  /**
+   * Returns a list of all encrypted secret keys stored in the vault.
+   */
+  public listSecretKeys(): string[] {
+    return Array.from(this.encryptedSecrets.keys());
+  }
+
+  /**
+   * Run a function within the vault ALS context under a specific module name.
+   */
+  public scope<T>(moduleName: string, fn: () => T): T {
+    return vaultScope(moduleName, fn);
+  }
+
+  private checkKeyNotGitTracked(keyPath: string): void {
+    try {
+      const { execSync } = require('node:child_process');
+      execSync(`git ls-files --error-unmatch "${keyPath}" 2>&1`, {
+        cwd: this.projectRoot, stdio: 'pipe'
+      });
+      const isProd = process.env.NODE_ENV === 'production';
+      const msg = `[Axiomify Vault] CRITICAL: vault.key is tracked by git at "${keyPath}". ` +
+        `This will expose all encrypted secrets if pushed. Add ".axiomify/" to .gitignore immediately.`;
+      if (isProd) {
+        throw new Error(msg);
+      }
+      console.warn(msg);
+    } catch (e: any) {
+      if (e.status === 1) return;
+      if (e.message && e.message.includes('[Axiomify Vault] CRITICAL')) {
+        throw e;
+      }
+    }
   }
 }
 

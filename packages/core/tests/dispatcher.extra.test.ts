@@ -146,7 +146,7 @@ describe('Dispatcher — extended coverage', () => {
     const route = app.registeredRoutes[0];
     await expect(
       app.handleMatchedRoute('bad_token' as any, req, res, route, {}),
-    ).rejects.toThrow(/reserved for adapter use/);
+    ).rejects.toThrow(/requires the ADAPTER_LOCK_TOKEN/);
   });
 
   it('handleMatchedRoute with token dispatches correctly', async () => {
@@ -244,7 +244,7 @@ describe('Dispatcher — ValidatingResponse and error dev stack', () => {
       await app.handle(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.send).toHaveBeenCalledWith(
-        { stack: undefined },
+        undefined,
         'Internal Server Error',
       );
     } finally {
@@ -627,7 +627,7 @@ describe('Dispatcher — ValidatingResponse and error dev stack', () => {
       await app.handle(makeAxiomifyReq({ path: '/no-msg-err' }), res);
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.send).toHaveBeenCalledWith(
-        { stack: undefined },
+        undefined,
         'Internal Server Error',
       );
     });
@@ -734,8 +734,7 @@ describe('Dispatcher — ValidatingResponse and error dev stack', () => {
         await app.handle(req, res);
         const sendEvent = events().find((e) => e.startsWith('send:'));
         expect(sendEvent).toBeDefined();
-        const body = JSON.parse(sendEvent!.substring(5));
-        expect(body.stack).toBeUndefined();
+        expect(sendEvent).toBe('send:undefined');
       } finally {
         process.env.NODE_ENV = originalEnv;
       }

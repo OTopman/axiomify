@@ -15,6 +15,7 @@ A secure environment and configuration vault for Axiomify, providing envelope en
 - **Checksum Caching**: Computes SHA-256 hashes of the target keys from raw env files to skip decrypt loops if the source environment configuration hasn't changed.
 - **Memory Sealing**: Erases the decryption key (DEK) from memory at the end of the bootstrap phase (Strategy A), rejecting any runtime decryption requests.
 - **Dynamic Secret Rotation**: Allows rotating active secrets in memory (updating caches and redactors) even after the vault is sealed.
+- **Git-guard Protection**: Automatically checks if your Master KEK key `.axiomify/vault.key` is tracked by git using `git ls-files`, warning in development and throwing in production to prevent keys from leaking to version control.
 
 ---
 
@@ -137,8 +138,21 @@ Encrypts the value, registers it for stream redaction, caches it, and writes it 
 #### `rotateSecret(key: string, value: string): void`
 Dynamically rotates a secret in the active memory cache and redactors. Safe to call at runtime even after sealing.
 
+#### `listSecretKeys(): string[]`
+Returns a list of all secret keys currently registered in the vault.
+
+#### `scope<T>(moduleName: string, fn: () => T): T`
+Runs `fn` inside the Vault ABAC AsyncLocalStorage execution context matching `moduleName` so request-time secret resolution succeeds. Also available as `ctx.vault.scope(moduleName, fn)` inside route handlers.
+
 #### `seal(): void`
 Erase the DEK buffer in memory (Strategy A Sealing), locking the vault from further file decryption JIT lookups.
+
+---
+
+### Standalone Utilities
+
+#### `vaultScope<T>(moduleName: string, fn: () => T): T`
+Standalone equivalent of the `scope` method, which can be imported directly from `@axiomify/vault`.
 
 ---
 

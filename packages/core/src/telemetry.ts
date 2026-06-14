@@ -199,23 +199,14 @@ export function setupTelemetry(app: Axiomify) {
           const label = `Service Call: ${tokenStr}.${method}`;
           const span = tracer.startSpan(label, {
             attributes: {
+              // SEC-004: Do NOT serialize method arguments into span attributes.
+              // Arguments may contain secrets, PII, or sensitive tokens.
+              // Log method name and token only — safe for all observability backends.
               'axiomify.type': 'service',
               'service.method': method,
               'service.token': tokenStr,
             },
           });
-
-          try {
-            const serializedArgs = args.map(arg => {
-              if (typeof arg === 'object') {
-                return JSON.stringify(arg, (_, v) => typeof v === 'bigint' ? v.toString() : v);
-              }
-              return String(arg);
-            }).join(', ');
-            span.setAttribute('service.args', serializedArgs);
-          } catch {
-            // ignore
-          }
 
           return api.context.with(api.trace.setSpan(api.context.active(), span), () => {
             try {
@@ -248,115 +239,65 @@ export function setupTelemetry(app: Axiomify) {
     }
   }
 
-  // 5. Intercept request handler inside the dispatcher
-  const dispatcher = (app as any).dispatcher;
-  if (dispatcher) {
-    const originalHandle = dispatcher.handle;
-    dispatcher.handle = async function (req: any, res: any) {
-      if (req.path.startsWith('/__studio/')) {
-        return originalHandle.call(this, req, res);
-      }
+  // 5. Instrument HTTP requests via onRequest hook (public API, no private access).
+  //
+  // The previous implementation monkey-patched dispatcher.handle and
+  // dispatcher.handleMatchedRoute directly — accessing private internals via
+  // `(app as any).dispatcher`. This was fragile and broke if dispatcher was
+  // refactored. The onRequest/onPostHandler hooks are the correct integration
+  // points for cross-cutting concerns like tracing.
+  app.addHook('onRequest', (req: any, res: any) => {
+    if (req.path.startsWith('/__studio/')) return;
 
-      const requestId = req.id || '';
-      return telemetryRequestStorage.run(requestId, async () => {
-        const startTime = performance.now();
-        const spanName = `${req.method} ${req.path}`;
-        const span = tracer.startSpan(spanName, {
-          kind: api.SpanKind.SERVER,
-          attributes: {
-            'http.method': req.method,
-            'http.url': req.url || req.path,
-            'http.target': req.path,
-            'http.client_ip': req.ip || '',
-            'http.user_agent': req.headers['user-agent'] || '',
-            'x-request-id': req.id || '',
-          },
-        });
+    const requestId = req.id || '';
+    // Store the request ID in ALS so log emission can correlate it.
+    // We can't await the ALS run from a sync hook, so we use a secondary
+    // per-request store attached to req.state instead.
+    if (req.state) req.state.set('_otelRequestId', requestId);
 
-        return api.context.with(api.trace.setSpan(api.context.active(), span), async () => {
-          try {
-            await originalHandle.call(this, req, res);
-          } catch (err: any) {
-            span.recordException(err);
-            span.setStatus({ code: api.SpanStatusCode.ERROR, message: err.message });
-            throw err;
-          } finally {
-            const duration = performance.now() - startTime;
-            const status = res.statusCode || 200;
-            
-            span.setAttribute('http.status_code', status);
-            span.end();
+    const startTime = performance.now();
+    const span = tracer.startSpan(`${req.method} ${req.path}`, {
+      kind: api.SpanKind.SERVER,
+      attributes: {
+        'http.method': req.method,
+        'http.url': req.url || req.path,
+        'http.target': req.path,
+        'http.client_ip': req.ip || '',
+        'http.user_agent': req.headers['user-agent'] || '',
+        'x-request-id': requestId,
+      },
+    });
 
-            // Record metrics
-            const labels = {
-              method: req.method,
-              route: (req.state && req.state.metricsRouteLabel) || req.path,
-              status: String(status),
-            };
-            requestCounter.add(1, labels);
-            durationHistogram.record(duration, labels);
-          }
-        });
-      });
-    };
-
-    const originalHandleMatchedRoute = dispatcher.handleMatchedRoute;
-    if (originalHandleMatchedRoute) {
-      dispatcher.handleMatchedRoute = async function (
-        req: any,
-        res: any,
-        route: any,
-        params: any,
-      ) {
-        if (req.path.startsWith('/__studio/')) {
-          return originalHandleMatchedRoute.call(this, req, res, route, params);
-        }
-
-        const requestId = req.id || '';
-        return telemetryRequestStorage.run(requestId, async () => {
-          const startTime = performance.now();
-          const spanName = `${req.method} ${route.path}`;
-          const span = tracer.startSpan(spanName, {
-            kind: api.SpanKind.SERVER,
-            attributes: {
-              'http.method': req.method,
-              'http.url': req.url || req.path,
-              'http.target': req.path,
-              'http.route': route.path,
-              'http.client_ip': req.ip || '',
-              'http.user_agent': req.headers['user-agent'] || '',
-              'x-request-id': req.id || '',
-            },
-          });
-
-          return api.context.with(api.trace.setSpan(api.context.active(), span), async () => {
-            try {
-              await originalHandleMatchedRoute.call(this, req, res, route, params);
-            } catch (err: any) {
-              span.recordException(err);
-              span.setStatus({ code: api.SpanStatusCode.ERROR, message: err.message });
-              throw err;
-            } finally {
-              const duration = performance.now() - startTime;
-              const status = res.statusCode || 200;
-
-              span.setAttribute('http.status_code', status);
-              span.end();
-
-              // Record metrics
-              const labels = {
-                method: req.method,
-                route: route.path,
-                status: String(status),
-              };
-              requestCounter.add(1, labels);
-              durationHistogram.record(duration, labels);
-            }
-          });
-        });
-      };
+    // Attach span to request state so onPostHandler can close it.
+    if (req.state) {
+      req.state.set('_otelSpan', span);
+      req.state.set('_otelStartTime', startTime);
     }
-  }
+  });
+
+  app.addHook('onPostHandler', (req: any, res: any) => {
+    if (!req.state) return;
+    const span = req.state.get('_otelSpan');
+    const startTime = req.state.get('_otelStartTime');
+    if (!span) return;
+
+    const duration = startTime != null ? performance.now() - startTime : 0;
+    const status = res.statusCode || 200;
+
+    span.setAttribute('http.status_code', status);
+    if (status >= 500) {
+      span.setStatus({ code: api.SpanStatusCode.ERROR });
+    }
+    span.end();
+
+    const labels = {
+      method: req.method,
+      route: (req.state && req.state.get('metricsRouteLabel')) || req.path,
+      status: String(status),
+    };
+    requestCounter.add(1, labels);
+    durationHistogram.record(duration, labels);
+  });
 
   // Wrap all pipelines currently registered
   for (const route of app.registeredRoutes) {

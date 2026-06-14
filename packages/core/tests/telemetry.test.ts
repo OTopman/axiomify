@@ -27,17 +27,12 @@ describe('Axiomify Native Telemetry', () => {
     expect((app as any).__otelInitialized).toBe(true);
   });
 
-  it('should patch dispatcher methods upon initialization', () => {
+  it('should register telemetry hooks upon initialization', () => {
     const app = new Axiomify();
-    const dispatcher = (app as any).dispatcher;
-    
-    const originalHandle = dispatcher.handle;
-    const originalHandleMatchedRoute = dispatcher.handleMatchedRoute;
-
     app.enableTracing();
-
-    expect(dispatcher.handle).not.toBe(originalHandle);
-    expect(dispatcher.handleMatchedRoute).not.toBe(originalHandleMatchedRoute);
+    
+    const onRequestHooks = (app as any).hooks.hooks.onRequest;
+    expect(onRequestHooks && onRequestHooks.length).toBeGreaterThan(0);
   });
 
   it('should instrument console methods upon enableTracing', () => {

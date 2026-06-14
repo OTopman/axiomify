@@ -6,9 +6,11 @@ A resilient, type-safe distributed queue and workflow coordination engine for Ax
 
 ## Features
 
-- **Pluggable Storage Adapters**: Built-in support for `MemoryJobStorage` and `SQLJobStorage` (compatible with Knex, Drizzle, Prisma, or native drivers). Easily extensible to Redis or cloud queue adapters.
+- **Pluggable Storage Adapters**: Built-in support for `MemoryJobStorage`, `SQLJobStorage`, and `RedisJobStorage`. Easily extensible to custom databases or cloud queues.
 - **Concurrent Queue Workers**: Configurable max concurrency limits, lease lock timeouts, and polling loops.
 - **Resilient Auto-Retry Management**: Automatic retry loops with customized backoff delays. Captures and persists error details and stack traces for debugging.
+- **Dead Letter Queue (DLQ)**: Automatically routes permanently failed tasks exceeding attempts to a designated queue namespace for offline inspection.
+- **Distributed Cron Locking**: Coordinated scheduling via `acquireCronLock` locks (Redis `SET NX PX`), ensuring exactly one cluster worker fires cron intervals.
 - **Saga Transaction Coordinator**: Orchestrates multi-step distributed operations, executing compensating rollback tasks in reverse order if any step fails.
 - **Studio Dashboard Console**: Native metrics integration exposing active, pending, completed, and failed tasks, with detailed JSON payload inspection and stack trace logs view.
 
@@ -115,26 +117,44 @@ console.log(outcome.success); // false
 
 ### `jobsModule(options: JobsModuleOptions)`
 Axiomify `AppModule` that:
-- Instantiates the queue storage engine.
+- Instantiates the queue storage engine (`'memory' | 'sql' | 'redis'`).
 - Configures `JobScheduler` workers and registers it as a `'jobs'` service in the container.
 - Binds shutdown hooks to close background loops gracefully.
 
+Key `options` options:
+- `queue`: Queue namespace target (defaults to `'default'`).
+- `maxConcurrency`: Maximum background tasks processed in parallel (default: `5`).
+- `pollIntervalMs`: Interval to check for pending jobs (default: `100` ms).
+- `lockDurationMs`: Lease lock expiration time in ms (default: `30000` ms).
+- `dlqQueue`: Queue to route permanently failed jobs to (default: `${queue}:dlq`).
+
 ### `JobScheduler` Class
+Extends `EventEmitter`.
 
-#### `register(name: string, handler: JobHandler): void`
-Registers a worker function to execute tasks under the specified name.
+#### `register<P = any>(name: string, handler: JobHandler<P>): this`
+Registers a worker function to execute tasks under the specified name with typed payload `P`. Returns the scheduler instance to support method chaining.
 
-#### `enqueue(name: string, payload: any, options?: EnqueueOptions): Promise<JobItem>`
+#### `enqueue<P = any>(name: string, payload: P, options?: EnqueueOptions): Promise<string>`
 Queues a task for background processing.
 - `options.attempts`: Maximum execution retries (default: 3).
 - `options.priority`: Task sorting order (higher numbers run first).
-- `options.runAt`: Timestamp in ms to delay job start.
+- `options.delayMs`: Delay in milliseconds before executing the job.
+
+#### `schedule(pattern: string, name: string, payload?: any): void`
+Registers a recurring task or cron schedule. The `pattern` can be a numeric string interval in seconds (e.g., `'60'`) or a standard 5-field cron expression (e.g., `*/5 * * * *`).
 
 #### `start(): void`
 Starts the worker polling loops.
 
 #### `stop(): Promise<void>`
 Stops polling and waits for active jobs to finish executing.
+
+#### Lifecycle Events
+- `start`: Emitted when a job starts execution. Passes `(job: Job)`.
+- `completed`: Emitted when a job completes successfully. Passes `(job: Job)`.
+- `retry`: Emitted when a job fails and is rescheduled for retry. Passes `(job: Job, error: Error)`.
+- `failed`: Emitted when a job fails permanently. Passes `(job: Job, error: Error)`.
+- `dlq`: Emitted when a job is routed to the Dead Letter Queue. Passes `(job: Job, error: Error)`.
 
 ### `SagaCoordinator` Class
 

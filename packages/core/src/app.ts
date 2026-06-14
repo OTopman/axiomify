@@ -2,7 +2,7 @@ import { RequestDispatcher } from './dispatcher';
 import { AxiomifyError } from './errors';
 import {
   ADAPTER_LOCK_TOKEN,
-  AdapterLockToken,
+  AdapterCapability,
   AxiomifyLogger,
   defaultLogger,
 } from './internal';
@@ -29,6 +29,7 @@ import type {
 
 export type { AppConfigurator, AppContext, AppModule };
 import { setupTelemetry } from './telemetry';
+import { vaultScope } from './vault-proxy-shim';
 
 
 function joinRoutePath(prefix: string, path: string): string {
@@ -219,13 +220,18 @@ export class Axiomify {
         }
         return svc;
       },
+      vault: {
+        scope<T>(moduleName: string, fn: () => T): T {
+          return vaultScope(moduleName, fn);
+        },
+      },
     };
 
     if (typeof configurator === 'function') {
       // AppConfigurator is the only accepted function shape. 1-arg
       // configurators that ignore `context` still work fine — JS silently
       // drops the extra positional. The legacy `AppPlugin` type alias
-      // (1-arg signature) was removed from the public API in 5.0.0; the
+      // (1-arg signature) was removed from the prestige API in 5.0.0; the
       // runtime accepts both arities identically.
       configurator(this, context);
       return this;
@@ -241,14 +247,20 @@ export class Axiomify {
     const ordered = this._resolveModuleDeps(configurator);
     for (const mod of ordered) {
       if (this._modules.has(mod.name)) continue;
-      const vaultContext = (globalThis as any)._axiomifyVaultContext;
-      if (vaultContext && typeof vaultContext.run === 'function') {
-        vaultContext.run(mod.name, () => {
-          mod.register(this, context);
-        });
-      } else {
-        mod.register(this, context);
-      }
+
+      const moduleContext: AppContext = {
+        provide: context.provide,
+        resolve: context.resolve,
+        vault: {
+          scope<T>(moduleName: string, fn: () => T): T {
+            return vaultScope(moduleName, fn);
+          },
+        },
+      };
+
+      // Run the module registration inside the vault ALS context so that
+      // any process.env access during register() is attributed to this module.
+      vaultScope(mod.name, () => mod.register(this, moduleContext));
       this._modules.add(mod.name);
     }
     return this;
@@ -402,37 +414,17 @@ export class Axiomify {
     return this;
   }
 
-  public lockRoutes(token: any, reason?: string): this {
-    const isNativeLock =
-      typeof token === 'symbol' &&
-      token.toString() === 'Symbol(axiomify.native.lock)';
-    if (token !== ADAPTER_LOCK_TOKEN && !isNativeLock) {
+  public lockRoutes(token: AdapterCapability, reason?: string): this {
+    // Object-identity check — unforgeable and bundle-safe.
+    // The previous implementation used Symbol.for() + stack-trace inspection,
+    // which was bypassable (symbol string forgery) and broke after bundling
+    // (frame paths vanish in single-file bundles). An object reference check
+    // is neither bypassable nor bundle-sensitive.
+    if (token !== ADAPTER_LOCK_TOKEN) {
       throw new Error(
-        '[Axiomify] lockRoutes() is reserved for adapter use. ' +
-          'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
+        '[Axiomify] lockRoutes() requires the ADAPTER_LOCK_TOKEN imported from @axiomify/core. ' +
+          'This API is reserved for adapter packages.',
       );
-    }
-    const stack = new Error().stack ?? '';
-    const frames = stack
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.startsWith('at '));
-    const callerFrame =
-      frames.find(
-        (f) =>
-          !f.includes('src/app.ts') &&
-          !f.includes('dist/app.js') &&
-          !f.includes('src/app.js'),
-      ) || '';
-    const authorized =
-      callerFrame.includes('packages/native') ||
-      callerFrame.includes('packages/core') ||
-      callerFrame.includes('packages/socket.io') ||
-      callerFrame.includes('@axiomify/native') ||
-      callerFrame.includes('@axiomify/core') ||
-      callerFrame.includes('@axiomify/socket.io');
-    if (!authorized) {
-      throw new Error('[Axiomify] lockRoutes() is reserved for adapter use.');
     }
     if (this._routesLocked) {
       throw new Error(
@@ -601,40 +593,17 @@ export class Axiomify {
    * @internal Adapter-only API.
    */
   public async handleMatchedRoute(
-    token: symbol,
+    token: AdapterCapability,
     req: AxiomifyRequest,
     res: AxiomifyResponse,
     route: RouteDefinition,
     params: Record<string, string>,
   ): Promise<void> {
-    if (typeof token !== 'symbol') {
+    // Object-identity check — bundle-safe, unforgeable. See lockRoutes() for rationale.
+    if (token !== ADAPTER_LOCK_TOKEN) {
       throw new Error(
-        '[Axiomify] handleMatchedRoute() is reserved for adapter use. ' +
-          'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
-      );
-    }
-    const stack = new Error().stack ?? '';
-    const frames = stack
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line.startsWith('at '));
-    const callerFrame =
-      frames.find(
-        (f) =>
-          !f.includes('src/app.ts') &&
-          !f.includes('dist/app.js') &&
-          !f.includes('src/app.js'),
-      ) || '';
-    const authorized =
-      callerFrame.includes('packages/native') ||
-      callerFrame.includes('packages/core') ||
-      callerFrame.includes('packages/socket.io') ||
-      callerFrame.includes('@axiomify/native') ||
-      callerFrame.includes('@axiomify/core') ||
-      callerFrame.includes('@axiomify/socket.io');
-    if (!authorized) {
-      throw new Error(
-        '[Axiomify] handleMatchedRoute() is reserved for adapter use.',
+        '[Axiomify] handleMatchedRoute() requires the ADAPTER_LOCK_TOKEN from @axiomify/core. ' +
+          'This API is reserved for adapter packages.',
       );
     }
     return this.dispatcher.handleMatchedRoute(req, res, route, params);

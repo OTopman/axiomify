@@ -1,7 +1,8 @@
+import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import type { Job, JobStorage } from './storage';
 
-export type JobHandler = (payload: any) => Promise<void> | void;
+export type JobHandler<P = any> = (payload: P) => Promise<void> | void;
 
 export interface EnqueueOptions {
   priority?: number;
@@ -20,6 +21,8 @@ export interface SchedulerOptions {
   jobTimeoutMs: number;
   /** Maximum time (ms) to wait for active workers to drain during stop(). Default: 30000. */
   drainTimeoutMs: number;
+  /** Queue to route permanently failed jobs to. */
+  dlqQueue?: string;
 }
 
 export interface SagaStep {
@@ -108,7 +111,7 @@ function matchesCronExpression(pattern: string, date: Date): boolean {
   );
 }
 
-export class JobScheduler {
+export class JobScheduler extends EventEmitter {
   private handlers = new Map<string, JobHandler>();
   private activeWorkers = new Set<string>();
   private running = false;
@@ -116,11 +119,13 @@ export class JobScheduler {
 
   // Cron schedule definitions
   private cronTasks: { pattern: string; name: string; payload: any; lastRun?: number }[] = [];
+  private localCronLocks = new Map<string, number>();
 
   constructor(
     private storage: JobStorage,
     opts: Partial<SchedulerOptions> = {}
   ) {
+    super();
     this.options = {
       queue: opts.queue ?? 'default',
       maxConcurrency: opts.maxConcurrency ?? 5,
@@ -129,6 +134,7 @@ export class JobScheduler {
       defaultRetryDelayMs: opts.defaultRetryDelayMs ?? 5000,
       jobTimeoutMs: opts.jobTimeoutMs ?? 30000,
       drainTimeoutMs: opts.drainTimeoutMs ?? 30000,
+      dlqQueue: opts.dlqQueue ?? `${opts.queue ?? 'default'}:dlq`,
     };
     // Input validation
     if (this.options.maxConcurrency <= 0) {
@@ -145,7 +151,7 @@ export class JobScheduler {
    * Register a job handler.
    * Warns if a handler with the same name is being overwritten.
    */
-  public register(name: string, handler: JobHandler): this {
+  public register<P = any>(name: string, handler: JobHandler<P>): this {
     if (this.handlers.has(name)) {
       console.warn(`[Axiomify Jobs] Handler "${name}" is being overwritten.`);
     }
@@ -156,7 +162,7 @@ export class JobScheduler {
   /**
    * Enqueue a new job.
    */
-  public async enqueue(name: string, payload: any, opts: EnqueueOptions = {}): Promise<string> {
+  public async enqueue<P = any>(name: string, payload: P, opts: EnqueueOptions = {}): Promise<string> {
     if (!name || typeof name !== 'string') {
       throw new Error('[Axiomify Jobs] Job name must be a non-empty string.');
     }
@@ -263,9 +269,10 @@ export class JobScheduler {
   }
 
   private async executeJob(job: Job): Promise<void> {
+    this.emit('start', job);
     const handler = this.handlers.get(job.name);
     if (!handler) {
-      await this.storage.fail(job.id, `No handler registered for job "${job.name}"`);
+      await this.handleJobFailure(job, `No handler registered for job "${job.name}"`);
       return;
     }
 
@@ -293,11 +300,12 @@ export class JobScheduler {
           await this.runWithTimeout(handler, job.payload, job.name, timeoutMs);
           await this.storage.complete(job.id);
           span.setStatus({ code: api.SpanStatusCode.OK });
+          this.emit('completed', job);
         } catch (err: any) {
           const errMsg = err.message || String(err);
           span.recordException(err);
           span.setStatus({ code: api.SpanStatusCode.ERROR, message: errMsg });
-          await this.storage.fail(job.id, errMsg, this.options.defaultRetryDelayMs);
+          await this.handleJobFailure(job, errMsg);
         } finally {
           span.end();
         }
@@ -306,10 +314,37 @@ export class JobScheduler {
       try {
         await this.runWithTimeout(handler, job.payload, job.name, timeoutMs);
         await this.storage.complete(job.id);
+        this.emit('completed', job);
       } catch (err: any) {
         const errMsg = err.message || String(err);
-        await this.storage.fail(job.id, errMsg, this.options.defaultRetryDelayMs);
+        await this.handleJobFailure(job, errMsg);
       }
+    }
+  }
+
+  private async handleJobFailure(job: Job, error: string): Promise<void> {
+    const nextAttempt = job.attempts + 1;
+    if (nextAttempt >= job.maxAttempts) {
+      const dlqQueue = this.options.dlqQueue;
+      if (dlqQueue) {
+        const dlqJob: Job = {
+          ...job,
+          attempts: nextAttempt,
+          status: 'failed',
+          error,
+          queue: dlqQueue,
+          lockedAt: undefined,
+          lockExpiresAt: undefined,
+        };
+        await this.storage.save(dlqJob);
+        this.emit('dlq', dlqJob, new Error(error));
+      } else {
+        await this.storage.fail(job.id, error);
+      }
+      this.emit('failed', job, new Error(error));
+    } else {
+      await this.storage.fail(job.id, error, this.options.defaultRetryDelayMs);
+      this.emit('retry', job, new Error(error));
     }
   }
 
@@ -344,26 +379,49 @@ export class JobScheduler {
     const currentDate = new Date(now);
 
     for (const task of this.cronTasks) {
-      // Check if the pattern is a simple numeric interval (seconds)
+      let shouldFire = false;
       const intervalSec = parseInt(task.pattern, 10);
       if (!isNaN(intervalSec) && String(intervalSec) === task.pattern.trim()) {
-        // Numeric-only pattern: treat as interval in seconds
         if (!task.lastRun || now - task.lastRun >= intervalSec * 1000) {
-          task.lastRun = now;
-          await this.enqueue(task.name, task.payload);
+          shouldFire = true;
         }
       } else {
-        // Standard 5-field cron expression
         if (matchesCronExpression(task.pattern, currentDate)) {
-          // Only fire once per matching minute
           const currentMinuteStart = now - (now % 60000);
           if (!task.lastRun || task.lastRun < currentMinuteStart) {
-            task.lastRun = now;
-            await this.enqueue(task.name, task.payload);
+            shouldFire = true;
           }
         }
       }
+
+      if (shouldFire) {
+        // 5 second lock window to prevent duplicate executions across workers in the same cron slot
+        const lockDuration = 5000;
+        const acquired = await this.tryAcquireCronLock(task.pattern, lockDuration);
+        if (acquired) {
+          task.lastRun = now;
+          await this.enqueue(task.name, task.payload);
+        }
+      }
     }
+  }
+
+  private async tryAcquireCronLock(pattern: string, windowMs: number): Promise<boolean> {
+    const lockKey = `axiomify:cron:lock:${this.options.queue}:${pattern}`;
+    if (typeof this.storage.acquireCronLock === 'function') {
+      return this.storage.acquireCronLock(lockKey, windowMs);
+    }
+    return this.acquireLocalCronLock(pattern, windowMs);
+  }
+
+  private acquireLocalCronLock(pattern: string, windowMs: number): boolean {
+    const now = Date.now();
+    const expires = this.localCronLocks.get(pattern) ?? 0;
+    if (now >= expires) {
+      this.localCronLocks.set(pattern, now + windowMs);
+      return true;
+    }
+    return false;
   }
 }
 

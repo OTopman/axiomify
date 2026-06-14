@@ -7,6 +7,13 @@ if (!(globalThis as any)._axiomifyVaultContext) {
 }
 
 /**
+ * Wraps `fn` in the Vault ABAC AsyncLocalStorage context for `moduleName`.
+ */
+export function vaultScope<T>(moduleName: string, fn: () => T): T {
+  return vaultContext.run(moduleName, fn);
+}
+
+/**
  * Instance-scoped set of plaintext secrets used for redaction.
  * Shared across vault instances via the stream sanitizer.
  */
@@ -161,10 +168,20 @@ export function setupProcessEnvProxy(vault: AxiomifyVault): void {
     },
 
     ownKeys(target) {
-      return Reflect.ownKeys(currentEnv);
+      const envKeys = Reflect.ownKeys(currentEnv);
+      const vaultKeys = vault.listSecretKeys();
+      return Array.from(new Set([...envKeys, ...vaultKeys]));
     },
 
     getOwnPropertyDescriptor(target, prop) {
+      if (typeof prop === 'string' && vault.hasSecret(prop)) {
+        return {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value: '••••••••',
+        };
+      }
       return Reflect.getOwnPropertyDescriptor(currentEnv, prop);
     }
   };

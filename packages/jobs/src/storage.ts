@@ -9,8 +9,9 @@ export interface Job {
   attempts: number;
   maxAttempts: number;
   error?: string;
-  /** Timestamp (epoch ms) when the lock expires. Named `lockedAt` for backward compatibility but stores lock expiry time. */
+  /** @deprecated Use lockExpiresAt instead. Timestamp (epoch ms) when the lock expires. */
   lockedAt?: number;
+  lockExpiresAt?: number;
   traceContext?: Record<string, string>;
 }
 
@@ -23,6 +24,8 @@ export interface JobStorage {
   clear(): Promise<void>;
   /** Purge completed/failed jobs. Optional — not all adapters need to implement it. */
   purge?(olderThanMs?: number): Promise<number>;
+  /** Acquire distributed cron lock. Optional — fallback to local in-process lock when not present. */
+  acquireCronLock?(key: string, ttlMs: number): Promise<boolean>;
 }
 
 /**
@@ -45,7 +48,8 @@ export class MemoryJobStorage implements JobStorage {
     if (!job) return null;
 
     job.status = 'running';
-    job.lockedAt = now + lockDurationMs;
+    job.lockExpiresAt = now + lockDurationMs;
+    job.lockedAt = job.lockExpiresAt;
     this.jobs.set(job.id, job);
     return { ...job };
   }
@@ -150,6 +154,7 @@ export class SQLJobStorage implements JobStorage {
   }
 
   public async save(job: Job): Promise<void> {
+    const lockedVal = job.lockExpiresAt ?? job.lockedAt ?? null;
     // Check if job exists using proper $1 parameter syntax
     const checkSql = 'SELECT id FROM axiomify_jobs WHERE id = $1 LIMIT 1';
     const existing = await this.executeQuery(checkSql, [job.id]);
@@ -167,7 +172,7 @@ export class SQLJobStorage implements JobStorage {
         job.attempts,
         job.maxAttempts,
         job.error || null,
-        job.lockedAt || null,
+        lockedVal,
         job.id
       ]);
     } else {
@@ -191,7 +196,7 @@ export class SQLJobStorage implements JobStorage {
         job.attempts,
         job.maxAttempts,
         job.error || null,
-        job.lockedAt || null,
+        lockedVal,
         traceContextStr
       ]);
     }
@@ -253,6 +258,7 @@ export class SQLJobStorage implements JobStorage {
       maxAttempts: row.maxAttempts,
       error: row.error,
       lockedAt,
+      lockExpiresAt: lockedAt,
       traceContext,
     };
   }
@@ -328,6 +334,7 @@ export class SQLJobStorage implements JobStorage {
         maxAttempts: row.maxAttempts,
         error: row.error,
         lockedAt: row.lockedAt ? Number(row.lockedAt) : undefined,
+        lockExpiresAt: row.lockedAt ? Number(row.lockedAt) : undefined,
         traceContext,
       };
     });
@@ -451,6 +458,9 @@ export class RedisJobStorage implements JobStorage {
 
   public async save(job: Job): Promise<void> {
     const key = `axiomify:job:${job.id}`;
+    if (job.lockExpiresAt !== undefined) {
+      job.lockedAt = job.lockExpiresAt;
+    }
     await this.set(key, JSON.stringify(job));
     await this.sadd('axiomify:jobs:all', job.id);
     await this.sadd(`axiomify:queue:${job.queue}:jobs`, job.id);
@@ -518,6 +528,7 @@ export class RedisJobStorage implements JobStorage {
       local job = cjson.decode(rawJob)
       if job.status == 'pending' and tonumber(job.runAt) <= tonumber(ARGV[2]) then
         job.status = 'running'
+        job.lockExpiresAt = tonumber(ARGV[1])
         job.lockedAt = tonumber(ARGV[1])
         redis.call('SET', KEYS[1], cjson.encode(job))
         redis.call('ZREM', KEYS[2], job.id)
@@ -623,5 +634,20 @@ export class RedisJobStorage implements JobStorage {
     
     // Use SCAN for remaining axiomify:* keys (queue sets, pending zsets, etc.)
     await this.scanAndDelete('axiomify:*');
+  }
+
+  public async acquireCronLock(key: string, ttlMs: number): Promise<boolean> {
+    const fn = this.client.set || this.client.SET;
+    try {
+      const result = await fn.call(this.client, key, '1', 'NX', 'PX', ttlMs);
+      return result === 'OK' || result === true || result === 1;
+    } catch {
+      try {
+        const result = await fn.call(this.client, key, '1', { NX: true, PX: ttlMs });
+        return result === 'OK' || result === true || result === 1;
+      } catch {
+        return false;
+      }
+    }
   }
 }

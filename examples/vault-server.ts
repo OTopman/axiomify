@@ -77,9 +77,13 @@ const routesModule: AppModule = {
         // Check if the current context (my-routes) is allowed to access API_KEY
         const allowed = vault.isAllowed('my-routes', 'API_KEY');
         
+        // Wrap secret resolution in vault scope to temporarily unmask API_KEY for this module:
+        const unmaskedKey = ctx.vault.scope('my-routes', () => process.env.API_KEY);
+        
         res.send({
           allowed,
           apiKeyMasked: process.env.API_KEY, // returns masked "••••••••"
+          apiKeyUnmasked: unmaskedKey,      // returns the actual unmasked API_KEY!
         });
       },
     });

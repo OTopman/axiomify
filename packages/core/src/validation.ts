@@ -187,44 +187,61 @@ function asZodV4(schema: ZodTypeAny): ZodV4Schema | null {
     : null;
 }
 
+/**
+ * Version-safe helper that reads Zod's internal schema descriptor
+ * without crashing when internal field names change between minor versions.
+ *
+ * Zod v4 uses `.def`; Zod v3 uses `._def`. This helper abstracts that so
+ * `isStrictZodObject` and `isPassthroughZodObject` don't couple to a
+ * specific naming convention — if Zod renames these again, only this
+ * one function needs updating.
+ */
+function safeZodDef(schema: any): Record<string, any> {
+  if (!schema || typeof schema !== 'object') return {};
+  // Prefer .def (Zod v4), fall back to ._def (Zod v3)
+  const d = schema.def ?? schema._def;
+  if (!d || typeof d !== 'object') return {};
+  return d;
+}
+
 function isStrictZodObject(schema: any): boolean {
   if (!schema || typeof schema !== 'object') return false;
-  if (schema._def && schema._def.unknownKeys === 'strict') {
-    return true;
-  }
-  if (schema.def && schema.def.catchall && schema.def.catchall.type === 'never') {
-    return true;
-  }
+  const d = safeZodDef(schema);
+  // Zod v3: unknownKeys === 'strict'
+  if (d.unknownKeys === 'strict') return true;
+  // Zod v4: catchall type is 'never'
+  if (d.catchall?.type === 'never' || d.catchall?.typeName === 'ZodNever') return true;
   return false;
 }
 
 function isPassthroughZodObject(schema: any): boolean {
   if (!schema || typeof schema !== 'object') return false;
-  if (schema._def && schema._def.unknownKeys === 'passthrough') {
-    return true;
-  }
-  if (schema.def && schema.def.catchall && schema.def.catchall.type === 'unknown') {
-    return true;
-  }
+  const d = safeZodDef(schema);
+  // Zod v3: unknownKeys === 'passthrough'
+  if (d.unknownKeys === 'passthrough') return true;
+  // Zod v4: catchall type is 'unknown'
+  if (d.catchall?.type === 'unknown' || d.catchall?.typeName === 'ZodUnknown') return true;
   return false;
 }
 
 function isZodObject(schema: any): boolean {
   if (!schema || typeof schema !== 'object') return false;
-  const typeName = schema.constructor?.name || schema._def?.typeName || schema.def?.type;
-  if (typeName === 'ZodObject' || schema._def?.typeName === 'ZodObject' || schema.def?.type === 'object') return true;
+  const d = safeZodDef(schema);
+  const typeName = schema.constructor?.name || d.typeName || d.type;
+  if (typeName === 'ZodObject' || d.typeName === 'ZodObject' || d.type === 'object') return true;
   return false;
 }
 
 function unwrapZodSchema(schema: any): any {
   if (!schema || typeof schema !== 'object') return schema;
-  const typeName = schema.constructor?.name || schema._def?.typeName || schema.def?.type;
-  
+  const d = safeZodDef(schema);
+  const typeName = schema.constructor?.name || d.typeName || d.type;
+
   if (typeName === 'ZodOptional' || typeName === 'ZodNullable' || typeName === 'ZodDefault') {
-    return unwrapZodSchema(schema.def?.inner || schema._def?.innerType);
+    return unwrapZodSchema(d.inner || d.innerType);
   }
   if (typeName === 'ZodEffects') {
-    return unwrapZodSchema(schema.def?.schema || schema._def?.schema);
+    return unwrapZodSchema(d.schema);
   }
   return schema;
 }
@@ -559,7 +576,11 @@ export class ValidationCompiler {
     if (typeof validators.response === 'function') {
       validator = validators.response;
     } else {
-      validator = validators.response[statusCode] ?? validators.response[200];
+      // Exact-match only: never fall back to the 200 schema for a different
+      // status code. A 201/204/etc. may have a legitimately different shape,
+      // and silently applying the wrong schema produces false-positive errors.
+      // If no schema is registered for this status code, skip validation.
+      validator = validators.response[statusCode];
       if (!validator) return;
     }
 
