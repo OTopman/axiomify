@@ -20,7 +20,7 @@
     "@axiomify/openapi": "*",
     "@axiomify/static": "*",
     "@axiomify/upload": "*",
-    "graphql": "^16.14.1"
+    "graphql": "^16.14.2"
   },
   "devDependencies": {
     "@opentelemetry/auto-instrumentations-node": "^0.76.0",
