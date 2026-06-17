@@ -120,7 +120,6 @@ export class UserService {
 declare module '@axiomify/core' {
   interface AppServices {
     userService: UserService;
-    jobs: any;
   }
 }
 
