@@ -1,7 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { useSecurity } from '../src';
 import { sanitizeInput, normalizeHpp } from '../src/utils/sanitizer';
-import { detectNoSqlInjection, isSuspiciousUserAgent } from '../src/utils/detector';
+import {
+  detectNoSqlInjection,
+  isSuspiciousUserAgent,
+} from '../src/utils/detector';
 
 describe('Security Package', () => {
   const makeRes = () => ({
@@ -275,6 +278,9 @@ describe('Security Utils Extra Coverage', () => {
   it('should handle normalizeHpp edge cases', () => {
     expect(normalizeHpp(null)).toBeNull();
     expect(normalizeHpp('not-an-object')).toBe('not-an-object');
-    expect(normalizeHpp({ a: [1, 2, 3], b: 'hello' })).toEqual({ a: 3, b: 'hello' });
+    expect(normalizeHpp({ a: [1, 2, 3], b: 'hello' })).toEqual({
+      a: 3,
+      b: 'hello',
+    });
   });
 });

@@ -170,13 +170,15 @@ export class RequestDispatcher {
     if (pipeline.length === 1) {
       if (!req.signal?.aborted) {
         const ret = pipeline[0](req, dispatchRes);
-        if (ret !== undefined && typeof (ret as any).then === 'function') await ret;
+        if (ret !== undefined && typeof (ret as any).then === 'function')
+          await ret;
       }
     } else {
       for (let i = 0; i < pipeline.length; i++) {
         if (dispatchRes.headersSent || req.signal?.aborted) break;
         const ret = pipeline[i](req, dispatchRes);
-        if (ret !== undefined && typeof (ret as any).then === 'function') await ret;
+        if (ret !== undefined && typeof (ret as any).then === 'function')
+          await ret;
       }
     }
 

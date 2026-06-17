@@ -23,14 +23,15 @@ export async function handleGetJobs(
   if (!scheduler) {
     sendJson(res, {
       available: false,
-      message: 'Jobs plugin is not active in the application. To enable, call jobsModule(...) from @axiomify/jobs.',
+      message:
+        'Jobs plugin is not active in the application. To enable, call jobsModule(...) from @axiomify/jobs.',
     });
     return;
   }
 
   try {
     const jobs = await (scheduler as any).storage.getJobs();
-    
+
     // Compute aggregations
     const stats = {
       total: jobs.length,
@@ -38,9 +39,14 @@ export async function handleGetJobs(
       running: jobs.filter((j: any) => j.status === 'running').length,
       completed: jobs.filter((j: any) => j.status === 'completed').length,
       failed: jobs.filter((j: any) => j.status === 'failed').length,
-      successRate: jobs.length > 0 
-        ? Math.round((jobs.filter((j: any) => j.status === 'completed').length / jobs.length) * 100)
-        : 100,
+      successRate:
+        jobs.length > 0
+          ? Math.round(
+              (jobs.filter((j: any) => j.status === 'completed').length /
+                jobs.length) *
+                100,
+            )
+          : 100,
     };
 
     sendJson(res, {

@@ -19,10 +19,10 @@ describe('Axiomify Native Telemetry', () => {
 
   it('should initialize OpenTelemetry configuration on enableTracing', () => {
     const app = new Axiomify();
-    
+
     // Trigger enableTracing
     app.enableTracing();
-    
+
     // Verify initialization flag is set
     expect((app as any).__otelInitialized).toBe(true);
   });
@@ -30,7 +30,7 @@ describe('Axiomify Native Telemetry', () => {
   it('should register telemetry hooks upon initialization', () => {
     const app = new Axiomify();
     app.enableTracing();
-    
+
     const onRequestHooks = (app as any).hooks.hooks.onRequest;
     expect(onRequestHooks && onRequestHooks.length).toBeGreaterThan(0);
   });

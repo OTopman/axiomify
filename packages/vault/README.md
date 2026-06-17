@@ -25,7 +25,7 @@ A secure environment and configuration vault for Axiomify, providing envelope en
 npm install @axiomify/vault
 ```
 
-*Note: `@axiomify/core` is required as a peer dependency.*
+_Note: `@axiomify/core` is required as a peer dependency._
 
 ---
 
@@ -54,10 +54,10 @@ app.use(
       modules: {
         database: { allow: ['DATABASE_URL'] },
         gateway: { allow: ['API_KEY', 'PORT'] },
-        '*': { allow: ['PORT'] } // fallback rules
-      }
-    }
-  })
+        '*': { allow: ['PORT'] }, // fallback rules
+      },
+    },
+  }),
 );
 
 app.build();
@@ -77,8 +77,8 @@ const vault = new AxiomifyVault({
   vaultPath: 'custom-vault.json',
   envFiles: '.env',
   schema: z.object({
-    SECRET_KEY: z.string()
-  })
+    SECRET_KEY: z.string(),
+  }),
 });
 
 // Decrypt on-demand
@@ -102,7 +102,7 @@ The vault resolves the Master KEK using the following order of precedence:
 
 1. **Explicit Option**: Passed via options during construction:
    ```typescript
-   new AxiomifyVault({ kek: 'my-custom-hex-or-base64-key' })
+   new AxiomifyVault({ kek: 'my-custom-hex-or-base64-key' });
    ```
 2. **Environment Variable**: Loaded from `process.env.AXIOMIFY_VAULT_KEK`.
 3. **Local File Fallback**: Dynamically loads or generates a local dev key at `<projectRoot>/.axiomify/vault.key`.
@@ -112,7 +112,9 @@ The vault resolves the Master KEK using the following order of precedence:
 ## API Reference
 
 ### `vaultModule(options: VaultOptions)`
+
 Returns an Axiomify `AppModule` that:
+
 - Initializes the vault.
 - Sets up standard stream redaction.
 - Hooks into `process.env` with a proxy handler.
@@ -121,30 +123,39 @@ Returns an Axiomify `AppModule` that:
 ### `AxiomifyVault` Class
 
 #### `new AxiomifyVault(options?: VaultOptions)`
+
 Initializes the instance, validates schema, updates/decrypts values, and attaches proxies.
 
 #### `hasSecret(key: string): boolean`
+
 Checks if the vault contains the specified secret.
 
 #### `isAllowed(moduleName: string, key: string): boolean`
+
 Evaluates access rules based on the active ABAC policy.
 
 #### `resolveSecret(key: string): string`
+
 Decrypts and retrieves a secret using the active caller context. If unauthorized, throws.
 
 #### `setSecret(key: string, value: string): void`
+
 Encrypts the value, registers it for stream redaction, caches it, and writes it to the vault JSON file. Throws if the vault is sealed.
 
 #### `rotateSecret(key: string, value: string): void`
+
 Dynamically rotates a secret in the active memory cache and redactors. Safe to call at runtime even after sealing.
 
 #### `listSecretKeys(): string[]`
+
 Returns a list of all secret keys currently registered in the vault.
 
 #### `scope<T>(moduleName: string, fn: () => T): T`
+
 Runs `fn` inside the Vault ABAC AsyncLocalStorage execution context matching `moduleName` so request-time secret resolution succeeds. Also available as `ctx.vault.scope(moduleName, fn)` inside route handlers.
 
 #### `seal(): void`
+
 Erase the DEK buffer in memory (Strategy A Sealing), locking the vault from further file decryption JIT lookups.
 
 ---
@@ -152,6 +163,7 @@ Erase the DEK buffer in memory (Strategy A Sealing), locking the vault from furt
 ### Standalone Utilities
 
 #### `vaultScope<T>(moduleName: string, fn: () => T): T`
+
 Standalone equivalent of the `scope` method, which can be imported directly from `@axiomify/vault`.
 
 ---

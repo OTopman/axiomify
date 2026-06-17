@@ -10,14 +10,16 @@ const req = typeof require !== 'undefined' ? require : undefined;
 
 function loadPackage(pkgName: string): any {
   if (!req) {
-    throw new Error(`[Axiomify Tracing] require is not defined. Tracing requires Node.js environment.`);
+    throw new Error(
+      `[Axiomify Tracing] require is not defined. Tracing requires Node.js environment.`,
+    );
   }
   try {
     return req(pkgName);
   } catch {
     throw new Error(
       `[Axiomify Tracing] Missing package "${pkgName}". Please run:\n` +
-      `  npm install @opentelemetry/api @opentelemetry/api-logs @opentelemetry/sdk-trace-node @opentelemetry/sdk-metrics @opentelemetry/sdk-logs @opentelemetry/exporter-trace-otlp-http @opentelemetry/exporter-metrics-otlp-http @opentelemetry/exporter-logs-otlp-http @opentelemetry/resources @opentelemetry/semantic-conventions`
+        `  npm install @opentelemetry/api @opentelemetry/api-logs @opentelemetry/sdk-trace-node @opentelemetry/sdk-metrics @opentelemetry/sdk-logs @opentelemetry/exporter-trace-otlp-http @opentelemetry/exporter-metrics-otlp-http @opentelemetry/exporter-logs-otlp-http @opentelemetry/resources @opentelemetry/semantic-conventions`,
     );
   }
 }
@@ -26,14 +28,28 @@ export function setupTelemetry(app: Axiomify) {
   // Load standard OTel packages dynamically to prevent core package bloat
   const api = loadPackage('@opentelemetry/api');
   const apiLogs = loadPackage('@opentelemetry/api-logs');
-  const { NodeTracerProvider, SimpleSpanProcessor } = loadPackage('@opentelemetry/sdk-trace-node');
-  const { MeterProvider, PeriodicExportingMetricReader } = loadPackage('@opentelemetry/sdk-metrics');
-  const { LoggerProvider, SimpleLogRecordProcessor } = loadPackage('@opentelemetry/sdk-logs');
-  const { OTLPTraceExporter } = loadPackage('@opentelemetry/exporter-trace-otlp-http');
-  const { OTLPMetricExporter } = loadPackage('@opentelemetry/exporter-metrics-otlp-http');
-  const { OTLPLogExporter } = loadPackage('@opentelemetry/exporter-logs-otlp-http');
+  const { NodeTracerProvider, SimpleSpanProcessor } = loadPackage(
+    '@opentelemetry/sdk-trace-node',
+  );
+  const { MeterProvider, PeriodicExportingMetricReader } = loadPackage(
+    '@opentelemetry/sdk-metrics',
+  );
+  const { LoggerProvider, SimpleLogRecordProcessor } = loadPackage(
+    '@opentelemetry/sdk-logs',
+  );
+  const { OTLPTraceExporter } = loadPackage(
+    '@opentelemetry/exporter-trace-otlp-http',
+  );
+  const { OTLPMetricExporter } = loadPackage(
+    '@opentelemetry/exporter-metrics-otlp-http',
+  );
+  const { OTLPLogExporter } = loadPackage(
+    '@opentelemetry/exporter-logs-otlp-http',
+  );
   const { resourceFromAttributes } = loadPackage('@opentelemetry/resources');
-  const { ATTR_SERVICE_NAME } = loadPackage('@opentelemetry/semantic-conventions');
+  const { ATTR_SERVICE_NAME } = loadPackage(
+    '@opentelemetry/semantic-conventions',
+  );
 
   // Verify if already registered to avoid duplicate setup
   if ((app as any).__otelInitialized) return;
@@ -56,23 +72,37 @@ export function setupTelemetry(app: Axiomify) {
   const logExporterOptions: any = {};
 
   const studioUrl = `http://localhost:${studioPort}/__studio/otlp`;
-  const headers = studioToken ? { 'Authorization': `Bearer ${studioToken}` } : undefined;
+  const headers = studioToken
+    ? { Authorization: `Bearer ${studioToken}` }
+    : undefined;
 
-  if (isStudio || (!process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT && !process.env.OTEL_EXPORTER_OTLP_ENDPOINT)) {
+  if (
+    isStudio ||
+    (!process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT &&
+      !process.env.OTEL_EXPORTER_OTLP_ENDPOINT)
+  ) {
     traceExporterOptions.url = `${studioUrl}/v1/traces`;
     if (headers) {
       traceExporterOptions.headers = headers;
     }
   }
 
-  if (isStudio || (!process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT && !process.env.OTEL_EXPORTER_OTLP_ENDPOINT)) {
+  if (
+    isStudio ||
+    (!process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT &&
+      !process.env.OTEL_EXPORTER_OTLP_ENDPOINT)
+  ) {
     metricExporterOptions.url = `${studioUrl}/v1/metrics`;
     if (headers) {
       metricExporterOptions.headers = headers;
     }
   }
 
-  if (isStudio || (!process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT && !process.env.OTEL_EXPORTER_OTLP_ENDPOINT)) {
+  if (
+    isStudio ||
+    (!process.env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT &&
+      !process.env.OTEL_EXPORTER_OTLP_ENDPOINT)
+  ) {
     logExporterOptions.url = `${studioUrl}/v1/logs`;
     if (headers) {
       logExporterOptions.headers = headers;
@@ -134,7 +164,9 @@ export function setupTelemetry(app: Axiomify) {
       const stepName = fn.name || `step-${index}`;
       const isHandler = index === state.pipeline.length - 1;
       const typeStr = isHandler ? 'handler' : 'middleware';
-      const label = isHandler ? `Handler: ${stepName}` : `Middleware: ${stepName}`;
+      const label = isHandler
+        ? `Handler: ${stepName}`
+        : `Middleware: ${stepName}`;
 
       return async function otelWrappedStep(req: any, res: any) {
         const activeSpan = api.trace.getActiveSpan();
@@ -148,18 +180,24 @@ export function setupTelemetry(app: Axiomify) {
           },
         });
 
-        return api.context.with(api.trace.setSpan(api.context.active(), span), async () => {
-          try {
-            const ret = fn(req, res);
-            if (ret instanceof Promise) await ret;
-          } catch (err: any) {
-            span.recordException(err);
-            span.setStatus({ code: api.SpanStatusCode.ERROR, message: err.message });
-            throw err;
-          } finally {
-            span.end();
-          }
-        });
+        return api.context.with(
+          api.trace.setSpan(api.context.active(), span),
+          async () => {
+            try {
+              const ret = fn(req, res);
+              if (ret instanceof Promise) await ret;
+            } catch (err: any) {
+              span.recordException(err);
+              span.setStatus({
+                code: api.SpanStatusCode.ERROR,
+                message: err.message,
+              });
+              throw err;
+            } finally {
+              span.end();
+            }
+          },
+        );
       };
     });
 
@@ -175,20 +213,34 @@ export function setupTelemetry(app: Axiomify) {
     for (const [token, service] of services.entries()) {
       if (!service || typeof service !== 'object') continue;
       const tokenStr = String(token).toLowerCase();
-      
+
       const isNamedService =
         tokenStr.length > 2 &&
-        !['config', 'options', 'env', 'logger', 'tokenstore', 'limiter', 'metrics'].some(w => tokenStr.includes(w));
+        ![
+          'config',
+          'options',
+          'env',
+          'logger',
+          'tokenstore',
+          'limiter',
+          'metrics',
+        ].some((w) => tokenStr.includes(w));
       if (!isNamedService) continue;
 
       const proto = Object.getPrototypeOf(service);
-      const methods = proto && proto !== Object.prototype
-        ? Object.getOwnPropertyNames(proto).filter(k => k !== 'constructor' && typeof service[k] === 'function')
-        : Object.keys(service).filter(k => typeof service[k] === 'function');
+      const methods =
+        proto && proto !== Object.prototype
+          ? Object.getOwnPropertyNames(proto).filter(
+              (k) => k !== 'constructor' && typeof service[k] === 'function',
+            )
+          : Object.keys(service).filter(
+              (k) => typeof service[k] === 'function',
+            );
 
       for (const method of methods) {
         const original = service[method];
-        if (typeof original !== 'function' || (original as any).__otelWrapped) continue;
+        if (typeof original !== 'function' || (original as any).__otelWrapped)
+          continue;
 
         service[method] = function (...args: any[]) {
           const activeSpan = api.trace.getActiveSpan();
@@ -208,31 +260,40 @@ export function setupTelemetry(app: Axiomify) {
             },
           });
 
-          return api.context.with(api.trace.setSpan(api.context.active(), span), () => {
-            try {
-              const ret = original.apply(this, args);
-              if (ret instanceof Promise) {
-                return ret
-                  .then((val) => {
-                    span.end();
-                    return val;
-                  })
-                  .catch((err: any) => {
-                    span.recordException(err);
-                    span.setStatus({ code: api.SpanStatusCode.ERROR, message: err.message });
-                    span.end();
-                    throw err;
-                  });
+          return api.context.with(
+            api.trace.setSpan(api.context.active(), span),
+            () => {
+              try {
+                const ret = original.apply(this, args);
+                if (ret instanceof Promise) {
+                  return ret
+                    .then((val) => {
+                      span.end();
+                      return val;
+                    })
+                    .catch((err: any) => {
+                      span.recordException(err);
+                      span.setStatus({
+                        code: api.SpanStatusCode.ERROR,
+                        message: err.message,
+                      });
+                      span.end();
+                      throw err;
+                    });
+                }
+                span.end();
+                return ret;
+              } catch (err: any) {
+                span.recordException(err);
+                span.setStatus({
+                  code: api.SpanStatusCode.ERROR,
+                  message: err.message,
+                });
+                span.end();
+                throw err;
               }
-              span.end();
-              return ret;
-            } catch (err: any) {
-              span.recordException(err);
-              span.setStatus({ code: api.SpanStatusCode.ERROR, message: err.message });
-              span.end();
-              throw err;
-            }
-          });
+            },
+          );
         };
         (service[method] as any).__otelWrapped = true;
       }
@@ -397,14 +458,18 @@ function instrumentOtelLogs(loggerProvider: any): void {
           const rawStack = err.stack || '';
           const lines = rawStack.split('\n');
           const callerLine = lines.find((line) => {
-            return !line.includes('node:internal') &&
-                   !line.includes('telemetry.js') &&
-                   !line.includes('telemetry.ts') &&
-                   !line.includes('console.ts') &&
-                   !line.includes('Error');
+            return (
+              !line.includes('node:internal') &&
+              !line.includes('telemetry.js') &&
+              !line.includes('telemetry.ts') &&
+              !line.includes('console.ts') &&
+              !line.includes('Error')
+            );
           });
           if (callerLine) {
-            const match = /(?:\(|at\s+)([^\s()]+?):(\d+)(?::(\d+))?\)?$/.exec(callerLine.trim());
+            const match = /(?:\(|at\s+)([^\s()]+?):(\d+)(?::(\d+))?\)?$/.exec(
+              callerLine.trim(),
+            );
             if (match) {
               const filePath = match[1];
               const relativePath = path.isAbsolute(filePath)
@@ -434,13 +499,23 @@ function instrumentOtelLogs(loggerProvider: any): void {
 
   // Intercept process.stdout.write
   const originalStdoutWrite = process.stdout.write;
-  process.stdout.write = function (chunk: any, encoding?: any, callback?: any): boolean {
+  process.stdout.write = function (
+    chunk: any,
+    encoding?: any,
+    callback?: any,
+  ): boolean {
     if (inConsoleCall) {
-      return originalStdoutWrite.call(process.stdout, chunk, encoding, callback);
+      return originalStdoutWrite.call(
+        process.stdout,
+        chunk,
+        encoding,
+        callback,
+      );
     }
     inConsoleCall = true;
     try {
-      const message = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      const message =
+        typeof chunk === 'string' ? chunk : chunk.toString('utf8');
       if (message.trim()) {
         const attributes: Record<string, any> = {};
         const requestId = telemetryRequestStorage.getStore();
@@ -464,13 +539,23 @@ function instrumentOtelLogs(loggerProvider: any): void {
 
   // Intercept process.stderr.write
   const originalStderrWrite = process.stderr.write;
-  process.stderr.write = function (chunk: any, encoding?: any, callback?: any): boolean {
+  process.stderr.write = function (
+    chunk: any,
+    encoding?: any,
+    callback?: any,
+  ): boolean {
     if (inConsoleCall) {
-      return originalStderrWrite.call(process.stderr, chunk, encoding, callback);
+      return originalStderrWrite.call(
+        process.stderr,
+        chunk,
+        encoding,
+        callback,
+      );
     }
     inConsoleCall = true;
     try {
-      const message = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      const message =
+        typeof chunk === 'string' ? chunk : chunk.toString('utf8');
       if (message.trim()) {
         const attributes: Record<string, any> = {};
         const requestId = telemetryRequestStorage.getStore();
@@ -492,4 +577,3 @@ function instrumentOtelLogs(loggerProvider: any): void {
     return originalStderrWrite.call(process.stderr, chunk, encoding, callback);
   } as any;
 }
-

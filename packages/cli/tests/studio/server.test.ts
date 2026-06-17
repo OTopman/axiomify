@@ -939,7 +939,9 @@ describe('Studio Server & Router', () => {
       const addr = server.address();
       const port = typeof addr === 'object' && addr ? addr.port : 0;
 
-      const res = await fetch(`http://127.0.0.1:${port}/__studio/api/logs/export`);
+      const res = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/logs/export`,
+      );
       expect(res.status).toBe(200);
       expect(res.headers.get('content-type')).toContain('application/json');
       expect(res.headers.get('content-disposition')).toContain('attachment');
@@ -955,23 +957,27 @@ describe('Studio Server & Router', () => {
   it('should enforce token auth on export endpoints', async () => {
     const router = new StudioRouter();
     registerStudioApi(router, {
-      getDiscovery: () => ({
-        routes: [],
-        schemas: [],
-        hooks: [],
-        config: {
-          timeout: 3000,
-          routeConflict: 'throw',
-          strictSchema: true,
-          httpRouteCount: 0,
-          wsRouteCount: 0,
-          hookCount: 0,
-          serviceCount: 0,
-        },
-        openapi: null,
-        health: { findings: [], summary: { passes: 0, warnings: 0, failures: 0 } },
-        discoveredAt: new Date().toISOString(),
-      }) as any,
+      getDiscovery: () =>
+        ({
+          routes: [],
+          schemas: [],
+          hooks: [],
+          config: {
+            timeout: 3000,
+            routeConflict: 'throw',
+            strictSchema: true,
+            httpRouteCount: 0,
+            wsRouteCount: 0,
+            hookCount: 0,
+            serviceCount: 0,
+          },
+          openapi: null,
+          health: {
+            findings: [],
+            summary: { passes: 0, warnings: 0, failures: 0 },
+          },
+          discoveredAt: new Date().toISOString(),
+        }) as any,
       getApp: () => ({}) as any,
     });
 
@@ -992,20 +998,26 @@ describe('Studio Server & Router', () => {
       const port = typeof addr === 'object' && addr ? addr.port : 0;
 
       // 1. Without token, should fail with 401 Unauthorized and specific JSON payload
-      const resNoToken = await fetch(`http://127.0.0.1:${port}/__studio/api/export/html`);
+      const resNoToken = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/export/html`,
+      );
       expect(resNoToken.status).toBe(401);
-      const json = await resNoToken.json() as any;
+      const json = (await resNoToken.json()) as any;
       expect(json).toEqual({
         error: 'Unauthorized',
         message: 'Valid Access Token is required.',
       });
 
       // 2. With invalid token, should fail with 401 Unauthorized
-      const resBadToken = await fetch(`http://127.0.0.1:${port}/__studio/api/export/html?token=bad`);
+      const resBadToken = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/export/html?token=bad`,
+      );
       expect(resBadToken.status).toBe(401);
 
       // 3. With valid token (query param), should succeed with 200
-      const resOkToken = await fetch(`http://127.0.0.1:${port}/__studio/api/export/html?token=${token}`);
+      const resOkToken = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/export/html?token=${token}`,
+      );
       expect(resOkToken.status).toBe(200);
       const text = await resOkToken.text();
       expect(text).toContain('Axiomify Studio Report');
@@ -1026,7 +1038,9 @@ describe('Studio Server & Router', () => {
       console.log('correlation trace message');
     });
 
-    const found = recordedLogs.find((l) => l.message === 'correlation trace message');
+    const found = recordedLogs.find(
+      (l) => l.message === 'correlation trace message',
+    );
     expect(found).toBeDefined();
     expect(found?.requestId).toBe(reqId);
   });
@@ -1056,15 +1070,40 @@ describe('Studio Server & Router', () => {
       // Case 1: Jobs module not registered
       const res1 = await fetch(`http://127.0.0.1:${port}/__studio/api/jobs`);
       expect(res1.status).toBe(200);
-      const data1 = await res1.json() as any;
+      const data1 = (await res1.json()) as any;
       expect(data1.available).toBe(false);
       expect(data1.message).toContain('Jobs plugin is not active');
 
       // Case 2: Jobs module is registered
       const mockJobs = [
-        { id: 'job-1', name: 'send-email', queue: 'default', status: 'completed', attempts: 1, maxAttempts: 3, runAt: Date.now() },
-        { id: 'job-2', name: 'process-image', queue: 'media', status: 'failed', attempts: 3, maxAttempts: 3, runAt: Date.now(), error: 'OutOfMemory' },
-        { id: 'job-3', name: 'generate-report', queue: 'default', status: 'running', attempts: 1, maxAttempts: 3, runAt: Date.now() },
+        {
+          id: 'job-1',
+          name: 'send-email',
+          queue: 'default',
+          status: 'completed',
+          attempts: 1,
+          maxAttempts: 3,
+          runAt: Date.now(),
+        },
+        {
+          id: 'job-2',
+          name: 'process-image',
+          queue: 'media',
+          status: 'failed',
+          attempts: 3,
+          maxAttempts: 3,
+          runAt: Date.now(),
+          error: 'OutOfMemory',
+        },
+        {
+          id: 'job-3',
+          name: 'generate-report',
+          queue: 'default',
+          status: 'running',
+          attempts: 1,
+          maxAttempts: 3,
+          runAt: Date.now(),
+        },
       ];
       const mockScheduler = {
         storage: {
@@ -1075,7 +1114,7 @@ describe('Studio Server & Router', () => {
 
       const res2 = await fetch(`http://127.0.0.1:${port}/__studio/api/jobs`);
       expect(res2.status).toBe(200);
-      const data2 = await res2.json() as any;
+      const data2 = (await res2.json()) as any;
       expect(data2.available).toBe(true);
       expect(data2.jobs).toHaveLength(3);
       expect(data2.stats).toEqual({

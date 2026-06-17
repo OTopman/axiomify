@@ -13,8 +13,8 @@ All examples are aligned with the 5.0 API surface.
 | `examples/secure-server.ts`     | Logger PII masking + security plugin payload examples                                                  |
 | `examples/my-app/src/index.ts`  | Fuller app: auth, uploads, OpenAPI, SSE, file streaming, WebSockets                                    |
 | `examples/sdk-client-demo.ts`   | SDK consumption client: retries, circuit breaker, caching, paginators, offline queue, SSE & WebSockets |
-| `examples/vault-server.ts`     | `@axiomify/vault` secure configuration environment management                                         |
-| `examples/jobs-server.ts`      | `@axiomify/jobs` background tasks and compensating Saga workflows                                     |
+| `examples/vault-server.ts`      | `@axiomify/vault` secure configuration environment management                                          |
+| `examples/jobs-server.ts`       | `@axiomify/jobs` background tasks and compensating Saga workflows                                      |
 
 ## Notes
 

@@ -54,15 +54,19 @@ function recordRawLog(level: RecordedLog['level'], message: string): void {
     let source = 'app';
     let cleanedStack = '';
 
-    const isStudioMockRequest = !!requestId && (
-      requestId.startsWith('studio-metrics-') ||
-      requestId.startsWith('studio-ws-metrics-') ||
-      requestId.startsWith('studio-contract-') ||
-      requestId.startsWith('studio-security-')
-    );
+    const isStudioMockRequest =
+      !!requestId &&
+      (requestId.startsWith('studio-metrics-') ||
+        requestId.startsWith('studio-ws-metrics-') ||
+        requestId.startsWith('studio-contract-') ||
+        requestId.startsWith('studio-security-'));
 
     const isAppRequest = !!requestId && !isStudioMockRequest;
-    const shouldSkipStack = isAppRequest && level !== 'error' && level !== 'fatal' && level !== 'warn';
+    const shouldSkipStack =
+      isAppRequest &&
+      level !== 'error' &&
+      level !== 'fatal' &&
+      level !== 'warn';
 
     if (isStudioMockRequest) {
       isInternal = true;
@@ -78,7 +82,9 @@ function recordRawLog(level: RecordedLog['level'], message: string): void {
         .slice(2)
         .filter(
           (line) =>
-            !line.includes('node:internal') && !line.includes('console.ts') && !line.includes('logs.ts'),
+            !line.includes('node:internal') &&
+            !line.includes('console.ts') &&
+            !line.includes('logs.ts'),
         );
 
       // The full cleaned stack (for display)
@@ -89,7 +95,9 @@ function recordRawLog(level: RecordedLog['level'], message: string): void {
       // We need to look at the *real caller* frames to decide if the log
       // originates from studio code or app code.
       const callerLines = filteredLines.filter(
-        (line) => !line.includes('console.<computed>') && !line.includes('console.value'),
+        (line) =>
+          !line.includes('console.<computed>') &&
+          !line.includes('console.value'),
       );
       const callerStack = callerLines.join('\n');
 
@@ -132,13 +140,19 @@ function recordRawLog(level: RecordedLog['level'], message: string): void {
       // 1. ALL caller frames are from studio/cli code, AND
       // 2. There is no request correlation ID (which indicates app dispatch), AND
       // 3. No app-related frames are present
-      const isOnlyStudioFrames = callerLines.length > 0 && callerLines.every((line) =>
-        studioPatterns.some((p) => line.includes(p)) ||
-        line.includes('node:') ||
-        line.trim() === '',
-      );
+      const isOnlyStudioFrames =
+        callerLines.length > 0 &&
+        callerLines.every(
+          (line) =>
+            studioPatterns.some((p) => line.includes(p)) ||
+            line.includes('node:') ||
+            line.trim() === '',
+        );
 
-      if ((isOnlyStudioFrames && !hasAppFrame && !hasRequestId) || isStudioMockRequest) {
+      if (
+        (isOnlyStudioFrames && !hasAppFrame && !hasRequestId) ||
+        isStudioMockRequest
+      ) {
         isInternal = true;
       }
 
@@ -148,10 +162,15 @@ function recordRawLog(level: RecordedLog['level'], message: string): void {
       for (const line of stackLines) {
         const trimmed = line.trim();
         if (!trimmed) continue;
-        const match = /(?:\(|at\s+)([^\s()]+?):(\d+)(?::(\d+))?\)?$/.exec(trimmed);
+        const match = /(?:\(|at\s+)([^\s()]+?):(\d+)(?::(\d+))?\)?$/.exec(
+          trimmed,
+        );
         if (match) {
           const filePath = match[1];
-          if (filePath.includes('node:internal') || filePath.includes('node_modules')) {
+          if (
+            filePath.includes('node:internal') ||
+            filePath.includes('node_modules')
+          ) {
             continue;
           }
           // Skip frames from the CLI dist bundle for source attribution
@@ -240,13 +259,23 @@ export function instrumentLogs(): void {
   });
 
   // Intercept process.stdout.write
-  process.stdout.write = function (chunk: any, encoding?: any, callback?: any): boolean {
+  process.stdout.write = function (
+    chunk: any,
+    encoding?: any,
+    callback?: any,
+  ): boolean {
     if (inConsoleCall) {
-      return originalStdoutWrite.call(process.stdout, chunk, encoding, callback);
+      return originalStdoutWrite.call(
+        process.stdout,
+        chunk,
+        encoding,
+        callback,
+      );
     }
     inConsoleCall = true;
     try {
-      const message = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      const message =
+        typeof chunk === 'string' ? chunk : chunk.toString('utf8');
       if (message.trim()) {
         recordRawLog('info', message);
       }
@@ -259,13 +288,23 @@ export function instrumentLogs(): void {
   } as any;
 
   // Intercept process.stderr.write
-  process.stderr.write = function (chunk: any, encoding?: any, callback?: any): boolean {
+  process.stderr.write = function (
+    chunk: any,
+    encoding?: any,
+    callback?: any,
+  ): boolean {
     if (inConsoleCall) {
-      return originalStderrWrite.call(process.stderr, chunk, encoding, callback);
+      return originalStderrWrite.call(
+        process.stderr,
+        chunk,
+        encoding,
+        callback,
+      );
     }
     inConsoleCall = true;
     try {
-      const message = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      const message =
+        typeof chunk === 'string' ? chunk : chunk.toString('utf8');
       if (message.trim()) {
         recordRawLog('error', message);
       }

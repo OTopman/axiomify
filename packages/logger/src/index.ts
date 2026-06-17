@@ -57,7 +57,8 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
   const includeQuery = options.includeQuery ?? false;
   const includeBody = options.includeBody ?? false;
   const includeResponseHeaders = options.includeResponseHeaders ?? false;
-  const includeResponsePayload = options.includeResponsePayload ?? options.includePayload ?? false;
+  const includeResponsePayload =
+    options.includeResponsePayload ?? options.includePayload ?? false;
   const includeState = options.includeState ?? false;
 
   const isProd = process.env.NODE_ENV === 'production';
@@ -88,19 +89,22 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
         level.toUpperCase(),
       )} ${pc.bold(message)}`;
       const details = Object.keys(maskedMeta).length
-        ? `\n${pc.dim(JSON.stringify(maskedMeta, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2))}`
+        ? `\n${pc.dim(JSON.stringify(maskedMeta, (_, v) => (typeof v === 'bigint' ? v.toString() : v), 2))}`
         : '';
       console.log(`${summary}${details}`);
       return;
     }
 
     process.stdout.write(
-      `${JSON.stringify({
-        timestamp,
-        level: level.toUpperCase(),
-        message,
-        ...maskedMeta,
-      }, (_, v) => typeof v === 'bigint' ? v.toString() : v)}\n`,
+      `${JSON.stringify(
+        {
+          timestamp,
+          level: level.toUpperCase(),
+          message,
+          ...maskedMeta,
+        },
+        (_, v) => (typeof v === 'bigint' ? v.toString() : v),
+      )}\n`,
     );
   };
 
@@ -161,7 +165,9 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
           }
         : { message: String(err) };
 
-    const resHeaders = res ? ((res as any)._headers || (res as any).headers || {}) : {};
+    const resHeaders = res
+      ? (res as any)._headers || (res as any).headers || {}
+      : {};
 
     emit('error', 'Request Failed', {
       requestId: req.id,
@@ -175,7 +181,9 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
       ...(includeQuery ? { query: req.query } : {}),
       ...(includeBody ? { body: req.body } : {}),
       ...(res && includeResponseHeaders ? { responseHeaders: resHeaders } : {}),
-      ...(res && includeResponsePayload ? { payload: (res as any).payload } : {}),
+      ...(res && includeResponsePayload
+        ? { payload: (res as any).payload }
+        : {}),
       ...(includeState ? { state: req.state } : {}),
     });
   });

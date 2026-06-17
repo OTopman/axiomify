@@ -38,9 +38,7 @@ function normaliseSocketIoRoute(raw: any): DiscoveredRoute {
     operationId:
       typeof raw.operationId === 'string' ? raw.operationId : 'socketIo',
     summary:
-      typeof raw.summary === 'string'
-        ? raw.summary
-        : 'Socket.IO endpoint',
+      typeof raw.summary === 'string' ? raw.summary : 'Socket.IO endpoint',
     description:
       typeof raw.description === 'string'
         ? raw.description

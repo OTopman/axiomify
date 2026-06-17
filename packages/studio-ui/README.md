@@ -21,11 +21,13 @@ This package contains the front-end source code for the **Axiomify Studio** dash
 ## Development
 
 Run the development server:
+
 ```bash
 npm run dev
 ```
 
 Build the production bundle (emitted to the package distribution target, which is served by the CLI's `axiomify studio` command):
+
 ```bash
 npm run build
 ```

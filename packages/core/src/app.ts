@@ -32,7 +32,6 @@ export type { AppConfigurator, AppContext, AppModule };
 import { setupTelemetry } from './telemetry';
 import { vaultScope } from './vault-proxy-shim';
 
-
 function joinRoutePath(prefix: string, path: string): string {
   return (prefix + path).replace(/\/+/g, '/').replace(/\/$/, '') || '/';
 }

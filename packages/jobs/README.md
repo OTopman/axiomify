@@ -22,7 +22,7 @@ A resilient, type-safe distributed queue and workflow coordination engine for Ax
 npm install @axiomify/jobs
 ```
 
-*Note: `@axiomify/core` is required as a peer dependency.*
+_Note: `@axiomify/core` is required as a peer dependency._
 
 ---
 
@@ -44,7 +44,7 @@ app.use(
     storage: 'memory', // Use 'sql' for persistent environments
     maxConcurrency: 5,
     pollIntervalMs: 1000,
-  })
+  }),
 );
 ```
 
@@ -56,19 +56,26 @@ Inject the `jobs` scheduler from the dependency container to register task handl
 const jobs = app.resolve('jobs');
 
 // Register a task worker handler
-jobs.register('send-welcome-email', async (payload: { email: string; name: string }) => {
-  console.log(`Sending email to ${payload.name}...`);
-  // Async mail operation
-});
+jobs.register(
+  'send-welcome-email',
+  async (payload: { email: string; name: string }) => {
+    console.log(`Sending email to ${payload.name}...`);
+    // Async mail operation
+  },
+);
 
 // Enqueue a background task
-await jobs.enqueue('send-welcome-email', {
-  email: 'user@example.com',
-  name: 'John Doe',
-}, {
-  attempts: 3, // max attempts
-  priority: 10,
-});
+await jobs.enqueue(
+  'send-welcome-email',
+  {
+    email: 'user@example.com',
+    name: 'John Doe',
+  },
+  {
+    attempts: 3, // max attempts
+    priority: 10,
+  },
+);
 ```
 
 ### 3. Saga Distributed Workflows
@@ -90,7 +97,7 @@ saga.addStep(
   async (ctx) => {
     // Rollback compensation: release inventory
     await jobs.enqueue('release-inventory', { itemId: '123' });
-  }
+  },
 );
 
 // Step 2: Capture payment (this might throw)
@@ -102,7 +109,7 @@ saga.addStep(
   async (ctx) => {
     // Rollback compensation: refund charge
     await jobs.enqueue('refund-card', { amount: 50 });
-  }
+  },
 );
 
 // Execute the saga flow
@@ -116,12 +123,15 @@ console.log(outcome.success); // false
 ## API Reference
 
 ### `jobsModule(options: JobsModuleOptions)`
+
 Axiomify `AppModule` that:
+
 - Instantiates the queue storage engine (`'memory' | 'sql' | 'redis'`).
 - Configures `JobScheduler` workers and registers it as a `'jobs'` service in the container.
 - Binds shutdown hooks to close background loops gracefully.
 
 Key `options` options:
+
 - `queue`: Queue namespace target (defaults to `'default'`).
 - `maxConcurrency`: Maximum background tasks processed in parallel (default: `5`).
 - `pollIntervalMs`: Interval to check for pending jobs (default: `100` ms).
@@ -129,27 +139,35 @@ Key `options` options:
 - `dlqQueue`: Queue to route permanently failed jobs to (default: `${queue}:dlq`).
 
 ### `JobScheduler` Class
+
 Extends `EventEmitter`.
 
 #### `register<P = any>(name: string, handler: JobHandler<P>): this`
+
 Registers a worker function to execute tasks under the specified name with typed payload `P`. Returns the scheduler instance to support method chaining.
 
 #### `enqueue<P = any>(name: string, payload: P, options?: EnqueueOptions): Promise<string>`
+
 Queues a task for background processing.
+
 - `options.attempts`: Maximum execution retries (default: 3).
 - `options.priority`: Task sorting order (higher numbers run first).
 - `options.delayMs`: Delay in milliseconds before executing the job.
 
 #### `schedule(pattern: string, name: string, payload?: any): void`
+
 Registers a recurring task or cron schedule. The `pattern` can be a numeric string interval in seconds (e.g., `'60'`) or a standard 5-field cron expression (e.g., `*/5 * * * *`).
 
 #### `start(): void`
+
 Starts the worker polling loops.
 
 #### `stop(): Promise<void>`
+
 Stops polling and waits for active jobs to finish executing.
 
 #### Lifecycle Events
+
 - `start`: Emitted when a job starts execution. Passes `(job: Job)`.
 - `completed`: Emitted when a job completes successfully. Passes `(job: Job)`.
 - `retry`: Emitted when a job fails and is rescheduled for retry. Passes `(job: Job, error: Error)`.
@@ -159,12 +177,15 @@ Stops polling and waits for active jobs to finish executing.
 ### `SagaCoordinator` Class
 
 #### `new SagaCoordinator(scheduler: JobScheduler)`
+
 Creates a new coordinator instance.
 
 #### `addStep(name: string, execute: StepExec, compensate: StepComp): void`
+
 Adds an action step and its matching compensation task to the workflow chain.
 
 #### `execute(initialPayload?: any): Promise<SagaResult>`
+
 Executes the workflow forwards. If a step throws, runs compensations for all preceding steps.
 
 ---

@@ -17,7 +17,11 @@ import { type Server } from 'node:http';
 import pc from 'picocolors';
 import { loadApp } from '../utils/load-app';
 import { registerStudioApi } from './api';
-import { getContractsAutoRun, runAllContractTests, setOnContractsUpdated } from './api/contracts';
+import {
+  getContractsAutoRun,
+  runAllContractTests,
+  setOnContractsUpdated,
+} from './api/contracts';
 import { instrumentErrorObservatory } from './api/errors';
 import { instrumentLogs, setOnLogsUpdated } from './api/logs';
 import { setOnPerfUpdated } from './api/perf';
@@ -25,7 +29,11 @@ import { setOnRecorderUpdated } from './api/recorder';
 import { instrumentRequestReplay, setOnReplayUpdated } from './api/replay';
 import { setBaselineDiscovery } from './api/sdk-impact';
 import { instrumentTrafficProfiling } from './api/traffic-interceptor';
-import { instrumentWsAnalytics, stopWsMetricsInterval, clearRoomManagers } from './api/ws-analytics';
+import {
+  instrumentWsAnalytics,
+  stopWsMetricsInterval,
+  clearRoomManagers,
+} from './api/ws-analytics';
 import { setOnTracesUpdated } from './api/otlp';
 import { performDiscovery, type StudioDiscoveryResult } from './discovery';
 import { createStudioServer } from './server/http-server';
@@ -228,7 +236,7 @@ export async function startStudio(
       instrumentWsAnalytics(newApp, newExports);
       instrumentRequestReplay(newApp);
       instrumentTrafficProfiling(newApp);
-      
+
       if (getContractsAutoRun()) {
         runAllContractTests(newDiscovery, newApp).catch(() => {});
       }

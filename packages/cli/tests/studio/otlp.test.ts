@@ -26,7 +26,11 @@ function mockRequest(bodyObj: any): IncomingMessage {
 }
 
 // Helper to mock response
-function mockResponse(): { res: ServerResponse; getBody: () => any; getStatus: () => number } {
+function mockResponse(): {
+  res: ServerResponse;
+  getBody: () => any;
+  getStatus: () => number;
+} {
   let responseStatus = 200;
   let responseBody = '';
   const headers: Record<string, string> = {};
@@ -60,7 +64,9 @@ describe('Studio OTLP HTTP/JSON API Receivers', () => {
       resourceSpans: [
         {
           resource: {
-            attributes: [{ key: 'service.name', value: { stringValue: 'test-app' } }],
+            attributes: [
+              { key: 'service.name', value: { stringValue: 'test-app' } },
+            ],
           },
           scopeSpans: [
             {
@@ -72,7 +78,7 @@ describe('Studio OTLP HTTP/JSON API Receivers', () => {
                   parentSpanId: '',
                   name: 'GET /users',
                   startTimeUnixNano: '1672531199000000000', // 1672531199000 ms
-                  endTimeUnixNano: '1672531199050000000',   // 1672531199050 ms
+                  endTimeUnixNano: '1672531199050000000', // 1672531199050 ms
                   attributes: [
                     { key: 'http.status_code', value: { intValue: '200' } },
                     { key: 'axiomify.type', value: { stringValue: 'handler' } },
@@ -85,7 +91,7 @@ describe('Studio OTLP HTTP/JSON API Receivers', () => {
                   parentSpanId: 'span_1',
                   name: 'Service Call: db.find',
                   startTimeUnixNano: '1672531199010000000', // 1672531199010 ms
-                  endTimeUnixNano: '1672531199040000000',   // 1672531199040 ms
+                  endTimeUnixNano: '1672531199040000000', // 1672531199040 ms
                   attributes: [
                     { key: 'axiomify.type', value: { stringValue: 'service' } },
                   ],
@@ -131,7 +137,9 @@ describe('Studio OTLP HTTP/JSON API Receivers', () => {
       resourceLogs: [
         {
           resource: {
-            attributes: [{ key: 'service.name', value: { stringValue: 'test-app' } }],
+            attributes: [
+              { key: 'service.name', value: { stringValue: 'test-app' } },
+            ],
           },
           scopeLogs: [
             {
@@ -144,7 +152,13 @@ describe('Studio OTLP HTTP/JSON API Receivers', () => {
                   body: { stringValue: 'Database connection failed' },
                   attributes: [
                     { key: 'request_id', value: { stringValue: 'req_abc' } },
-                    { key: 'exception.stacktrace', value: { stringValue: 'Error: Database connection failed\n at ...' } },
+                    {
+                      key: 'exception.stacktrace',
+                      value: {
+                        stringValue:
+                          'Error: Database connection failed\n at ...',
+                      },
+                    },
                   ],
                 },
               ],
@@ -164,7 +178,9 @@ describe('Studio OTLP HTTP/JSON API Receivers', () => {
     expect(recordedLogs[0].level).toBe('error');
     expect(recordedLogs[0].message).toBe('Database connection failed');
     expect(recordedLogs[0].requestId).toBe('req_abc');
-    expect(recordedLogs[0].stack).toBe('Error: Database connection failed\n at ...');
+    expect(recordedLogs[0].stack).toBe(
+      'Error: Database connection failed\n at ...',
+    );
   });
 
   it('should clear recorded spans on delete', () => {

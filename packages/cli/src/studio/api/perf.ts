@@ -15,7 +15,7 @@ import { sendJson } from '../server/http-server';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MAX_SAMPLES = 5_000; // Per bucket — after this, evict oldest
-const TOP_N = 20;          // Rows returned per ranking table
+const TOP_N = 20; // Rows returned per ranking table
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -66,13 +66,24 @@ const routeLatencies = new Map<string, LatencyBucket>();
 const middlewareLatencies = new Map<string, MiddlewareLatencyBucket>();
 const serviceLatencies = new Map<string, ServiceLatencyBucket>();
 const queryAllSamples: number[] = [];
-const querySlowSamples: { query: string; durationMs: number; timestamp: string }[] = [];
+const querySlowSamples: {
+  query: string;
+  durationMs: number;
+  timestamp: string;
+}[] = [];
 
 let statsResetAt = new Date().toISOString();
 
 // ─── Percentile Computation ───────────────────────────────────────────────────
 
-export function computePercentiles(samples: number[]): { p50: number; p95: number; p99: number; avg: number; min: number; max: number } {
+export function computePercentiles(samples: number[]): {
+  p50: number;
+  p95: number;
+  p99: number;
+  avg: number;
+  min: number;
+  max: number;
+} {
   if (samples.length === 0) {
     return { p50: 0, p95: 0, p99: 0, avg: 0, min: 0, max: 0 };
   }
@@ -116,7 +127,19 @@ export function recordLatency(
   // Route bucket
   let bucket = routeLatencies.get(key);
   if (!bucket) {
-    bucket = { route, method, samples: [], count: 0, p50: 0, p95: 0, p99: 0, avg: 0, min: 0, max: Infinity, lastSeenAt: '' };
+    bucket = {
+      route,
+      method,
+      samples: [],
+      count: 0,
+      p50: 0,
+      p95: 0,
+      p99: 0,
+      avg: 0,
+      min: 0,
+      max: Infinity,
+      lastSeenAt: '',
+    };
     routeLatencies.set(key, bucket);
   }
   addSample(bucket.samples, totalDurationMs);
@@ -130,36 +153,67 @@ export function recordLatency(
     const mKey = step.name;
     let mBucket = middlewareLatencies.get(mKey);
     if (!mBucket) {
-      mBucket = { name: step.name, samples: [], count: 0, p50: 0, p95: 0, p99: 0, avg: 0 };
+      mBucket = {
+        name: step.name,
+        samples: [],
+        count: 0,
+        p50: 0,
+        p95: 0,
+        p99: 0,
+        avg: 0,
+      };
       middlewareLatencies.set(mKey, mBucket);
     }
     addSample(mBucket.samples, step.duration);
     mBucket.count++;
     const { p50, p95, p99, avg } = computePercentiles(mBucket.samples);
-    mBucket.p50 = p50; mBucket.p95 = p95; mBucket.p99 = p99; mBucket.avg = avg;
+    mBucket.p50 = p50;
+    mBucket.p95 = p95;
+    mBucket.p99 = p99;
+    mBucket.avg = avg;
   }
 
   // Query samples
   for (const qry of queryDurations) {
     addSample(queryAllSamples, qry.durationMs);
     if (querySlowSamples.length >= 200) querySlowSamples.shift();
-    querySlowSamples.push({ query: qry.query, durationMs: qry.durationMs, timestamp: new Date().toISOString() });
+    querySlowSamples.push({
+      query: qry.query,
+      durationMs: qry.durationMs,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   notifyPerfUpdated();
 }
 
-export function recordServiceLatency(token: string, method: string, durationMs: number): void {
+export function recordServiceLatency(
+  token: string,
+  method: string,
+  durationMs: number,
+): void {
   const key = `${token}.${method}`;
   let bucket = serviceLatencies.get(key);
   if (!bucket) {
-    bucket = { token, method, samples: [], count: 0, p50: 0, p95: 0, p99: 0, avg: 0 };
+    bucket = {
+      token,
+      method,
+      samples: [],
+      count: 0,
+      p50: 0,
+      p95: 0,
+      p99: 0,
+      avg: 0,
+    };
     serviceLatencies.set(key, bucket);
   }
   addSample(bucket.samples, durationMs);
   bucket.count++;
   const { p50, p95, p99, avg } = computePercentiles(bucket.samples);
-  bucket.p50 = p50; bucket.p95 = p95; bucket.p99 = p99; bucket.avg = avg;
+  bucket.p50 = p50;
+  bucket.p95 = p95;
+  bucket.p99 = p99;
+  bucket.avg = avg;
   notifyPerfUpdated();
 }
 
@@ -218,7 +272,7 @@ export function handleGetPerf(_req: any, res: ServerResponse): void {
       slowest: slowestQueries,
     },
     overall: computePercentiles([
-      ...Array.from(routeLatencies.values()).flatMap(b => b.samples),
+      ...Array.from(routeLatencies.values()).flatMap((b) => b.samples),
     ]),
   });
 }

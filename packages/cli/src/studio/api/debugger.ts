@@ -90,7 +90,9 @@ export async function readSourceContext(
   contextLines: number = 10,
 ): Promise<SourceContext | null> {
   try {
-    const absPath = isAbsolute(filePath) ? filePath : resolve(process.cwd(), filePath);
+    const absPath = isAbsolute(filePath)
+      ? filePath
+      : resolve(process.cwd(), filePath);
 
     // Security: only read files within the project directory
     const cwd = process.cwd();
@@ -130,7 +132,10 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
-export async function handlePostDebugSource(req: IncomingMessage, res: ServerResponse): Promise<void> {
+export async function handlePostDebugSource(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
   try {
     const raw = await readBody(req);
     const body = JSON.parse(raw);
@@ -153,7 +158,10 @@ export async function handlePostDebugSource(req: IncomingMessage, res: ServerRes
   }
 }
 
-export async function handlePostDebugFrames(req: IncomingMessage, res: ServerResponse): Promise<void> {
+export async function handlePostDebugFrames(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
   try {
     const raw = await readBody(req);
     const body = JSON.parse(raw);

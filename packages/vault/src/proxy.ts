@@ -35,8 +35,9 @@ function getRedactionRegex(): RegExp | null {
   if (_cachedRedactionRegex) return _cachedRedactionRegex;
   if (activePlaintextSecrets.size === 0) return null;
 
-  const escaped = Array.from(activePlaintextSecrets)
-    .map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const escaped = Array.from(activePlaintextSecrets).map((s) =>
+    s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+  );
   _cachedRedactionRegex = new RegExp(escaped.join('|'), 'g');
   return _cachedRedactionRegex;
 }
@@ -85,29 +86,53 @@ export function setupStreamSanitizer(): void {
   process.stdout.write = function (
     chunk: any,
     encodingOrCallback?: any,
-    callback?: any
+    callback?: any,
   ): boolean {
-    const encoding = typeof encodingOrCallback === 'string' ? encodingOrCallback : undefined;
-    const cb = typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
+    const encoding =
+      typeof encodingOrCallback === 'string' ? encodingOrCallback : undefined;
+    const cb =
+      typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
 
-    const str = typeof chunk === 'string' ? chunk : Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk);
+    const str =
+      typeof chunk === 'string'
+        ? chunk
+        : Buffer.isBuffer(chunk)
+          ? chunk.toString('utf8')
+          : String(chunk);
     const sanitized = redact(str);
 
-    return originalStdoutWrite.call(process.stdout, sanitized, encoding as any, cb);
+    return originalStdoutWrite.call(
+      process.stdout,
+      sanitized,
+      encoding as any,
+      cb,
+    );
   } as any;
 
   process.stderr.write = function (
     chunk: any,
     encodingOrCallback?: any,
-    callback?: any
+    callback?: any,
   ): boolean {
-    const encoding = typeof encodingOrCallback === 'string' ? encodingOrCallback : undefined;
-    const cb = typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
+    const encoding =
+      typeof encodingOrCallback === 'string' ? encodingOrCallback : undefined;
+    const cb =
+      typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
 
-    const str = typeof chunk === 'string' ? chunk : Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk);
+    const str =
+      typeof chunk === 'string'
+        ? chunk
+        : Buffer.isBuffer(chunk)
+          ? chunk.toString('utf8')
+          : String(chunk);
     const sanitized = redact(str);
 
-    return originalStderrWrite.call(process.stderr, sanitized, encoding as any, cb);
+    return originalStderrWrite.call(
+      process.stderr,
+      sanitized,
+      encoding as any,
+      cb,
+    );
   } as any;
 }
 
@@ -183,7 +208,7 @@ export function setupProcessEnvProxy(vault: AxiomifyVault): void {
         };
       }
       return Reflect.getOwnPropertyDescriptor(currentEnv, prop);
-    }
+    },
   };
 
   const envProxy = new Proxy(currentEnv, handler);
@@ -202,7 +227,7 @@ export function getCallerModuleName(): string {
   // This is fragile and depends on V8 stack format. AsyncLocalStorage is the primary mechanism.
   const stack = new Error().stack ?? '';
   const lines = stack.split('\n');
-  
+
   // Find a line corresponding to module registration or module lifecycle
   for (const line of lines) {
     if (line.includes('AppModule') || line.includes('AppConfigurator')) {

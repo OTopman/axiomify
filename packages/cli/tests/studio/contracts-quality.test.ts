@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { generateMockFromSchema, runContractTest } from '../../src/studio/api/contracts';
+import {
+  generateMockFromSchema,
+  runContractTest,
+} from '../../src/studio/api/contracts';
 import { computeQualityScore } from '../../src/studio/api/quality';
 import type { StudioDiscoveryResult } from '../../src/studio/discovery/types';
 
@@ -7,19 +10,25 @@ describe('Studio Contract Testing Center', () => {
   describe('Schema Mock Generator', () => {
     it('should generate valid mock data for basic types', () => {
       expect(generateMockFromSchema({ type: 'string' })).toBe('test_string');
-      expect(generateMockFromSchema({ type: 'string', format: 'email' })).toBe('user@example.com');
-      expect(generateMockFromSchema({ type: 'string', format: 'uuid' })).toBe('123e4567-e89b-12d3-a456-426614174000');
+      expect(generateMockFromSchema({ type: 'string', format: 'email' })).toBe(
+        'user@example.com',
+      );
+      expect(generateMockFromSchema({ type: 'string', format: 'uuid' })).toBe(
+        '123e4567-e89b-12d3-a456-426614174000',
+      );
       expect(generateMockFromSchema({ type: 'number' })).toBe(42);
       expect(generateMockFromSchema({ type: 'boolean' })).toBe(true);
       expect(generateMockFromSchema({ type: 'null' })).toBeNull();
     });
 
     it('should resolve oneOf/anyOf/allOf and enum', () => {
-      expect(generateMockFromSchema({ type: 'string', enum: ['first', 'second'] })).toBe('first');
+      expect(
+        generateMockFromSchema({ type: 'string', enum: ['first', 'second'] }),
+      ).toBe('first');
       expect(
         generateMockFromSchema({
           anyOf: [{ type: 'number', minimum: 10 }, { type: 'string' }],
-        })
+        }),
       ).toBe(10);
     });
 
@@ -198,7 +207,10 @@ describe('Studio API Quality Score', () => {
         serviceCount: 0,
       },
       openapi: null,
-      health: { findings: [], summary: { passes: 1, warnings: 0, failures: 0 } },
+      health: {
+        findings: [],
+        summary: { passes: 1, warnings: 0, failures: 0 },
+      },
       discoveredAt: new Date().toISOString(),
     };
 

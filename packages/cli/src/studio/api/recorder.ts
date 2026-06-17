@@ -14,7 +14,11 @@ import type { ServerResponse } from 'node:http';
 import { sendJson } from '../server/http-server';
 
 function safeStringify(val: any, space?: number): string {
-  return JSON.stringify(val, (_, v) => typeof v === 'bigint' ? v.toString() : v, space);
+  return JSON.stringify(
+    val,
+    (_, v) => (typeof v === 'bigint' ? v.toString() : v),
+    space,
+  );
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -119,7 +123,9 @@ export function recordResponse(entry: Omit<RecordedResponse, 'id'>): void {
   notifyRecorderUpdated();
 }
 
-export function recordSessionError(entry: Omit<RecordedSessionError, 'id'>): void {
+export function recordSessionError(
+  entry: Omit<RecordedSessionError, 'id'>,
+): void {
   errors.push({ id: `serr-${++entryCount}`, ...entry });
   evictIfNeeded(errors);
   notifyRecorderUpdated();
@@ -206,40 +212,59 @@ function buildHar() {
             url: `http://localhost${req.path}`,
             httpVersion: 'HTTP/1.1',
             cookies: [],
-            headers: Object.entries(req.headers || {}).map(([n, v]) => ({ name: n, value: String(v) })),
-            queryString: Object.entries(req.query || {}).map(([n, v]) => ({ name: n, value: String(v) })),
-            postData: req.body ? {
-              mimeType: 'application/json',
-              text: typeof req.body === 'string' ? req.body : safeStringify(req.body),
-            } : undefined,
+            headers: Object.entries(req.headers || {}).map(([n, v]) => ({
+              name: n,
+              value: String(v),
+            })),
+            queryString: Object.entries(req.query || {}).map(([n, v]) => ({
+              name: n,
+              value: String(v),
+            })),
+            postData: req.body
+              ? {
+                  mimeType: 'application/json',
+                  text:
+                    typeof req.body === 'string'
+                      ? req.body
+                      : safeStringify(req.body),
+                }
+              : undefined,
             headersSize: -1,
             bodySize: req.body ? safeStringify(req.body).length : 0,
           },
-          response: res ? {
-            status: res.status,
-            statusText: String(res.status),
-            httpVersion: 'HTTP/1.1',
-            cookies: [],
-            headers: Object.entries(res.headers || {}).map(([n, v]) => ({ name: n, value: String(v) })),
-            content: {
-              size: safeStringify(res.body ?? '').length,
-              mimeType: res.headers?.['content-type'] ?? 'application/json',
-              text: typeof res.body === 'string' ? res.body : safeStringify(res.body),
-            },
-            redirectURL: '',
-            headersSize: -1,
-            bodySize: -1,
-          } : {
-            status: 0,
-            statusText: 'No Response',
-            httpVersion: 'HTTP/1.1',
-            cookies: [],
-            headers: [],
-            content: { size: 0, mimeType: 'application/json', text: '' },
-            redirectURL: '',
-            headersSize: -1,
-            bodySize: -1,
-          },
+          response: res
+            ? {
+                status: res.status,
+                statusText: String(res.status),
+                httpVersion: 'HTTP/1.1',
+                cookies: [],
+                headers: Object.entries(res.headers || {}).map(([n, v]) => ({
+                  name: n,
+                  value: String(v),
+                })),
+                content: {
+                  size: safeStringify(res.body ?? '').length,
+                  mimeType: res.headers?.['content-type'] ?? 'application/json',
+                  text:
+                    typeof res.body === 'string'
+                      ? res.body
+                      : safeStringify(res.body),
+                },
+                redirectURL: '',
+                headersSize: -1,
+                bodySize: -1,
+              }
+            : {
+                status: 0,
+                statusText: 'No Response',
+                httpVersion: 'HTTP/1.1',
+                cookies: [],
+                headers: [],
+                content: { size: 0, mimeType: 'application/json', text: '' },
+                redirectURL: '',
+                headersSize: -1,
+                bodySize: -1,
+              },
           cache: {},
           timings: { send: 0, wait: res?.durationMs ?? 0, receive: 0 },
         };
@@ -281,18 +306,21 @@ export function handleDeleteSession(_req: any, res: ServerResponse): void {
 }
 
 export function handleExportSession(_req: any, res: ServerResponse): void {
-  const payload = safeStringify({
-    exportedAt: new Date().toISOString(),
-    startedAt: sessionStartTime,
-    nodeVersion: process.version,
-    platform: process.platform,
-    requests,
-    responses,
-    errors,
-    events,
-    queries,
-    entries: buildFullEntries(),
-  }, 2);
+  const payload = safeStringify(
+    {
+      exportedAt: new Date().toISOString(),
+      startedAt: sessionStartTime,
+      nodeVersion: process.version,
+      platform: process.platform,
+      requests,
+      responses,
+      errors,
+      events,
+      queries,
+      entries: buildFullEntries(),
+    },
+    2,
+  );
 
   res.writeHead(200, {
     'Content-Type': 'application/json',
@@ -328,4 +356,3 @@ export function getSessionData(): {
     entries: buildFullEntries(),
   };
 }
-

@@ -71,7 +71,15 @@ export interface ArchNode {
   id: string;
   name?: string;
   label?: string;
-  type: 'route' | 'middleware' | 'validation' | 'controller' | 'service' | 'repository' | 'database' | string;
+  type:
+    | 'route'
+    | 'middleware'
+    | 'validation'
+    | 'controller'
+    | 'service'
+    | 'repository'
+    | 'database'
+    | string;
   dependencies?: string[];
 }
 

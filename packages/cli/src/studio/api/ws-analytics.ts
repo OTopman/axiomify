@@ -24,8 +24,10 @@ export const wsMetrics: WsMetrics = {
 
 // ── Connection tracking ────────────────────────────────────────────────────
 // Tracks individual live connections regardless of adapter
-export const trackedSockets: Map<string, { id: string; protocol: string; connectedAt: string }> =
-  new Map();
+export const trackedSockets: Map<
+  string,
+  { id: string; protocol: string; connectedAt: string }
+> = new Map();
 
 let socketIdCounter = 0;
 function nextSocketId(prefix: string): string {
@@ -33,7 +35,11 @@ function nextSocketId(prefix: string): string {
 }
 
 function trackConnect(id: string, protocol: string): void {
-  trackedSockets.set(id, { id, protocol, connectedAt: new Date().toISOString() });
+  trackedSockets.set(id, {
+    id,
+    protocol,
+    connectedAt: new Date().toISOString(),
+  });
 }
 
 function trackDisconnect(id: string): void {
@@ -72,8 +78,11 @@ function recordInbound(event: string, payloadArgs: any[]): void {
   try {
     const size = Buffer.byteLength(JSON.stringify(payloadArgs), 'utf8');
     wsMetrics.totalPayloadSize += size;
-    if (size > wsMetrics.largestPayloadSize) wsMetrics.largestPayloadSize = size;
-  } catch { /* ignore unserializable */ }
+    if (size > wsMetrics.largestPayloadSize)
+      wsMetrics.largestPayloadSize = size;
+  } catch {
+    /* ignore unserializable */
+  }
 }
 
 // ── @axiomify/ws RoomManager ─────────────────────────────────────────────
@@ -83,7 +92,10 @@ export function clearRoomManagers(): void {
   roomManagers.length = 0;
 }
 
-function instrumentAxiomifyWs(app?: any, moduleExports?: Record<string, any>): boolean {
+function instrumentAxiomifyWs(
+  app?: any,
+  moduleExports?: Record<string, any>,
+): boolean {
   try {
     const wsPath = require.resolve('@axiomify/ws', { paths: [process.cwd()] });
     const wsPkg = require(wsPath);
@@ -95,13 +107,19 @@ function instrumentAxiomifyWs(app?: any, moduleExports?: Record<string, any>): b
     if (!(originalRoomManager.prototype as any).__axiomifyEmitWrapped) {
       (originalRoomManager.prototype as any).__axiomifyEmitWrapped = true;
       const originalEmit = originalRoomManager.prototype.emit;
-      originalRoomManager.prototype.emit = function (event: string, ...args: any[]) {
+      originalRoomManager.prototype.emit = function (
+        event: string,
+        ...args: any[]
+      ) {
         recordInbound(event, args);
         const start = performance.now();
         try {
           const ret = originalEmit.apply(this, [event, ...args]);
           const duration = performance.now() - start;
-          if (!wsMetrics.slowestHandler || duration > wsMetrics.slowestHandler.duration) {
+          if (
+            !wsMetrics.slowestHandler ||
+            duration > wsMetrics.slowestHandler.duration
+          ) {
             wsMetrics.slowestHandler = { event, duration };
           }
           return ret;
@@ -111,7 +129,8 @@ function instrumentAxiomifyWs(app?: any, moduleExports?: Record<string, any>): b
             error: err.message,
             timestamp: new Date().toISOString(),
           });
-          if (wsMetrics.failedEvents.length > 50) wsMetrics.failedEvents.shift();
+          if (wsMetrics.failedEvents.length > 50)
+            wsMetrics.failedEvents.shift();
           throw err;
         }
       };
@@ -143,22 +162,33 @@ function instrumentAxiomifyWs(app?: any, moduleExports?: Record<string, any>): b
         const wsRoutes: any[] = app.registeredWsRoutes || app._wsRoutes || [];
         for (const route of wsRoutes) {
           const mgr = route._manager || route.manager || route.__manager;
-          if (mgr && mgr instanceof originalRoomManager && !roomManagers.includes(mgr)) {
+          if (
+            mgr &&
+            mgr instanceof originalRoomManager &&
+            !roomManagers.includes(mgr)
+          ) {
             roomManagers.push(mgr);
           }
         }
-      } catch { /* safe to ignore */ }
+      } catch {
+        /* safe to ignore */
+      }
     }
 
     for (const src of exportSources) {
       try {
         for (const key of Object.keys(src)) {
           const val = src[key];
-          if (val instanceof originalRoomManager && !roomManagers.includes(val)) {
+          if (
+            val instanceof originalRoomManager &&
+            !roomManagers.includes(val)
+          ) {
             roomManagers.push(val);
           }
         }
-      } catch { /* safe to ignore */ }
+      } catch {
+        /* safe to ignore */
+      }
     }
 
     return true;
@@ -177,7 +207,9 @@ function instrumentSocketIo(): boolean {
       try {
         sioPath = require.resolve(pkg, { paths: [process.cwd()] });
         break;
-      } catch { /* not installed */ }
+      } catch {
+        /* not installed */
+      }
     }
     if (!sioPath) return false;
 
@@ -195,7 +227,11 @@ function instrumentSocketIo(): boolean {
     const originalServerOn = ServerClass.prototype.on;
 
     // Intercept connection events so we can observe each socket
-    ServerClass.prototype.on = function (event: string, listener: any, ...rest: any[]) {
+    ServerClass.prototype.on = function (
+      event: string,
+      listener: any,
+      ...rest: any[]
+    ) {
       if (event === 'connection') {
         const wrappedListener = (socket: any) => {
           const id = socket.id || nextSocketId('sio');
@@ -206,7 +242,11 @@ function instrumentSocketIo(): boolean {
           if (originalSocketOn) {
             socket.on = function (evtName: string, handler: any) {
               return originalSocketOn(evtName, (...args: any[]) => {
-                if (evtName !== 'disconnect' && evtName !== 'disconnecting' && evtName !== 'error') {
+                if (
+                  evtName !== 'disconnect' &&
+                  evtName !== 'disconnecting' &&
+                  evtName !== 'error'
+                ) {
                   recordInbound(evtName, args);
                 }
                 return handler(...args);
@@ -249,7 +289,11 @@ function instrumentNativeWs(): boolean {
     (WsServer.prototype as any).__axiomifyWrapped = true;
 
     const originalOn = WsServer.prototype.on;
-    WsServer.prototype.on = function (event: string, listener: any, ...rest: any[]) {
+    WsServer.prototype.on = function (
+      event: string,
+      listener: any,
+      ...rest: any[]
+    ) {
       if (event === 'connection') {
         const wrappedListener = (socket: any, req: any) => {
           const id = nextSocketId('ws');
@@ -301,7 +345,10 @@ export function patchHttpServerForWs(httpServer: any): void {
 // ── Main entry ───────────────────────────────────────────────────────────
 let isWsAnalyticsInstrumented = false;
 
-export function instrumentWsAnalytics(app?: any, moduleExports?: Record<string, any>): void {
+export function instrumentWsAnalytics(
+  app?: any,
+  moduleExports?: Record<string, any>,
+): void {
   if (!isWsAnalyticsInstrumented) {
     isWsAnalyticsInstrumented = true;
     instrumentSocketIo();
@@ -326,13 +373,17 @@ async function fetchPrometheusText(app?: any): Promise<string | null> {
     const baseUrl = getAppBaseUrl();
     if (baseUrl) {
       const response = await fetch(`${baseUrl}/metrics`, {
-        signal: (AbortSignal as any).timeout ? (AbortSignal as any).timeout(800) : undefined,
+        signal: (AbortSignal as any).timeout
+          ? (AbortSignal as any).timeout(800)
+          : undefined,
       });
       if (response.ok) {
         return await response.text();
       }
     }
-  } catch { /* external app not reachable */ }
+  } catch {
+    /* external app not reachable */
+  }
 
   // 2. Fallback: dispatch in-memory mock request via app.handle()
   if (app) {
@@ -341,7 +392,9 @@ async function fetchPrometheusText(app?: any): Promise<string | null> {
       let metricsPath = '/metrics';
       if (Array.isArray(app.registeredRoutes)) {
         const found = app.registeredRoutes.find(
-          (r: any) => r.method === 'GET' && (r.path === '/metrics' || r.path.endsWith('/metrics')),
+          (r: any) =>
+            r.method === 'GET' &&
+            (r.path === '/metrics' || r.path.endsWith('/metrics')),
         );
         if (found) metricsPath = found.path;
       }
@@ -363,25 +416,48 @@ async function fetchPrometheusText(app?: any): Promise<string | null> {
       let responseStatus = 200;
 
       const mockRes: any = {
-        status(code: number) { responseStatus = code; return this; },
-        sendRaw(data: unknown, _type?: string) { responseBody = String(data); },
-        send(data: unknown) { responseBody = String(data); },
-        header() { return this; },
-        getHeader() { return undefined; },
-        removeHeader() { return this; },
+        status(code: number) {
+          responseStatus = code;
+          return this;
+        },
+        sendRaw(data: unknown, _type?: string) {
+          responseBody = String(data);
+        },
+        send(data: unknown) {
+          responseBody = String(data);
+        },
+        header() {
+          return this;
+        },
+        getHeader() {
+          return undefined;
+        },
+        removeHeader() {
+          return this;
+        },
         capabilities: { sse: false, streaming: false },
-        get statusCode() { return responseStatus; },
-        get headersSent() { return false; },
+        get statusCode() {
+          return responseStatus;
+        },
+        get headersSent() {
+          return false;
+        },
       };
 
       const indexed = app as unknown as Record<string, unknown>;
-      const handleRequest = (indexed['handle'] as (req: unknown, res: unknown) => Promise<void>).bind(app);
-      await logCorrelationStorage.run(mockReq.id, () => handleRequest(mockReq, mockRes));
+      const handleRequest = (
+        indexed['handle'] as (req: unknown, res: unknown) => Promise<void>
+      ).bind(app);
+      await logCorrelationStorage.run(mockReq.id, () =>
+        handleRequest(mockReq, mockRes),
+      );
 
       if (responseStatus === 200 && responseBody) {
         return responseBody;
       }
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
   }
 
   return null;
@@ -417,14 +493,19 @@ function parseWsFromPrometheus(text: string): {
   const roomRegex = /ws_room_clients\{room="([^"]+)"\}\s+(\d+)/g;
   let match;
   while ((match = roomRegex.exec(text)) !== null) {
-    result.rooms[match[1]] = (result.rooms[match[1]] || 0) + parseInt(match[2], 10);
+    result.rooms[match[1]] =
+      (result.rooms[match[1]] || 0) + parseInt(match[2], 10);
   }
   result.totalRooms = Object.keys(result.rooms).length;
 
   return result;
 }
 
-export async function handleGetWsAnalytics(_req: any, res: ServerResponse, app?: any): Promise<void> {
+export async function handleGetWsAnalytics(
+  _req: any,
+  res: ServerResponse,
+  app?: any,
+): Promise<void> {
   // @axiomify/ws RoomManager stats
   let axiomifyConnections = 0;
   let totalRooms = 0;
@@ -456,7 +537,9 @@ export async function handleGetWsAnalytics(_req: any, res: ServerResponse, app?:
           });
         }
       }
-    } catch { /* Non-fatal */ }
+    } catch {
+      /* Non-fatal */
+    }
   });
 
   const clients = Array.from(trackedSockets.values());
@@ -477,7 +560,10 @@ export async function handleGetWsAnalytics(_req: any, res: ServerResponse, app?:
     }
 
     if (parsed.framesReceived !== null) {
-      totalFramesReceived = Math.max(totalFramesReceived, parsed.framesReceived);
+      totalFramesReceived = Math.max(
+        totalFramesReceived,
+        parsed.framesReceived,
+      );
     }
 
     if (parsed.framesSent !== null) {
@@ -503,4 +589,3 @@ export async function handleGetWsAnalytics(_req: any, res: ServerResponse, app?:
     rates: messageRates,
   });
 }
-

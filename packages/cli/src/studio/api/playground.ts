@@ -30,7 +30,10 @@ function readBody(req: IncomingMessage): Promise<string> {
 }
 
 // Generate the SDK in-memory
-export async function getPlaygroundSdk(app: any, target: string = 'typescript') {
+export async function getPlaygroundSdk(
+  app: any,
+  target: string = 'typescript',
+) {
   const ingestion = ingestAxiomifyApp(app, {
     title: 'PlaygroundClient',
     version: '1.0.0',
@@ -44,7 +47,10 @@ export async function getPlaygroundSdk(app: any, target: string = 'typescript') 
   }
 
   const generator = new GeneratorClass(compilation.schema, {
-    packageName: target === 'typescript' ? '@axiomify/playground-client' : `axiomify_${target}_client`,
+    packageName:
+      target === 'typescript'
+        ? '@axiomify/playground-client'
+        : `axiomify_${target}_client`,
     outputDir: '',
     version: '1.0.0',
     runtime: true,
@@ -53,7 +59,9 @@ export async function getPlaygroundSdk(app: any, target: string = 'typescript') 
   const files = await generator.generate();
 
   // Find some REST endpoint to generate a realistic starter snippet
-  const restEndpoints = compilation.schema.endpoints.filter((e) => e.transport === 'rest');
+  const restEndpoints = compilation.schema.endpoints.filter(
+    (e) => e.transport === 'rest',
+  );
   let exampleMethod = '';
   let starterCode = '';
 
@@ -82,7 +90,9 @@ const client = new ApiClient({
   } else if (target === 'python') {
     if (restEndpoints.length > 0) {
       const ep = restEndpoints[0];
-      const snakeMethod = ep.operationId.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
+      const snakeMethod = ep.operationId
+        .replace(/([a-z])([A-Z])/g, '$1_$2')
+        .toLowerCase();
       exampleMethod = `    # Example call:\n    result = await client.${snakeMethod}({})\n    print('Result:', result)\n`;
     } else {
       exampleMethod = `    # Example call:\n    # result = await client.get_some_data()\n    # print(result)\n`;
@@ -164,7 +174,10 @@ export async function handlePostPlaygroundExecute(
 
     // 2. Write them plus the user code to a temporary directory for bundling
     const randomSuffix = Math.random().toString(36).substring(2, 10);
-    tmpDir = path.join(process.cwd(), `.axiomify-playground-tmp-${randomSuffix}`);
+    tmpDir = path.join(
+      process.cwd(),
+      `.axiomify-playground-tmp-${randomSuffix}`,
+    );
     await fs.mkdir(tmpDir, { recursive: true });
 
     // Write generated SDK files
@@ -214,7 +227,9 @@ export async function handlePostPlaygroundExecute(
         sendJson(res, { logs, errors });
       } catch (err: any) {
         const logs = err.stdout ? err.stdout.trim().split('\n') : [];
-        const errors = err.stderr ? err.stderr.trim().split('\n') : [err.message || String(err)];
+        const errors = err.stderr
+          ? err.stderr.trim().split('\n')
+          : [err.message || String(err)];
         sendJson(res, { logs, errors });
       }
     } else if (target === 'python') {
@@ -229,7 +244,9 @@ export async function handlePostPlaygroundExecute(
         sendJson(res, { logs, errors });
       } catch (err: any) {
         const logs = err.stdout ? err.stdout.trim().split('\n') : [];
-        const errors = err.stderr ? err.stderr.trim().split('\n') : [err.message || String(err)];
+        const errors = err.stderr
+          ? err.stderr.trim().split('\n')
+          : [err.message || String(err)];
         sendJson(res, { logs, errors });
       }
     } else if (target === 'dart') {
@@ -245,12 +262,18 @@ export async function handlePostPlaygroundExecute(
         sendJson(res, { logs, errors });
       } catch (err: any) {
         const logs = err.stdout ? err.stdout.trim().split('\n') : [];
-        const errors = err.stderr ? err.stderr.trim().split('\n') : [err.message || String(err)];
+        const errors = err.stderr
+          ? err.stderr.trim().split('\n')
+          : [err.message || String(err)];
         sendJson(res, { logs, errors });
       }
     }
   } catch (err: any) {
-    sendJson(res, { error: err.stack || err.message || 'Execution failed' }, 500);
+    sendJson(
+      res,
+      { error: err.stack || err.message || 'Execution failed' },
+      500,
+    );
   } finally {
     // Clean up temporary directory
     if (tmpDir) {

@@ -1,6 +1,9 @@
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseStackTrace, readSourceContext } from '../../src/studio/api/debugger';
+import {
+  parseStackTrace,
+  readSourceContext,
+} from '../../src/studio/api/debugger';
 
 describe('Studio Debugger & Stack Trace Parser', () => {
   describe('Stack Trace Parser', () => {
@@ -14,9 +17,11 @@ describe('Studio Debugger & Stack Trace Parser', () => {
       const frames = parseStackTrace(mockStack);
 
       expect(frames.length).toBe(4);
-      
+
       expect(frames[0].functionName).toBe('Object.handler');
-      expect(frames[0].file).toBe('/Users/Topman/Documents/Projects/NodeJS/axiomify/examples/my-app/src/index.ts');
+      expect(frames[0].file).toBe(
+        '/Users/Topman/Documents/Projects/NodeJS/axiomify/examples/my-app/src/index.ts',
+      );
       expect(frames[0].line).toBe(25);
       expect(frames[0].column).toBe(12);
       expect(frames[0].isInternal).toBe(false);
@@ -45,7 +50,7 @@ describe('Studio Debugger & Stack Trace Parser', () => {
         expect(result.startLine).toBe(3);
         expect(result.endLine).toBe(7);
         expect(result.lines.length).toBe(5);
-        expect(result.lines.find(l => l.isTarget)?.num).toBe(5);
+        expect(result.lines.find((l) => l.isTarget)?.num).toBe(5);
       }
     });
   });

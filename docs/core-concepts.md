@@ -48,7 +48,7 @@ At request time:
   - Strings to numbers or integers (e.g., `"5"` to `5`) using `Number()`, ignoring `NaN` or empty spaces.
   - Strings to booleans (`"true"` to `true`, `"false"` to `false`).
   - Arrays and nested object properties matching these schemas.
-  Non-coercible values (e.g., `"abc"` for a number field) are left untouched so downstream validation can produce clear, standard errors.
+    Non-coercible values (e.g., `"abc"` for a number field) are left untouched so downstream validation can produce clear, standard errors.
 - **AJV validates structure** — the compiled function does the structural check.
 - **`schema.parse(data)` runs a second pass only when the schema declares transforms** (`.default()`, `.coerce.*`, `.transform()`). On transform-free schemas the second pass is skipped entirely.
 

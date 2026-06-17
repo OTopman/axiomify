@@ -1,6 +1,11 @@
 import type { AppModule } from '@axiomify/core';
 import { JobScheduler, SagaCoordinator } from './scheduler';
-import { JobStorage, MemoryJobStorage, SQLJobStorage, RedisJobStorage } from './storage';
+import {
+  JobStorage,
+  MemoryJobStorage,
+  SQLJobStorage,
+  RedisJobStorage,
+} from './storage';
 
 export * from './storage';
 export * from './scheduler';

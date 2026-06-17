@@ -24,7 +24,9 @@
  * privileged core APIs (`lockRoutes`, `handleMatchedRoute`).
  */
 
-const _adapterCapability = Object.freeze({ _brand: 'axiomify.adapter.v2' } as const);
+const _adapterCapability = Object.freeze({
+  _brand: 'axiomify.adapter.v2',
+} as const);
 
 /** Opaque capability token. Pass to privileged APIs to prove adapter identity. */
 export type AdapterCapability = typeof _adapterCapability;

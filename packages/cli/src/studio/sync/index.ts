@@ -12,7 +12,11 @@ export interface SyncEngineOptions {
   entry: string;
   wsServer: StudioWsServer;
   initialExports?: any;
-  onReload: (newDiscovery: StudioDiscoveryResult, newApp: Axiomify, exports: any) => void;
+  onReload: (
+    newDiscovery: StudioDiscoveryResult,
+    newApp: Axiomify,
+    exports: any,
+  ) => void;
 }
 
 /**

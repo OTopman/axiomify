@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
-import { redactPII, redactHeaders, buildContext } from '../../src/studio/api/ai';
+import {
+  redactPII,
+  redactHeaders,
+  buildContext,
+} from '../../src/studio/api/ai';
 import type { StudioDiscoveryResult } from '../../src/studio/discovery/types';
 
 describe('Studio AI Assistant', () => {
@@ -27,13 +31,15 @@ describe('Studio AI Assistant', () => {
     it('should redact tokens and emails in string values', () => {
       // Email string
       expect(redactPII('test@example.com')).toBe('[REDACTED_EMAIL]');
-      
+
       // Token string (long, no spaces)
       const longToken = 'a'.repeat(60);
       expect(redactPII(longToken)).toBe('[REDACTED_TOKEN]');
 
       // Normal text should not be redacted
-      expect(redactPII('This is a normal description text with some length.')).toBe('This is a normal description text with some length.');
+      expect(
+        redactPII('This is a normal description text with some length.'),
+      ).toBe('This is a normal description text with some length.');
     });
 
     it('should redact sensitive headers', () => {
@@ -77,7 +83,10 @@ describe('Studio AI Assistant', () => {
           serviceCount: 0,
         },
         openapi: null,
-        health: { findings: [], summary: { passes: 1, warnings: 0, failures: 0 } },
+        health: {
+          findings: [],
+          summary: { passes: 1, warnings: 0, failures: 0 },
+        },
         discoveredAt: new Date().toISOString(),
       };
 
@@ -139,7 +148,13 @@ describe('Studio AI Assistant', () => {
         },
       ];
 
-      const context = buildContext(discovery, session, latencies, security, contracts);
+      const context = buildContext(
+        discovery,
+        session,
+        latencies,
+        security,
+        contracts,
+      );
 
       expect(context.routes.length).toBe(1);
       expect(context.routes[0].path).toBe('/api/users');
@@ -155,10 +170,14 @@ describe('Studio AI Assistant', () => {
       expect(context.contracts[0].passed).toBe(true);
 
       expect(context.recentTraffic.length).toBe(1);
-      expect(context.recentTraffic[0].request.headers.authorization).toBe('[REDACTED]');
+      expect(context.recentTraffic[0].request.headers.authorization).toBe(
+        '[REDACTED]',
+      );
       expect(context.recentTraffic[0].request.query.email).toBe('[REDACTED]');
       expect(context.recentTraffic[0].request.body.password).toBe('[REDACTED]');
-      expect(context.recentTraffic[0].response.headers['set-cookie']).toBe('[REDACTED]');
+      expect(context.recentTraffic[0].response.headers['set-cookie']).toBe(
+        '[REDACTED]',
+      );
     });
   });
 });

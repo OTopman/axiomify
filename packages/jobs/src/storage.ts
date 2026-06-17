@@ -38,10 +38,15 @@ export class MemoryJobStorage implements JobStorage {
     this.jobs.set(job.id, { ...job });
   }
 
-  public async acquireNext(queue: string, lockDurationMs: number): Promise<Job | null> {
+  public async acquireNext(
+    queue: string,
+    lockDurationMs: number,
+  ): Promise<Job | null> {
     const now = Date.now();
     const candidates = Array.from(this.jobs.values())
-      .filter((j) => j.queue === queue && j.status === 'pending' && j.runAt <= now)
+      .filter(
+        (j) => j.queue === queue && j.status === 'pending' && j.runAt <= now,
+      )
       .sort((a, b) => b.priority - a.priority); // higher priority first
 
     const job = candidates[0];
@@ -62,7 +67,11 @@ export class MemoryJobStorage implements JobStorage {
     }
   }
 
-  public async fail(id: string, error: string, retryInMs?: number): Promise<void> {
+  public async fail(
+    id: string,
+    error: string,
+    retryInMs?: number,
+  ): Promise<void> {
     const job = this.jobs.get(id);
     if (job) {
       job.attempts += 1;
@@ -97,7 +106,7 @@ export class MemoryJobStorage implements JobStorage {
     let removed = 0;
     for (const [id, job] of this.jobs.entries()) {
       if (job.status === 'completed' || job.status === 'failed') {
-        if (olderThanMs === undefined || (now - job.runAt) >= olderThanMs) {
+        if (olderThanMs === undefined || now - job.runAt >= olderThanMs) {
           this.jobs.delete(id);
           removed++;
         }
@@ -131,7 +140,9 @@ export class MemoryJobStorage implements JobStorage {
 export class SQLJobStorage implements JobStorage {
   constructor(private client: any) {
     if (!client) {
-      throw new Error('[Axiomify Jobs] SQL client database instance is required.');
+      throw new Error(
+        '[Axiomify Jobs] SQL client database instance is required.',
+      );
     }
   }
 
@@ -150,7 +161,9 @@ export class SQLJobStorage implements JobStorage {
       const res = await this.client.execute(sql, params);
       return res.rows || res;
     }
-    throw new Error('[Axiomify Jobs] Unsupported database client interface. Make sure it supports .query(), .execute() or .$queryRawUnsafe()');
+    throw new Error(
+      '[Axiomify Jobs] Unsupported database client interface. Make sure it supports .query(), .execute() or .$queryRawUnsafe()',
+    );
   }
 
   public async save(job: Job): Promise<void> {
@@ -158,7 +171,7 @@ export class SQLJobStorage implements JobStorage {
     // Check if job exists using proper $1 parameter syntax
     const checkSql = 'SELECT id FROM axiomify_jobs WHERE id = $1 LIMIT 1';
     const existing = await this.executeQuery(checkSql, [job.id]);
-    
+
     if (existing && existing.length > 0) {
       const updateSql = `
         UPDATE axiomify_jobs 
@@ -173,10 +186,12 @@ export class SQLJobStorage implements JobStorage {
         job.maxAttempts,
         job.error || null,
         lockedVal,
-        job.id
+        job.id,
       ]);
     } else {
-      const traceContextStr = job.traceContext ? JSON.stringify(job.traceContext) : null;
+      const traceContextStr = job.traceContext
+        ? JSON.stringify(job.traceContext)
+        : null;
 
       // Serialize traceContext into its own column
       const payloadToSave = job.payload;
@@ -197,7 +212,7 @@ export class SQLJobStorage implements JobStorage {
         job.maxAttempts,
         job.error || null,
         lockedVal,
-        traceContextStr
+        traceContextStr,
       ]);
     }
   }
@@ -206,10 +221,13 @@ export class SQLJobStorage implements JobStorage {
    * Atomically acquires the next pending job using a single UPDATE ... RETURNING statement.
    * This eliminates the race condition from the previous SELECT + UPDATE approach.
    */
-  public async acquireNext(queue: string, lockDurationMs: number): Promise<Job | null> {
+  public async acquireNext(
+    queue: string,
+    lockDurationMs: number,
+  ): Promise<Job | null> {
     const now = Date.now();
     const lockedAt = now + lockDurationMs;
-    
+
     // Single atomic statement: UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED) RETURNING *
     const sql = `
       UPDATE axiomify_jobs 
@@ -227,13 +245,17 @@ export class SQLJobStorage implements JobStorage {
     const row = rows?.[0];
     if (!row) return null;
 
-    const rawPayload = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+    const rawPayload =
+      typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
     let payload = rawPayload;
     let traceContext = undefined;
 
     // Try dedicated column first, then fall back to payload-embedded format
     if (row.traceContext) {
-      traceContext = typeof row.traceContext === 'string' ? JSON.parse(row.traceContext) : row.traceContext;
+      traceContext =
+        typeof row.traceContext === 'string'
+          ? JSON.parse(row.traceContext)
+          : row.traceContext;
     } else if (payload && typeof payload === 'object') {
       if ('_traceContext' in payload) {
         traceContext = payload._traceContext;
@@ -268,14 +290,20 @@ export class SQLJobStorage implements JobStorage {
     await this.executeQuery(sql, [id]);
   }
 
-  public async fail(id: string, error: string, retryInMs?: number): Promise<void> {
+  public async fail(
+    id: string,
+    error: string,
+    retryInMs?: number,
+  ): Promise<void> {
     const now = Date.now();
-    const selectSql = 'SELECT attempts, "maxAttempts" FROM axiomify_jobs WHERE id = $1';
+    const selectSql =
+      'SELECT attempts, "maxAttempts" FROM axiomify_jobs WHERE id = $1';
     const rows = await this.executeQuery(selectSql, [id]);
     const row = rows?.[0];
     if (!row) return;
 
-    const attempts = (row.attempts ?? row.maxattempts !== undefined ? row.attempts : 0) + 1;
+    const attempts =
+      ((row.attempts ?? row.maxattempts !== undefined) ? row.attempts : 0) + 1;
     const maxAttempts = row.maxAttempts ?? row.maxattempts;
 
     if (attempts < maxAttempts && retryInMs !== undefined) {
@@ -297,19 +325,23 @@ export class SQLJobStorage implements JobStorage {
   }
 
   public async getJobs(queue?: string): Promise<Job[]> {
-    const sql = queue 
+    const sql = queue
       ? 'SELECT * FROM axiomify_jobs WHERE queue = $1 ORDER BY "runAt" DESC'
       : 'SELECT * FROM axiomify_jobs ORDER BY "runAt" DESC';
     const rows = await this.executeQuery(sql, queue ? [queue] : []);
-    
+
     return (rows || []).map((row) => {
-      const rawPayload = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+      const rawPayload =
+        typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
       let payload = rawPayload;
       let traceContext = undefined;
 
       // Try dedicated column first, then fall back to payload-embedded format
       if (row.traceContext) {
-        traceContext = typeof row.traceContext === 'string' ? JSON.parse(row.traceContext) : row.traceContext;
+        traceContext =
+          typeof row.traceContext === 'string'
+            ? JSON.parse(row.traceContext)
+            : row.traceContext;
       } else if (payload && typeof payload === 'object') {
         if ('_traceContext' in payload) {
           traceContext = payload._traceContext;
@@ -381,11 +413,16 @@ export class RedisJobStorage implements JobStorage {
   }
 
   private async smembers(key: string): Promise<string[]> {
-    const fn = this.client.smembers || this.client.sMembers || this.client.SMEMBERS;
+    const fn =
+      this.client.smembers || this.client.sMembers || this.client.SMEMBERS;
     return fn.call(this.client, key);
   }
 
-  private async zadd(key: string, score: number, member: string): Promise<void> {
+  private async zadd(
+    key: string,
+    score: number,
+    member: string,
+  ): Promise<void> {
     const fn = this.client.zadd || this.client.zAdd || this.client.ZADD;
     try {
       await fn.call(this.client, key, score, member);
@@ -399,8 +436,15 @@ export class RedisJobStorage implements JobStorage {
     await fn.call(this.client, key, member);
   }
 
-  private async zrangebyscore(key: string, min: number, max: number): Promise<string[]> {
-    const fn = this.client.zrangebyscore || this.client.zRangeByScore || this.client.ZRANGEBYSCORE;
+  private async zrangebyscore(
+    key: string,
+    min: number,
+    max: number,
+  ): Promise<string[]> {
+    const fn =
+      this.client.zrangebyscore ||
+      this.client.zRangeByScore ||
+      this.client.ZRANGEBYSCORE;
     return fn.call(this.client, key, min, max);
   }
 
@@ -429,11 +473,18 @@ export class RedisJobStorage implements JobStorage {
           // node-redis v4 iterator style — just break and use tracked sets
           return;
         }
-        const result = await scanFn.call(this.client, cursor, 'MATCH', pattern, 'COUNT', 100);
-        
+        const result = await scanFn.call(
+          this.client,
+          cursor,
+          'MATCH',
+          pattern,
+          'COUNT',
+          100,
+        );
+
         let nextCursor: string;
         let keys: string[];
-        
+
         if (Array.isArray(result)) {
           // ioredis style: [cursor, keys]
           nextCursor = String(result[0]);
@@ -466,7 +517,11 @@ export class RedisJobStorage implements JobStorage {
     await this.sadd(`axiomify:queue:${job.queue}:jobs`, job.id);
 
     if (job.status === 'pending') {
-      await this.zadd(`axiomify:queue:${job.queue}:pending_zset`, job.runAt, job.id);
+      await this.zadd(
+        `axiomify:queue:${job.queue}:pending_zset`,
+        job.runAt,
+        job.id,
+      );
     } else {
       await this.zrem(`axiomify:queue:${job.queue}:pending_zset`, job.id);
     }
@@ -478,7 +533,10 @@ export class RedisJobStorage implements JobStorage {
    * If Lua eval is not available, throws an error instead of falling back to
    * a non-atomic (racy) GET+SET pattern.
    */
-  public async acquireNext(queue: string, lockDurationMs: number): Promise<Job | null> {
+  public async acquireNext(
+    queue: string,
+    lockDurationMs: number,
+  ): Promise<Job | null> {
     const now = Date.now();
     const pendingZsetKey = `axiomify:queue:${queue}:pending_zset`;
 
@@ -518,7 +576,7 @@ export class RedisJobStorage implements JobStorage {
     if (typeof evalFn !== 'function') {
       throw new Error(
         '[Axiomify Jobs] Redis client must support EVAL for atomic job locking. ' +
-        'The non-atomic fallback has been removed to prevent race conditions.'
+          'The non-atomic fallback has been removed to prevent race conditions.',
       );
     }
 
@@ -542,12 +600,20 @@ export class RedisJobStorage implements JobStorage {
       try {
         let result: any;
         if (typeof this.client.evalsha === 'function') {
-          result = await evalFn.call(this.client, lockScript, 2, lockKey, pendingZsetKey, lockedAt.toString(), now.toString());
+          result = await evalFn.call(
+            this.client,
+            lockScript,
+            2,
+            lockKey,
+            pendingZsetKey,
+            lockedAt.toString(),
+            now.toString(),
+          );
         } else {
           result = await evalFn.call(this.client, {
             script: lockScript,
             keys: [lockKey, pendingZsetKey],
-            arguments: [lockedAt.toString(), now.toString()]
+            arguments: [lockedAt.toString(), now.toString()],
           });
         }
 
@@ -575,12 +641,16 @@ export class RedisJobStorage implements JobStorage {
     await this.zrem(`axiomify:queue:${job.queue}:pending_zset`, id);
   }
 
-  public async fail(id: string, error: string, retryInMs?: number): Promise<void> {
+  public async fail(
+    id: string,
+    error: string,
+    retryInMs?: number,
+  ): Promise<void> {
     const key = `axiomify:job:${id}`;
     const raw = await this.get(key);
     if (!raw) return;
     const job = JSON.parse(raw) as Job;
-    
+
     job.attempts += 1;
     job.error = error;
     job.lockedAt = undefined;
@@ -589,7 +659,11 @@ export class RedisJobStorage implements JobStorage {
       job.status = 'pending';
       job.runAt = Date.now() + retryInMs;
       await this.set(key, JSON.stringify(job));
-      await this.zadd(`axiomify:queue:${job.queue}:pending_zset`, job.runAt, id);
+      await this.zadd(
+        `axiomify:queue:${job.queue}:pending_zset`,
+        job.runAt,
+        id,
+      );
     } else {
       job.status = 'failed';
       await this.set(key, JSON.stringify(job));
@@ -631,7 +705,7 @@ export class RedisJobStorage implements JobStorage {
       }
     }
     await this.del('axiomify:jobs:all');
-    
+
     // Use SCAN for remaining axiomify:* keys (queue sets, pending zsets, etc.)
     await this.scanAndDelete('axiomify:*');
   }
@@ -643,7 +717,10 @@ export class RedisJobStorage implements JobStorage {
       return result === 'OK' || result === true || result === 1;
     } catch {
       try {
-        const result = await fn.call(this.client, key, '1', { NX: true, PX: ttlMs });
+        const result = await fn.call(this.client, key, '1', {
+          NX: true,
+          PX: ttlMs,
+        });
         return result === 'OK' || result === true || result === 1;
       } catch {
         return false;

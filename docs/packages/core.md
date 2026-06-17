@@ -247,11 +247,12 @@ app.route({
       throw new UnauthorizedError('Missing access token');
     }
     // ...
-  }
+  },
 });
 ```
 
 The exported HTTP error classes include:
+
 - `HttpError` (Base class containing `.statusCode`)
 - `BadRequestError` (400)
 - `UnauthorizedError` (401)
@@ -292,7 +293,7 @@ At request time:
 | Export                 | Description                                                                                                                                      |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `ADAPTER_LOCK_TOKEN`   | `AdapterCapability` — adapter authentication capability token (sealed frozen object reference)                                                   |
-| `AdapterCapability`     | TypeScript type of the capability token                                                                                                          |
+| `AdapterCapability`    | TypeScript type of the capability token                                                                                                          |
 | `AxiomifyLogger`       | `{ warn, error }` — injectable logger interface                                                                                                  |
 | `defaultLogger`        | `console`-backed default                                                                                                                         |
 | `AppModule`            | Named plugin with dependency declaration                                                                                                         |

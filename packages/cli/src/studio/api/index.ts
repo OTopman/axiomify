@@ -9,19 +9,34 @@
 import type { StudioDiscoveryResult } from '../discovery';
 import { sendJson } from '../server/http-server';
 import { StudioRouter } from '../server/router';
-import { handleGetAiStatus, handlePostAiAnalyze, handlePostAiConfig } from './ai';
+import {
+  handleGetAiStatus,
+  handlePostAiAnalyze,
+  handlePostAiConfig,
+} from './ai';
 import { handleGetConfig } from './config';
-import { handleGetContractResults, handlePostRunContracts, handlePostToggleAutoRun } from './contracts';
+import {
+  handleGetContractResults,
+  handlePostRunContracts,
+  handlePostToggleAutoRun,
+} from './contracts';
 import { handlePostDebugFrames, handlePostDebugSource } from './debugger';
 import { handleGetErrors } from './errors';
-import { handleExportHtml, handleExportMarkdown, handleExportPdf } from './export';
+import {
+  handleExportHtml,
+  handleExportMarkdown,
+  handleExportPdf,
+} from './export';
 import { handleGetHealth } from './health';
 import { handleGetHooks } from './hooks';
 import { handleDeleteLogs, handleExportLogs, handleGetLogs } from './logs';
 import { handleGetAppMetrics } from './metrics';
 import { handleGetOpenApi, handlePostOpenApiSync } from './openapi';
 import { handleDeletePerf, handleGetPerf } from './perf';
-import { handleGetPlaygroundSdk, handlePostPlaygroundExecute } from './playground';
+import {
+  handleGetPlaygroundSdk,
+  handlePostPlaygroundExecute,
+} from './playground';
 import { handleGetQuality } from './quality';
 import {
   handleDeleteSession,
@@ -38,7 +53,11 @@ import {
 import { handlePostRequest } from './request';
 import { handleGetRoutes } from './routes';
 import { handleGetSchemas } from './schemas';
-import { handleDeleteAllSdkImpacts, handleDeleteSdkImpact, handleGetSdkImpacts } from './sdk-impact';
+import {
+  handleDeleteAllSdkImpacts,
+  handleDeleteSdkImpact,
+  handleGetSdkImpacts,
+} from './sdk-impact';
 import { handleGetSecurityReport, handlePostRunProbes } from './security';
 import { handleGetSystem } from './system';
 import { handleGetWsAnalytics } from './ws-analytics';

@@ -12,7 +12,10 @@ export function removeToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
-export async function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
+export async function apiFetch(
+  url: string,
+  options: RequestInit = {},
+): Promise<Response> {
   const token = getToken();
   const headers = new Headers(options.headers || {});
 

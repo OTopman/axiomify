@@ -1,5 +1,11 @@
 import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 const ALGORITHM = 'aes-256-gcm';
@@ -17,13 +23,15 @@ export interface EncryptedEnvelope {
  */
 function validateKeySize(key: Buffer, context: string): void {
   if (!Buffer.isBuffer(key)) {
-    throw new Error(`[Axiomify Vault] ${context}: Expected a Buffer, got ${typeof key}.`);
+    throw new Error(
+      `[Axiomify Vault] ${context}: Expected a Buffer, got ${typeof key}.`,
+    );
   }
   if (key.byteLength !== REQUIRED_KEY_BYTES) {
     throw new Error(
       `[Axiomify Vault] ${context}: Key must be exactly ${REQUIRED_KEY_BYTES} bytes (256 bits), ` +
-      `but received ${key.byteLength} bytes. ` +
-      `Provide a 64-character hex string or a 44-character base64 string encoding a 32-byte key.`
+        `but received ${key.byteLength} bytes. ` +
+        `Provide a 64-character hex string or a 44-character base64 string encoding a 32-byte key.`,
     );
   }
 }
@@ -80,9 +88,16 @@ export function loadOrCreateLocalKEK(projectRoot: string): Buffer {
   }
 
   const newKey = randomBytes(32);
-  writeFileSync(keyPath, newKey.toString('hex'), { encoding: 'utf8', mode: 0o600 });
+  writeFileSync(keyPath, newKey.toString('hex'), {
+    encoding: 'utf8',
+    mode: 0o600,
+  });
   // Belt-and-suspenders: ensure permissions even if umask overrode the mode
-  try { chmodSync(keyPath, 0o600); } catch { /* ignore chmod failures on unsupported filesystems */ }
+  try {
+    chmodSync(keyPath, 0o600);
+  } catch {
+    /* ignore chmod failures on unsupported filesystems */
+  }
   return newKey;
 }
 
@@ -107,15 +122,18 @@ function decodeKeyString(keyStr: string, context: string): Buffer {
 
   throw new Error(
     `[Axiomify Vault] ${context}: Unable to decode key string. ` +
-    `Expected a 64-character hex string or a base64 string encoding exactly 32 bytes, ` +
-    `but decoded to ${decoded.byteLength} bytes.`
+      `Expected a 64-character hex string or a base64 string encoding exactly 32 bytes, ` +
+      `but decoded to ${decoded.byteLength} bytes.`,
   );
 }
 
 /**
  * Resolves the Key Encryption Key (KEK) using custom option, environment, or local fallback.
  */
-export function resolveKEK(projectRoot: string, optionsKek?: Buffer | string): Buffer {
+export function resolveKEK(
+  projectRoot: string,
+  optionsKek?: Buffer | string,
+): Buffer {
   if (optionsKek) {
     if (Buffer.isBuffer(optionsKek)) {
       validateKeySize(optionsKek, 'resolveKEK (options)');

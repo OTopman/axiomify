@@ -50,7 +50,12 @@ function getTracerApi(): any | null {
  * Supports 5-field cron: minute hour day-of-month month day-of-week
  * Field syntax: * | N | N-M | N,M,... | * /N (step)
  */
-function matchesCronField(field: string, value: number, min: number, max: number): boolean {
+function matchesCronField(
+  field: string,
+  value: number,
+  min: number,
+  max: number,
+): boolean {
   // Wildcard
   if (field === '*') return true;
 
@@ -118,12 +123,17 @@ export class JobScheduler extends EventEmitter {
   private timer?: NodeJS.Timeout;
 
   // Cron schedule definitions
-  private cronTasks: { pattern: string; name: string; payload: any; lastRun?: number }[] = [];
+  private cronTasks: {
+    pattern: string;
+    name: string;
+    payload: any;
+    lastRun?: number;
+  }[] = [];
   private localCronLocks = new Map<string, number>();
 
   constructor(
     private storage: JobStorage,
-    opts: Partial<SchedulerOptions> = {}
+    opts: Partial<SchedulerOptions> = {},
   ) {
     super();
     this.options = {
@@ -162,7 +172,11 @@ export class JobScheduler extends EventEmitter {
   /**
    * Enqueue a new job.
    */
-  public async enqueue<P = any>(name: string, payload: P, opts: EnqueueOptions = {}): Promise<string> {
+  public async enqueue<P = any>(
+    name: string,
+    payload: P,
+    opts: EnqueueOptions = {},
+  ): Promise<string> {
     if (!name || typeof name !== 'string') {
       throw new Error('[Axiomify Jobs] Job name must be a non-empty string.');
     }
@@ -186,7 +200,8 @@ export class JobScheduler extends EventEmitter {
       runAt: Date.now() + (opts.delayMs ?? 0),
       attempts: 0,
       maxAttempts: opts.attempts ?? 3,
-      traceContext: Object.keys(traceContext).length > 0 ? traceContext : undefined,
+      traceContext:
+        Object.keys(traceContext).length > 0 ? traceContext : undefined,
     };
     await this.storage.save(job);
     return id;
@@ -226,7 +241,7 @@ export class JobScheduler extends EventEmitter {
       if (Date.now() >= deadline) {
         console.warn(
           `[Axiomify Jobs] Drain timeout reached (${this.options.drainTimeoutMs}ms). ` +
-          `${this.activeWorkers.size} worker(s) still active. Force-stopping.`
+            `${this.activeWorkers.size} worker(s) still active. Force-stopping.`,
         );
         break;
       }
@@ -247,19 +262,22 @@ export class JobScheduler extends EventEmitter {
       return;
     }
 
-    this.storage.acquireNext(this.options.queue, this.options.lockDurationMs)
+    this.storage
+      .acquireNext(this.options.queue, this.options.lockDurationMs)
       .then((job) => {
         if (job) {
           const workerId = randomUUID();
           this.activeWorkers.add(workerId);
-          this.executeJob(job)
-            .finally(() => {
-              this.activeWorkers.delete(workerId);
-              // Use setImmediate to yield to I/O between job picks, preventing event loop starvation
-              setImmediate(() => this.tick());
-            });
+          this.executeJob(job).finally(() => {
+            this.activeWorkers.delete(workerId);
+            // Use setImmediate to yield to I/O between job picks, preventing event loop starvation
+            setImmediate(() => this.tick());
+          });
         } else {
-          this.timer = setTimeout(() => this.tick(), this.options.pollIntervalMs);
+          this.timer = setTimeout(
+            () => this.tick(),
+            this.options.pollIntervalMs,
+          );
         }
       })
       .catch((err) => {
@@ -272,7 +290,10 @@ export class JobScheduler extends EventEmitter {
     this.emit('start', job);
     const handler = this.handlers.get(job.name);
     if (!handler) {
-      await this.handleJobFailure(job, `No handler registered for job "${job.name}"`);
+      await this.handleJobFailure(
+        job,
+        `No handler registered for job "${job.name}"`,
+      );
       return;
     }
 
@@ -280,36 +301,48 @@ export class JobScheduler extends EventEmitter {
 
     const api = getTracerApi();
     if (api) {
-      const parentContext = job.traceContext 
+      const parentContext = job.traceContext
         ? api.propagation.extract(api.context.active(), job.traceContext)
         : api.context.active();
 
       const tracer = api.trace.getTracer('axiomify-jobs');
-      const span = tracer.startSpan(`Job: ${job.name}`, {
-        kind: api.SpanKind.CONSUMER,
-        attributes: {
-          'axiomify.job.id': job.id,
-          'axiomify.job.name': job.name,
-          'axiomify.job.queue': job.queue,
-          'axiomify.job.attempts': job.attempts,
-        }
-      }, parentContext);
+      const span = tracer.startSpan(
+        `Job: ${job.name}`,
+        {
+          kind: api.SpanKind.CONSUMER,
+          attributes: {
+            'axiomify.job.id': job.id,
+            'axiomify.job.name': job.name,
+            'axiomify.job.queue': job.queue,
+            'axiomify.job.attempts': job.attempts,
+          },
+        },
+        parentContext,
+      );
 
-      await api.context.with(api.trace.setSpan(parentContext, span), async () => {
-        try {
-          await this.runWithTimeout(handler, job.payload, job.name, timeoutMs);
-          await this.storage.complete(job.id);
-          span.setStatus({ code: api.SpanStatusCode.OK });
-          this.emit('completed', job);
-        } catch (err: any) {
-          const errMsg = err.message || String(err);
-          span.recordException(err);
-          span.setStatus({ code: api.SpanStatusCode.ERROR, message: errMsg });
-          await this.handleJobFailure(job, errMsg);
-        } finally {
-          span.end();
-        }
-      });
+      await api.context.with(
+        api.trace.setSpan(parentContext, span),
+        async () => {
+          try {
+            await this.runWithTimeout(
+              handler,
+              job.payload,
+              job.name,
+              timeoutMs,
+            );
+            await this.storage.complete(job.id);
+            span.setStatus({ code: api.SpanStatusCode.OK });
+            this.emit('completed', job);
+          } catch (err: any) {
+            const errMsg = err.message || String(err);
+            span.recordException(err);
+            span.setStatus({ code: api.SpanStatusCode.ERROR, message: errMsg });
+            await this.handleJobFailure(job, errMsg);
+          } finally {
+            span.end();
+          }
+        },
+      );
     } else {
       try {
         await this.runWithTimeout(handler, job.payload, job.name, timeoutMs);
@@ -352,14 +385,23 @@ export class JobScheduler extends EventEmitter {
    * Runs a handler with a timeout. If the handler exceeds `timeoutMs`,
    * the promise rejects with a timeout error.
    */
-  private async runWithTimeout(handler: JobHandler, payload: any, jobName: string, timeoutMs: number): Promise<void> {
+  private async runWithTimeout(
+    handler: JobHandler,
+    payload: any,
+    jobName: string,
+    timeoutMs: number,
+  ): Promise<void> {
     const res = handler(payload);
     if (!(res instanceof Promise)) return; // Synchronous handler completed
 
     let timeoutHandle: NodeJS.Timeout;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutHandle = setTimeout(() => {
-        reject(new Error(`[Axiomify Jobs] Job "${jobName}" exceeded timeout of ${timeoutMs}ms.`));
+        reject(
+          new Error(
+            `[Axiomify Jobs] Job "${jobName}" exceeded timeout of ${timeoutMs}ms.`,
+          ),
+        );
       }, timeoutMs);
     });
 
@@ -397,7 +439,10 @@ export class JobScheduler extends EventEmitter {
       if (shouldFire) {
         // 5 second lock window to prevent duplicate executions across workers in the same cron slot
         const lockDuration = 5000;
-        const acquired = await this.tryAcquireCronLock(task.pattern, lockDuration);
+        const acquired = await this.tryAcquireCronLock(
+          task.pattern,
+          lockDuration,
+        );
         if (acquired) {
           task.lastRun = now;
           await this.enqueue(task.name, task.payload);
@@ -406,7 +451,10 @@ export class JobScheduler extends EventEmitter {
     }
   }
 
-  private async tryAcquireCronLock(pattern: string, windowMs: number): Promise<boolean> {
+  private async tryAcquireCronLock(
+    pattern: string,
+    windowMs: number,
+  ): Promise<boolean> {
     const lockKey = `axiomify:cron:lock:${this.options.queue}:${pattern}`;
     if (typeof this.storage.acquireCronLock === 'function') {
       return this.storage.acquireCronLock(lockKey, windowMs);
@@ -434,7 +482,11 @@ export class SagaCoordinator {
 
   constructor(private scheduler: JobScheduler) {}
 
-  public addStep(name: string, run: (ctx: any) => Promise<any>, compensate: (ctx: any) => Promise<any>): this {
+  public addStep(
+    name: string,
+    run: (ctx: any) => Promise<any>,
+    compensate: (ctx: any) => Promise<any>,
+  ): this {
     this.steps.push({ name, run, compensate });
 
     // Auto-register compensation handler so that `compensate:X` jobs have handlers
@@ -450,7 +502,9 @@ export class SagaCoordinator {
    * Execute Saga workflow with forward run and compensation rollbacks.
    * On failure, enqueues compensation jobs in reverse order for all completed steps.
    */
-  public async execute(initialContext: any): Promise<{ success: boolean; context: any; error?: string }> {
+  public async execute(
+    initialContext: any,
+  ): Promise<{ success: boolean; context: any; error?: string }> {
     const executedSteps: { step: SagaStep; result: any }[] = [];
     const context = { ...initialContext };
 
@@ -461,7 +515,7 @@ export class SagaCoordinator {
         context[step.name] = result;
       } catch (err: any) {
         const errMsg = err.message || String(err);
-        
+
         for (let i = executedSteps.length - 1; i >= 0; i--) {
           const finished = executedSteps[i];
           try {
@@ -470,7 +524,10 @@ export class SagaCoordinator {
               result: finished.result,
             });
           } catch (compErr) {
-            console.error(`[Axiomify Saga] Compensation failed for step "${finished.step.name}":`, compErr);
+            console.error(
+              `[Axiomify Saga] Compensation failed for step "${finished.step.name}":`,
+              compErr,
+            );
           }
         }
 

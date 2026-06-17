@@ -210,7 +210,8 @@ function isStrictZodObject(schema: any): boolean {
   // Zod v3: unknownKeys === 'strict'
   if (d.unknownKeys === 'strict') return true;
   // Zod v4: catchall type is 'never'
-  if (d.catchall?.type === 'never' || d.catchall?.typeName === 'ZodNever') return true;
+  if (d.catchall?.type === 'never' || d.catchall?.typeName === 'ZodNever')
+    return true;
   return false;
 }
 
@@ -220,7 +221,8 @@ function isPassthroughZodObject(schema: any): boolean {
   // Zod v3: unknownKeys === 'passthrough'
   if (d.unknownKeys === 'passthrough') return true;
   // Zod v4: catchall type is 'unknown'
-  if (d.catchall?.type === 'unknown' || d.catchall?.typeName === 'ZodUnknown') return true;
+  if (d.catchall?.type === 'unknown' || d.catchall?.typeName === 'ZodUnknown')
+    return true;
   return false;
 }
 
@@ -228,7 +230,12 @@ function isZodObject(schema: any): boolean {
   if (!schema || typeof schema !== 'object') return false;
   const d = safeZodDef(schema);
   const typeName = schema.constructor?.name || d.typeName || d.type;
-  if (typeName === 'ZodObject' || d.typeName === 'ZodObject' || d.type === 'object') return true;
+  if (
+    typeName === 'ZodObject' ||
+    d.typeName === 'ZodObject' ||
+    d.type === 'object'
+  )
+    return true;
   return false;
 }
 
@@ -237,7 +244,11 @@ function unwrapZodSchema(schema: any): any {
   const d = safeZodDef(schema);
   const typeName = schema.constructor?.name || d.typeName || d.type;
 
-  if (typeName === 'ZodOptional' || typeName === 'ZodNullable' || typeName === 'ZodDefault') {
+  if (
+    typeName === 'ZodOptional' ||
+    typeName === 'ZodNullable' ||
+    typeName === 'ZodDefault'
+  ) {
     return unwrapZodSchema(d.inner || d.innerType);
   }
   if (typeName === 'ZodEffects') {
@@ -251,11 +262,15 @@ function adjustAdditionalProperties(jsonSchema: any, zodSchema: any): void {
   if (!zodSchema || typeof zodSchema !== 'object') return;
 
   const unwrapped = unwrapZodSchema(zodSchema);
-  const typeName = unwrapped.constructor?.name || unwrapped._def?.typeName || unwrapped.def?.type;
+  const typeName =
+    unwrapped.constructor?.name ||
+    unwrapped._def?.typeName ||
+    unwrapped.def?.type;
 
   // 1. Recurse if the jsonSchema contains composite fields (anyOf, oneOf)
   if (jsonSchema.anyOf && Array.isArray(jsonSchema.anyOf)) {
-    const options = unwrapped.options || unwrapped.def?.options || unwrapped._def?.options;
+    const options =
+      unwrapped.options || unwrapped.def?.options || unwrapped._def?.options;
     for (let i = 0; i < jsonSchema.anyOf.length; i++) {
       const subZod = Array.isArray(options) ? options[i] : unwrapped;
       adjustAdditionalProperties(jsonSchema.anyOf[i], subZod);
@@ -263,7 +278,8 @@ function adjustAdditionalProperties(jsonSchema: any, zodSchema: any): void {
     return;
   }
   if (jsonSchema.oneOf && Array.isArray(jsonSchema.oneOf)) {
-    const options = unwrapped.options || unwrapped.def?.options || unwrapped._def?.options;
+    const options =
+      unwrapped.options || unwrapped.def?.options || unwrapped._def?.options;
     for (let i = 0; i < jsonSchema.oneOf.length; i++) {
       const subZod = Array.isArray(options) ? options[i] : unwrapped;
       adjustAdditionalProperties(jsonSchema.oneOf[i], subZod);
@@ -280,9 +296,12 @@ function adjustAdditionalProperties(jsonSchema: any, zodSchema: any): void {
       if (!strict && !passthrough) {
         jsonSchema.additionalProperties = true;
       }
-      
+
       if (jsonSchema.properties && unwrapped.shape) {
-        const shape = typeof unwrapped.shape === 'function' ? unwrapped.shape() : unwrapped.shape;
+        const shape =
+          typeof unwrapped.shape === 'function'
+            ? unwrapped.shape()
+            : unwrapped.shape;
         for (const key of Object.keys(jsonSchema.properties)) {
           if (shape[key]) {
             adjustAdditionalProperties(jsonSchema.properties[key], shape[key]);
@@ -291,16 +310,20 @@ function adjustAdditionalProperties(jsonSchema: any, zodSchema: any): void {
       }
     }
   } else if (typeName === 'ZodArray' && jsonSchema.type === 'array') {
-    const element = unwrapped.element || unwrapped.def?.element || unwrapped._def?.type;
+    const element =
+      unwrapped.element || unwrapped.def?.element || unwrapped._def?.type;
     if (element && jsonSchema.items) {
       adjustAdditionalProperties(jsonSchema.items, element);
     }
   } else if (typeName === 'ZodIntersection') {
     const left = unwrapped.left || unwrapped.def?.left || unwrapped._def?.left;
-    const right = unwrapped.right || unwrapped.def?.right || unwrapped._def?.right;
+    const right =
+      unwrapped.right || unwrapped.def?.right || unwrapped._def?.right;
     if (jsonSchema.allOf && Array.isArray(jsonSchema.allOf)) {
-      if (jsonSchema.allOf[0] && left) adjustAdditionalProperties(jsonSchema.allOf[0], left);
-      if (jsonSchema.allOf[1] && right) adjustAdditionalProperties(jsonSchema.allOf[1], right);
+      if (jsonSchema.allOf[0] && left)
+        adjustAdditionalProperties(jsonSchema.allOf[0], left);
+      if (jsonSchema.allOf[1] && right)
+        adjustAdditionalProperties(jsonSchema.allOf[1], right);
     }
   }
 }

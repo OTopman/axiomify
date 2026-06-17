@@ -172,7 +172,9 @@ describe('useLogger Plugin', () => {
     expect(parsedLog.body).toEqual({ name: 'Alice' });
     expect(parsedLog.state.role).toBe('admin');
     expect(parsedLog.state.startTime).toBeDefined();
-    expect(parsedLog.responseHeaders).toEqual({ 'content-type': 'application/json' });
+    expect(parsedLog.responseHeaders).toEqual({
+      'content-type': 'application/json',
+    });
     expect(parsedLog.payload).toEqual({ id: '456', name: 'Alice' });
 
     // Clear calls
@@ -187,7 +189,9 @@ describe('useLogger Plugin', () => {
     expect(parsedLog.body).toEqual({ name: 'Alice' });
     expect(parsedLog.state.role).toBe('admin');
     expect(parsedLog.state.startTime).toBeDefined();
-    expect(parsedLog.responseHeaders).toEqual({ 'content-type': 'application/json' });
+    expect(parsedLog.responseHeaders).toEqual({
+      'content-type': 'application/json',
+    });
     expect(parsedLog.payload).toEqual({ id: '456', name: 'Alice' });
     expect(parsedLog.statusCode).toBe(201);
   });

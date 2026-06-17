@@ -4,7 +4,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { decrypt, encrypt, resolveKEK, type EncryptedEnvelope } from './crypto';
 import { SecretPolicyEngine, type VaultPolicy } from './policy';
-import { registerSecretForRedaction, unregisterSecretForRedaction, setupProcessEnvProxy, setupStreamSanitizer, vaultScope } from './proxy';
+import {
+  registerSecretForRedaction,
+  unregisterSecretForRedaction,
+  setupProcessEnvProxy,
+  setupStreamSanitizer,
+  vaultScope,
+} from './proxy';
 
 export { vaultScope };
 
@@ -85,7 +91,9 @@ export class AxiomifyVault {
         ? options.vaultPath
         : join(this.projectRoot, options.vaultPath);
     } else {
-      const envFile = env ? `axiomify-vault.${env}.json` : 'axiomify-vault.json';
+      const envFile = env
+        ? `axiomify-vault.${env}.json`
+        : 'axiomify-vault.json';
       this.vaultPath = join(this.projectRoot, envFile);
     }
 
@@ -105,9 +113,12 @@ export class AxiomifyVault {
     // 1. Resolve and cache Master Key (KEK)
     this.kek = resolveKEK(this.projectRoot, this.optionsKek);
 
-    const isUsingLocalKeyFile = !this.optionsKek && !process.env.AXIOMIFY_VAULT_KEK;
+    const isUsingLocalKeyFile =
+      !this.optionsKek && !process.env.AXIOMIFY_VAULT_KEK;
     if (isUsingLocalKeyFile) {
-      this.checkKeyNotGitTracked(join(this.projectRoot, '.axiomify', 'vault.key'));
+      this.checkKeyNotGitTracked(
+        join(this.projectRoot, '.axiomify', 'vault.key'),
+      );
     }
 
     // 2. Load or Create vault metadata envelope
@@ -141,12 +152,16 @@ export class AxiomifyVault {
         if (filesToLoad.length > 0) {
           sourceEnv = {};
           for (const file of filesToLoad) {
-            const fullEnvPath = isAbsolute(file) ? file : join(this.projectRoot, file);
+            const fullEnvPath = isAbsolute(file)
+              ? file
+              : join(this.projectRoot, file);
             if (existsSync(fullEnvPath)) {
               const parsed = parseEnvFile(fullEnvPath);
               sourceEnv = { ...sourceEnv, ...parsed };
             } else {
-              throw new Error(`[Axiomify Vault] Configured env file not found at: ${fullEnvPath}`);
+              throw new Error(
+                `[Axiomify Vault] Configured env file not found at: ${fullEnvPath}`,
+              );
             }
           }
         } else {
@@ -159,10 +174,13 @@ export class AxiomifyVault {
         if (sourceEnv) {
           const targetKeys = new Set<string>([
             ...getPolicyKeys(this.policy),
-            ...getZodSchemaKeys(this.schema)
+            ...getZodSchemaKeys(this.schema),
           ]);
 
-          const currentChecksum = calculateConfigChecksum(sourceEnv, targetKeys);
+          const currentChecksum = calculateConfigChecksum(
+            sourceEnv,
+            targetKeys,
+          );
 
           if (metadata.sourceChecksum !== currentChecksum) {
             let hasChanges = false;
@@ -210,7 +228,9 @@ export class AxiomifyVault {
           }
         }
       } catch (err: any) {
-        throw new Error(`[Axiomify Vault] Failed to load/decrypt vault: ${err.message}`);
+        throw new Error(
+          `[Axiomify Vault] Failed to load/decrypt vault: ${err.message}`,
+        );
       }
     } else {
       // Create a new Vault
@@ -241,7 +261,9 @@ export class AxiomifyVault {
             const parsed = parseEnvFile(fullEnvPath);
             sourceEnv = { ...sourceEnv, ...parsed };
           } else {
-            throw new Error(`[Axiomify Vault] Configured env file not found at: ${fullEnvPath}`);
+            throw new Error(
+              `[Axiomify Vault] Configured env file not found at: ${fullEnvPath}`,
+            );
           }
         }
       } else {
@@ -256,7 +278,7 @@ export class AxiomifyVault {
       // We encrypt only the keys defined in the policy or schema
       const targetKeys = new Set<string>([
         ...getPolicyKeys(this.policy),
-        ...getZodSchemaKeys(this.schema)
+        ...getZodSchemaKeys(this.schema),
       ]);
 
       for (const key of targetKeys) {
@@ -283,7 +305,10 @@ export class AxiomifyVault {
    * Writes vault metadata to the vault file with restrictive permissions (0600).
    */
   private writeVaultFile(metadata: VaultMetadata): void {
-    writeFileSync(this.vaultPath, JSON.stringify(metadata, null, 2), { encoding: 'utf8', mode: 0o600 });
+    writeFileSync(this.vaultPath, JSON.stringify(metadata, null, 2), {
+      encoding: 'utf8',
+      mode: 0o600,
+    });
   }
 
   /**
@@ -297,7 +322,9 @@ export class AxiomifyVault {
         envObj[key] = decrypted;
       } catch (err: any) {
         // Warn on decrypt errors so developers can see which keys failed
-        console.warn(`[Axiomify Vault] Warning: Failed to decrypt secret "${key}" during schema validation: ${err.message}`);
+        console.warn(
+          `[Axiomify Vault] Warning: Failed to decrypt secret "${key}" during schema validation: ${err.message}`,
+        );
       }
     }
 
@@ -308,15 +335,16 @@ export class AxiomifyVault {
           const issues = result.error.issues || result.error.errors || [];
           throw new Error(
             `[Axiomify Vault] Schema Validation Failed:\n` +
-            issues
-              .map((e: any) => `  - ${e.path.join('.')}: ${e.message}`)
-              .join('\n')
+              issues
+                .map((e: any) => `  - ${e.path.join('.')}: ${e.message}`)
+                .join('\n'),
           );
         }
         // Inject coerced/default values back into the cache
         for (const [k, v] of Object.entries(result.data)) {
           if (v !== undefined) {
-            const valStr = typeof v === 'object' ? JSON.stringify(v) : String(v);
+            const valStr =
+              typeof v === 'object' ? JSON.stringify(v) : String(v);
             this.secretsCache.set(k, valStr);
           }
         }
@@ -325,12 +353,15 @@ export class AxiomifyVault {
           const parsed = this.schema.parse(envObj);
           for (const [k, v] of Object.entries(parsed)) {
             if (v !== undefined) {
-              const valStr = typeof v === 'object' ? JSON.stringify(v) : String(v);
+              const valStr =
+                typeof v === 'object' ? JSON.stringify(v) : String(v);
               this.secretsCache.set(k, valStr);
             }
           }
         } catch (err: any) {
-          throw new Error(`[Axiomify Vault] Schema Validation Failed: ${err.message}`);
+          throw new Error(
+            `[Axiomify Vault] Schema Validation Failed: ${err.message}`,
+          );
         }
       }
     }
@@ -354,9 +385,12 @@ export class AxiomifyVault {
    * Resolves a secret JIT (Just-In-Time) with policy check.
    */
   public resolveSecret(key: string): string {
-    const callerName = (globalThis as any)._axiomifyVaultContext?.getStore() || 'default';
+    const callerName =
+      (globalThis as any)._axiomifyVaultContext?.getStore() || 'default';
     if (!this.isAllowed(callerName, key)) {
-      throw new Error(`[Axiomify Vault] Access Denied: Module "${callerName}" is not permitted to read secret "${key}".`);
+      throw new Error(
+        `[Axiomify Vault] Access Denied: Module "${callerName}" is not permitted to read secret "${key}".`,
+      );
     }
     return this.resolveSecretJIT(key);
   }
@@ -387,7 +421,9 @@ export class AxiomifyVault {
     }
 
     if (this.sealed) {
-      throw new Error(`[Axiomify Vault] Access Denied: Vault is sealed. Secret "${key}" cannot be decrypted post-bootstrap.`);
+      throw new Error(
+        `[Axiomify Vault] Access Denied: Vault is sealed. Secret "${key}" cannot be decrypted post-bootstrap.`,
+      );
     }
 
     const envelope = this.encryptedSecrets.get(key);
@@ -407,7 +443,9 @@ export class AxiomifyVault {
    */
   public setSecret(key: string, value: string): void {
     if (this.sealed) {
-      throw new Error(`[Axiomify Vault] Access Denied: Vault is sealed. Cannot add new secret "${key}".`);
+      throw new Error(
+        `[Axiomify Vault] Access Denied: Vault is sealed. Cannot add new secret "${key}".`,
+      );
     }
     const envelope = encrypt(value, this.dek);
     this.encryptedSecrets.set(key, envelope);
@@ -499,10 +537,12 @@ export class AxiomifyVault {
     try {
       const { execFileSync } = require('node:child_process');
       execFileSync('git', ['ls-files', '--error-unmatch', keyPath], {
-        cwd: this.projectRoot, stdio: 'pipe'
+        cwd: this.projectRoot,
+        stdio: 'pipe',
       });
       const isProd = process.env.NODE_ENV === 'production';
-      const msg = `[Axiomify Vault] CRITICAL: vault.key is tracked by git at "${keyPath}". ` +
+      const msg =
+        `[Axiomify Vault] CRITICAL: vault.key is tracked by git at "${keyPath}". ` +
         `This will expose all encrypted secrets if pushed. Add ".axiomify/" to .gitignore immediately.`;
       if (isProd) {
         throw new Error(msg);
@@ -603,7 +643,7 @@ function getPolicyKeys(policy: VaultPolicy | undefined): string[] {
 
 export function calculateConfigChecksum(
   sourceEnv: Record<string, string | undefined>,
-  targetKeys: Set<string>
+  targetKeys: Set<string>,
 ): string {
   const targetConfig: Record<string, string> = {};
   for (const key of Array.from(targetKeys).sort()) {
@@ -612,9 +652,10 @@ export function calculateConfigChecksum(
       targetConfig[key] = val;
     }
   }
-  return createHash('sha256').update(JSON.stringify(targetConfig)).digest('hex');
+  return createHash('sha256')
+    .update(JSON.stringify(targetConfig))
+    .digest('hex');
 }
-
 
 /**
  * Axiomify AppModule to register Vault in the DI container.
@@ -622,7 +663,7 @@ export function calculateConfigChecksum(
  */
 export const vaultModule = (
   optionsOrPolicy?: VaultOptions | VaultPolicy,
-  projectRoot = process.cwd()
+  projectRoot = process.cwd(),
 ): AppModule => {
   let opts: VaultOptions = {};
   if (optionsOrPolicy) {

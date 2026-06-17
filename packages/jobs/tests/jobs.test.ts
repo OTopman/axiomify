@@ -1,7 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Axiomify } from '@axiomify/core';
 import { MemoryJobStorage } from '../src/storage';
-import { JobScheduler, SagaCoordinator, jobsModule, RedisJobStorage, SQLJobStorage, setTracingEnabledForTesting } from '../src/index';
+import {
+  JobScheduler,
+  SagaCoordinator,
+  jobsModule,
+  RedisJobStorage,
+  SQLJobStorage,
+  setTracingEnabledForTesting,
+} from '../src/index';
 
 describe('Axiomify Distributed Jobs', () => {
   it('should enqueue and process jobs sequentially using memory storage', async () => {
@@ -88,7 +95,7 @@ describe('Axiomify Distributed Jobs', () => {
       },
       async (ctx) => {
         compensationsRun.push('step1-comp');
-      }
+      },
     );
 
     saga.addStep(
@@ -99,7 +106,7 @@ describe('Axiomify Distributed Jobs', () => {
       },
       async (ctx) => {
         compensationsRun.push('step2-comp');
-      }
+      },
     );
 
     const result = await saga.execute({ orderId: 100 });
@@ -107,7 +114,7 @@ describe('Axiomify Distributed Jobs', () => {
     expect(result.error).toBe('step2 crash');
 
     expect(stepsRun).toEqual(['step1', 'step2']);
-    
+
     // Compensations should be enqueued as job tasks
     const jobs = await storage.getJobs();
     const compJobNames = jobs.map((j) => j.name);
@@ -131,10 +138,16 @@ describe('Axiomify Distributed Jobs', () => {
       public sets = new Map<string, Set<string>>();
       public zsets = new Map<string, Map<string, number>>();
 
-      public async get(key: string) { return this.store.get(key) || null; }
-      public async set(key: string, value: string) { this.store.set(key, value); }
-      public async del(key: string) { this.store.delete(key); }
-      
+      public async get(key: string) {
+        return this.store.get(key) || null;
+      }
+      public async set(key: string, value: string) {
+        this.store.set(key, value);
+      }
+      public async del(key: string) {
+        this.store.delete(key);
+      }
+
       public async sadd(key: string, member: string) {
         if (!this.sets.has(key)) this.sets.set(key, new Set());
         this.sets.get(key)!.add(member);
@@ -145,7 +158,7 @@ describe('Axiomify Distributed Jobs', () => {
       public async smembers(key: string) {
         return Array.from(this.sets.get(key) || []);
       }
-      
+
       public async zadd(key: string, score: number, member: string) {
         if (!this.zsets.has(key)) this.zsets.set(key, new Map());
         this.zsets.get(key)!.set(member, score);
@@ -160,13 +173,19 @@ describe('Axiomify Distributed Jobs', () => {
           .filter(([_, score]) => score >= min && score <= max)
           .map(([member]) => member);
       }
-      
+
       public async mget(keys: string[]) {
         return keys.map((k) => this.store.get(k) || null);
       }
 
       // eval is required for atomic job locking
-      public async eval(script: string | { script: string; keys: string[]; arguments: string[] }, numkeys?: number, ...args: string[]) {
+      public async eval(
+        script:
+          | string
+          | { script: string; keys: string[]; arguments: string[] },
+        numkeys?: number,
+        ...args: string[]
+      ) {
         let lockKey = '';
         if (typeof script === 'object' && script !== null) {
           lockKey = script.keys[0] || '';
@@ -263,11 +282,14 @@ describe('Axiomify Distributed Jobs', () => {
 
     const tracer = api.trace.getTracer('test');
     const parentSpan = tracer.startSpan('parent');
-    
-    await api.context.with(api.trace.setSpan(api.context.active(), parentSpan), async () => {
-      await scheduler.enqueue('trace-test', {});
-    });
-    
+
+    await api.context.with(
+      api.trace.setSpan(api.context.active(), parentSpan),
+      async () => {
+        await scheduler.enqueue('trace-test', {});
+      },
+    );
+
     parentSpan.end();
 
     // Verify traceContext is present
@@ -322,7 +344,7 @@ describe('Axiomify Distributed Jobs', () => {
     });
 
     scheduler.schedule('1', 'cron-task', { foo: 'bar' });
-    
+
     scheduler.start();
     await new Promise((resolve) => setTimeout(resolve, 50));
     await scheduler.stop();
@@ -344,17 +366,31 @@ describe('Axiomify Distributed Jobs', () => {
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    vi.spyOn(scheduler, 'enqueue').mockRejectedValue(new Error('Enqueue failed'));
+    vi.spyOn(scheduler, 'enqueue').mockRejectedValue(
+      new Error('Enqueue failed'),
+    );
 
     const saga = new SagaCoordinator(scheduler);
-    saga.addStep('step1', async () => ({ ok: true }), async () => {});
-    saga.addStep('step2', async () => { throw new Error('Crash'); }, async () => {});
+    saga.addStep(
+      'step1',
+      async () => ({ ok: true }),
+      async () => {},
+    );
+    saga.addStep(
+      'step2',
+      async () => {
+        throw new Error('Crash');
+      },
+      async () => {},
+    );
 
     await saga.execute({});
 
     expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[Axiomify Saga] Compensation failed for step "step1":'),
-      expect.any(Error)
+      expect.stringContaining(
+        '[Axiomify Saga] Compensation failed for step "step1":',
+      ),
+      expect.any(Error),
     );
     consoleSpy.mockRestore();
   });
@@ -366,20 +402,32 @@ describe('Axiomify Distributed Jobs', () => {
       public zsets = new Map<string, Map<string, number>>();
       public keysCalled = false;
 
-      public async get(key: string) { return this.store.get(key) || null; }
-      public async set(key: string, value: string) { this.store.set(key, value); }
-      public async del(key: string) { this.store.delete(key); }
+      public async get(key: string) {
+        return this.store.get(key) || null;
+      }
+      public async set(key: string, value: string) {
+        this.store.set(key, value);
+      }
+      public async del(key: string) {
+        this.store.delete(key);
+      }
       public async sadd(key: string, member: string) {
         if (!this.sets.has(key)) this.sets.set(key, new Set());
         this.sets.get(key)!.add(member);
       }
-      public async srem(key: string, member: string) { this.sets.get(key)?.delete(member); }
-      public async smembers(key: string) { return Array.from(this.sets.get(key) || []); }
+      public async srem(key: string, member: string) {
+        this.sets.get(key)?.delete(member);
+      }
+      public async smembers(key: string) {
+        return Array.from(this.sets.get(key) || []);
+      }
       public async zadd(key: string, score: number, member: string) {
         if (!this.zsets.has(key)) this.zsets.set(key, new Map());
         this.zsets.get(key)!.set(member, score);
       }
-      public async zrem(key: string, member: string) { this.zsets.get(key)?.delete(member); }
+      public async zrem(key: string, member: string) {
+        this.zsets.get(key)?.delete(member);
+      }
       public async zrangebyscore(key: string, min: number, max: number) {
         const map = this.zsets.get(key);
         if (!map) return [];
@@ -387,14 +435,22 @@ describe('Axiomify Distributed Jobs', () => {
           .filter(([_, score]) => score >= min && score <= max)
           .map(([member]) => member);
       }
-      public async mget(keys: string[]) { return keys.map((k) => this.store.get(k) || null); }
-      
+      public async mget(keys: string[]) {
+        return keys.map((k) => this.store.get(k) || null);
+      }
+
       public async keys(pattern: string) {
         this.keysCalled = true;
         return Array.from(this.store.keys());
       }
 
-      public async eval(script: string | { script: string; keys: string[]; arguments: string[] }, numkeys?: number, ...args: string[]) {
+      public async eval(
+        script:
+          | string
+          | { script: string; keys: string[]; arguments: string[] },
+        numkeys?: number,
+        ...args: string[]
+      ) {
         let lockKey = '';
         if (typeof script === 'object' && script !== null) {
           lockKey = script.keys[0] || '';
@@ -428,7 +484,7 @@ describe('Axiomify Distributed Jobs', () => {
       maxAttempts: 3,
     };
     await storage.save(jobItem);
-    
+
     // Acquire using eval locks
     const acquired = await storage.acquireNext('test-queue', 5000);
     expect(acquired).not.toBeNull();
@@ -447,20 +503,32 @@ describe('Axiomify Distributed Jobs', () => {
       public zsets = new Map<string, Map<string, number>>();
       public keysCalled = false;
 
-      public async get(key: string) { return this.store.get(key) || null; }
-      public async set(key: string, value: string) { this.store.set(key, value); }
-      public async del(key: string) { this.store.delete(key); }
+      public async get(key: string) {
+        return this.store.get(key) || null;
+      }
+      public async set(key: string, value: string) {
+        this.store.set(key, value);
+      }
+      public async del(key: string) {
+        this.store.delete(key);
+      }
       public async sadd(key: string, member: string) {
         if (!this.sets.has(key)) this.sets.set(key, new Set());
         this.sets.get(key)!.add(member);
       }
-      public async srem(key: string, member: string) { this.sets.get(key)?.delete(member); }
-      public async smembers(key: string) { return Array.from(this.sets.get(key) || []); }
+      public async srem(key: string, member: string) {
+        this.sets.get(key)?.delete(member);
+      }
+      public async smembers(key: string) {
+        return Array.from(this.sets.get(key) || []);
+      }
       public async zadd(key: string, score: number, member: string) {
         if (!this.zsets.has(key)) this.zsets.set(key, new Map());
         this.zsets.get(key)!.set(member, score);
       }
-      public async zrem(key: string, member: string) { this.zsets.get(key)?.delete(member); }
+      public async zrem(key: string, member: string) {
+        this.zsets.get(key)?.delete(member);
+      }
       public async zrangebyscore(key: string, min: number, max: number) {
         const map = this.zsets.get(key);
         if (!map) return [];
@@ -468,8 +536,10 @@ describe('Axiomify Distributed Jobs', () => {
           .filter(([_, score]) => score >= min && score <= max)
           .map(([member]) => member);
       }
-      public async mget(keys: string[]) { return keys.map((k) => this.store.get(k) || null); }
-      
+      public async mget(keys: string[]) {
+        return keys.map((k) => this.store.get(k) || null);
+      }
+
       public async keys(pattern: string) {
         this.keysCalled = true;
         return Array.from(this.store.keys());
@@ -504,7 +574,7 @@ describe('Axiomify Distributed Jobs', () => {
       maxAttempts: 3,
     };
     await storage.save(jobItem);
-    
+
     // Acquire using eval locks
     const acquired = await storage.acquireNext('test-queue', 5000);
     expect(acquired).not.toBeNull();
@@ -514,7 +584,9 @@ describe('Axiomify Distributed Jobs', () => {
   });
 
   it('should throw when RedisJobStorage is missing client', () => {
-    expect(() => new RedisJobStorage(null)).toThrow('[Axiomify Jobs] Redis client is required.');
+    expect(() => new RedisJobStorage(null)).toThrow(
+      '[Axiomify Jobs] Redis client is required.',
+    );
   });
 
   it('should support redis client variations (UPPERCASE methods and zadd fallback)', async () => {
@@ -612,11 +684,15 @@ describe('Axiomify Distributed Jobs', () => {
   it('should throw when unsupported database client is provided', async () => {
     const badClient = {};
     const storage = new SQLJobStorage(badClient);
-    await expect(storage.getJobs('test-queue')).rejects.toThrow('Unsupported database client interface');
+    await expect(storage.getJobs('test-queue')).rejects.toThrow(
+      'Unsupported database client interface',
+    );
   });
 
   it('should throw when constructor is missing client', () => {
-    expect(() => new SQLJobStorage(null)).toThrow('SQL client database instance is required.');
+    expect(() => new SQLJobStorage(null)).toThrow(
+      'SQL client database instance is required.',
+    );
   });
 
   it('should perform CRUD operations on SQLJobStorage', async () => {
@@ -625,9 +701,18 @@ describe('Axiomify Distributed Jobs', () => {
       query: async (sql: string, params: any[] = []) => {
         const sqlUpper = sql.toUpperCase();
         // Atomic UPDATE ... RETURNING for acquireNext (must be checked before other patterns)
-        if (sqlUpper.includes('UPDATE AXIOMIFY_JOBS') && sqlUpper.includes('RETURNING')) {
+        if (
+          sqlUpper.includes('UPDATE AXIOMIFY_JOBS') &&
+          sqlUpper.includes('RETURNING')
+        ) {
           const [lockedAt, queue, now] = params;
-          const list = Array.from(db.values()).filter(r => r.queue === queue && r.status === 'pending' && Number(r.runAt) <= Number(now))
+          const list = Array.from(db.values())
+            .filter(
+              (r) =>
+                r.queue === queue &&
+                r.status === 'pending' &&
+                Number(r.runAt) <= Number(now),
+            )
             .sort((a, b) => b.priority - a.priority);
           const target = list[0];
           if (target) {
@@ -637,33 +722,89 @@ describe('Axiomify Distributed Jobs', () => {
           }
           return [];
         }
-        if (sqlUpper.includes('SELECT ID FROM AXIOMIFY_JOBS') && sqlUpper.includes('WHERE ID =')) {
+        if (
+          sqlUpper.includes('SELECT ID FROM AXIOMIFY_JOBS') &&
+          sqlUpper.includes('WHERE ID =')
+        ) {
           const id = params[0];
           const row = db.get(id);
           return row ? [row] : [];
         }
         if (sqlUpper.includes('INSERT INTO AXIOMIFY_JOBS')) {
-          const [id, queue, name, payload, status, priority, runAt, attempts, maxAttempts, error, lockedAt, traceContext] = params;
-          const row = { id, queue, name, payload, status, priority, runAt, attempts, maxAttempts, error, lockedAt, traceContext };
+          const [
+            id,
+            queue,
+            name,
+            payload,
+            status,
+            priority,
+            runAt,
+            attempts,
+            maxAttempts,
+            error,
+            lockedAt,
+            traceContext,
+          ] = params;
+          const row = {
+            id,
+            queue,
+            name,
+            payload,
+            status,
+            priority,
+            runAt,
+            attempts,
+            maxAttempts,
+            error,
+            lockedAt,
+            traceContext,
+          };
           db.set(id, row);
           return [];
         }
-        if (sqlUpper.includes('UPDATE AXIOMIFY_JOBS') && sqlUpper.includes('SET STATUS =') && sqlUpper.includes('PRIORITY =')) {
-          const [status, priority, runAt, attempts, maxAttempts, error, lockedAt, id] = params;
+        if (
+          sqlUpper.includes('UPDATE AXIOMIFY_JOBS') &&
+          sqlUpper.includes('SET STATUS =') &&
+          sqlUpper.includes('PRIORITY =')
+        ) {
+          const [
+            status,
+            priority,
+            runAt,
+            attempts,
+            maxAttempts,
+            error,
+            lockedAt,
+            id,
+          ] = params;
           const existing = db.get(id);
           if (existing) {
-            Object.assign(existing, { status, priority, runAt: Number(runAt), attempts, maxAttempts, error, lockedAt });
+            Object.assign(existing, {
+              status,
+              priority,
+              runAt: Number(runAt),
+              attempts,
+              maxAttempts,
+              error,
+              lockedAt,
+            });
           }
           return [];
         }
-        if (sqlUpper.includes('SELECT * FROM AXIOMIFY_JOBS') && sqlUpper.includes('QUEUE =')) {
+        if (
+          sqlUpper.includes('SELECT * FROM AXIOMIFY_JOBS') &&
+          sqlUpper.includes('QUEUE =')
+        ) {
           const queue = params[0];
-          const list = Array.from(db.values()).filter(r => r.queue === queue);
+          const list = Array.from(db.values()).filter((r) => r.queue === queue);
           return list;
         }
         // Note: The old separate UPDATE SET STATUS='running' is no longer used;
         // acquireNext now uses atomic UPDATE...RETURNING above.
-        if (sqlUpper.includes('UPDATE AXIOMIFY_JOBS') && sqlUpper.includes('SET STATUS = \'COMPLETED\'')) {
+        if (
+          sqlUpper.includes('UPDATE AXIOMIFY_JOBS') &&
+          sqlUpper.includes("SET STATUS = 'COMPLETED'")
+        ) {
           const [id] = params;
           const existing = db.get(id);
           if (existing) {
@@ -672,12 +813,22 @@ describe('Axiomify Distributed Jobs', () => {
           }
           return [];
         }
-        if (sqlUpper.includes('SELECT ATTEMPTS') && sqlUpper.includes('MAXATTEMPTS') && sqlUpper.includes('WHERE ID =')) {
+        if (
+          sqlUpper.includes('SELECT ATTEMPTS') &&
+          sqlUpper.includes('MAXATTEMPTS') &&
+          sqlUpper.includes('WHERE ID =')
+        ) {
           const id = params[0];
           const row = db.get(id);
-          return row ? [{ attempts: row.attempts, maxAttempts: row.maxAttempts }] : [];
+          return row
+            ? [{ attempts: row.attempts, maxAttempts: row.maxAttempts }]
+            : [];
         }
-        if (sqlUpper.includes('UPDATE AXIOMIFY_JOBS') && sqlUpper.includes('SET STATUS = \'PENDING\'') && sqlUpper.includes('ATTEMPTS =')) {
+        if (
+          sqlUpper.includes('UPDATE AXIOMIFY_JOBS') &&
+          sqlUpper.includes("SET STATUS = 'PENDING'") &&
+          sqlUpper.includes('ATTEMPTS =')
+        ) {
           const [attempts, error, runAt, id] = params;
           const existing = db.get(id);
           if (existing) {
@@ -689,7 +840,11 @@ describe('Axiomify Distributed Jobs', () => {
           }
           return [];
         }
-        if (sqlUpper.includes('UPDATE AXIOMIFY_JOBS') && sqlUpper.includes('SET STATUS = \'FAILED\'') && sqlUpper.includes('ATTEMPTS =')) {
+        if (
+          sqlUpper.includes('UPDATE AXIOMIFY_JOBS') &&
+          sqlUpper.includes("SET STATUS = 'FAILED'") &&
+          sqlUpper.includes('ATTEMPTS =')
+        ) {
           const [attempts, error, id] = params;
           const existing = db.get(id);
           if (existing) {
@@ -708,7 +863,7 @@ describe('Axiomify Distributed Jobs', () => {
           return Array.from(db.values());
         }
         return [];
-      }
+      },
     };
 
     interface Job {
@@ -739,7 +894,7 @@ describe('Axiomify Distributed Jobs', () => {
       runAt: Date.now() - 100,
       attempts: 0,
       maxAttempts: 2,
-      traceContext: { parentSpanId: '123' }
+      traceContext: { parentSpanId: '123' },
     };
 
     await storage.save(job);
@@ -788,21 +943,29 @@ describe('Axiomify Distributed Jobs', () => {
       query: async (sql: string, params: any[] = []) => {
         const sqlUpper = sql.toUpperCase();
         // Atomic UPDATE...RETURNING for acquireNext (must check first)
-        if (sqlUpper.includes('UPDATE AXIOMIFY_JOBS') && sqlUpper.includes('RETURNING')) {
-          return [{
-            id: 'sql-job-2',
-            queue: 'sql-queue',
-            name: 'task-2',
-            payload: savedPayload,
-            status: 'running',
-            priority: 10,
-            runAt: Date.now() - 100,
-            attempts: 0,
-            maxAttempts: 2,
-            traceContext: savedTraceContext
-          }];
+        if (
+          sqlUpper.includes('UPDATE AXIOMIFY_JOBS') &&
+          sqlUpper.includes('RETURNING')
+        ) {
+          return [
+            {
+              id: 'sql-job-2',
+              queue: 'sql-queue',
+              name: 'task-2',
+              payload: savedPayload,
+              status: 'running',
+              priority: 10,
+              runAt: Date.now() - 100,
+              attempts: 0,
+              maxAttempts: 2,
+              traceContext: savedTraceContext,
+            },
+          ];
         }
-        if (sqlUpper.includes('SELECT ID FROM AXIOMIFY_JOBS') && sqlUpper.includes('WHERE ID =')) {
+        if (
+          sqlUpper.includes('SELECT ID FROM AXIOMIFY_JOBS') &&
+          sqlUpper.includes('WHERE ID =')
+        ) {
           return [];
         }
         if (sqlUpper.includes('INSERT INTO AXIOMIFY_JOBS')) {
@@ -811,7 +974,7 @@ describe('Axiomify Distributed Jobs', () => {
           return [];
         }
         return [];
-      }
+      },
     };
     const storage = new SQLJobStorage(mockPg);
     const job: any = {
@@ -824,7 +987,7 @@ describe('Axiomify Distributed Jobs', () => {
       runAt: Date.now() - 100,
       attempts: 0,
       maxAttempts: 2,
-      traceContext: { parentSpanId: '456' }
+      traceContext: { parentSpanId: '456' },
     };
     await storage.save(job);
     const acquired = await storage.acquireNext('sql-queue', 60000);
@@ -889,7 +1052,7 @@ describe('Axiomify Distributed Jobs', () => {
 
     // Use a cron expression that matches every minute (always fires)
     scheduler.schedule('* * * * *', 'cron-task-nan', { foo: 'bar' });
-    
+
     const now = Date.now();
     // Set lastRun to well before the current minute so it fires
     (scheduler as any).cronTasks[0].lastRun = now - 120000;
@@ -1001,7 +1164,9 @@ describe('Axiomify Distributed Jobs', () => {
       defaultRetryDelayMs: 10,
     });
 
-    vi.spyOn(storage, 'acquireNext').mockRejectedValue(new Error('DB connection lost'));
+    vi.spyOn(storage, 'acquireNext').mockRejectedValue(
+      new Error('DB connection lost'),
+    );
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     scheduler.start();
@@ -1010,7 +1175,7 @@ describe('Axiomify Distributed Jobs', () => {
 
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('[Axiomify Jobs] Error acquiring job:'),
-      expect.any(Error)
+      expect.any(Error),
     );
     consoleSpy.mockRestore();
   });
@@ -1019,10 +1184,14 @@ describe('Axiomify Distributed Jobs', () => {
     const storage = new MemoryJobStorage();
     const scheduler = new JobScheduler(storage);
     const saga = new SagaCoordinator(scheduler);
-    
-    saga.addStep('step1', async (ctx) => 'result1', async () => {});
+
+    saga.addStep(
+      'step1',
+      async (ctx) => 'result1',
+      async () => {},
+    );
     const result = await saga.execute({ input: 1 });
-    
+
     expect(result.success).toBe(true);
     expect(result.context.step1).toBe('result1');
   });
@@ -1032,9 +1201,15 @@ describe('Axiomify Distributed Jobs', () => {
       public store = new Map<string, string>();
       public sets = new Map<string, Set<string>>();
       public zremCalled = false;
-      public async get(key: string) { return this.store.get(key) || null; }
-      public async set(key: string, value: string) { this.store.set(key, value); }
-      public async del(key: string) { this.store.delete(key); }
+      public async get(key: string) {
+        return this.store.get(key) || null;
+      }
+      public async set(key: string, value: string) {
+        this.store.set(key, value);
+      }
+      public async del(key: string) {
+        this.store.delete(key);
+      }
       public async sadd(key: string, member: string) {
         if (!this.sets.has(key)) this.sets.set(key, new Set());
         this.sets.get(key)!.add(member);
@@ -1066,9 +1241,15 @@ describe('Axiomify Distributed Jobs', () => {
       public sets = new Map<string, Set<string>>();
       public zsets = new Map<string, Map<string, number>>();
 
-      public async get(key: string) { return this.store.get(key) || null; }
-      public async set(key: string, value: string) { this.store.set(key, value); }
-      public async del(key: string) { this.store.delete(key); }
+      public async get(key: string) {
+        return this.store.get(key) || null;
+      }
+      public async set(key: string, value: string) {
+        this.store.set(key, value);
+      }
+      public async del(key: string) {
+        this.store.delete(key);
+      }
       public async sadd(key: string, member: string) {
         if (!this.sets.has(key)) this.sets.set(key, new Set());
         this.sets.get(key)!.add(member);
@@ -1089,7 +1270,13 @@ describe('Axiomify Distributed Jobs', () => {
       }
       public async zrem(key: string, member: string) {}
       // eval is required for atomic job locking
-      public async eval(script: string | { script: string; keys: string[]; arguments: string[] }, numkeys?: number, ...args: string[]) {
+      public async eval(
+        script:
+          | string
+          | { script: string; keys: string[]; arguments: string[] },
+        numkeys?: number,
+        ...args: string[]
+      ) {
         let lockKey = '';
         if (typeof script === 'object' && script !== null) {
           lockKey = script.keys[0] || '';
@@ -1152,9 +1339,15 @@ describe('Axiomify Distributed Jobs', () => {
       public store = new Map<string, string>();
       public sets = new Map<string, Set<string>>();
       public zsets = new Map<string, Map<string, number>>();
-      public async get(key: string) { return this.store.get(key) || null; }
-      public async set(key: string, value: string) { this.store.set(key, value); }
-      public async del(key: string) { this.store.delete(key); }
+      public async get(key: string) {
+        return this.store.get(key) || null;
+      }
+      public async set(key: string, value: string) {
+        this.store.set(key, value);
+      }
+      public async del(key: string) {
+        this.store.delete(key);
+      }
       public async sadd(key: string, member: string) {
         if (!this.sets.has(key)) this.sets.set(key, new Set());
         this.sets.get(key)!.add(member);
@@ -1201,9 +1394,15 @@ describe('Axiomify Distributed Jobs', () => {
       public store = new Map<string, string>();
       public sets = new Map<string, Set<string>>();
       public zsets = new Map<string, Map<string, number>>();
-      public async get(key: string) { return this.store.get(key) || null; }
-      public async set(key: string, value: string) { this.store.set(key, value); }
-      public async del(key: string) { this.store.delete(key); }
+      public async get(key: string) {
+        return this.store.get(key) || null;
+      }
+      public async set(key: string, value: string) {
+        this.store.set(key, value);
+      }
+      public async del(key: string) {
+        this.store.delete(key);
+      }
       public async sadd(key: string, member: string) {
         if (!this.sets.has(key)) this.sets.set(key, new Set());
         this.sets.get(key)!.add(member);
@@ -1245,21 +1444,29 @@ describe('Axiomify Distributed Jobs', () => {
     await storage.save(job);
 
     await expect(storage.acquireNext('no-eval-queue', 5000)).rejects.toThrow(
-      'Redis client must support EVAL for atomic job locking'
+      'Redis client must support EVAL for atomic job locking',
     );
   });
 
   it('should validate enqueue inputs in scheduler', async () => {
     const storage = new MemoryJobStorage();
     const scheduler = new JobScheduler(storage);
-    await expect(scheduler.enqueue('', {})).rejects.toThrow('Job name must be a non-empty string');
-    await expect(scheduler.enqueue(null as any, {})).rejects.toThrow('Job name must be a non-empty string');
+    await expect(scheduler.enqueue('', {})).rejects.toThrow(
+      'Job name must be a non-empty string',
+    );
+    await expect(scheduler.enqueue(null as any, {})).rejects.toThrow(
+      'Job name must be a non-empty string',
+    );
   });
 
   it('should validate scheduler constructor inputs', () => {
     const storage = new MemoryJobStorage();
-    expect(() => new JobScheduler(storage, { maxConcurrency: 0 })).toThrow('maxConcurrency must be greater than 0');
-    expect(() => new JobScheduler(storage, { pollIntervalMs: -10 })).toThrow('pollIntervalMs must be greater than 0');
+    expect(() => new JobScheduler(storage, { maxConcurrency: 0 })).toThrow(
+      'maxConcurrency must be greater than 0',
+    );
+    expect(() => new JobScheduler(storage, { pollIntervalMs: -10 })).toThrow(
+      'pollIntervalMs must be greater than 0',
+    );
   });
 
   it('should log warning on drain timeout when stopping scheduler', async () => {
@@ -1282,7 +1489,7 @@ describe('Axiomify Distributed Jobs', () => {
     await scheduler.stop();
 
     expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Force-stopping')
+      expect.stringContaining('Force-stopping'),
     );
     consoleSpy.mockRestore();
   });
@@ -1295,7 +1502,9 @@ describe('Axiomify Distributed Jobs', () => {
       pollIntervalMs: 5,
     });
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    (scheduler as any).checkCronSchedules = vi.fn().mockRejectedValue(new Error('Cron config corruption'));
+    (scheduler as any).checkCronSchedules = vi
+      .fn()
+      .mockRejectedValue(new Error('Cron config corruption'));
 
     scheduler.start();
     await new Promise((resolve) => setTimeout(resolve, 15));
@@ -1303,7 +1512,7 @@ describe('Axiomify Distributed Jobs', () => {
 
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('[Axiomify Jobs] Cron schedule error:'),
-      expect.any(Error)
+      expect.any(Error),
     );
     consoleSpy.mockRestore();
   });
@@ -1345,14 +1554,14 @@ describe('Axiomify Distributed Jobs', () => {
       async () => 'res1',
       async (ctx) => {
         step1Compensated = true;
-      }
+      },
     );
     saga.addStep(
       'step2',
       async () => {
         throw new Error('step2 failed');
       },
-      async () => {}
+      async () => {},
     );
 
     const result = await saga.execute({ input: 123 });
@@ -1401,9 +1610,9 @@ describe('Axiomify Distributed Jobs', () => {
     dateSpy.mockRestore();
 
     const jobs = await storage.getJobs();
-    expect(jobs.some(j => j.name === 'cron-complex-1')).toBe(true);
-    expect(jobs.some(j => j.name === 'cron-complex-2')).toBe(true);
-    expect(jobs.some(j => j.name === 'cron-complex-3')).toBe(false);
+    expect(jobs.some((j) => j.name === 'cron-complex-1')).toBe(true);
+    expect(jobs.some((j) => j.name === 'cron-complex-2')).toBe(true);
+    expect(jobs.some((j) => j.name === 'cron-complex-3')).toBe(false);
   });
 
   it('should support different Redis client styles for clear and acquireNext', async () => {
@@ -1448,12 +1657,33 @@ describe('Axiomify Distributed Jobs', () => {
     const mockRedisSorted = {
       zrangebyscore: async () => ['job-high', 'job-low'],
       mget: async () => [
-        JSON.stringify({ id: 'job-high', queue: 'q', name: 'n', runAt: Date.now() - 50, priority: 100, attempts: 0, maxAttempts: 3, status: 'pending' }),
-        JSON.stringify({ id: 'job-low', queue: 'q', name: 'n', runAt: Date.now() - 50, priority: 5, attempts: 0, maxAttempts: 3, status: 'pending' }),
+        JSON.stringify({
+          id: 'job-high',
+          queue: 'q',
+          name: 'n',
+          runAt: Date.now() - 50,
+          priority: 100,
+          attempts: 0,
+          maxAttempts: 3,
+          status: 'pending',
+        }),
+        JSON.stringify({
+          id: 'job-low',
+          queue: 'q',
+          name: 'n',
+          runAt: Date.now() - 50,
+          priority: 5,
+          attempts: 0,
+          maxAttempts: 3,
+          status: 'pending',
+        }),
       ],
       // node-redis style EVAL (EVALSHA does not exist)
       eval: async (opts: any) => {
-        return JSON.stringify({ id: opts.keys[0].split(':').pop(), status: 'running' });
+        return JSON.stringify({
+          id: opts.keys[0].split(':').pop(),
+          status: 'running',
+        });
       },
       zrem: async () => {},
     };
@@ -1471,7 +1701,9 @@ describe('Axiomify Distributed Jobs', () => {
     scheduler.register('job-dup', () => {});
 
     expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('[Axiomify Jobs] Handler "job-dup" is being overwritten.')
+      expect.stringContaining(
+        '[Axiomify Jobs] Handler "job-dup" is being overwritten.',
+      ),
     );
     consoleSpy.mockRestore();
   });
@@ -1479,7 +1711,7 @@ describe('Axiomify Distributed Jobs', () => {
   it('should purge completed and failed jobs in MemoryJobStorage', async () => {
     const storage = new MemoryJobStorage();
     const now = Date.now();
-    
+
     const job1 = {
       id: 'job-1',
       queue: 'default',
@@ -1513,7 +1745,7 @@ describe('Axiomify Distributed Jobs', () => {
       attempts: 0,
       maxAttempts: 3,
     };
-    
+
     await storage.save(job1);
     await storage.save(job2);
     await storage.save(job3);
@@ -1523,17 +1755,17 @@ describe('Axiomify Distributed Jobs', () => {
     expect(removed1).toBe(1); // only job1 removed
 
     const jobs = await storage.getJobs();
-    expect(jobs.some(j => j.id === 'job-1')).toBe(false);
-    expect(jobs.some(j => j.id === 'job-2')).toBe(true);
-    expect(jobs.some(j => j.id === 'job-3')).toBe(true);
+    expect(jobs.some((j) => j.id === 'job-1')).toBe(false);
+    expect(jobs.some((j) => j.id === 'job-2')).toBe(true);
+    expect(jobs.some((j) => j.id === 'job-3')).toBe(true);
 
     // Purge all remaining completed/failed
     const removed2 = await storage.purge();
     expect(removed2).toBe(1); // job2 removed
 
     const remainingJobs = await storage.getJobs();
-    expect(remainingJobs.some(j => j.id === 'job-2')).toBe(false);
-    expect(remainingJobs.some(j => j.id === 'job-3')).toBe(true);
+    expect(remainingJobs.some((j) => j.id === 'job-2')).toBe(false);
+    expect(remainingJobs.some((j) => j.id === 'job-3')).toBe(true);
   });
 
   it('should support ioredis array scan format and other scan return types', async () => {
@@ -1628,8 +1860,26 @@ describe('Axiomify Distributed Jobs', () => {
     const mockRedisEvalThrow = {
       zrangebyscore: async () => ['job-fail', 'job-success'],
       mget: async () => [
-        JSON.stringify({ id: 'job-fail', queue: 'q', name: 'n', runAt: Date.now() - 50, priority: 10, attempts: 0, maxAttempts: 3, status: 'pending' }),
-        JSON.stringify({ id: 'job-success', queue: 'q', name: 'n', runAt: Date.now() - 50, priority: 10, attempts: 0, maxAttempts: 3, status: 'pending' }),
+        JSON.stringify({
+          id: 'job-fail',
+          queue: 'q',
+          name: 'n',
+          runAt: Date.now() - 50,
+          priority: 10,
+          attempts: 0,
+          maxAttempts: 3,
+          status: 'pending',
+        }),
+        JSON.stringify({
+          id: 'job-success',
+          queue: 'q',
+          name: 'n',
+          runAt: Date.now() - 50,
+          priority: 10,
+          attempts: 0,
+          maxAttempts: 3,
+          status: 'pending',
+        }),
       ],
       eval: async (script: any, numkeys?: number, ...args: string[]) => {
         let lockKey = '';
@@ -1694,7 +1944,7 @@ describe('Axiomify Distributed Jobs', () => {
     scheduler.schedule('10/5 12 * * *', 'cron-step-range', { g: 7 });
 
     const dateSpy = vi.spyOn(Date, 'now');
-    
+
     // Case 1: Minutes=10, Hours=12
     const testDate1 = new Date();
     testDate1.setMinutes(10);
@@ -1712,8 +1962,10 @@ describe('Axiomify Distributed Jobs', () => {
     dateSpy.mockRestore();
 
     const jobs = await storage.getJobs();
-    expect(jobs.some(j => j.payload.g === 7)).toBe(true);
-    expect(jobs.some(j => j.payload.g === 7 && j.runAt === testDate2.getTime())).toBe(false);
+    expect(jobs.some((j) => j.payload.g === 7)).toBe(true);
+    expect(
+      jobs.some((j) => j.payload.g === 7 && j.runAt === testDate2.getTime()),
+    ).toBe(false);
   });
 
   it('should support generic typed payloads for autocomplete and verification', async () => {
@@ -1845,7 +2097,7 @@ describe('Axiomify Distributed Jobs', () => {
     expect(lockAcquired).toBe(true);
     const jobs = await storage.getJobs();
     // No job should be enqueued because lock returned false
-    expect(jobs.filter(j => j.name === 'cron-lock-test')).toHaveLength(0);
+    expect(jobs.filter((j) => j.name === 'cron-lock-test')).toHaveLength(0);
   });
 
   it('should map lockedAt to lockExpiresAt and support backward compatibility', async () => {
@@ -1872,7 +2124,7 @@ describe('Axiomify Distributed Jobs', () => {
   it('should test all paths of acquireCronLock in RedisJobStorage', async () => {
     // 1. Success via standard positional arguments (SET key 1 NX PX ttlMs)
     const mockClient1 = {
-      set: vi.fn().mockResolvedValue('OK')
+      set: vi.fn().mockResolvedValue('OK'),
     };
     const storage1 = new RedisJobStorage(mockClient1 as any);
     const res1 = await storage1.acquireCronLock('key1', 5000);
@@ -1884,16 +2136,19 @@ describe('Axiomify Distributed Jobs', () => {
       set: vi.fn().mockImplementation((key, val, nx, px, ttl) => {
         if (typeof nx === 'string') throw new Error('not supported');
         return 'OK';
-      })
+      }),
     };
     const storage2 = new RedisJobStorage(mockClient2 as any);
     const res2 = await storage2.acquireCronLock('key2', 5000);
     expect(res2).toBe(true);
-    expect(mockClient2.set).toHaveBeenLastCalledWith('key2', '1', { NX: true, PX: 5000 });
+    expect(mockClient2.set).toHaveBeenLastCalledWith('key2', '1', {
+      NX: true,
+      PX: 5000,
+    });
 
     // 3. Complete failure (throws on both)
     const mockClient3 = {
-      set: vi.fn().mockRejectedValue(new Error('fail'))
+      set: vi.fn().mockRejectedValue(new Error('fail')),
     };
     const storage3 = new RedisJobStorage(mockClient3 as any);
     const res3 = await storage3.acquireCronLock('key3', 5000);
@@ -1901,12 +2156,242 @@ describe('Axiomify Distributed Jobs', () => {
 
     // 4. Client with uppercase SET
     const mockClient4 = {
-      SET: vi.fn().mockResolvedValue('OK')
+      SET: vi.fn().mockResolvedValue('OK'),
     };
     const storage4 = new RedisJobStorage(mockClient4 as any);
     const res4 = await storage4.acquireCronLock('key4', 5000);
     expect(res4).toBe(true);
     expect(mockClient4.SET).toHaveBeenCalledWith('key4', '1', 'NX', 'PX', 5000);
   });
-});
 
+  it('should cover MemoryJobStorage.fail when attempts >= maxAttempts', async () => {
+    const storage = new MemoryJobStorage();
+    const job = {
+      id: 'job-mem-fail',
+      queue: 'default',
+      name: 'test',
+      payload: {},
+      status: 'pending' as const,
+      priority: 0,
+      runAt: Date.now(),
+      attempts: 0,
+      maxAttempts: 1,
+    };
+    await storage.save(job);
+    await storage.fail('job-mem-fail', 'some-error');
+    const jobs = await storage.getJobs();
+    expect(jobs[0].status).toBe('failed');
+
+    await storage.clear();
+    const jobsAfterClear = await storage.getJobs();
+    expect(jobsAfterClear).toHaveLength(0);
+  });
+
+  it('should parse cron expression with comma-separated list patterns', async () => {
+    const storage = new MemoryJobStorage();
+    const scheduler = new JobScheduler(storage, {
+      queue: 'cron-list-queue',
+      pollIntervalMs: 5,
+    });
+    // Register cron pattern using list (e.g. *,* * * * *)
+    scheduler.schedule('*,* * * * *', 'list-task', {});
+    scheduler.start();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    await scheduler.stop();
+    const jobs = await storage.getJobs();
+    expect(jobs.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('should fail a job permanently without DLQ if dlqQueue is disabled/empty', async () => {
+    const storage = new MemoryJobStorage();
+    const scheduler = new JobScheduler(storage, {
+      queue: 'no-dlq-queue',
+      maxConcurrency: 1,
+      pollIntervalMs: 5,
+      lockDurationMs: 1000,
+      defaultRetryDelayMs: 10,
+      dlqQueue: '', // Empty string disables DLQ evaluation
+    });
+
+    let runs = 0;
+    scheduler.register('fail-forever', () => {
+      runs += 1;
+      throw new Error('permanent-failure');
+    });
+
+    await scheduler.enqueue('fail-forever', {}, { attempts: 1 });
+    scheduler.start();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await scheduler.stop();
+
+    expect(runs).toBe(1);
+    const jobs = await storage.getJobs();
+    expect(jobs[0].status).toBe('failed');
+    expect(jobs[0].queue).toBe('no-dlq-queue'); // should not be moved to DLQ queue
+  });
+
+  it('should cover acquireLocalCronLock false branch when lock is active', () => {
+    const storage = new MemoryJobStorage();
+    const scheduler = new JobScheduler(storage);
+    const res1 = (scheduler as any).acquireLocalCronLock('test-lock', 5000);
+    expect(res1).toBe(true);
+    const res2 = (scheduler as any).acquireLocalCronLock('test-lock', 5000);
+    expect(res2).toBe(false);
+  });
+
+  it('should cover legacy payload-embedded traceContext in SQLJobStorage', async () => {
+    // 1. Path with __value wrapper inside acquireNext (mapRow)
+    const mockPg1 = {
+      query: async (sql: string, params: any[]) => {
+        const sqlUpper = sql.toUpperCase();
+        if (
+          sqlUpper.includes('UPDATE AXIOMIFY_JOBS') &&
+          sqlUpper.includes('RETURNING')
+        ) {
+          return [
+            {
+              id: 'sql-legacy-1',
+              queue: 'q',
+              name: 'n',
+              payload: JSON.stringify({
+                _traceContext: { traceparent: 'legacy-trace-1' },
+                __value: 'primitive-val',
+              }),
+              status: 'running',
+              priority: 0,
+              runAt: Date.now(),
+              attempts: 0,
+              maxAttempts: 3,
+              traceContext: null,
+            },
+          ];
+        }
+        return [];
+      },
+    };
+    const storage1 = new SQLJobStorage(mockPg1);
+    const acquired1 = await storage1.acquireNext('q', 5000);
+    expect(acquired1!.payload).toBe('primitive-val');
+    expect(acquired1!.traceContext).toEqual({ traceparent: 'legacy-trace-1' });
+
+    // 2. Path without __value wrapper inside acquireNext (mapRow)
+    const mockPg2 = {
+      query: async (sql: string, params: any[]) => {
+        const sqlUpper = sql.toUpperCase();
+        if (
+          sqlUpper.includes('UPDATE AXIOMIFY_JOBS') &&
+          sqlUpper.includes('RETURNING')
+        ) {
+          return [
+            {
+              id: 'sql-legacy-2',
+              queue: 'q',
+              name: 'n',
+              payload: JSON.stringify({
+                _traceContext: { traceparent: 'legacy-trace-2' },
+                foo: 'bar',
+              }),
+              status: 'running',
+              priority: 0,
+              runAt: Date.now(),
+              attempts: 0,
+              maxAttempts: 3,
+              traceContext: null,
+            },
+          ];
+        }
+        return [];
+      },
+    };
+    const storage2 = new SQLJobStorage(mockPg2);
+    const acquired2 = await storage2.acquireNext('q', 5000);
+    expect(acquired2!.payload).toEqual({ foo: 'bar' });
+    expect(acquired2!.traceContext).toEqual({ traceparent: 'legacy-trace-2' });
+
+    // 3. Path with __value wrapper inside getJobs
+    const mockPg3 = {
+      query: async (sql: string, params: any[]) => {
+        const sqlUpper = sql.toUpperCase();
+        if (sqlUpper.includes('SELECT * FROM AXIOMIFY_JOBS')) {
+          return [
+            {
+              id: 'sql-legacy-3',
+              queue: 'q',
+              name: 'n',
+              payload: {
+                _traceContext: { traceparent: 'legacy-trace-3' },
+                __value: 'primitive-val-3',
+              },
+              status: 'pending',
+              priority: 0,
+              runAt: Date.now(),
+              attempts: 0,
+              maxAttempts: 3,
+              traceContext: null,
+            },
+          ];
+        }
+        return [];
+      },
+    };
+    const storage3 = new SQLJobStorage(mockPg3);
+    const jobs3 = await storage3.getJobs('q');
+    expect(jobs3[0].payload).toBe('primitive-val-3');
+    expect(jobs3[0].traceContext).toEqual({ traceparent: 'legacy-trace-3' });
+
+    // 4. Path without __value wrapper inside getJobs
+    const mockPg4 = {
+      query: async (sql: string, params: any[]) => {
+        const sqlUpper = sql.toUpperCase();
+        if (sqlUpper.includes('SELECT * FROM AXIOMIFY_JOBS')) {
+          return [
+            {
+              id: 'sql-legacy-4',
+              queue: 'q',
+              name: 'n',
+              payload: {
+                _traceContext: { traceparent: 'legacy-trace-4' },
+                data: 'object-val',
+              },
+              status: 'pending',
+              priority: 0,
+              runAt: Date.now(),
+              attempts: 0,
+              maxAttempts: 3,
+              traceContext: null,
+            },
+          ];
+        }
+        return [];
+      },
+    };
+    const storage4 = new SQLJobStorage(mockPg4);
+    const jobs4 = await storage4.getJobs('q');
+    expect(jobs4[0].payload).toEqual({ data: 'object-val' });
+    expect(jobs4[0].traceContext).toEqual({ traceparent: 'legacy-trace-4' });
+  });
+
+  it('should cover RedisJobStorage.save when lockExpiresAt is defined', async () => {
+    const mockRedis = {
+      set: vi.fn().mockResolvedValue('OK'),
+      sadd: vi.fn().mockResolvedValue(1),
+      zadd: vi.fn().mockResolvedValue(1),
+      zrem: vi.fn().mockResolvedValue(1),
+    };
+    const storage = new RedisJobStorage(mockRedis as any);
+    const job = {
+      id: 'job-redis-lock-expire',
+      queue: 'q',
+      name: 'n',
+      payload: {},
+      status: 'pending' as const,
+      priority: 0,
+      runAt: Date.now(),
+      attempts: 0,
+      maxAttempts: 3,
+      lockExpiresAt: 12345678,
+    };
+    await storage.save(job);
+    expect(job.lockedAt).toBe(12345678);
+  });
+});

@@ -47,7 +47,7 @@ app.use(
         gateway: { allow: ['API_KEY', 'PORT'] },
       },
     },
-  })
+  }),
 );
 
 app.build();
@@ -67,7 +67,7 @@ app.route({
     // Wrap execution in the 'payments' scope so ABAC authorization checks succeed
     const stripeKey = vaultScope('payments', () => process.env.STRIPE_SECRET);
     res.send({ stripeKey });
-  }
+  },
 });
 ```
 
@@ -85,4 +85,3 @@ Without an execution scope, process environment lookups resolve under the `'defa
 - **Automatic Sync Detection**: Compares raw env files checksum at start; regenerates the vault if values or policy target configurations change.
 - **Dynamic Rotation**: Supports the `rotateSecret(key, value)` method at runtime to update memory caches and stream sanitizers on-the-fly post-bootstrap.
 - **Git-guard protection**: Proactively checks if `.axiomify/vault.key` is tracked by git using `git ls-files`. In development, it issues a console warning if tracked; in production, it throws a hard exception to prevent server start, safeguarding against leaked master encryption keys.
-

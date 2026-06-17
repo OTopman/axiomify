@@ -43,7 +43,7 @@ app.use(
     storage: 'memory',
     maxConcurrency: 3,
     pollIntervalMs: 250,
-  })
+  }),
 );
 
 app.use({
@@ -53,16 +53,22 @@ app.use({
     const jobs = ctx.resolve('jobs');
 
     // Register job handler
-    jobs.register('send-sms', async (payload: { phone: string; message: string }) => {
-      console.log(`Sending SMS to ${payload.phone}: ${payload.message}`);
-    });
+    jobs.register(
+      'send-sms',
+      async (payload: { phone: string; message: string }) => {
+        console.log(`Sending SMS to ${payload.phone}: ${payload.message}`);
+      },
+    );
 
     // Route triggering async background job
     app.route({
       method: 'POST',
       path: '/sms',
       handler: async (req, res) => {
-        await jobs.enqueue('send-sms', { phone: '1234567890', message: 'Hello!' });
+        await jobs.enqueue('send-sms', {
+          phone: '1234567890',
+          message: 'Hello!',
+        });
         res.status(202).send({ status: 'queued' });
       },
     });
@@ -90,13 +96,14 @@ scheduler.register<SendEmailPayload>('send-email', (payload) => {
 await scheduler.enqueue<SendEmailPayload>('send-email', {
   to: 'user@example.com',
   subject: 'Welcome',
-  body: 'Hello!'
+  body: 'Hello!',
 });
 ```
 
 ## Job Lifecycle Events
 
 `JobScheduler` inherits from `EventEmitter` and emits the following event milestones:
+
 - `start`: Emitted when a job starts execution. Passes `(job: Job)`.
 - `completed`: Emitted when a job completes successfully. Passes `(job: Job)`.
 - `retry`: Emitted when a job fails but has remaining attempts and is rescheduled for retry. Passes `(job: Job, error: Error)`.
@@ -104,6 +111,7 @@ await scheduler.enqueue<SendEmailPayload>('send-email', {
 - `dlq`: Emitted when a job exceeds retry limits and is routed to the Dead Letter Queue. Passes `(job: Job, error: Error)`.
 
 Example:
+
 ```typescript
 scheduler.on('failed', (job, err) => {
   console.error(`Job ${job.id} (${job.name}) failed permanently:`, err);
@@ -123,10 +131,13 @@ The `JobScheduler` supports scheduling recurring tasks via `scheduler.schedule(p
 - **`payload`**: The optional payload to pass to the job handler.
 
 Example:
+
 ```typescript
 // Register a clean-up handler
 scheduler.register('clean-temp-files', async () => {
-  await db.query('DELETE FROM temp_files WHERE created_at < NOW() - INTERVAL 1 DAY');
+  await db.query(
+    'DELETE FROM temp_files WHERE created_at < NOW() - INTERVAL 1 DAY',
+  );
 });
 
 // Schedule to run every hour using standard cron expression

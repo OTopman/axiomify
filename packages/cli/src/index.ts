@@ -27,7 +27,10 @@ function loadEnv() {
         if (idx === -1) continue;
         const key = trimmed.substring(0, idx).trim();
         let val = trimmed.substring(idx + 1).trim();
-        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        if (
+          (val.startsWith('"') && val.endsWith('"')) ||
+          (val.startsWith("'") && val.endsWith("'"))
+        ) {
           val = val.substring(1, val.length - 1);
         }
         if (!(key in process.env)) {

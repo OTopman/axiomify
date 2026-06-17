@@ -665,9 +665,11 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
   it('rejects additional properties with ValidationError for strict Zod object schemas', () => {
     const compiler = new ValidationCompiler();
     compiler.compile('POST:/strict', {
-      body: z.object({
-        name: z.string(),
-      }).strict(),
+      body: z
+        .object({
+          name: z.string(),
+        })
+        .strict(),
     });
 
     const req = makeReq({
@@ -678,7 +680,9 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
       },
     });
 
-    expect(() => compiler.execute('POST:/strict', req)).toThrow(ValidationError);
+    expect(() => compiler.execute('POST:/strict', req)).toThrow(
+      ValidationError,
+    );
   });
 
   describe('adjustAdditionalProperties coverage extension', () => {
@@ -769,7 +773,7 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
 
     it('covers Zod v3 strict and passthrough mocks', () => {
       const compiler = new ValidationCompiler();
-      
+
       // Zod v3 Strict
       const mockZod3Strict = {
         _def: {
@@ -778,7 +782,8 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
           shape: { name: z.string() },
         },
         parse: (x: any) => {
-          if (x && Object.keys(x).length > 1) throw new Error('strict validation failed');
+          if (x && Object.keys(x).length > 1)
+            throw new Error('strict validation failed');
           return x;
         },
         safeParse: (x: any) => ({ success: true, data: x }),
@@ -794,10 +799,14 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
         body: mockZod3Strict,
       });
       const reqStrictOk = makeReq({ body: { name: 'John' } });
-      expect(() => compiler.execute('POST:/zod3-strict', reqStrictOk)).not.toThrow();
+      expect(() =>
+        compiler.execute('POST:/zod3-strict', reqStrictOk),
+      ).not.toThrow();
 
       const reqStrictFail = makeReq({ body: { name: 'John', extra: 123 } });
-      expect(() => compiler.execute('POST:/zod3-strict', reqStrictFail)).toThrow();
+      expect(() =>
+        compiler.execute('POST:/zod3-strict', reqStrictFail),
+      ).toThrow();
 
       // Zod v3 Passthrough
       const mockZod3Passthrough = {
@@ -820,7 +829,9 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
         body: mockZod3Passthrough,
       });
       const reqPass = makeReq({ body: { name: 'John', extra: 123 } });
-      expect(() => compiler.execute('POST:/zod3-passthrough', reqPass)).not.toThrow();
+      expect(() =>
+        compiler.execute('POST:/zod3-passthrough', reqPass),
+      ).not.toThrow();
     });
   });
 });

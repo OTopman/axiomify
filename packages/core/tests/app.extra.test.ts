@@ -564,4 +564,43 @@ describe('Axiomify app — extended coverage', () => {
       }
     });
   });
+
+  describe('public resolve and vault scope coverage', () => {
+    it('throws when public resolve is called with an unregistered token', () => {
+      const app = new Axiomify();
+      expect(() => app.resolve('unregistered-token' as any)).toThrow(
+        /DI Error: Cannot resolve unregistered service "unregistered-token"/,
+      );
+    });
+
+    it('returns the registered service when token exists', () => {
+      const app = new Axiomify();
+      app.use((_, context) => {
+        context.provide('my-service' as any, { ok: true });
+      });
+      const result = app.resolve('my-service' as any);
+      expect(result).toEqual({ ok: true });
+    });
+
+    it('covers vault.scope in AppConfigurator functional context', () => {
+      const app = new Axiomify();
+      let scopeResult: string = '';
+      app.use((_, context) => {
+        scopeResult = context.vault.scope('func-module', () => 'func-val');
+      });
+      expect(scopeResult).toBe('func-val');
+    });
+
+    it('covers vault.scope in AppModule topological context', () => {
+      const app = new Axiomify();
+      let scopeResult: string = '';
+      app.use({
+        name: 'test-mod',
+        register: (_, context) => {
+          scopeResult = context.vault.scope('top-module', () => 'top-val');
+        },
+      });
+      expect(scopeResult).toBe('top-val');
+    });
+  });
 });
