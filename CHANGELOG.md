@@ -1,6 +1,45 @@
 # Changelog
 
 
+## 6.3.3
+
+### ✨ New Features
+
+#### `@axiomify/core`
+- Add public, type-safe `.resolve()` API to `Axiomify` class to retrieve registered DI services cleanly.
+- Hardened `lockRoutes()` and `handleMatchedRoute()` internal APIs to enforce strict object identity matching on `ADAPTER_LOCK_TOKEN`, preventing potential caller frame/stack-based security bypasses.
+- Integrate request-time environment isolation helper `vaultScope` (re-exported as `ctx.vault.scope` in modules) into standard request dispatcher contexts.
+
+#### `@axiomify/jobs` (New Package)
+- Introduce a resilient, type-safe distributed queue and Saga transaction workflow coordination engine with background workers and native Studio console integration.
+
+#### `@axiomify/vault` (New Package)
+- Introduce a secure environment and configuration vault with envelope encryption, ABAC module policies, standard stream redaction, and git-guard checks.
+
+#### `@axiomify/logger`
+- Expand logger configuration with granular opt-in options: `includeParams`, `includeQuery`, `includeBody`, `includeResponseHeaders`, and `includeState`.
+- Add custom fallback serializer for `BigInt` properties to prevent runtime crashes during JSON logging of numeric identifiers.
+
+#### `@axiomify/native`
+- Hardened internal APIs (`lockRoutes`, `getRawServer`, `registerShutdownCallback`) via strict `ADAPTER_LOCK_TOKEN` object checks.
+- Optimized payload size limit rejection execution path.
+- Added a pre-built cached `504 Gateway Timeout` response wrapper for faster timeout responses.
+
+#### Axiomify Studio (`@axiomify/studio-ui`)
+- Add **Execution Profiler** (`ProfilerPanel` component) to visual dashboard, rendering interactive flame timeline graphs to debug hook cascades, route durations, and DB queries.
+
+### 🩹 Bug Fixes
+
+#### `@axiomify/cli`
+- Minor robustness fix in Studio API package resolution error handling.
+
+### 📝 Documentation
+- Align and update core concepts, WebSockets, jobs, vault, and CLI package documentation to reflect recent features (type coercion, sanitize options, cron scheduling, and `vaultScope`).
+- Replace `packages/studio-ui/README.md` boilerplate with a real overview.
+- Update `MODIFICATION_GUIDE.md` logger update details.
+
+---
+
 ## 6.3.2
 
 ### 🩹 Bug Fixes

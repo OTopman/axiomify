@@ -15,6 +15,7 @@ npm install @axiomify/jobs
 - `SagaCoordinator`
 - `MemoryJobStorage`
 - `SQLJobStorage`
+- `RedisJobStorage`
 
 ## Key options
 
@@ -24,6 +25,8 @@ npm install @axiomify/jobs
 - `maxConcurrency`: Maximum background tasks processed in parallel per worker process (defaults to `5`)
 - `pollIntervalMs`: Polling loop interval in milliseconds to check for pending jobs (defaults to `100` ms)
 - `lockDurationMs`: Lease duration in milliseconds for locked tasks before they auto-expire and are made available for retry (defaults to `30000` ms)
+- `jobTimeoutMs`: Maximum execution time in milliseconds allowed for a single job handler (defaults to `30000` ms)
+- `drainTimeoutMs`: Maximum time in milliseconds to wait for active workers to drain when calling `.stop()` (defaults to `30000` ms)
 - `dlqQueue`: Queue to route permanently failed jobs to when they exceed `maxAttempts` (defaults to `${queue}:dlq`)
 
 ## Example
@@ -109,6 +112,28 @@ scheduler.on('failed', (job, err) => {
 scheduler.on('dlq', (job) => {
   notifyOnCallTeam(`Job ${job.id} routed to DLQ`);
 });
+```
+
+## Cron Scheduling
+
+The `JobScheduler` supports scheduling recurring tasks via `scheduler.schedule(pattern, name, payload)`.
+
+- **`pattern`**: Can be a standard 5-field cron expression (e.g. `*/5 * * * *` for every 5 minutes) or a numeric string representing the interval in seconds (e.g. `"60"` for every minute).
+- **`name`**: The name of the registered job handler to execute.
+- **`payload`**: The optional payload to pass to the job handler.
+
+Example:
+```typescript
+// Register a clean-up handler
+scheduler.register('clean-temp-files', async () => {
+  await db.query('DELETE FROM temp_files WHERE created_at < NOW() - INTERVAL 1 DAY');
+});
+
+// Schedule to run every hour using standard cron expression
+scheduler.schedule('0 * * * *', 'clean-temp-files');
+
+// Schedule to run every 30 seconds using interval string
+scheduler.schedule('30', 'clean-temp-files');
 ```
 
 ## Behavior

@@ -44,12 +44,17 @@ Zod schemas are not evaluated at request time. At route registration:
 
 At request time:
 
+- **Pre-coercion** — HTTP query strings and URL parameters always arrive as strings. Similarly, HTML forms or certain clients may send stringified fields in request bodies. Before validation runs, Axiomify performs a lightweight **pre-coercion** pass on `query`, `params`, and `body`. It recursively checks the schema types and converts:
+  - Strings to numbers or integers (e.g., `"5"` to `5`) using `Number()`, ignoring `NaN` or empty spaces.
+  - Strings to booleans (`"true"` to `true`, `"false"` to `false`).
+  - Arrays and nested object properties matching these schemas.
+  Non-coercible values (e.g., `"abc"` for a number field) are left untouched so downstream validation can produce clear, standard errors.
 - **AJV validates structure** — the compiled function does the structural check.
 - **`schema.parse(data)` runs a second pass only when the schema declares transforms** (`.default()`, `.coerce.*`, `.transform()`). On transform-free schemas the second pass is skipped entirely.
 
 When AJV is not installed (it's a peer dependency), the framework falls back to Zod `safeParse` — correct in all cases, ~1.6× slower than the AJV path. Schemas that can't be expressed in JSON Schema (complex `.refine()`, custom predicates) fall back to `safeParse` automatically even when AJV is available.
 
-AJV is configured `coerceTypes: false` and without `removeAdditional`, so the validator never silently mutates request data. Type coercion and unknown-key behaviour are determined entirely by your Zod schema.
+AJV itself is configured with `coerceTypes: false` (since type coercion is handled consistently by Axiomify's pre-coercion layer) and without `removeAdditional`. Type coercion and unknown-key behaviour are determined entirely by your Zod schema and pre-coercion rules.
 
 ---
 

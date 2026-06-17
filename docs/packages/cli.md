@@ -331,6 +331,7 @@ axiomify sdk generate src/index.ts -t swift            # parse directly from an 
 | `-o, --output <dir>`      | Output directory (default: `generated-sdks`)                                                         |
 | `-n, --name <name>`       | Package name (e.g. `my-api-sdk`)                                                                     |
 | `-v, --version <version>` | Package version (e.g. `1.0.0`)                                                                       |
+| `--no-runtime`            | Do not include runtime dependencies (generate pure types)                                            |
 | `--dry-run`               | Print files to stdout instead of disk                                                                |
 
 _Note: The generated code relies on `@axiomify/sdk-runtime`, a zero-dependency HTTP runtime. See [SDK Runtime](./sdk-runtime.md) for details._

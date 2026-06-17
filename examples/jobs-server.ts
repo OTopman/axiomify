@@ -162,7 +162,7 @@ if (require.main === module) {
     console.log(`💼 Access the Axiomify Studio console to view active jobs & metrics`);
     
     // Auto-start queue worker loops
-    const scheduler = (app as any)._services.get('jobs');
+    const scheduler = app.resolve('jobs');
     scheduler.start();
   });
 }

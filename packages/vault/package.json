@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/vault",
-  "version": "6.3.1",
+  "version": "6.3.2",
   "description": "Secure Environment Management & Vault Engine for Axiomify.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

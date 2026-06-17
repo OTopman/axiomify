@@ -452,7 +452,7 @@ if (require.main === module) {
       console.log('Playground at   http://localhost:3000/graphql/playground');
 
       // Start the jobs scheduler using internal resolution
-      const jobs = (app as any)._services.get('jobs');
+      const jobs = app.resolve('jobs');
       if (jobs) {
         jobs.start();
       }

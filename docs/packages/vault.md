@@ -12,6 +12,7 @@ npm install @axiomify/vault
 
 - `vaultModule(options?: VaultOptions)`
 - `AxiomifyVault` (core class)
+- `vaultScope` (execution scope helper)
 - `parseEnvFile(filePath: string)`
 - `calculateConfigChecksum(sourceEnv: Record<string, string | undefined>, targetKeys: Set<string>)`
 
@@ -54,21 +55,25 @@ app.build();
 
 ## Request-Time ABAC Scoping
 
-Axiomify Vault restricts configuration access based on caller modules at runtime. Since HTTP requests execute asynchronously outside of registration time, you must wrap request-time access inside a vault execution scope. This can be done via the `vault.scope(moduleName, fn)` API or the context-provided `ctx.vault.scope(moduleName, fn)` inside modules:
+Axiomify Vault restricts configuration access based on caller modules at runtime. Since HTTP requests execute asynchronously outside of registration time, you must wrap request-time access inside a vault execution scope. This is done by importing the `vaultScope` helper directly from `@axiomify/vault`:
 
 ```typescript
+import { vaultScope } from '@axiomify/vault';
+
 app.route({
   method: 'GET',
   path: '/payment-config',
   handler: async (req, res) => {
     // Wrap execution in the 'payments' scope so ABAC authorization checks succeed
-    const stripeKey = ctx.vault.scope('payments', () => process.env.STRIPE_SECRET);
+    const stripeKey = vaultScope('payments', () => process.env.STRIPE_SECRET);
     res.send({ stripeKey });
   }
 });
 ```
 
-Without the execution scope, process environment lookups resolve under the `'default'` module context, returning masked strings (`••••••••`) for policy-guarded keys.
+Alternatively, inside standard Axiomify modules, you can use the context-provided `ctx.vault.scope(moduleName, fn)` helper.
+
+Without an execution scope, process environment lookups resolve under the `'default'` module context, returning masked strings (`••••••••`) for policy-guarded keys.
 
 ## Behavior
 

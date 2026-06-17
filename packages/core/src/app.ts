@@ -25,6 +25,7 @@ import type {
   SerializerFn,
   SerializerInput,
   WsRouteDefinition,
+  AppServices,
 } from './types';
 
 export type { AppConfigurator, AppContext, AppModule };
@@ -113,6 +114,24 @@ export class Axiomify {
    */
   public get serializer(): SerializerFn {
     return this._serializer;
+  }
+
+  /**
+   * Resolve a registered service from the dependency injection container.
+   * Enforces type safety when token exists in AppServices.
+   */
+  public resolve<K extends keyof AppServices>(token: K): AppServices[K];
+  public resolve<T = unknown>(token: string | symbol): T;
+  public resolve(token: string | symbol): unknown {
+    const svc = this._services.get(token);
+    if (svc === undefined) {
+      throw new Error(
+        `[Axiomify] DI Error: Cannot resolve unregistered service "${String(
+          token,
+        )}".`,
+      );
+    }
+    return svc;
   }
 
   constructor(options: AxiomifyOptions = {}) {

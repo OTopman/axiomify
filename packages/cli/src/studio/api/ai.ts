@@ -82,7 +82,9 @@ export function buildContext(
         devDependencies: pkg.devDependencies ? Object.keys(pkg.devDependencies) : [],
       };
     }
-  } catch {}
+  } catch {
+    // Ignore error if package.json does not exist or fails to parse
+  }
 
   const routesSummary = (discovery.routes || []).map((r) => ({
     method: r.method,
