@@ -30,7 +30,7 @@
     "format:check": "prettier --check \"packages/**/*.{ts,json,md}\" \"docs/**/*.md\""
   },
   "devDependencies": {
-    "@changesets/cli": "^2.30.0",
+    "@changesets/cli": "^2.6.0",
     "@hapi/hapi": "^21.4.9",
     "@types/node": "^25.5.2",
     "@typescript-eslint/eslint-plugin": "^8.60.1",
@@ -71,6 +71,9 @@
     "rest-api"
   ],
   "dependencies": {
+    "@opentelemetry/auto-instrumentations-node": "0.77.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "0.219.0",
+    "@opentelemetry/sdk-node": "0.219.0",
     "ajv": "^8.20.0",
     "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#v20.68.0"
   },
