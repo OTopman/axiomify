@@ -452,6 +452,7 @@ export class Axiomify {
     }
     this._routesLocked = true;
     this._routesLockedReason = reason;
+    this._sealVault();
     this._bootstrapped = true;
     return this;
   }

@@ -775,6 +775,7 @@ describe('Axiomify Distributed Jobs', () => {
             maxAttempts,
             error,
             lockedAt,
+            queue,
             id,
           ] = params;
           const existing = db.get(id);
@@ -787,6 +788,7 @@ describe('Axiomify Distributed Jobs', () => {
               maxAttempts,
               error,
               lockedAt,
+              queue,
             });
           }
           return [];
@@ -1485,7 +1487,10 @@ describe('Axiomify Distributed Jobs', () => {
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     scheduler.start();
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    const startDeadline = Date.now() + 2000;
+    while (scheduler['activeWorkers'].size === 0 && Date.now() < startDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    }
     await scheduler.stop();
 
     expect(consoleSpy).toHaveBeenCalledWith(
@@ -2373,6 +2378,7 @@ describe('Axiomify Distributed Jobs', () => {
 
   it('should cover RedisJobStorage.save when lockExpiresAt is defined', async () => {
     const mockRedis = {
+      get: vi.fn().mockResolvedValue(null),
       set: vi.fn().mockResolvedValue('OK'),
       sadd: vi.fn().mockResolvedValue(1),
       zadd: vi.fn().mockResolvedValue(1),
@@ -2393,5 +2399,131 @@ describe('Axiomify Distributed Jobs', () => {
     };
     await storage.save(job);
     expect(job.lockedAt).toBe(12345678);
+  });
+
+  it('should reclaim expired running leases in SQLJobStorage.acquireNext', async () => {
+    const mockPg = {
+      query: async (sql: string, params: any[]) => {
+        const sqlUpper = sql.toUpperCase();
+        if (sqlUpper.includes('UPDATE AXIOMIFY_JOBS') && sqlUpper.includes('RETURNING')) {
+          expect(sqlUpper).toContain('LOCKEDAT');
+          return [{
+            id: 'sql-reclaimed-job',
+            queue: 'q',
+            name: 'n',
+            payload: '{}',
+            status: 'running',
+            priority: 0,
+            runAt: Date.now() - 10000,
+            attempts: 0,
+            maxAttempts: 3,
+            lockedAt: Date.now() - 5000
+          }];
+        }
+        return [];
+      }
+    };
+    const storage = new SQLJobStorage(mockPg);
+    const acquired = await storage.acquireNext('q', 5000);
+    expect(acquired).not.toBeNull();
+    expect(acquired!.id).toBe('sql-reclaimed-job');
+  });
+
+  it('should update the queue name in SQLJobStorage when moving a job to DLQ', async () => {
+    const db = new Map<string, any>();
+    const mockPg = {
+      query: async (sql: string, params: any[]) => {
+        const sqlUpper = sql.toUpperCase();
+        if (sqlUpper.includes('SELECT ID FROM AXIOMIFY_JOBS') && sqlUpper.includes('WHERE ID =')) {
+          return db.has(params[0]) ? [db.get(params[0])] : [];
+        }
+        if (sqlUpper.includes('INSERT INTO AXIOMIFY_JOBS')) {
+          const [id, queue, name, payload, status, priority, runAt, attempts, maxAttempts, error, lockedAt, traceContext] = params;
+          const row = { id, queue, name, payload, status, priority, runAt, attempts, maxAttempts, error, lockedAt, traceContext };
+          db.set(id, row);
+          return [];
+        }
+        if (sqlUpper.includes('UPDATE AXIOMIFY_JOBS') && sqlUpper.includes('SET STATUS =') && sqlUpper.includes('QUEUE =')) {
+          const [status, priority, runAt, attempts, maxAttempts, error, lockedAt, queue, id] = params;
+          const existing = db.get(id);
+          if (existing) {
+            Object.assign(existing, { status, priority, runAt, attempts, maxAttempts, error, lockedAt, queue });
+          }
+          return [];
+        }
+        return [];
+      }
+    };
+
+    const storage = new SQLJobStorage(mockPg);
+    const job = {
+      id: 'job-1',
+      queue: 'main-queue',
+      name: 'test-job',
+      payload: {},
+      status: 'pending' as const,
+      priority: 0,
+      runAt: Date.now(),
+      attempts: 0,
+      maxAttempts: 3
+    };
+
+    await storage.save(job);
+    expect(db.get('job-1').queue).toBe('main-queue');
+
+    job.queue = 'main-queue:dlq';
+    job.status = 'failed';
+    await storage.save(job);
+    expect(db.get('job-1').queue).toBe('main-queue:dlq');
+  });
+
+  it('should clean up old queue sets and zsets in RedisJobStorage when moving a job', async () => {
+    const mockRedis = {
+      store: new Map<string, string>(),
+      sets: new Map<string, Set<string>>(),
+      zsets: new Map<string, Map<string, number>>(),
+      
+      get: async function(key: string) { return this.store.get(key) || null; },
+      set: async function(key: string, value: string) { this.store.set(key, value); },
+      sadd: async function(key: string, member: string) {
+        if (!this.sets.has(key)) this.sets.set(key, new Set());
+        this.sets.get(key)!.add(member);
+      },
+      srem: async function(key: string, member: string) {
+        this.sets.get(key)?.delete(member);
+      },
+      zadd: async function(key: string, score: number, member: string) {
+        if (!this.zsets.has(key)) this.zsets.set(key, new Map());
+        this.zsets.get(key)!.set(member, score);
+      },
+      zrem: async function(key: string, member: string) {
+        this.zsets.get(key)?.delete(member);
+      }
+    };
+
+    const storage = new RedisJobStorage(mockRedis as any);
+    const job = {
+      id: 'job-redis-shift',
+      queue: 'main-queue',
+      name: 'n',
+      payload: {},
+      status: 'pending' as const,
+      priority: 0,
+      runAt: Date.now(),
+      attempts: 0,
+      maxAttempts: 3
+    };
+
+    await storage.save(job);
+    expect(mockRedis.sets.get('axiomify:queue:main-queue:jobs')?.has('job-redis-shift')).toBe(true);
+    expect(mockRedis.zsets.get('axiomify:queue:main-queue:pending_zset')?.has('job-redis-shift')).toBe(true);
+
+    job.queue = 'main-queue:dlq';
+    job.status = 'failed';
+    await storage.save(job);
+
+    expect(mockRedis.sets.get('axiomify:queue:main-queue:dlq:jobs')?.has('job-redis-shift')).toBe(true);
+    expect(mockRedis.sets.get('axiomify:queue:main-queue:jobs')?.has('job-redis-shift')).toBe(false);
+    expect(mockRedis.zsets.get('axiomify:queue:main-queue:pending_zset')?.has('job-redis-shift')).toBe(false);
   });
 });

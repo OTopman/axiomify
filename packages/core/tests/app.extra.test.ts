@@ -602,5 +602,13 @@ describe('Axiomify app — extended coverage', () => {
       });
       expect(scopeResult).toBe('top-val');
     });
+
+    it('seals the vault when lockRoutes is called directly (adapter bootstrap)', () => {
+      const app = new Axiomify();
+      const mockVault = { seal: vi.fn() };
+      app.forceProvide('vault', mockVault);
+      app.lockRoutes(ADAPTER_LOCK_TOKEN);
+      expect(mockVault.seal).toHaveBeenCalledOnce();
+    });
   });
 });

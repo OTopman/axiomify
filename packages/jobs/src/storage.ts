@@ -175,8 +175,8 @@ export class SQLJobStorage implements JobStorage {
     if (existing && existing.length > 0) {
       const updateSql = `
         UPDATE axiomify_jobs 
-        SET status = $1, priority = $2, "runAt" = $3, attempts = $4, "maxAttempts" = $5, error = $6, "lockedAt" = $7
-        WHERE id = $8
+        SET status = $1, priority = $2, "runAt" = $3, attempts = $4, "maxAttempts" = $5, error = $6, "lockedAt" = $7, queue = $8
+        WHERE id = $9
       `;
       await this.executeQuery(updateSql, [
         job.status,
@@ -186,6 +186,7 @@ export class SQLJobStorage implements JobStorage {
         job.maxAttempts,
         job.error || null,
         lockedVal,
+        job.queue,
         job.id,
       ]);
     } else {
@@ -234,7 +235,7 @@ export class SQLJobStorage implements JobStorage {
       SET status = 'running', "lockedAt" = $1
       WHERE id = (
         SELECT id FROM axiomify_jobs
-        WHERE queue = $2 AND status = 'pending' AND "runAt" <= $3
+        WHERE queue = $2 AND (status = 'pending' OR (status = 'running' AND "lockedAt" <= $3)) AND "runAt" <= $3
         ORDER BY priority DESC, "runAt" ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED
@@ -509,6 +510,21 @@ export class RedisJobStorage implements JobStorage {
 
   public async save(job: Job): Promise<void> {
     const key = `axiomify:job:${job.id}`;
+
+    // Clean up old queue mappings if the job has been moved (e.g. to DLQ)
+    const rawOld = await this.get(key);
+    if (rawOld) {
+      try {
+        const oldJob = JSON.parse(rawOld) as Job;
+        if (oldJob.queue !== job.queue) {
+          await this.srem(`axiomify:queue:${oldJob.queue}:jobs`, job.id);
+          await this.zrem(`axiomify:queue:${oldJob.queue}:pending_zset`, job.id);
+        }
+      } catch {
+        // Ignore JSON parse errors
+      }
+    }
+
     if (job.lockExpiresAt !== undefined) {
       job.lockedAt = job.lockExpiresAt;
     }
