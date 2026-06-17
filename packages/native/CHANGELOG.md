@@ -1,5 +1,14 @@
 # @axiomify/native
 
+## 6.3.2
+
+### Patch Changes
+
+- 105da33: - **@axiomify/cli**: Fix missing response body formatting (`[Empty Response Body]`) on status codes `>= 400` in the Request Tester by running the configured response serializer on mock responses.
+  - **@axiomify/studio-ui**: Update Request Tester replay execution history to be displayed in descending chronological order (newest first).
+- Updated dependencies [105da33]
+  - @axiomify/core@6.3.2
+
 ## 6.3.1
 
 ### Patch Changes

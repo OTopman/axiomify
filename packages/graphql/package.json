@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@axiomify/core": "*",
-    "graphql": "^16.14.1"
+    "graphql": "^16.14.2"
   },
   "peerDependencies": {
     "graphql": "^16.0.0"
