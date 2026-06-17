@@ -77,6 +77,8 @@ export interface ErrorCache {
   cached405Body: string;
   cached413: CachedError;
   cached500: CachedError;
+  /** Pre-built 504 response — emitted by the timeout handler without serializer calls. */
+  cached504: CachedError;
 }
 
 export function buildErrorCache(serializer: SerializerFn): ErrorCache {
@@ -99,5 +101,6 @@ export function buildErrorCache(serializer: SerializerFn): ErrorCache {
     ),
     cached413: make(413, 'Payload Too Large'),
     cached500: make(500, 'Internal Server Error'),
+    cached504: make(504, 'Gateway Timeout'),
   };
 }

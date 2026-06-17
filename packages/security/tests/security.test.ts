@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { useSecurity } from '../src';
+import { sanitizeInput, normalizeHpp } from '../src/utils/sanitizer';
+import { detectNoSqlInjection, isSuspiciousUserAgent } from '../src/utils/detector';
 
 describe('Security Package', () => {
   const makeRes = () => ({
@@ -223,5 +225,56 @@ describe('useSecurity — no Object.defineProperty (V8 hidden-class safety)', ()
     // XSS still sanitised, descriptor remains a plain data property.
     expect(req.body.safe).toBe('hello');
     expect(req.body.bad).not.toContain('<script>');
+  });
+});
+
+describe('Security Utils Extra Coverage', () => {
+  it('should handle Object.create(null) in isPlainObject and sanitize correctly', () => {
+    const obj = Object.create(null);
+    obj.foo = 'bar';
+    obj.nested = Object.create(null);
+    obj.nested.xss = '<script>alert(1)</script>';
+
+    const sanitized: any = sanitizeInput(obj);
+    expect(sanitized.foo).toBe('bar');
+    expect(sanitized.nested.xss).toBe('');
+  });
+
+  it('should hit MAX_SANITIZE_ITERATIONS cap on 12 nested script tags without hanging', () => {
+    const input = '<script>'.repeat(12) + 'alert(1)' + '</script>'.repeat(12);
+    const sanitized = sanitizeInput(input);
+    // Since cap is 10, some residual outer script tags will remain
+    expect(typeof sanitized).toBe('string');
+  });
+
+  it('should return undefined if sanitizeInput exceeds max depth', () => {
+    let deep: any = 'safe';
+    for (let i = 0; i < 70; i++) {
+      deep = { child: deep };
+    }
+    const sanitized: any = sanitizeInput(deep);
+    // Navigate down to depth 65
+    let curr = sanitized;
+    for (let i = 0; i < 65; i++) {
+      curr = curr.child;
+    }
+    expect(curr).toBeUndefined();
+  });
+
+  it('should detect NoSQL injection with custom patterns', () => {
+    expect(detectNoSqlInjection({ key: 'test' }, [/\btest\b/])).toBe(true);
+    expect(detectNoSqlInjection('hello', [/\bworld\b/])).toBe(false);
+  });
+
+  it('should detect suspicious user agents with default and custom patterns', () => {
+    expect(isSuspiciousUserAgent(undefined)).toBe(false);
+    expect(isSuspiciousUserAgent('normal-browser')).toBe(false);
+    expect(isSuspiciousUserAgent('my-scanner', [/\bscanner\b/])).toBe(true);
+  });
+
+  it('should handle normalizeHpp edge cases', () => {
+    expect(normalizeHpp(null)).toBeNull();
+    expect(normalizeHpp('not-an-object')).toBe('not-an-object');
+    expect(normalizeHpp({ a: [1, 2, 3], b: 'hello' })).toEqual({ a: 3, b: 'hello' });
   });
 });

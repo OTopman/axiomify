@@ -75,4 +75,13 @@ describe('sanitizeInput', () => {
     expect(sanitizeInput(d)).toBe(d);
     expect(sanitizeInput(b)).toBe(b);
   });
+
+  it('handles objects with null prototype correctly', () => {
+    const obj = Object.create(null);
+    obj.safe = 'yes';
+    obj.constructor = 'evil';
+    const result = sanitizeInput(obj) as any;
+    expect(result.safe).toBe('yes');
+    expect(result.constructor).toBeUndefined();
+  });
 });

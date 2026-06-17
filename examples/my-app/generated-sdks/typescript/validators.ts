@@ -11,6 +11,13 @@ export const PostApiUsersAvatarRequestSchema = z.object({
   userId: z.string(),
 });
 
+export const PostApiCheckoutRequestSchema = z.object({
+  email: z.string().email(),
+  name: z.string(),
+  amount: z.number(),
+  simulateFailure: z.boolean(),
+});
+
 export const GetPingResponseSchema = z.object({
   message: z.string(),
 });

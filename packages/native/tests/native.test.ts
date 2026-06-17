@@ -15,7 +15,7 @@ try {
 describe.skipIf(!uwsSupported)('NativeAdapter (uWebSockets.js)', () => {
   let app: any;
   let adapter: any;
-  const PORT = 3001;
+  let PORT: number;
 
   beforeAll(async () => {
     const { Axiomify, z } = await import('@axiomify/core');
@@ -126,14 +126,17 @@ describe.skipIf(!uwsSupported)('NativeAdapter (uWebSockets.js)', () => {
 
     return new Promise<void>((resolve) => {
       adapter = new NativeAdapter(app, {
-        port: PORT,
+        port: 0,
         ws: {
           open: (ws: any) => ws.send('Welcome to Axiomify Native'),
           message: (ws: any, message: any, isBinary: any) =>
             ws.send(message, isBinary),
         },
       });
-      adapter.listen(() => resolve());
+      adapter.listen((port) => {
+        PORT = port;
+        resolve();
+      });
     });
   });
 
@@ -389,7 +392,7 @@ describe.skipIf(!uwsSupported)(
   'NativeAdapter — handler rejection safety',
   () => {
     let adapter: any;
-    const PORT = 3002;
+    let PORT: number;
 
     beforeAll(async () => {
       const { Axiomify } = await import('@axiomify/core');
@@ -407,8 +410,11 @@ describe.skipIf(!uwsSupported)(
       });
 
       return new Promise<void>((resolve) => {
-        adapter = new NativeAdapter(app, { port: PORT });
-        adapter.listen(() => resolve());
+        adapter = new NativeAdapter(app, { port: 0 });
+        adapter.listen((port) => {
+          PORT = port;
+          resolve();
+        });
       });
     });
 

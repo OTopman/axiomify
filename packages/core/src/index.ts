@@ -2,6 +2,7 @@ export { z } from 'zod';
 export * from './app';
 export * from './state';
 export * from './compiled';
+export * from './telemetry';
 export * from './dispatcher';
 export * from './errors';
 export * from './lifecycle';

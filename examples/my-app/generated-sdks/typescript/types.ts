@@ -15,6 +15,13 @@ export interface PostApiUsersAvatarRequest {
   userId: string;
 }
 
+export interface PostApiCheckoutRequest {
+  email: string;
+  name: string;
+  amount: number;
+  simulateFailure: boolean;
+}
+
 export interface GetPingResponse {
   message: string;
 }

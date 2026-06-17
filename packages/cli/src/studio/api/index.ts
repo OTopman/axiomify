@@ -43,6 +43,14 @@ import { handleGetSecurityReport, handlePostRunProbes } from './security';
 import { handleGetSystem } from './system';
 import { handleGetWsAnalytics } from './ws-analytics';
 import { handleGetWsRoutes } from './ws-tester';
+import { handleGetJobs } from './jobs';
+import {
+  handlePostOtlpTraces,
+  handlePostOtlpMetrics,
+  handlePostOtlpLogs,
+  handleGetOtlpTraces,
+  handleDeleteOtlpTraces,
+} from './otlp';
 
 export interface StudioApiContext {
   /** Returns the latest cached discovery result. */
@@ -102,6 +110,10 @@ export function registerStudioApi(
 
   router.get('/__studio/api/metrics', (req, res) => {
     handleGetAppMetrics(req, res, ctx.getApp());
+  });
+
+  router.get('/__studio/api/jobs', (req, res) => {
+    handleGetJobs(req, res, ctx.getApp());
   });
 
   router.post('/__studio/api/request', (req, res) => {
@@ -257,5 +269,26 @@ export function registerStudioApi(
 
   router.post('/__studio/api/playground/execute', (req, res) => {
     handlePostPlaygroundExecute(req, res, ctx.getApp());
+  });
+
+  // ── OpenTelemetry OTLP Receivers ───────────────────────────────────────────
+  router.post('/__studio/otlp/v1/traces', (req, res) => {
+    handlePostOtlpTraces(req, res);
+  });
+
+  router.post('/__studio/otlp/v1/metrics', (req, res) => {
+    handlePostOtlpMetrics(req, res);
+  });
+
+  router.post('/__studio/otlp/v1/logs', (req, res) => {
+    handlePostOtlpLogs(req, res);
+  });
+
+  router.get('/__studio/api/otlp/traces', (req, res) => {
+    handleGetOtlpTraces(req, res);
+  });
+
+  router.on('DELETE', '/__studio/api/otlp/traces', (req, res) => {
+    handleDeleteOtlpTraces(req, res);
   });
 }

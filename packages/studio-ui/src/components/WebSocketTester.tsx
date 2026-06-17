@@ -52,6 +52,8 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
   const [recordedMessages, setRecordedMessages] = useState<RecordedMessage[]>([]);
   const recordStartTimeRef = useRef<number>(0);
 
+  const [selectedFrame, setSelectedFrame] = useState<WsLogItem | null>(null);
+
   const clientRef = useRef<any>(null);
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
@@ -622,73 +624,242 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
             <button className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '11px', margin: 0 }} onClick={clearLogs}>Clear Stream</button>
           </div>
 
-          <div 
-            ref={logsContainerRef}
-            className="console-terminal" 
-            style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-primary)', border: '1px solid var(--border)', padding: '16px', borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: '8px' }}
-          >
-            {logs.length === 0 ? (
-              <div style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', paddingTop: '80px' }}>
-                Select a route and connect to begin capturing WebSocket traffic.
-              </div>
-            ) : (
-              logs.map((log, i) => {
-                const isSent = log.type === 'sent';
-                const isReceived = log.type === 'received';
-                const isAssertion = log.payload.includes('[ASSERTION');
-                
-                let dirLabel = 'ℹ️ System';
-                let labelColor = 'var(--text-secondary)';
-                
-                if (isSent) {
-                  dirLabel = '⬆️ Outbound';
-                  labelColor = 'var(--accent)';
-                } else if (isReceived) {
-                  dirLabel = '⬇️ Inbound';
-                  labelColor = 'var(--success)';
-                } else if (isAssertion) {
-                  const passed = log.payload.includes('PASSED');
-                  dirLabel = passed ? '✅ Assertion Passed' : '❌ Assertion Failed';
-                  labelColor = passed ? 'var(--success)' : 'var(--error)';
-                }
-
-                // Try to pretty print JSON payloads for easier readability
-                let formattedPayload = log.payload;
-                if (isReceived || isSent) {
-                  let rawJson = log.payload;
-                  if (log.payload.startsWith('Event: ')) {
-                    const parts = log.payload.split(' | Payload: ');
-                    if (parts.length > 1) {
-                      rawJson = parts[1];
-                    }
+          <div style={{ display: 'flex', flex: 1, gap: '12px', minHeight: 0 }}>
+            <div 
+              ref={logsContainerRef}
+              className="console-terminal" 
+              style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-primary)', border: '1px solid var(--border)', padding: '16px', borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: '8px' }}
+            >
+              {logs.length === 0 ? (
+                <div style={{ color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center', paddingTop: '80px' }}>
+                  Select a route and connect to begin capturing WebSocket traffic.
+                </div>
+              ) : (
+                logs.map((log, i) => {
+                  const isSent = log.type === 'sent';
+                  const isReceived = log.type === 'received';
+                  const isAssertion = log.payload.includes('[ASSERTION');
+                  
+                  let dirLabel = 'ℹ️ System';
+                  let labelColor = 'var(--text-secondary)';
+                  
+                  if (isSent) {
+                    dirLabel = '⬆️ Outbound';
+                    labelColor = 'var(--accent)';
+                  } else if (isReceived) {
+                    dirLabel = '⬇️ Inbound';
+                    labelColor = 'var(--success)';
+                  } else if (isAssertion) {
+                    const passed = log.payload.includes('PASSED');
+                    dirLabel = passed ? '✅ Assertion Passed' : '❌ Assertion Failed';
+                    labelColor = passed ? 'var(--success)' : 'var(--error)';
                   }
-                  try {
-                    const parsed = JSON.parse(rawJson);
-                    const pretty = JSON.stringify(parsed, null, 2);
-                    if (log.payload.startsWith('Event: ')) {
-                      formattedPayload = `Event: ${log.payload.split(' | Payload: ')[0].substring(7)}\nPayload:\n${pretty}`;
-                    } else {
-                      formattedPayload = pretty;
-                    }
-                  } catch {}
-                }
 
-                return (
-                  <div key={i} className={`ws-log-item ${log.type}`} style={{ textAlign: 'left', margin: 0, padding: '10px 14px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 600, color: labelColor }}>
-                      <span>{dirLabel}</span>
-                      <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{log.time}</span>
+                  // Try to pretty print JSON payloads for easier readability
+                  let formattedPayload = log.payload;
+                  if (isReceived || isSent) {
+                    let rawJson = log.payload;
+                    if (log.payload.startsWith('Event: ')) {
+                      const parts = log.payload.split(' | Payload: ');
+                      if (parts.length > 1) {
+                        rawJson = parts[1];
+                      }
+                    }
+                    try {
+                      const parsed = JSON.parse(rawJson);
+                      const pretty = JSON.stringify(parsed, null, 2);
+                      if (log.payload.startsWith('Event: ')) {
+                        formattedPayload = `Event: ${log.payload.split(' | Payload: ')[0].substring(7)}\nPayload:\n${pretty}`;
+                      } else {
+                        formattedPayload = pretty;
+                      }
+                    } catch {}
+                  }
+
+                  const isSelected = selectedFrame === log;
+
+                  return (
+                    <div 
+                      key={i} 
+                      className={`ws-log-item ${log.type}`} 
+                      style={{ 
+                        textAlign: 'left', 
+                        margin: 0, 
+                        padding: '10px 14px', 
+                        cursor: 'pointer', 
+                        border: isSelected ? '1px solid var(--accent)' : '1px solid transparent', 
+                        background: isSelected ? 'var(--bg-tertiary)' : undefined,
+                        borderRadius: 'var(--radius-sm)'
+                      }}
+                      onClick={() => setSelectedFrame(log)}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 600, color: labelColor }}>
+                        <span>{dirLabel}</span>
+                        <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{log.time}</span>
+                      </div>
+                      <pre style={{ marginTop: '6px', fontFamily: 'var(--font-mono)', fontSize: '12px', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-primary)', margin: 0 }}>
+                        {formattedPayload}
+                      </pre>
                     </div>
-                    <pre style={{ marginTop: '6px', fontFamily: 'var(--font-mono)', fontSize: '12px', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-primary)', margin: 0 }}>
-                      {formattedPayload}
+                  );
+                })
+              )}
+            </div>
+
+            {selectedFrame && (() => {
+              const activeRoute = wsRoutes.find(r => r.path === selectedRoutePath);
+              const activeMessageSchema = activeRoute?.schema?.message;
+
+              let frameJsonPayload: any = null;
+              let parseError: string | null = null;
+              let rawJson = selectedFrame.payload;
+
+              if (selectedFrame.payload.startsWith('Event: ')) {
+                const parts = selectedFrame.payload.split(' | Payload: ');
+                if (parts.length > 1) {
+                  rawJson = parts[1];
+                }
+              }
+
+              try {
+                frameJsonPayload = JSON.parse(rawJson);
+              } catch (e: any) {
+                parseError = e.message;
+              }
+
+              const validationErrors = activeMessageSchema && frameJsonPayload && !parseError
+                ? validateJsonSchema(frameJsonPayload, activeMessageSchema)
+                : [];
+
+              return (
+                <div style={{ width: '280px', borderLeft: '1px solid var(--border)', paddingLeft: '12px', display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', textAlign: 'left', flexShrink: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '8px', flexShrink: 0 }}>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>🔍 Frame Inspector</span>
+                    <button className="btn btn-secondary" style={{ padding: '2px 6px', fontSize: '10px', margin: 0 }} onClick={() => setSelectedFrame(null)}>✕ Close</button>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', flexShrink: 0 }}>
+                    <span className={`method-badge ${selectedFrame.type === 'sent' ? 'method-POST' : selectedFrame.type === 'received' ? 'method-GET' : 'method-OPTIONS'}`} style={{ fontSize: '9px', padding: '2px 6px' }}>
+                      {selectedFrame.type.toUpperCase()}
+                    </span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
+                      {selectedFrame.time}
+                    </span>
+                  </div>
+
+                  {/* Validation Status Block */}
+                  {selectedFrame.type !== 'sent' && selectedFrame.type !== 'received' ? (
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'var(--bg-tertiary)', padding: '8px', borderRadius: '4px' }}>
+                      System event frames do not have payload schemas.
+                    </div>
+                  ) : !activeMessageSchema ? (
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'var(--bg-tertiary)', padding: '8px', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                      ℹ️ No Zod schema registered for messages on this route.
+                    </div>
+                  ) : parseError ? (
+                    <div style={{ fontSize: '11px', color: 'var(--error)', background: 'rgba(239, 68, 68, 0.08)', padding: '8px', borderRadius: '4px', border: '1px solid rgba(239, 68, 68, 0.15)' }}>
+                      ⚠️ Failed to parse frame as JSON: {parseError}
+                    </div>
+                  ) : validationErrors.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--error)', background: 'rgba(239, 68, 68, 0.08)', padding: '6px 10px', borderRadius: '4px', border: '1px solid rgba(239, 68, 68, 0.15)' }}>
+                        ❌ Schema Validation Failed ({validationErrors.length} error{validationErrors.length === 1 ? '' : 's'})
+                      </div>
+                      <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {validationErrors.map((err, idx) => (
+                          <li key={idx} style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--error)', background: 'var(--bg-primary)', padding: '4px 8px', borderRadius: '3px', borderLeft: '2px solid var(--error)' }}>
+                            {err}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--success)', background: 'rgba(16, 185, 129, 0.08)', padding: '6px 10px', borderRadius: '4px', border: '1px solid rgba(16, 185, 129, 0.15)' }}>
+                      ✅ Frame Valid against Zod Schema
+                    </div>
+                  )}
+
+                  {/* Parsed Payload tree */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Parsed Payload:</span>
+                    <pre style={{ margin: 0, padding: '8px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-mono)', fontSize: '11px', overflowX: 'auto', whiteSpace: 'pre-wrap', maxHeight: '200px' }}>
+                      {parseError ? rawJson : JSON.stringify(frameJsonPayload, null, 2)}
                     </pre>
                   </div>
-                );
-              })
-            )}
+
+                  {/* Schema definition */}
+                  {activeMessageSchema && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>Registered JSON Schema:</span>
+                      <pre style={{ margin: 0, padding: '8px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-mono)', fontSize: '10px', overflowX: 'auto', maxHeight: '150px', color: 'var(--text-muted)' }}>
+                        {JSON.stringify(activeMessageSchema, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
     </div>
   );
 };
+
+function validateJsonSchema(data: any, schema: any, path = ''): string[] {
+  if (!schema) return [];
+  const errors: string[] = [];
+
+  const expectedType = schema.type;
+  if (expectedType) {
+    const actualType = typeof data;
+    if (expectedType === 'array') {
+      if (!Array.isArray(data)) {
+        errors.push(`Field '${path || 'root'}' should be an array`);
+        return errors;
+      }
+    } else if (expectedType === 'integer') {
+      if (!Number.isInteger(data)) {
+        errors.push(`Field '${path || 'root'}' should be an integer`);
+        return errors;
+      }
+    } else if (expectedType === 'number') {
+      if (typeof data !== 'number') {
+        errors.push(`Field '${path || 'root'}' should be a number`);
+        return errors;
+      }
+    } else if (expectedType === 'object') {
+      if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+        errors.push(`Field '${path || 'root'}' should be an object`);
+        return errors;
+      }
+    } else if (actualType !== expectedType) {
+      errors.push(`Field '${path || 'root'}' should be a ${expectedType}, got ${actualType}`);
+      return errors;
+    }
+  }
+
+  if (schema.properties && typeof data === 'object' && data !== null) {
+    if (Array.isArray(schema.required)) {
+      for (const reqKey of schema.required) {
+        if (!(reqKey in data) || data[reqKey] === undefined) {
+          errors.push(`Field '${path ? `${path}.${reqKey}` : reqKey}' is required`);
+        }
+      }
+    }
+
+    for (const [key, value] of Object.entries(data)) {
+      if (schema.properties[key]) {
+        errors.push(...validateJsonSchema(value, schema.properties[key], path ? `${path}.${key}` : key));
+      }
+    }
+  }
+
+  if (schema.items && Array.isArray(data)) {
+    data.forEach((item, idx) => {
+      errors.push(...validateJsonSchema(item, schema.items, `${path || 'root'}[${idx}]`));
+    });
+  }
+
+  return errors;
+}

@@ -26,6 +26,7 @@ import { instrumentRequestReplay, setOnReplayUpdated } from './api/replay';
 import { setBaselineDiscovery } from './api/sdk-impact';
 import { instrumentTrafficProfiling } from './api/traffic-interceptor';
 import { instrumentWsAnalytics, stopWsMetricsInterval, clearRoomManagers } from './api/ws-analytics';
+import { setOnTracesUpdated } from './api/otlp';
 import { performDiscovery, type StudioDiscoveryResult } from './discovery';
 import { createStudioServer } from './server/http-server';
 import { StudioRouter } from './server/router';
@@ -48,6 +49,11 @@ export async function startStudio(
   const port = options.port ?? DEFAULT_PORT;
   const autoOpen = options.open !== false;
   const studioToken = randomBytes(16).toString('hex');
+
+  // Set environment variables for native OpenTelemetry auto-export to discover Studio
+  process.env.AXIOMIFY_STUDIO = 'true';
+  process.env.AXIOMIFY_STUDIO_PORT = String(port);
+  process.env.AXIOMIFY_STUDIO_TOKEN = studioToken;
 
   // ── 1. Load the user's app ────────────────────────────────────────────
   console.log();
@@ -129,6 +135,11 @@ export async function startStudio(
     wsServer.broadcast(JSON.stringify({ type: 'contracts-updated' }));
   });
 
+  // Set up OpenTelemetry traces WS notification
+  setOnTracesUpdated(() => {
+    wsServer.broadcast(JSON.stringify({ type: 'traces-updated' }));
+  });
+
   // Instrument initial app load, console logs, and traffic profiling
   instrumentRequestReplay(currentApp);
   instrumentLogs();
@@ -148,6 +159,7 @@ export async function startStudio(
       router,
       token: studioToken,
       onReady: (actualPort, url) => {
+        process.env.AXIOMIFY_STUDIO_PORT = String(actualPort);
         const urlWithToken = `${url}/?token=${studioToken}`;
         console.log();
         console.log(

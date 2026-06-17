@@ -1,18 +1,19 @@
-
-import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
-import { NodeSDK } from '@opentelemetry/sdk-node';
-
-
 import { createAuthPlugin } from '@axiomify/auth';
 import { AppModule, Axiomify, z } from '@axiomify/core';
+import { useCors } from '@axiomify/cors';
+import { useFingerprint } from '@axiomify/fingerprint';
 import { useGraphQL } from '@axiomify/graphql';
 import { useHelmet } from '@axiomify/helmet';
+import { jobsModule, SagaCoordinator } from '@axiomify/jobs';
 import { useLogger } from '@axiomify/logger';
 import { useMetrics } from '@axiomify/metrics';
 import { useOpenAPI } from '@axiomify/openapi';
+import { createRateLimitPlugin } from '@axiomify/rate-limit';
+import { useSecurity } from '@axiomify/security';
+import { adaptAxiomifyPlugin, attachSocketIO } from '@axiomify/socket.io';
 import { serveStatic } from '@axiomify/static';
 import { useUpload } from '@axiomify/upload';
+import { vaultModule } from '@axiomify/vault';
 import { wsRooms } from '@axiomify/ws';
 import { randomUUID } from 'crypto';
 import { createReadStream, existsSync } from 'fs';
@@ -20,6 +21,7 @@ import { GraphQLInt, GraphQLList, GraphQLObjectType, GraphQLSchema, GraphQLStrin
 import path from 'path';
 
 export const app = new Axiomify();
+app.enableTracing();
 
 const room = wsRooms(app, {
   path: '/ws',
@@ -31,7 +33,6 @@ const room = wsRooms(app, {
   onConnect(client) {
     client.join('lobby');
     console.log('A client connected.');
-
   },
   onMessage(client, data) {
     console.log('A client sent a message.', data);
@@ -49,13 +50,42 @@ const requireAuth = createAuthPlugin({
   secret: getRequiredEnv('JWT_SECRET'),
 });
 
-useHelmet(app);
-useMetrics(app, {
-  path: '/metrics',
-  wsManager: room
+// Configure Rate Limiter (fingerprint-keyed)
+const rateLimiter = createRateLimitPlugin({
+  windowMs: 60000,
+  max: 10,
+  allowMemoryStoreInProduction: true,
+  keyGenerator: (req) => req.state.fingerprint ?? req.ip ?? 'unknown',
 });
 
-useLogger(app);
+// Apply Security, Helmet, CORS, and Fingerprint globally
+useHelmet(app);
+useCors(app, {
+  origin: '*',
+  credentials: false,
+});
+useSecurity(app, {
+  xssProtection: true,
+  hppProtection: true,
+  botProtection: false,
+});
+useFingerprint(app, {
+  algorithm: 'sha256',
+  trustProxyHeaders: true,
+});
+
+useMetrics(app, {
+  path: '/metrics',
+  wsManager: room,
+});
+
+useLogger(app, {
+  includeBody: true,
+  includeHeaders: true,
+  includeResponseHeaders: true,
+  includeState: true,
+});
+
 serveStatic(app, {
   prefix: '/assets',
   root: path.join(process.cwd(), 'public'),
@@ -90,14 +120,49 @@ export class UserService {
 declare module '@axiomify/core' {
   interface AppServices {
     userService: UserService;
+    jobs: any;
   }
 }
 
+// Enable vault module configuration
+app.use(vaultModule({
+  modules: {
+    services: { allow: ['JWT_SECRET'] },
+  },
+}));
+
+// Enable distributed background jobs module
+app.use(jobsModule({
+  storage: 'memory',
+  pollIntervalMs: 500,
+  maxConcurrency: 3,
+}));
+
 const servicesModule: AppModule = {
   name: 'services',
+  dependencies: ['jobs'],
   register: (_app, ctx) => {
     ctx.provide('userService', new UserService());
 
+    // Register Background Job Executors
+    const jobs = ctx.resolve('jobs');
+    jobs.register('send-welcome-email', async (payload: { email: string; name: string }) => {
+      console.log(`[Worker] Sending welcome email to ${payload.name} at ${payload.email}...`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      console.log(`[Worker] Welcome email sent successfully to ${payload.email}!`);
+    });
+
+    jobs.register('process-payment', async (payload: { amount: number }) => {
+      console.log(`[Worker] Charging card for $${payload.amount}...`);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      console.log(`[Worker] Card charged successfully!`);
+    });
+
+    jobs.register('refund-payment', async (payload: { amount: number }) => {
+      console.log(`[Compensation] Refunding card charge of $${payload.amount}...`);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      console.log(`[Compensation] Refund processed successfully.`);
+    });
   },
 };
 
@@ -203,15 +268,90 @@ const usersModule: AppModule = {
   },
 };
 
+// Checkout Saga coordinator module
+const checkoutModule: AppModule = {
+  name: 'checkout',
+  dependencies: ['jobs'],
+  register: (app, ctx) => {
+    const jobs = ctx.resolve('jobs');
+
+    app.route({
+      method: 'POST',
+      path: '/api/checkout',
+      schema: {
+        body: z.object({
+          email: z.string().email(),
+          name: z.string(),
+          amount: z.number().positive(),
+          simulateFailure: z.boolean().default(false),
+        }),
+      },
+      handler: async (req, res) => {
+        const saga = new SagaCoordinator(jobs);
+        const { email, name, amount, simulateFailure } = req.body;
+
+        saga.addStep(
+          'charge-payment',
+          async () => {
+            console.log(`[Saga] Charging payment of $${amount} for ${email}`);
+            await jobs.enqueue('process-payment', { amount });
+            return { ok: true };
+          },
+          async () => {
+            console.log(`[Saga Rollback] Checkout failed, refunding payment of $${amount}`);
+            await jobs.enqueue('refund-payment', { amount });
+          }
+        );
+
+        saga.addStep(
+          'create-profile',
+          async () => {
+            console.log(`[Saga] Creating user profile for ${name}`);
+            if (simulateFailure) {
+              throw new Error('Checkout simulation error: database write failed');
+            }
+            return { profileId: 'prof_' + randomUUID().substring(0, 8) };
+          },
+          async () => {
+            console.log(`[Saga Rollback] Checkout failed, reversing user profile changes`);
+          }
+        );
+
+        const outcome = await saga.execute({ email, name });
+
+        if (outcome.success) {
+          await jobs.enqueue('send-welcome-email', { email, name });
+          res.status(200).send({
+            status: 'success',
+            message: 'Checkout successful, welcome email queued',
+            outcome,
+          });
+        } else {
+          res.status(500).send({
+            status: 'failed',
+            message: 'Checkout failed, compensating rollbacks queued',
+            error: outcome.error,
+          });
+        }
+      },
+    });
+  },
+};
+
 app.use(servicesModule);
 app.use(usersModule);
+app.use(checkoutModule);
 
 app.route({
   method: 'GET',
   path: '/api/secure-data',
-  plugins: [requireAuth],
+  plugins: [requireAuth, rateLimiter],
   handler: async (req, res) => {
-    res.send({ accessedBy: req.state.user?.id });
+    res.send({
+      accessedBy: req.state.user?.id,
+      fingerprint: req.state.fingerprint,
+      fingerprintConfidence: req.state.fingerprintConfidence,
+    });
   },
 });
 
@@ -229,7 +369,6 @@ app.route({
   path: '/ping',
   schema: {
     response: z.object({ message: z.string() }),
-
   },
   handler: async (_req, res) => {
     res.status(200).send({ message: 'pong' });
@@ -262,6 +401,7 @@ app.route({
     res.stream(fileStream, 'video/mp4');
   },
 });
+
 app.route({
   method: 'GET',
   path: '/live-feed',
@@ -280,22 +420,43 @@ useOpenAPI(app, {
 });
 
 if (require.main === module) {
+  app.build();
 
-  const sdk = new NodeSDK({
-    traceExporter: new OTLPTraceExporter({
-      url: `http://localhost:3000/metrics` // collector endpoint
-    }),
-    instrumentations: [getNodeAutoInstrumentations()]
-  });
-
-  // Start SDK before booting Axiomify app
-  sdk.start();
   import('@axiomify/native').then(({ NativeAdapter }) => {
     const adapter = new NativeAdapter(app, { port: 3000 });
+
+    // Attach Socket.IO
+    attachSocketIO(adapter, {
+      cors: { origin: '*' },
+    }).then((io) => {
+      // Adapt the requireAuth middleware to authenticate socket connections
+      io.use(adaptAxiomifyPlugin(requireAuth));
+
+      io.on('connection', (socket) => {
+        console.log(`⚡ [Socket.IO] Client connected: ${socket.id}`);
+        console.log(`👤 [Socket.IO] User metadata:`, socket.data.user);
+
+        socket.on('chat', (data) => {
+          console.log(`💬 [Socket.IO] chat msg:`, data);
+          io.emit('chat', { sender: socket.id, message: data });
+        });
+
+        socket.on('disconnect', () => {
+          console.log(`🔌 [Socket.IO] Client disconnected: ${socket.id}`);
+        });
+      });
+    });
+
     adapter.listen(() => {
       console.log('🚀 Axiomify engine online on port 3000');
       console.log('GraphQL ready at http://localhost:3000/graphql');
       console.log('Playground at   http://localhost:3000/graphql/playground');
+
+      // Start the jobs scheduler using internal resolution
+      const jobs = (app as any)._services.get('jobs');
+      if (jobs) {
+        jobs.start();
+      }
     });
   });
 }

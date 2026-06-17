@@ -56,6 +56,12 @@ describe('Studio Server & Router', () => {
     });
     router.get('/__studio/api/test', handler);
 
+    const otlpHandler = vi.fn((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true }));
+    });
+    router.post('/__studio/otlp/v1/traces', otlpHandler);
+
     const token = 'my-secret-token';
     const server = createStudioServer({
       port: 0,
@@ -99,6 +105,18 @@ describe('Studio Server & Router', () => {
       expect(resOkToken.status).toBe(200);
       const bodyOkToken = (await resOkToken.json()) as any;
       expect(bodyOkToken.ok).toBe(true);
+
+      // 3.5. OTLP request without token should bypass authentication and succeed
+      const resOtlpNoToken = await fetch(
+        `http://127.0.0.1:${port}/__studio/otlp/v1/traces`,
+        {
+          method: 'POST',
+          body: JSON.stringify({}),
+        },
+      );
+      expect(resOtlpNoToken.status).toBe(200);
+      const bodyOtlp = (await resOtlpNoToken.json()) as any;
+      expect(bodyOtlp.success).toBe(true);
 
       // 4. Request for non-API route should still succeed with 200 indexHtml without token
       const resHtml = await fetch(`http://127.0.0.1:${port}/some-random-route`);
@@ -1011,5 +1029,65 @@ describe('Studio Server & Router', () => {
     const found = recordedLogs.find((l) => l.message === 'correlation trace message');
     expect(found).toBeDefined();
     expect(found?.requestId).toBe(reqId);
+  });
+
+  it('should serve jobs status via GET /__studio/api/jobs', async () => {
+    const app = new Axiomify();
+    const router = new StudioRouter();
+    registerStudioApi(router, {
+      getDiscovery: () => ({}) as any,
+      getApp: () => app,
+    });
+
+    const server = createStudioServer({
+      port: 0,
+      router,
+      indexHtml: 'index',
+    });
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, '127.0.0.1', () => resolve());
+      });
+
+      const addr = server.address();
+      const port = typeof addr === 'object' && addr ? addr.port : 0;
+
+      // Case 1: Jobs module not registered
+      const res1 = await fetch(`http://127.0.0.1:${port}/__studio/api/jobs`);
+      expect(res1.status).toBe(200);
+      const data1 = await res1.json() as any;
+      expect(data1.available).toBe(false);
+      expect(data1.message).toContain('Jobs plugin is not active');
+
+      // Case 2: Jobs module is registered
+      const mockJobs = [
+        { id: 'job-1', name: 'send-email', queue: 'default', status: 'completed', attempts: 1, maxAttempts: 3, runAt: Date.now() },
+        { id: 'job-2', name: 'process-image', queue: 'media', status: 'failed', attempts: 3, maxAttempts: 3, runAt: Date.now(), error: 'OutOfMemory' },
+        { id: 'job-3', name: 'generate-report', queue: 'default', status: 'running', attempts: 1, maxAttempts: 3, runAt: Date.now() },
+      ];
+      const mockScheduler = {
+        storage: {
+          getJobs: async () => mockJobs,
+        },
+      };
+      (app as any)._services.set('jobs', mockScheduler);
+
+      const res2 = await fetch(`http://127.0.0.1:${port}/__studio/api/jobs`);
+      expect(res2.status).toBe(200);
+      const data2 = await res2.json() as any;
+      expect(data2.available).toBe(true);
+      expect(data2.jobs).toHaveLength(3);
+      expect(data2.stats).toEqual({
+        total: 3,
+        pending: 0,
+        running: 1,
+        completed: 1,
+        failed: 1,
+        successRate: 33,
+      });
+    } finally {
+      server.close();
+    }
   });
 });

@@ -474,6 +474,29 @@ export interface AppContext {
   resolve<K extends keyof AppServices>(token: K): AppServices[K];
   // Fallback overload. Warns the user they are leaving type-safe territory.
   resolve<T = unknown>(token: string | symbol): T;
+
+  /**
+   * Vault ABAC helper — wraps a callable in the given module's AsyncLocalStorage
+   * context so that `process.env` reads inside `fn` are authorized against the
+   * Vault policy for `moduleName`.
+   *
+   * Without this, ALS context is only available during `mod.register()` at boot,
+   * not during request handling. Use this in route handlers and middleware that
+   * need to access vault-managed secrets at runtime.
+   *
+   * @example
+   * app.route({
+   *   method: 'GET', path: '/charge',
+   *   handler: (req, res) =>
+   *     ctx.vault.scope('payments', async () => {
+   *       const key = process.env.STRIPE_SECRET; // authorized for 'payments'
+   *       res.send({ ok: true });
+   *     }),
+   * });
+   */
+  vault: {
+    scope<T>(moduleName: string, fn: () => T): T;
+  };
 }
 
 export type AppConfigurator = (

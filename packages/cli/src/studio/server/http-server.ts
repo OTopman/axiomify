@@ -156,7 +156,8 @@ export function createStudioServer(options: StudioServerOptions): Server {
       // ── Studio API routes ────────────────────────────────────────────────
       const handler = router.match(method, pathname);
       if (handler) {
-        if (options.token) {
+        const isOtlpReceiver = pathname.startsWith('/__studio/otlp/');
+        if (options.token && !isOtlpReceiver) {
           const authHeader = req.headers['authorization'];
           const suppliedToken = authHeader?.startsWith('Bearer ')
             ? authHeader.substring(7)

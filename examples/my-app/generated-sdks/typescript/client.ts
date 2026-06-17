@@ -38,6 +38,10 @@ export class ApiClient extends BaseClient {
     return this.request<void>({ method: 'GET', path: `/graphql/playground` });
   }
 
+  async postApiCheckout(request: { body: Types.PostApiCheckoutRequest }): Promise<void> {
+    return this.request<void>({ method: 'POST', path: `/api/checkout`, body: request.body });
+  }
+
   async getApiSecureData(): Promise<void> {
     return this.request<void>({ method: 'GET', path: `/api/secure-data` });
   }

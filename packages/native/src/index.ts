@@ -194,11 +194,11 @@ export class NativeAdapter {
   private _inflight = 0;
   private _drainResolvers: (() => void)[] = [];
   private readonly _errorCache: ErrorCache;
-  private readonly _lockToken = Symbol('axiomify.native.lock');
+  private readonly _lockToken: AdapterLockToken = ADAPTER_LOCK_TOKEN;
 
   constructor(app: Axiomify, options: NativeAdapterOptions = {}) {
     this._app = app;
-    this._app.lockRoutes(this._lockToken, '@axiomify/native');
+    this._app.lockRoutes(ADAPTER_LOCK_TOKEN, '@axiomify/native');
     this._port = options.port ?? 3000;
     this._maxBodySize = options.maxBodySize ?? 1_048_576;
     this._trustProxy = options.trustProxy ?? false;
@@ -457,9 +457,9 @@ export class NativeAdapter {
             axiomifyReq.onAbort();
             axiomifyRes.aborted = true;
             res.cork(() => {
-              res.writeStatus('504 Gateway Timeout');
+              res.writeStatus(errorCache.cached504.statusLine);
               res.writeHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ error: 'Gateway Timeout' }));
+              res.end(errorCache.cached504.body);
             });
           }
         }, adapter._requestTimeout);
@@ -508,37 +508,11 @@ export class NativeAdapter {
 
           if (result.tooLarge) {
             if (!aborted) {
-              axiomifyRes.aborted = false; // reset to allow send
-              const dummyRoute = {
-                method: route.method,
-                path: route.path,
-                handler: (_req: any, r: any) => {
-                  r.status(413).send(null, 'Payload Too Large');
-                },
-              } as any;
-
-              compiledStates.set(dummyRoute, {
-                pipeline: [dummyRoute.handler],
-                hasResponseSchema: false,
+              res.cork(() => {
+                res.writeStatus(cached413.statusLine);
+                res.writeHeader('Content-Type', 'application/json');
+                res.end(cached413.body);
               });
-
-              app
-                .handleMatchedRoute(
-                  adapter._lockToken,
-                  axiomifyReq,
-                  axiomifyRes,
-                  dummyRoute,
-                  params,
-                )
-                .catch(() => {
-                  if (!aborted) {
-                    res.cork(() => {
-                      res.writeStatus(cached413.statusLine);
-                      res.writeHeader('Content-Type', 'application/json');
-                      res.end(cached413.body);
-                    });
-                  }
-                });
             }
             return;
           }
@@ -1296,24 +1270,22 @@ export class NativeAdapter {
    *
    * @internal Plugin-author API. Not part of the public Axiomify surface.
    */
-  public getRawServer(token: symbol): TemplatedApp {
-    if (token !== this._lockToken && token !== ADAPTER_LOCK_TOKEN) {
+  public getRawServer(token: symbol | AdapterLockToken): TemplatedApp {
+    if (token !== ADAPTER_LOCK_TOKEN) {
       throw new Error(
         '[Axiomify/native] getRawServer() is reserved for adapter-bridge plugins. ' +
           'Import ADAPTER_LOCK_TOKEN from @axiomify/core and pass it as the first argument.',
       );
     }
-    if (token === ADAPTER_LOCK_TOKEN) {
-      const stack = new Error().stack ?? '';
-      const authorized =
-        stack.includes('packages/socket.io') ||
-        stack.includes('@axiomify/socket.io') ||
-        stack.includes('socket.io-bridge');
-      if (!authorized) {
-        throw new Error(
-          '[Axiomify/native] getRawServer() is privileged and can only be called by authorized adapters or bridges.',
-        );
-      }
+    const stack = new Error().stack ?? '';
+    const authorized =
+      stack.includes('packages/socket.io') ||
+      stack.includes('@axiomify/socket.io') ||
+      stack.includes('socket.io-bridge');
+    if (!authorized) {
+      throw new Error(
+        '[Axiomify/native] getRawServer() is privileged and can only be called by authorized adapters or bridges.',
+      );
     }
     return this._server;
   }
@@ -1332,26 +1304,24 @@ export class NativeAdapter {
    */
   private _bridgeShutdownCallbacks: Array<() => void | Promise<void>> = [];
   public registerShutdownCallback(
-    token: symbol,
+    token: symbol | AdapterLockToken,
     cb: () => void | Promise<void>,
   ): void {
-    if (token !== this._lockToken && token !== ADAPTER_LOCK_TOKEN) {
+    if (token !== ADAPTER_LOCK_TOKEN) {
       throw new Error(
         '[Axiomify/native] registerShutdownCallback() is reserved for adapter-bridge plugins. ' +
           'Import ADAPTER_LOCK_TOKEN from @axiomify/core.',
       );
     }
-    if (token === ADAPTER_LOCK_TOKEN) {
-      const stack = new Error().stack ?? '';
-      const authorized =
-        stack.includes('packages/socket.io') ||
-        stack.includes('@axiomify/socket.io') ||
-        stack.includes('socket.io-bridge');
-      if (!authorized) {
-        throw new Error(
-          '[Axiomify/native] registerShutdownCallback() is privileged and can only be called by authorized adapters or bridges.',
-        );
-      }
+    const stack = new Error().stack ?? '';
+    const authorized =
+      stack.includes('packages/socket.io') ||
+      stack.includes('@axiomify/socket.io') ||
+      stack.includes('socket.io-bridge');
+    if (!authorized) {
+      throw new Error(
+        '[Axiomify/native] registerShutdownCallback() is privileged and can only be called by authorized adapters or bridges.',
+      );
     }
     this._bridgeShutdownCallbacks.push(cb);
   }

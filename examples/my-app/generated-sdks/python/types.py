@@ -18,6 +18,15 @@ class PostApiUsersAvatarRequest(BaseModel):
     user_id: str = Field(..., alias="userId")
 
 
+class PostApiCheckoutRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, protected_namespaces=())
+
+    email: str = Field(...)
+    name: str = Field(...)
+    amount: float = Field(...)
+    simulate_failure: bool = Field(..., alias="simulateFailure")
+
+
 class GetPingResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True, protected_namespaces=())
 
