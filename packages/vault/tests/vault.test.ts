@@ -196,6 +196,39 @@ describe('Axiomify Vault', () => {
     expect(vault.resolveSecret('API_URL')).toBe('https://api.local.dev');
   });
 
+  it('should support double-quoted escape sequence unescaping in env files', () => {
+    if (!existsSync(testRoot)) {
+      rmSync(testRoot, { recursive: true, force: true });
+    }
+    const fs = require('node:fs');
+    fs.mkdirSync(testRoot, { recursive: true });
+
+    // Setup mock env file with complex escape characters
+    writeFileSync(
+      join(testRoot, '.env.escaped'),
+      'NEWLINE_VAL="hello\\nworld"\n' +
+      'TAB_VAL="hello\\tworld"\n' +
+      'QUOTE_VAL="hello\\\"world"\n' +
+      'SLASH_VAL="hello\\\\nworld"\n',
+      'utf8'
+    );
+
+    const vault = new AxiomifyVault({
+      projectRoot: testRoot,
+      envFiles: '.env.escaped',
+      policy: {
+        modules: {
+          default: { allow: ['NEWLINE_VAL', 'TAB_VAL', 'QUOTE_VAL', 'SLASH_VAL'] }
+        }
+      }
+    });
+
+    expect(vault.resolveSecret('NEWLINE_VAL')).toBe('hello\nworld');
+    expect(vault.resolveSecret('TAB_VAL')).toBe('hello\tworld');
+    expect(vault.resolveSecret('QUOTE_VAL')).toBe('hello"world');
+    expect(vault.resolveSecret('SLASH_VAL')).toBe('hello\\nworld');
+  });
+
   it('should validate schemas at boot time, throw on missing/invalid, and inject defaults', () => {
     // 1. Validation Fail: Missing required environment variables
     const schema = z.object({
@@ -727,10 +760,10 @@ describe('Axiomify Vault', () => {
     fs.writeFileSync(join(testRoot, '.axiomify', 'vault.key'), require('node:crypto').randomBytes(32).toString('hex'), 'utf8');
     
     const childProcess = require('node:child_process');
-    const originalExec = childProcess.execSync;
+    const originalExec = childProcess.execFileSync;
     
     // Mock git ls-files returning successfully (tracked)
-    childProcess.execSync = vi.fn().mockReturnValue(Buffer.from('tracked'));
+    childProcess.execFileSync = vi.fn().mockReturnValue(Buffer.from('tracked'));
     
     try {
       new AxiomifyVault({ projectRoot: testRoot });
@@ -744,7 +777,7 @@ describe('Axiomify Vault', () => {
         process.env.NODE_ENV = originalEnv;
       }
     } finally {
-      childProcess.execSync = originalExec;
+      childProcess.execFileSync = originalExec;
       consoleWarnSpy.mockRestore();
     }
   });

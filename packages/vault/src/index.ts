@@ -497,8 +497,8 @@ export class AxiomifyVault {
 
   private checkKeyNotGitTracked(keyPath: string): void {
     try {
-      const { execSync } = require('node:child_process');
-      execSync(`git ls-files --error-unmatch "${keyPath}" 2>&1`, {
+      const { execFileSync } = require('node:child_process');
+      execFileSync('git', ['ls-files', '--error-unmatch', keyPath], {
         cwd: this.projectRoot, stdio: 'pipe'
       });
       const isProd = process.env.NODE_ENV === 'production';
@@ -549,10 +549,14 @@ export function parseEnvFile(filePath: string): Record<string, string> {
       if (val.startsWith('"') && val.endsWith('"')) {
         // Double-quoted: process escape sequences
         val = val.slice(1, -1);
-        val = val.replace(/\\n/g, '\n')
-                 .replace(/\\t/g, '\t')
-                 .replace(/\\\\/g, '\\')
-                 .replace(/\\"/g, '"');
+        // Single-pass replacement to avoid double-unescaping warning (js/double-escaping)
+        val = val.replace(/\\([nt"\\])/g, (_, char) => {
+          if (char === 'n') return '\n';
+          if (char === 't') return '\t';
+          if (char === '"') return '"';
+          if (char === '\\') return '\\';
+          return char;
+        });
       } else if (val.startsWith("'") && val.endsWith("'")) {
         // Single-quoted: literal value, no escape processing
         val = val.slice(1, -1);
