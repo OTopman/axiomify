@@ -2526,4 +2526,35 @@ describe('Axiomify Distributed Jobs', () => {
     expect(mockRedis.sets.get('axiomify:queue:main-queue:jobs')?.has('job-redis-shift')).toBe(false);
     expect(mockRedis.zsets.get('axiomify:queue:main-queue:pending_zset')?.has('job-redis-shift')).toBe(false);
   });
+
+  it('should handle JSON parse errors gracefully in RedisJobStorage.save', async () => {
+    const mockRedis = {
+      store: new Map<string, string>(),
+      get: async function(key: string) { return this.store.get(key) || null; },
+      set: async function(key: string, value: string) { this.store.set(key, value); },
+      sadd: async function() {},
+      srem: async function() {},
+      zadd: async function() {},
+      zrem: async function() {},
+    };
+
+    const storage = new RedisJobStorage(mockRedis as any);
+    const job = {
+      id: 'job-invalid-json',
+      queue: 'main-queue',
+      name: 'n',
+      payload: {},
+      status: 'pending' as const,
+      priority: 0,
+      runAt: Date.now(),
+      attempts: 0,
+      maxAttempts: 3
+    };
+
+    // Put invalid JSON in mock store to trigger catch block in save()
+    mockRedis.store.set(`axiomify:job:${job.id}`, '{invalid-json');
+    
+    // Save should run and not throw
+    await expect(storage.save(job)).resolves.not.toThrow();
+  });
 });

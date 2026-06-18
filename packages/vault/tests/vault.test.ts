@@ -16,6 +16,8 @@ let vaultModule: any;
 let vaultScope: any;
 let restoreProcessEnv: any;
 let getCallerModuleName: any;
+let registerSecretForRedaction: any;
+let unregisterSecretForRedaction: any;
 let encrypt: any;
 let decrypt: any;
 let resolveKEK: any;
@@ -32,6 +34,8 @@ beforeAll(async () => {
   const proxy = await import('../src/proxy');
   restoreProcessEnv = proxy.restoreProcessEnv;
   getCallerModuleName = proxy.getCallerModuleName;
+  registerSecretForRedaction = proxy.registerSecretForRedaction;
+  unregisterSecretForRedaction = proxy.unregisterSecretForRedaction;
 
   const crypto = await import('../src/crypto');
   encrypt = crypto.encrypt;
@@ -767,29 +771,45 @@ describe('Axiomify Vault', () => {
       projectRoot: testRoot,
     });
 
-    const originalStdoutWrite = process.stdout.write;
-    const originalStderrWrite = process.stderr.write;
-    const stdoutWriteSpy = vi.fn().mockReturnValue(true);
-    const stderrWriteSpy = vi.fn().mockReturnValue(true);
-    process.stdout.write = stdoutWriteSpy as any;
-    process.stderr.write = stderrWriteSpy as any;
+    const stdoutSpy = vi.spyOn(process.stdout, '_write').mockImplementation((chunk, enc, cb) => cb());
+    const stderrSpy = vi.spyOn(process.stderr, '_write').mockImplementation((chunk, enc, cb) => cb());
 
     try {
-      // 1. Buffer chunk
+      // 1. Force activePlaintextSecrets.size === 0 (via unregistering)
+      registerSecretForRedaction('temp-secret-to-remove');
+      unregisterSecretForRedaction('temp-secret-to-remove');
+
+      // Call write to hit activePlaintextSecrets.size === 0 path
+      process.stdout.write('test-no-regex');
+      process.stderr.write('error-no-regex');
+
+      // 2. Re-register a secret to restore regex
+      registerSecretForRedaction('active-secret-here');
+
+      // 3. Buffer chunk
       process.stdout.write(Buffer.from('hello buffer') as any);
       process.stderr.write(Buffer.from('error buffer') as any);
 
-      // 2. Non-string, non-buffer chunk
+      // 4. Non-string, non-buffer chunk
       process.stdout.write(123 as any);
       process.stderr.write(true as any);
 
-      // 3. Callback with encoding
+      // 5. Callback only
       const cb = () => {};
-      process.stdout.write('hello utf8' as any, 'utf8', cb);
-      process.stderr.write('error utf8' as any, 'utf8', cb);
+      process.stdout.write('hello callback', cb);
+      process.stderr.write('error callback', cb);
+
+      // 6. Encoding only
+      process.stdout.write('hello utf8', 'utf8');
+      process.stderr.write('error utf8', 'utf8');
+
+      // 7. Callback and encoding
+      process.stdout.write('hello both', 'utf8', cb);
+      process.stderr.write('error both', 'utf8', cb);
     } finally {
-      process.stdout.write = originalStdoutWrite;
-      process.stderr.write = originalStderrWrite;
+      stdoutSpy.mockRestore();
+      stderrSpy.mockRestore();
+      unregisterSecretForRedaction('active-secret-here');
     }
   });
 

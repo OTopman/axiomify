@@ -834,4 +834,40 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
       ).not.toThrow();
     });
   });
+
+  describe('safeZodDef coverage extension', () => {
+    it('handles non-object and empty/weird schemas in safeZodDef', () => {
+      const compiler = new ValidationCompiler();
+      
+      // 1. Trigger safeZodDef with a non-object schema
+      compiler.compile('POST:/bad-schema-non-obj', {
+        body: null as any
+      });
+      
+      // 2. Trigger safeZodDef with schema that has neither def nor _def
+      const emptySchema = {
+        parse: (x: any) => x,
+        safeParse: (x: any) => ({ success: true, data: x }),
+        toJSONSchema: () => ({ type: 'object' })
+      } as any;
+      compiler.compile('POST:/bad-schema-empty', {
+        body: emptySchema
+      });
+
+      // 3. Trigger safeZodDef where def/._def is not an object
+      const badDefSchema = {
+        def: 123,
+        parse: (x: any) => x,
+        safeParse: (x: any) => ({ success: true, data: x }),
+        toJSONSchema: () => ({ type: 'object' })
+      } as any;
+      compiler.compile('POST:/bad-schema-bad-def', {
+        body: badDefSchema
+      });
+
+      // Should not throw and successfully compile
+      const req = makeReq({ body: {} });
+      expect(() => compiler.execute('POST:/bad-schema-empty', req)).not.toThrow();
+    });
+  });
 });

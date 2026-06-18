@@ -205,7 +205,6 @@ function safeZodDef(schema: any): Record<string, any> {
 }
 
 function isStrictZodObject(schema: any): boolean {
-  if (!schema || typeof schema !== 'object') return false;
   const d = safeZodDef(schema);
   // Zod v3: unknownKeys === 'strict'
   if (d.unknownKeys === 'strict') return true;
@@ -216,7 +215,6 @@ function isStrictZodObject(schema: any): boolean {
 }
 
 function isPassthroughZodObject(schema: any): boolean {
-  if (!schema || typeof schema !== 'object') return false;
   const d = safeZodDef(schema);
   // Zod v3: unknownKeys === 'passthrough'
   if (d.unknownKeys === 'passthrough') return true;
@@ -227,9 +225,8 @@ function isPassthroughZodObject(schema: any): boolean {
 }
 
 function isZodObject(schema: any): boolean {
-  if (!schema || typeof schema !== 'object') return false;
   const d = safeZodDef(schema);
-  const typeName = schema.constructor?.name || d.typeName || d.type;
+  const typeName = schema?.constructor?.name || d.typeName || d.type;
   if (
     typeName === 'ZodObject' ||
     d.typeName === 'ZodObject' ||
