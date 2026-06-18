@@ -10,7 +10,7 @@ import {
   compiledStates,
   AxiomifyError,
 } from '@axiomify/core';
-import cluster from 'cluster';
+import cluster, { Worker } from 'node:cluster';
 import { cpus } from 'node:os';
 import { availableParallelism } from 'os';
 import type {
@@ -1050,7 +1050,7 @@ export class NativeAdapter {
     const liveWorkers = new Map<
       number,
       {
-        process: cluster.Worker;
+        process: Worker;
         state: string;
         port: number;
         lastHeartbeat: number;
