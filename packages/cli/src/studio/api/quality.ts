@@ -40,10 +40,14 @@ export function recordQualityHistoryEntry(score: number): void {
   // Prevent duplicate consecutive entries with identical scores at identical minutes
   const now = new Date().toISOString();
   const last = qualityHistory[qualityHistory.length - 1];
-  if (last && Math.round(last.score) === Math.round(score) && now.substring(0, 16) === last.timestamp.substring(0, 16)) {
+  if (
+    last &&
+    Math.round(last.score) === Math.round(score) &&
+    now.substring(0, 16) === last.timestamp.substring(0, 16)
+  ) {
     return;
   }
-  
+
   qualityHistory.push({
     timestamp: now,
     score: Math.round(score),
@@ -79,10 +83,14 @@ export function computeQualityScore(
       inputCoverage = inputWithSchema / inputCount;
     }
 
-    const responseWithSchema = httpRoutes.filter((r) => r.hasResponseSchema).length;
+    const responseWithSchema = httpRoutes.filter(
+      (r) => r.hasResponseSchema,
+    ).length;
     const responseCoverage = responseWithSchema / totalHttpRoutes;
 
-    schemaCoverageScore = Math.round(((inputCoverage + responseCoverage) / 2) * 100);
+    schemaCoverageScore = Math.round(
+      ((inputCoverage + responseCoverage) / 2) * 100,
+    );
     schemaDetail = `${Math.round(responseCoverage * 100)}% response schemas, ${Math.round(inputCoverage * 100)}% mutating input schemas`;
   }
 
@@ -119,7 +127,9 @@ export function computeQualityScore(
       }
     }
     if (ratedRoutes.length > 0) {
-      perfScore = Math.round(ratedRoutes.reduce((a, b) => a + b, 0) / ratedRoutes.length);
+      perfScore = Math.round(
+        ratedRoutes.reduce((a, b) => a + b, 0) / ratedRoutes.length,
+      );
       perfDetail = `Based on P95 latency measurements for ${ratedRoutes.length} route(s)`;
     }
   }
@@ -137,7 +147,7 @@ export function computeQualityScore(
       else if (f.severity === 'low') deductions += 5;
     }
     securityScore = Math.max(0, 100 - deductions);
-    securityDetail = `${findings.length} security finding(s) active (${findings.filter(f => f.severity === 'critical').length} critical)`;
+    securityDetail = `${findings.length} security finding(s) active (${findings.filter((f) => f.severity === 'critical').length} critical)`;
   }
 
   // 5. Contract Compliance (15%)
@@ -160,9 +170,9 @@ export function computeQualityScore(
   // Composite Total Score
   const totalScore = Math.round(
     schemaCoverageScore * 0.25 +
-      docScore * 0.20 +
-      perfScore * 0.20 +
-      securityScore * 0.20 +
+      docScore * 0.2 +
+      perfScore * 0.2 +
+      securityScore * 0.2 +
       contractScore * 0.15,
   );
 
@@ -205,7 +215,9 @@ export function computeQualityScore(
     const perfBucket = routeLatencies.get(routeId);
     if (perfBucket && perfBucket.count > 0) {
       if (perfBucket.p95 > 500) {
-        issues.push(`Slow route: P95 latency is ${perfBucket.p95}ms (exceeds 500ms target)`);
+        issues.push(
+          `Slow route: P95 latency is ${perfBucket.p95}ms (exceeds 500ms target)`,
+        );
         rScore -= 20;
       }
     }

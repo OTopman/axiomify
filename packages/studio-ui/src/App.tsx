@@ -27,6 +27,8 @@ import { Recorder } from './components/Recorder';
 import { RequestBuilder } from './components/RequestBuilder';
 import { WebSocketTester } from './components/WebSocketTester';
 import { ProfilerPanel } from './components/ProfilerPanel';
+import { TracingPanel } from './components/Tracing';
+import { JobsPanel } from './components/JobsPanel';
 
 function App() {
   const [token, setTokenState] = useState<string>(() => {
@@ -351,6 +353,10 @@ function App() {
         return <ProfilerPanel />;
       case 'performance':
         return <PerformancePanel />;
+      case 'tracing':
+        return <TracingPanel />;
+      case 'jobs':
+        return <JobsPanel />;
       case 'sdk-impact':
         return <SdkImpactPanel />;
       case 'health':
@@ -530,6 +536,14 @@ function App() {
         <a className={`nav-item ${activePanel === 'performance' ? 'active' : ''}`} href="#performance" onClick={(e) => { e.preventDefault(); setActivePanel('performance'); }}>
           <span className="nav-icon">⚡</span>
           <span>Performance</span>
+        </a>
+        <a className={`nav-item ${activePanel === 'tracing' ? 'active' : ''}`} href="#tracing" onClick={(e) => { e.preventDefault(); setActivePanel('tracing'); }}>
+          <span className="nav-icon">🧭</span>
+          <span>Tracing</span>
+        </a>
+        <a className={`nav-item ${activePanel === 'jobs' ? 'active' : ''}`} href="#jobs" onClick={(e) => { e.preventDefault(); setActivePanel('jobs'); }}>
+          <span className="nav-icon">💼</span>
+          <span>Jobs & Workers</span>
         </a>
         <a className={`nav-item ${activePanel === 'sdk-impact' ? 'active' : ''}`} href="#sdk-impact" onClick={(e) => { e.preventDefault(); setActivePanel('sdk-impact'); }}>
           <span className="nav-icon">📦</span>

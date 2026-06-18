@@ -39,14 +39,17 @@ export async function handleGetAppMetrics(
     if (baseUrl) {
       const response = await fetch(`${baseUrl}${metricsPath}`, {
         // Use AbortSignal.timeout if supported, otherwise normal signal
-        signal: (AbortSignal as any).timeout ? (AbortSignal as any).timeout(800) : undefined,
+        signal: (AbortSignal as any).timeout
+          ? (AbortSignal as any).timeout(800)
+          : undefined,
       });
       if (response.ok) {
         const rawText = await response.text();
         sendJson(res, {
           available: true,
           raw: rawText,
-          contentType: response.headers.get('content-type') || 'text/plain; version=0.0.4',
+          contentType:
+            response.headers.get('content-type') || 'text/plain; version=0.0.4',
           path: metricsPath,
         });
         return;
@@ -137,10 +140,14 @@ export async function handleGetAppMetrics(
   // but not the full AxiomifyRequest/AxiomifyResponse structural types.
   // Bridge through unknown to invoke with partial mock objects.
   const indexed = app as unknown as Record<string, unknown>;
-  const handleRequest = (indexed['handle'] as (req: unknown, res: unknown) => Promise<void>).bind(app);
+  const handleRequest = (
+    indexed['handle'] as (req: unknown, res: unknown) => Promise<void>
+  ).bind(app);
 
   try {
-    await logCorrelationStorage.run(mockReq.id, () => handleRequest(mockReq, mockRes));
+    await logCorrelationStorage.run(mockReq.id, () =>
+      handleRequest(mockReq, mockRes),
+    );
 
     if (responseStatus === 404) {
       sendJson(res, {

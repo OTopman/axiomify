@@ -9,7 +9,7 @@ import path from 'path';
 const packages = [
   'auth', 'cli', 'core', 'cors', 'fingerprint', 'graphql', 'helmet',
   'logger', 'metrics', 'native', 'openapi', 'rate-limit', 'security',
-  'socket.io', 'static', 'upload', 'sdk-runtime', 'ws',
+  'socket.io', 'static', 'upload', 'sdk-runtime', 'ws', 'vault', 'jobs',
 ];
 const alias = Object.fromEntries(
   packages.map((pkg) => [
@@ -42,6 +42,8 @@ export default defineConfig({
         // Type-only declarations
         'packages/core/src/types.ts',
         'packages/native/src/uws.d.ts',
+        // telemetry: requires active OTLP endpoints and dynamic SDK loading
+        'packages/core/src/telemetry.ts',
         // studio-ui: client-side React SPA
         'packages/studio-ui/src/**',
         // Module re-export entry points
@@ -51,9 +53,6 @@ export default defineConfig({
         lines:      95,
         statements: 95,
         functions:  95,
-        // Branch threshold is lower: remaining uncovered branches are defensive
-        // fallbacks (Zod v3 compat, ?? on hot paths, dead Kahn paths). Forcing
-        // 95% would require contrived tests that exist only to satisfy the metric.
         branches:   85,
       },
       reporter: ['text', 'json', 'html'],

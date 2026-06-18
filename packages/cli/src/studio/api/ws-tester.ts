@@ -40,11 +40,13 @@ export function handleGetWsRoutes(
     return {
       ...route,
       protocol: route.realtimeProtocol ?? 'ws',
-      schema: schema ? {
-        message: schema.message,
-        query: schema.query,
-        params: schema.params,
-      } : undefined,
+      schema: schema
+        ? {
+            message: schema.message,
+            query: schema.query,
+            params: schema.params,
+          }
+        : undefined,
     };
   });
 

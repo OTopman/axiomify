@@ -24,7 +24,8 @@ export function handleGetSystem(_req: any, res: ServerResponse): void {
 
   const totalDiffMs = (userDiff + sysDiff) / 1000;
   const cpuCount = os.cpus().length || 1;
-  const rawCpuPercent = timeDiff > 0 ? (totalDiffMs / timeDiff) / cpuCount * 100 : 0;
+  const rawCpuPercent =
+    timeDiff > 0 ? (totalDiffMs / timeDiff / cpuCount) * 100 : 0;
   const cpuPercent = Math.min(Math.max(rawCpuPercent, 0), 100);
 
   lastCpuUsage = currentUsage;

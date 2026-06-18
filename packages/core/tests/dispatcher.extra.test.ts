@@ -146,7 +146,7 @@ describe('Dispatcher — extended coverage', () => {
     const route = app.registeredRoutes[0];
     await expect(
       app.handleMatchedRoute('bad_token' as any, req, res, route, {}),
-    ).rejects.toThrow(/reserved for adapter use/);
+    ).rejects.toThrow(/requires the ADAPTER_LOCK_TOKEN/);
   });
 
   it('handleMatchedRoute with token dispatches correctly', async () => {
@@ -243,10 +243,7 @@ describe('Dispatcher — ValidatingResponse and error dev stack', () => {
       const req = makeAxiomifyReq({ path: '/no-msg-err' });
       await app.handle(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.send).toHaveBeenCalledWith(
-        { stack: undefined },
-        'Internal Server Error',
-      );
+      expect(res.send).toHaveBeenCalledWith(undefined, 'Internal Server Error');
     } finally {
       process.env.NODE_ENV = originalEnv;
     }
@@ -626,10 +623,7 @@ describe('Dispatcher — ValidatingResponse and error dev stack', () => {
       const [res] = makeAxiomifyResPair();
       await app.handle(makeAxiomifyReq({ path: '/no-msg-err' }), res);
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.send).toHaveBeenCalledWith(
-        { stack: undefined },
-        'Internal Server Error',
-      );
+      expect(res.send).toHaveBeenCalledWith(undefined, 'Internal Server Error');
     });
   });
 
@@ -734,8 +728,7 @@ describe('Dispatcher — ValidatingResponse and error dev stack', () => {
         await app.handle(req, res);
         const sendEvent = events().find((e) => e.startsWith('send:'));
         expect(sendEvent).toBeDefined();
-        const body = JSON.parse(sendEvent!.substring(5));
-        expect(body.stack).toBeUndefined();
+        expect(sendEvent).toBe('send:undefined');
       } finally {
         process.env.NODE_ENV = originalEnv;
       }
@@ -785,6 +778,25 @@ describe('Dispatcher — ValidatingResponse and error dev stack', () => {
         expect(validationEvent).toBeDefined();
         const body2 = JSON.parse(validationEvent!.substring(5));
         expect(body2).toEqual({ body: { email: 'invalid email' } });
+
+        // 3. Known HTTP error path with statusCode < 500 in production
+        app.route({
+          method: 'GET',
+          path: '/prod-403-err',
+          handler: async () => {
+            throw Object.assign(new Error('Forbidden action'), {
+              statusCode: 403,
+            });
+          },
+        });
+        const [res3, events3] = makeAxiomifyResPair();
+        const req3 = makeAxiomifyReq({ path: '/prod-403-err' });
+        await app.handle(req3, res3);
+        expect(res3.status).toHaveBeenCalledWith(403);
+        const forbiddenEvent = events3().find((e) => e.startsWith('send:'));
+        expect(forbiddenEvent).toBeDefined();
+        // Since payload is null (res.send(null, message)), JSON.stringify(null) is 'null'
+        expect(forbiddenEvent).toBe('send:null');
       } finally {
         process.env.NODE_ENV = originalEnv;
       }

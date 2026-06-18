@@ -71,14 +71,16 @@ export function sendJson(
 ): void {
   const req = (res as any).req;
   const origin = req?.headers?.origin;
-  const isLocal = origin && (
-    origin.startsWith('http://localhost:') ||
-    origin.startsWith('http://127.0.0.1:') ||
-    origin === 'http://localhost' ||
-    origin === 'http://127.0.0.1'
-  );
+  const isLocal =
+    origin &&
+    (origin.startsWith('http://localhost:') ||
+      origin.startsWith('http://127.0.0.1:') ||
+      origin === 'http://localhost' ||
+      origin === 'http://127.0.0.1');
   const corsOrigin = isLocal ? origin : 'http://localhost:4399';
-  const body = JSON.stringify(data, (_, v) => typeof v === 'bigint' ? v.toString() : v);
+  const body = JSON.stringify(data, (_, v) =>
+    typeof v === 'bigint' ? v.toString() : v,
+  );
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
@@ -137,14 +139,16 @@ export function createStudioServer(options: StudioServerOptions): Server {
       // ── CORS preflight ──────────────────────────────────────────────────
       if (method === 'OPTIONS') {
         const origin = req.headers.origin;
-        const isLocal = origin && (
-          origin.startsWith('http://localhost:') ||
-          origin.startsWith('http://127.0.0.1:') ||
-          origin === 'http://localhost' ||
-          origin === 'http://127.0.0.1'
-        );
+        const isLocal =
+          origin &&
+          (origin.startsWith('http://localhost:') ||
+            origin.startsWith('http://127.0.0.1:') ||
+            origin === 'http://localhost' ||
+            origin === 'http://127.0.0.1');
         res.writeHead(204, {
-          'Access-Control-Allow-Origin': isLocal ? origin : 'http://localhost:4399',
+          'Access-Control-Allow-Origin': isLocal
+            ? origin
+            : 'http://localhost:4399',
           'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           'Access-Control-Max-Age': '86400',
@@ -156,14 +160,16 @@ export function createStudioServer(options: StudioServerOptions): Server {
       // ── Studio API routes ────────────────────────────────────────────────
       const handler = router.match(method, pathname);
       if (handler) {
-        if (options.token) {
+        const isOtlpReceiver = pathname.startsWith('/__studio/otlp/');
+        if (options.token && !isOtlpReceiver) {
           const authHeader = req.headers['authorization'];
           const suppliedToken = authHeader?.startsWith('Bearer ')
             ? authHeader.substring(7)
             : '';
           // Fallback: accept token from query parameter (for browser navigations
           // like export downloads where no Authorization header is sent).
-          const queryToken = suppliedToken || parsedUrl.searchParams.get('token') || '';
+          const queryToken =
+            suppliedToken || parsedUrl.searchParams.get('token') || '';
           if (queryToken !== options.token) {
             sendJson(
               res,
@@ -194,8 +200,13 @@ export function createStudioServer(options: StudioServerOptions): Server {
       // ── Static assets serving ──────────────────────────────────────────
       if (uiDistPath) {
         const resolvedPath = resolve(uiDistPath, '.' + normalize(pathname));
-        const safePrefix = uiDistPath.endsWith(sep) ? uiDistPath : uiDistPath + sep;
-        if (resolvedPath.startsWith(safePrefix) || resolvedPath === uiDistPath) {
+        const safePrefix = uiDistPath.endsWith(sep)
+          ? uiDistPath
+          : uiDistPath + sep;
+        if (
+          resolvedPath.startsWith(safePrefix) ||
+          resolvedPath === uiDistPath
+        ) {
           let fileExists = false;
           let isFile = false;
           try {
@@ -212,17 +223,19 @@ export function createStudioServer(options: StudioServerOptions): Server {
             try {
               const data = await fsPromises.readFile(resolvedPath);
               const origin = req.headers.origin;
-              const isLocal = origin && (
-                origin.startsWith('http://localhost:') ||
-                origin.startsWith('http://127.0.0.1:') ||
-                origin === 'http://localhost' ||
-                origin === 'http://127.0.0.1'
-              );
+              const isLocal =
+                origin &&
+                (origin.startsWith('http://localhost:') ||
+                  origin.startsWith('http://127.0.0.1:') ||
+                  origin === 'http://localhost' ||
+                  origin === 'http://127.0.0.1');
               res.writeHead(200, {
                 'Content-Type': contentType,
                 'Content-Length': data.length,
                 'Cache-Control': 'no-cache',
-                'Access-Control-Allow-Origin': isLocal ? origin : 'http://localhost:4399',
+                'Access-Control-Allow-Origin': isLocal
+                  ? origin
+                  : 'http://localhost:4399',
               });
               res.end(data);
               return;
@@ -240,7 +253,10 @@ export function createStudioServer(options: StudioServerOptions): Server {
       let indexHtml = options.indexHtml || FALLBACK_HTML;
       if (!options.indexHtml && uiDistPath) {
         try {
-          indexHtml = await fsPromises.readFile(join(uiDistPath, 'index.html'), 'utf8');
+          indexHtml = await fsPromises.readFile(
+            join(uiDistPath, 'index.html'),
+            'utf8',
+          );
         } catch {
           // ignore
         }

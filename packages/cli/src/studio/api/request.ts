@@ -32,7 +32,11 @@ interface StudioInternalApp {
       hooks: Record<string, Array<(...args: unknown[]) => unknown>>;
     };
     router?: {
-      lookup: (method: string, path: string, params: Record<string, string>) => { route?: unknown } | null;
+      lookup: (
+        method: string,
+        path: string,
+        params: Record<string, string>,
+      ) => { route?: unknown } | null;
     };
   };
   _services?: Map<unknown, unknown>;
@@ -96,7 +100,7 @@ function safeClone(val: any): any {
     seen.add(item);
 
     if (Array.isArray(item)) {
-      return item.map(i => clone(i));
+      return item.map((i) => clone(i));
     }
 
     const obj: any = {};
@@ -198,7 +202,9 @@ export async function handlePostRequest(
       body !== undefined
         ? typeof body === 'string'
           ? body
-          : JSON.stringify(body, (_, v) => typeof v === 'bigint' ? v.toString() : v)
+          : JSON.stringify(body, (_, v) =>
+              typeof v === 'bigint' ? v.toString() : v,
+            )
         : '';
     const mockStream = Readable.from(bodyStr ? [bodyStr] : []);
 
@@ -294,7 +300,10 @@ export async function handlePostRequest(
     let originalState: any = null;
     let databaseServices: {
       obj: Record<string, unknown>;
-      originalMethods: { path: string[]; fn: (...args: unknown[]) => unknown }[];
+      originalMethods: {
+        path: string[];
+        fn: (...args: unknown[]) => unknown;
+      }[];
     }[] = [];
 
     try {
@@ -303,86 +312,27 @@ export async function handlePostRequest(
       originalRun = studioApp.dispatcher?.hooks?.run;
       originalRunSafe = studioApp.dispatcher?.hooks?.runSafe;
 
-    // Patch hooks if dispatcher exists
-    if (studioApp.dispatcher && studioApp.dispatcher.hooks) {
-      studioApp.dispatcher.hooks.run = function (type: any, ...args: any[]) {
-        const req = args[0];
-        if (req && req._profile) {
-          const list = this.hooks[type];
-          if (list.length === 0) return;
+      // Patch hooks if dispatcher exists
+      if (studioApp.dispatcher && studioApp.dispatcher.hooks) {
+        studioApp.dispatcher.hooks.run = function (type: any, ...args: any[]) {
+          const req = args[0];
+          if (req && req._profile) {
+            const list = this.hooks[type];
+            if (list.length === 0) return;
 
-          if (list.length === 1) {
-            const fn = list[0];
-            const fnName = fn.name || 'anonymous';
-            const start = performance.now();
-            const ret = fn(...args);
-            if (ret instanceof Promise) {
-              return ret.then(() => {
-                req._profile.timeline.push({
-                  name: `Hook: ${type} (${fnName})`,
-                  type: 'hook',
-                  duration: performance.now() - start,
-                });
-              });
-            } else {
-              req._profile.timeline.push({
-                name: `Hook: ${type} (${fnName})`,
-                type: 'hook',
-                duration: performance.now() - start,
-              });
-              return;
-            }
-          }
-
-          const execute = async () => {
-            const snapshot = list.slice();
-            for (const fn of snapshot) {
+            if (list.length === 1) {
+              const fn = list[0];
               const fnName = fn.name || 'anonymous';
               const start = performance.now();
-              await fn(...args);
-              req._profile.timeline.push({
-                name: `Hook: ${type} (${fnName})`,
-                type: 'hook',
-                duration: performance.now() - start,
-              });
-            }
-          };
-          return execute();
-        }
-        if (originalRun) {
-          return originalRun.apply(this, [type, ...args]);
-        }
-      };
-
-      studioApp.dispatcher.hooks.runSafe = function (type: any, ...args: any[]) {
-        const req = type === 'onError' ? args[1] : args[0];
-        if (req && req._profile) {
-          const list = this.hooks[type];
-          if (list.length === 0) return;
-
-          if (list.length === 1) {
-            const fn = list[0];
-            const fnName = fn.name || 'anonymous';
-            const start = performance.now();
-            try {
               const ret = fn(...args);
               if (ret instanceof Promise) {
-                return ret.then(
-                   () => {
-                     req._profile.timeline.push({
-                       name: `Hook: ${type} (${fnName})`,
-                       type: 'hook',
-                       duration: performance.now() - start,
-                     });
-                   },
-                   () => {
-                     req._profile.timeline.push({
-                       name: `Hook: ${type} (${fnName})`,
-                       type: 'hook',
-                       duration: performance.now() - start,
-                     });
-                   },
-                );
+                return ret.then(() => {
+                  req._profile.timeline.push({
+                    name: `Hook: ${type} (${fnName})`,
+                    type: 'hook',
+                    duration: performance.now() - start,
+                  });
+                });
               } else {
                 req._profile.timeline.push({
                   name: `Hook: ${type} (${fnName})`,
@@ -391,270 +341,346 @@ export async function handlePostRequest(
                 });
                 return;
               }
-            } catch {
-              req._profile.timeline.push({
-                name: `Hook: ${type} (${fnName})`,
-                type: 'hook',
-                duration: performance.now() - start,
-              });
-              return;
             }
-          }
 
-          const execute = async () => {
-            const snapshot = list.slice();
-            for (const fn of snapshot) {
+            const execute = async () => {
+              const snapshot = list.slice();
+              for (const fn of snapshot) {
+                const fnName = fn.name || 'anonymous';
+                const start = performance.now();
+                await fn(...args);
+                req._profile.timeline.push({
+                  name: `Hook: ${type} (${fnName})`,
+                  type: 'hook',
+                  duration: performance.now() - start,
+                });
+              }
+            };
+            return execute();
+          }
+          if (originalRun) {
+            return originalRun.apply(this, [type, ...args]);
+          }
+        };
+
+        studioApp.dispatcher.hooks.runSafe = function (
+          type: any,
+          ...args: any[]
+        ) {
+          const req = type === 'onError' ? args[1] : args[0];
+          if (req && req._profile) {
+            const list = this.hooks[type];
+            if (list.length === 0) return;
+
+            if (list.length === 1) {
+              const fn = list[0];
               const fnName = fn.name || 'anonymous';
               const start = performance.now();
               try {
-                await fn(...args);
-              } catch {
-                // swallow
-              }
-              req._profile.timeline.push({
-                name: `Hook: ${type} (${fnName})`,
-                type: 'hook',
-                duration: performance.now() - start,
-              });
-            }
-          };
-          return execute();
-        }
-        if (originalRunSafe) {
-          return originalRunSafe.apply(this, [type, ...args]);
-        }
-      };
-    }
-
-    // Dynamic database services patching
-    databaseServices = [];
-    try {
-      if (studioApp._services instanceof Map) {
-        for (const [token, service] of studioApp._services.entries()) {
-          const tokenStr = String(token).toLowerCase();
-          let isDb = false;
-
-          let constructorName = '';
-          if (service && typeof service === 'object') {
-            constructorName = service.constructor?.name || '';
-          }
-
-          if (
-            tokenStr.includes('db') ||
-            tokenStr.includes('prisma') ||
-            tokenStr.includes('mongoose') ||
-            tokenStr.includes('database') ||
-            constructorName.includes('PrismaClient') ||
-            constructorName.includes('Mongoose') ||
-            constructorName.includes('Database')
-          ) {
-            isDb = true;
-          }
-
-          if (isDb && service && typeof service === 'object') {
-            const svc = service as Record<string, unknown>;
-            const originalMethods: { path: string[]; fn: (...args: unknown[]) => unknown }[] = [];
-
-            for (const key of Object.keys(svc)) {
-              const val = svc[key];
-              if (typeof val === 'function') {
-                if (
-                  key.startsWith('$') ||
-                  key === 'query' ||
-                  key === 'execute'
-                ) {
-                  originalMethods.push({ path: [key], fn: val as (...args: unknown[]) => unknown });
+                const ret = fn(...args);
+                if (ret instanceof Promise) {
+                  return ret.then(
+                    () => {
+                      req._profile.timeline.push({
+                        name: `Hook: ${type} (${fnName})`,
+                        type: 'hook',
+                        duration: performance.now() - start,
+                      });
+                    },
+                    () => {
+                      req._profile.timeline.push({
+                        name: `Hook: ${type} (${fnName})`,
+                        type: 'hook',
+                        duration: performance.now() - start,
+                      });
+                    },
+                  );
+                } else {
+                  req._profile.timeline.push({
+                    name: `Hook: ${type} (${fnName})`,
+                    type: 'hook',
+                    duration: performance.now() - start,
+                  });
+                  return;
                 }
-              } else if (val && typeof val === 'object') {
-                const model = val as Record<string, unknown>;
-                for (const modelKey of Object.keys(model)) {
-                  if (typeof model[modelKey] === 'function') {
+              } catch {
+                req._profile.timeline.push({
+                  name: `Hook: ${type} (${fnName})`,
+                  type: 'hook',
+                  duration: performance.now() - start,
+                });
+                return;
+              }
+            }
+
+            const execute = async () => {
+              const snapshot = list.slice();
+              for (const fn of snapshot) {
+                const fnName = fn.name || 'anonymous';
+                const start = performance.now();
+                try {
+                  await fn(...args);
+                } catch {
+                  // swallow
+                }
+                req._profile.timeline.push({
+                  name: `Hook: ${type} (${fnName})`,
+                  type: 'hook',
+                  duration: performance.now() - start,
+                });
+              }
+            };
+            return execute();
+          }
+          if (originalRunSafe) {
+            return originalRunSafe.apply(this, [type, ...args]);
+          }
+        };
+      }
+
+      // Dynamic database services patching
+      databaseServices = [];
+      try {
+        if (studioApp._services instanceof Map) {
+          for (const [token, service] of studioApp._services.entries()) {
+            const tokenStr = String(token).toLowerCase();
+            let isDb = false;
+
+            let constructorName = '';
+            if (service && typeof service === 'object') {
+              constructorName = service.constructor?.name || '';
+            }
+
+            if (
+              tokenStr.includes('db') ||
+              tokenStr.includes('prisma') ||
+              tokenStr.includes('mongoose') ||
+              tokenStr.includes('database') ||
+              constructorName.includes('PrismaClient') ||
+              constructorName.includes('Mongoose') ||
+              constructorName.includes('Database')
+            ) {
+              isDb = true;
+            }
+
+            if (isDb && service && typeof service === 'object') {
+              const svc = service as Record<string, unknown>;
+              const originalMethods: {
+                path: string[];
+                fn: (...args: unknown[]) => unknown;
+              }[] = [];
+
+              for (const key of Object.keys(svc)) {
+                const val = svc[key];
+                if (typeof val === 'function') {
+                  if (
+                    key.startsWith('$') ||
+                    key === 'query' ||
+                    key === 'execute'
+                  ) {
                     originalMethods.push({
-                      path: [key, modelKey],
-                      fn: model[modelKey] as (...args: unknown[]) => unknown,
+                      path: [key],
+                      fn: val as (...args: unknown[]) => unknown,
                     });
                   }
-                }
-                const modelProto = Object.getPrototypeOf(model);
-                if (modelProto && modelProto !== Object.prototype) {
-                  for (const modelKey of Object.getOwnPropertyNames(
-                    modelProto,
-                  )) {
-                    if (
-                      typeof model[modelKey] === 'function' &&
-                      modelKey !== 'constructor'
-                    ) {
+                } else if (val && typeof val === 'object') {
+                  const model = val as Record<string, unknown>;
+                  for (const modelKey of Object.keys(model)) {
+                    if (typeof model[modelKey] === 'function') {
                       originalMethods.push({
                         path: [key, modelKey],
                         fn: model[modelKey] as (...args: unknown[]) => unknown,
                       });
                     }
                   }
-                }
-              }
-            }
-
-            const serviceProto = Object.getPrototypeOf(svc);
-            if (serviceProto && serviceProto !== Object.prototype) {
-              for (const key of Object.getOwnPropertyNames(serviceProto)) {
-                if (
-                  typeof svc[key] === 'function' &&
-                  key !== 'constructor'
-                ) {
-                  if (
-                    key.startsWith('$') ||
-                    key === 'query' ||
-                    key === 'execute'
-                  ) {
-                    originalMethods.push({ path: [key], fn: svc[key] as (...args: unknown[]) => unknown });
-                  }
-                }
-              }
-            }
-
-            if (originalMethods.length > 0) {
-              databaseServices.push({ obj: svc, originalMethods });
-            }
-          }
-        }
-      }
-    } catch {
-      // Ignore
-    }
-
-    // Wrap database methods
-    for (const { obj, originalMethods } of databaseServices) {
-      for (const { path: methodPath, fn } of originalMethods) {
-        let parent: Record<string, unknown> = obj;
-        for (let i = 0; i < methodPath.length - 1; i++) {
-          parent = parent[methodPath[i]] as Record<string, unknown>;
-        }
-        const lastKey = methodPath[methodPath.length - 1];
-
-        parent[lastKey] = function (...args: unknown[]) {
-          const start = performance.now();
-          const formatQueryArgs = () => {
-            try {
-              const targetName = methodPath.join('.');
-              const serializedArgs = args
-                .map((arg) => {
-                  if (typeof arg === 'object') {
-                    return JSON.stringify(arg, (_, v) => typeof v === 'bigint' ? v.toString() : v);
-                  }
-                  return String(arg);
-                })
-                .join(', ');
-              return `${targetName}(${serializedArgs})`;
-            } catch {
-              return `${methodPath.join('.')}(...)`;
-            }
-          };
-          const queryStr = formatQueryArgs();
-          const ret = fn.apply(this, args);
-
-          if (ret instanceof Promise) {
-            return ret.then(
-              (result) => {
-                const duration = performance.now() - start;
-                profile.queries.push({
-                  query: queryStr,
-                  duration,
-                  timestamp: new Date().toISOString(),
-                });
-                return result;
-              },
-              (err: unknown) => {
-                const duration = performance.now() - start;
-                profile.queries.push({
-                  query: `${queryStr} -> FAILED: ${(err instanceof Error) ? err.message : String(err)}`,
-                  duration,
-                  timestamp: new Date().toISOString(),
-                });
-                throw err;
-              },
-            );
-          }
-
-          const duration = performance.now() - start;
-          profile.queries.push({
-            query: queryStr,
-            duration,
-            timestamp: new Date().toISOString(),
-          });
-          return ret;
-        };
-      }
-    }
-
-    // Pipeline/Handler interception
-    if (studioApp.dispatcher && studioApp.dispatcher.router) {
-      const match = studioApp.dispatcher.router.lookup(uppercaseMethod, path, {});
-      if (match && match.route) {
-        matchedRoute = match.route;
-        originalState = compiledStates.get(matchedRoute);
-        if (originalState) {
-          const wrappedPipeline = originalState.pipeline.map(
-            (fn: any, index: number) => {
-              const stepName = fn.name || `anonymous`;
-              const isHandler = index === originalState.pipeline.length - 1;
-              const typeStr = isHandler ? 'handler' : 'middleware';
-              const name = isHandler
-                ? `Handler: ${stepName}`
-                : `Middleware: ${stepName}`;
-
-              return async function (req: any, res: any) {
-                if (req && req._profile) {
-                  const start = performance.now();
-                  const cloneBefore = {
-                    headers: safeClone(req.headers || {}),
-                    body: safeClone(req.body || {}),
-                    query: safeClone(req.query || {}),
-                    params: safeClone(req.params || {}),
-                    state: safeClone(req.state || {}),
-                  };
-                  try {
-                    const ret = fn(req, res);
-                    if (ret instanceof Promise) {
-                      await ret;
+                  const modelProto = Object.getPrototypeOf(model);
+                  if (modelProto && modelProto !== Object.prototype) {
+                    for (const modelKey of Object.getOwnPropertyNames(
+                      modelProto,
+                    )) {
+                      if (
+                        typeof model[modelKey] === 'function' &&
+                        modelKey !== 'constructor'
+                      ) {
+                        originalMethods.push({
+                          path: [key, modelKey],
+                          fn: model[modelKey] as (
+                            ...args: unknown[]
+                          ) => unknown,
+                        });
+                      }
                     }
-                  } catch (err: any) {
-                    if (err.name === 'ValidationError') {
-                      req._profile.validationErrors = extractValidationErrors(
-                        err,
-                        req,
+                  }
+                }
+              }
+
+              const serviceProto = Object.getPrototypeOf(svc);
+              if (serviceProto && serviceProto !== Object.prototype) {
+                for (const key of Object.getOwnPropertyNames(serviceProto)) {
+                  if (typeof svc[key] === 'function' && key !== 'constructor') {
+                    if (
+                      key.startsWith('$') ||
+                      key === 'query' ||
+                      key === 'execute'
+                    ) {
+                      originalMethods.push({
+                        path: [key],
+                        fn: svc[key] as (...args: unknown[]) => unknown,
+                      });
+                    }
+                  }
+                }
+              }
+
+              if (originalMethods.length > 0) {
+                databaseServices.push({ obj: svc, originalMethods });
+              }
+            }
+          }
+        }
+      } catch {
+        // Ignore
+      }
+
+      // Wrap database methods
+      for (const { obj, originalMethods } of databaseServices) {
+        for (const { path: methodPath, fn } of originalMethods) {
+          let parent: Record<string, unknown> = obj;
+          for (let i = 0; i < methodPath.length - 1; i++) {
+            parent = parent[methodPath[i]] as Record<string, unknown>;
+          }
+          const lastKey = methodPath[methodPath.length - 1];
+
+          parent[lastKey] = function (...args: unknown[]) {
+            const start = performance.now();
+            const formatQueryArgs = () => {
+              try {
+                const targetName = methodPath.join('.');
+                const serializedArgs = args
+                  .map((arg) => {
+                    if (typeof arg === 'object') {
+                      return JSON.stringify(arg, (_, v) =>
+                        typeof v === 'bigint' ? v.toString() : v,
                       );
                     }
-                    throw err;
-                  } finally {
-                    const duration = performance.now() - start;
-                    const cloneAfter = {
+                    return String(arg);
+                  })
+                  .join(', ');
+                return `${targetName}(${serializedArgs})`;
+              } catch {
+                return `${methodPath.join('.')}(...)`;
+              }
+            };
+            const queryStr = formatQueryArgs();
+            const ret = fn.apply(this, args);
+
+            if (ret instanceof Promise) {
+              return ret.then(
+                (result) => {
+                  const duration = performance.now() - start;
+                  profile.queries.push({
+                    query: queryStr,
+                    duration,
+                    timestamp: new Date().toISOString(),
+                  });
+                  return result;
+                },
+                (err: unknown) => {
+                  const duration = performance.now() - start;
+                  profile.queries.push({
+                    query: `${queryStr} -> FAILED: ${err instanceof Error ? err.message : String(err)}`,
+                    duration,
+                    timestamp: new Date().toISOString(),
+                  });
+                  throw err;
+                },
+              );
+            }
+
+            const duration = performance.now() - start;
+            profile.queries.push({
+              query: queryStr,
+              duration,
+              timestamp: new Date().toISOString(),
+            });
+            return ret;
+          };
+        }
+      }
+
+      // Pipeline/Handler interception
+      if (studioApp.dispatcher && studioApp.dispatcher.router) {
+        const match = studioApp.dispatcher.router.lookup(
+          uppercaseMethod,
+          path,
+          {},
+        );
+        if (match && match.route) {
+          matchedRoute = match.route;
+          originalState = compiledStates.get(matchedRoute);
+          if (originalState) {
+            const wrappedPipeline = originalState.pipeline.map(
+              (fn: any, index: number) => {
+                const stepName = fn.name || `anonymous`;
+                const isHandler = index === originalState.pipeline.length - 1;
+                const typeStr = isHandler ? 'handler' : 'middleware';
+                const name = isHandler
+                  ? `Handler: ${stepName}`
+                  : `Middleware: ${stepName}`;
+
+                return async function (req: any, res: any) {
+                  if (req && req._profile) {
+                    const start = performance.now();
+                    const cloneBefore = {
                       headers: safeClone(req.headers || {}),
                       body: safeClone(req.body || {}),
                       query: safeClone(req.query || {}),
                       params: safeClone(req.params || {}),
                       state: safeClone(req.state || {}),
                     };
-                    req._profile.timeline.push({
-                      name,
-                      type: typeStr,
-                      duration,
-                      before: cloneBefore,
-                      after: cloneAfter,
-                    });
+                    try {
+                      const ret = fn(req, res);
+                      if (ret instanceof Promise) {
+                        await ret;
+                      }
+                    } catch (err: any) {
+                      if (err.name === 'ValidationError') {
+                        req._profile.validationErrors = extractValidationErrors(
+                          err,
+                          req,
+                        );
+                      }
+                      throw err;
+                    } finally {
+                      const duration = performance.now() - start;
+                      const cloneAfter = {
+                        headers: safeClone(req.headers || {}),
+                        body: safeClone(req.body || {}),
+                        query: safeClone(req.query || {}),
+                        params: safeClone(req.params || {}),
+                        state: safeClone(req.state || {}),
+                      };
+                      req._profile.timeline.push({
+                        name,
+                        type: typeStr,
+                        duration,
+                        before: cloneBefore,
+                        after: cloneAfter,
+                      });
+                    }
+                  } else {
+                    return fn(req, res);
                   }
-                } else {
-                  return fn(req, res);
-                }
-              };
-            },
-          );
-          compiledStates.set(matchedRoute, {
-            ...originalState,
-            pipeline: wrappedPipeline,
-          });
+                };
+              },
+            );
+            compiledStates.set(matchedRoute, {
+              ...originalState,
+              pipeline: wrappedPipeline,
+            });
+          }
         }
       }
-    }
 
       await logCorrelationStorage.run(requestId, async () => {
         await studioApp.handle(mockReq, mockRes);
@@ -701,12 +727,22 @@ export async function handlePostRequest(
     notifyReplaysUpdated();
 
     // Feed perf stats from the profiled timeline
-    const timeline = (mockReq._profile?.timeline || []) as { name: string; type: string; duration: number }[];
+    const timeline = (mockReq._profile?.timeline || []) as {
+      name: string;
+      type: string;
+      duration: number;
+    }[];
     const queryDurations = (mockReq._profile?.queries || []).map((q: any) => ({
       query: String(q.query),
       durationMs: q.duration,
     }));
-    recordLatency(path, uppercaseMethod, proxyDuration, timeline, queryDurations);
+    recordLatency(
+      path,
+      uppercaseMethod,
+      proxyDuration,
+      timeline,
+      queryDurations,
+    );
 
     // Respond back to the studio client
     sendJson(res, {

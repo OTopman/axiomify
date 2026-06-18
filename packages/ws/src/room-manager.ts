@@ -268,7 +268,12 @@ export class RoomManager extends TypedEmitter {
    * Get dynamic statistics of active rooms and connections.
    * Required for integration with @axiomify/metrics.
    */
-  getStats(): { connectedClients: number; rooms: Record<string, number>; messagesReceived?: number; messagesSent?: number } {
+  getStats(): {
+    connectedClients: number;
+    rooms: Record<string, number>;
+    messagesReceived?: number;
+    messagesSent?: number;
+  } {
     const roomsStats: Record<string, number> = {};
     for (const [name, room] of this._rooms.entries()) {
       roomsStats[name] = room.size;
@@ -295,10 +300,18 @@ export class RoomManager extends TypedEmitter {
     const manager = this;
 
     // Track messages sent at transport level by proxying publish
-    if (wsClient && typeof wsClient.publish === 'function' && !(wsClient as any).__axiomifyWrapped) {
+    if (
+      wsClient &&
+      typeof wsClient.publish === 'function' &&
+      !(wsClient as any).__axiomifyWrapped
+    ) {
       const originalPublish = wsClient.publish;
       (wsClient as any).__axiomifyWrapped = true;
-      wsClient.publish = function (topic: string, data: any, isBinary?: boolean) {
+      wsClient.publish = function (
+        topic: string,
+        data: any,
+        isBinary?: boolean,
+      ) {
         const room = manager.room(topic);
         const count = room ? room.size : 1;
         manager._messagesSent += count;
@@ -592,7 +605,7 @@ export class RoomManager extends TypedEmitter {
     if (clientRoomSet.size >= this._maxRoomsPerClient) {
       throw new Error(
         `Room limit exceeded: client ${clientId} is already in ${clientRoomSet.size} rooms ` +
-        `(max: ${this._maxRoomsPerClient}). Leave a room before joining a new one.`,
+          `(max: ${this._maxRoomsPerClient}). Leave a room before joining a new one.`,
       );
     }
 

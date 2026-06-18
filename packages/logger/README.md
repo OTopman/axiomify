@@ -33,13 +33,19 @@ useLogger(app, {
 
 ## Options
 
-| Option            | Type                                     | Default  | Description                                                                                                                |
-| ----------------- | ---------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `level`           | `'debug' \| 'info' \| 'warn' \| 'error'` | `'info'` | Minimum log level. Messages below this level are suppressed.                                                               |
-| `sensitiveFields` | `string[]`                               | `[]`     | Field names (case-insensitive) to mask in headers and body. Masked as `'****'`.                                            |
-| `beautify`        | `boolean`                                | `false`  | Colorised, human-readable output for local development. JSON in production.                                                |
-| `includeHeaders`  | `boolean`                                | `false`  | Include request headers in the log entry. Enable only when the log pipeline is secure — headers often contain auth tokens. |
-| `includePayload`  | `boolean`                                | `false`  | Include the response payload. Enable only when PII content is acceptable in logs.                                          |
+| Option                   | Type                                     | Default  | Description                                                                          |
+| ------------------------ | ---------------------------------------- | -------- | ------------------------------------------------------------------------------------ |
+| `level`                  | `'debug' \| 'info' \| 'warn' \| 'error'` | `'info'` | Minimum log level. Messages below this level are suppressed.                         |
+| `sensitiveFields`        | `string[]`                               | `[]`     | Field names (case-insensitive) to mask in headers and body. Masked as `'****'`.      |
+| `beautify`               | `boolean`                                | `false`  | Colorised, human-readable output for local development. JSON in production.          |
+| `includeHeaders`         | `boolean`                                | `false`  | Include request headers in log entries. Enable only when the log pipeline is secure. |
+| `includeParams`          | `boolean`                                | `false`  | Include request route parameters (`req.params`) in log entries.                      |
+| `includeQuery`           | `boolean`                                | `false`  | Include request query parameters (`req.query`) in log entries.                       |
+| `includeBody`            | `boolean`                                | `false`  | Include request body (`req.body`) in log entries.                                    |
+| `includeResponseHeaders` | `boolean`                                | `false`  | Include response headers in log entries.                                             |
+| `includeResponsePayload` | `boolean`                                | `false`  | Include response payload/data in log entries.                                        |
+| `includePayload`         | `boolean`                                | `false`  | Alias for `includeResponsePayload`.                                                  |
+| `includeState`           | `boolean`                                | `false`  | Include request state (`req.state`) in log entries.                                  |
 
 ## Log output
 
@@ -102,7 +108,12 @@ useLogger(app, {
   level: 'debug',
   beautify: true, // coloured output with readable timestamps
   includeHeaders: true,
-  includePayload: true,
+  includeParams: true,
+  includeQuery: true,
+  includeBody: true,
+  includeResponseHeaders: true,
+  includeResponsePayload: true,
+  includeState: true,
 });
 ```
 

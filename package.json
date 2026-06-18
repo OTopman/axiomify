@@ -2,7 +2,7 @@
   "name": "axiomify-workspace",
   "description": "Zero-compromise Node.js framework with Radix routing, Zod-native validation, and a modular plugin ecosystem for building high-performance, type-safe APIs.",
   "private": true,
-  "version": "6.3.2",
+  "version": "6.3.3",
   "engines": {
     "node": ">=20.0.0 <23.0.0"
   },
@@ -11,8 +11,10 @@
     "examples/*"
   ],
   "scripts": {
-    "build": "npm run build:core && npm run build:adapters && npm run build:plugins && npm run build:studio-ui && npm run build:cli && npm run build:sdk-runtime",
+    "build": "npm run build:core && npm run build:vault && npm run build:jobs && npm run build:adapters && npm run build:plugins && npm run build:studio-ui && npm run build:cli && npm run build:sdk-runtime",
     "build:core": "npm run build -w @axiomify/core",
+    "build:vault": "npm run build -w @axiomify/vault",
+    "build:jobs": "npm run build -w @axiomify/jobs",
     "build:adapters": "npm run build -w @axiomify/native",
     "build:plugins": "npm run build -w @axiomify/auth -w @axiomify/cors -w @axiomify/fingerprint -w @axiomify/graphql -w @axiomify/helmet -w @axiomify/logger -w @axiomify/metrics -w @axiomify/openapi -w @axiomify/rate-limit -w @axiomify/security -w @axiomify/socket.io -w @axiomify/static -w @axiomify/upload -w @axiomify/ws",
     "build:cli": "npm run build -w @axiomify/cli",
@@ -28,7 +30,7 @@
     "format:check": "prettier --check \"packages/**/*.{ts,json,md}\" \"docs/**/*.md\""
   },
   "devDependencies": {
-    "@changesets/cli": "^2.30.0",
+    "@changesets/cli": "^2.6.0",
     "@hapi/hapi": "^21.4.9",
     "@types/node": "^20.19.43",
     "@typescript-eslint/eslint-plugin": "^8.61.0",
@@ -69,6 +71,9 @@
     "rest-api"
   ],
   "dependencies": {
+    "@opentelemetry/auto-instrumentations-node": "0.77.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "0.219.0",
+    "@opentelemetry/sdk-node": "0.219.0",
     "ajv": "^8.20.0",
     "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#v20.68.0"
   },

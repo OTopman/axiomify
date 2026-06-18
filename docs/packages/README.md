@@ -9,6 +9,7 @@ This index lists every Axiomify package alphabetically.
 - [@axiomify/fingerprint](./fingerprint.md)
 - [@axiomify/graphql](./graphql.md)
 - [@axiomify/helmet](./helmet.md)
+- [@axiomify/jobs](./jobs.md)
 - [@axiomify/logger](./logger.md)
 - [@axiomify/metrics](./metrics.md)
 - [@axiomify/native](./native.md)
@@ -19,4 +20,5 @@ This index lists every Axiomify package alphabetically.
 - [@axiomify/socket.io](./socket.io.md)
 - [@axiomify/static](./static.md)
 - [@axiomify/upload](./upload.md)
+- [@axiomify/vault](./vault.md)
 - [@axiomify/ws](./ws.md)

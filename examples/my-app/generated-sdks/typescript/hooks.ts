@@ -66,6 +66,13 @@ export class ApiHooks {
     });
   }
 
+  usePostApiCheckout(options?: UseMutationOptions<void, Error, { body: Types.PostApiCheckoutRequest }>) {
+    return useMutation({
+      mutationFn: (req) => this.client.postApiCheckout(req),
+      ...options,
+    });
+  }
+
   useGetApiSecureData(options?: Omit<UseQueryOptions<void, Error>, 'queryKey' | 'queryFn'>) {
     return useQuery({
       queryKey: ["getApiSecureData"],

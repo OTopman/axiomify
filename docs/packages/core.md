@@ -223,6 +223,48 @@ app.addHook('onError', async (err, req, res) => {
 });
 ```
 
+## HTTP Error Hierarchy
+
+Axiomify exports a full semantic hierarchy of standard HTTP errors. Throwing these errors inside hooks or route handlers automatically sets the corresponding HTTP status code and response message:
+
+```typescript
+import {
+  BadRequestError,
+  UnauthorizedError,
+  ForbiddenError,
+  NotFoundError,
+  ConflictError,
+  TooManyRequestsError,
+  InternalServerError,
+  GatewayTimeoutError,
+} from '@axiomify/core';
+
+app.route({
+  method: 'GET',
+  path: '/secure',
+  handler: async (req, res) => {
+    if (!req.headers.authorization) {
+      throw new UnauthorizedError('Missing access token');
+    }
+    // ...
+  },
+});
+```
+
+The exported HTTP error classes include:
+
+- `HttpError` (Base class containing `.statusCode`)
+- `BadRequestError` (400)
+- `UnauthorizedError` (401)
+- `ForbiddenError` (403)
+- `NotFoundError` (404)
+- `ConflictError` (409)
+- `UnprocessableError` (422)
+- `TooManyRequestsError` (429)
+- `InternalServerError` (500)
+- `ServiceUnavailableError` (503)
+- `GatewayTimeoutError` (504)
+
 ## Validation internals
 
 ### AJV + transform detection
@@ -250,8 +292,8 @@ At request time:
 
 | Export                 | Description                                                                                                                                      |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ADAPTER_LOCK_TOKEN`   | `unique symbol` — adapter authentication token                                                                                                   |
-| `AdapterLockToken`     | TypeScript type of the token                                                                                                                     |
+| `ADAPTER_LOCK_TOKEN`   | `AdapterCapability` — adapter authentication capability token (sealed frozen object reference)                                                   |
+| `AdapterCapability`    | TypeScript type of the capability token                                                                                                          |
 | `AxiomifyLogger`       | `{ warn, error }` — injectable logger interface                                                                                                  |
 | `defaultLogger`        | `console`-backed default                                                                                                                         |
 | `AppModule`            | Named plugin with dependency declaration                                                                                                         |

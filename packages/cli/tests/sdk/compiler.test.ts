@@ -123,9 +123,7 @@ describe('CompilerPipeline', () => {
           queryParams: [],
           headerParams: [],
           responses: {},
-          security: [
-            { schemeName: 'bearer', scopes: [] },
-          ],
+          security: [{ schemeName: 'bearer', scopes: [] }],
         },
       ],
       servers: [],
@@ -139,7 +137,9 @@ describe('CompilerPipeline', () => {
 
     expect(result.hasErrors).toBe(false);
     expect(result.diagnostics.length).toBeGreaterThan(0);
-    const warnings = result.diagnostics.filter((d: any) => d.severity === 'warning');
+    const warnings = result.diagnostics.filter(
+      (d: any) => d.severity === 'warning',
+    );
     expect(warnings).toHaveLength(1);
     expect(warnings[0].code).toBe('MISSING_SECURITY_SCHEME');
   });

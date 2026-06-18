@@ -1,23 +1,41 @@
 /**
- * Adapter-internal protocol — symbols and types that adapter packages must
- * import to call privileged Axiomify APIs.
+ * Adapter-internal protocol — capability token and types that adapter packages
+ * must import to call privileged Axiomify APIs.
  *
- * Why a symbol token? TypeScript has no friend-class mechanism. Methods like
- * `Axiomify.lockRoutes()` and `Axiomify.handleMatchedRoute()` are documented
- * `@internal` because they are part of the adapter protocol, NOT the user API.
- * Without a runtime guard, user code can call them anyway and break invariants
- * (silent route drift, double-routing). The symbol token makes accidental
- * misuse a hard runtime error while remaining trivial for first-party adapters
- * to opt into.
+ * ## Why a frozen capability object instead of a symbol?
  *
- * The token is exported so that any adapter — including third-party ones —
- * can authenticate with the core. It is NOT a security boundary; it is an
- * intent gate.
+ * The previous implementation used `Symbol.for('axiomify.native.lock.v1')` which
+ * created two attack surfaces:
+ *
+ *  1. **Symbol forgery**: any code can create `Symbol('axiomify.native.lock')` —
+ *     `Symbol.for()` is globally shared and can be reproduced by string.
+ *  2. **Stack-trace authorization**: the old `lockRoutes()` supplemented the symbol
+ *     check with V8 stack frame inspection (`callerFrame.includes('packages/native')`).
+ *     After `tsup` bundles all packages to a single file, those path strings vanish —
+ *     making every legitimate adapter call fail in production bundles.
+ *
+ * A **frozen capability object** created exactly once at module-init time is:
+ *  - Unforgeable: you cannot create a second reference equal (`===`) to it without
+ *    importing it from this module.
+ *  - Bundle-safe: object identity survives bundling (same module instance, same reference).
+ *  - Not a security boundary: adapters are trusted; this is an intent gate only.
+ *
+ * The token is exported so first- and third-party adapters can authenticate with
+ * privileged core APIs (`lockRoutes`, `handleMatchedRoute`).
  */
-export const ADAPTER_LOCK_TOKEN: unique symbol = Symbol.for(
-  'axiomify.adapter.lock.v1',
-);
-export type AdapterLockToken = typeof ADAPTER_LOCK_TOKEN;
+
+const _adapterCapability = Object.freeze({
+  _brand: 'axiomify.adapter.v2',
+} as const);
+
+/** Opaque capability token. Pass to privileged APIs to prove adapter identity. */
+export type AdapterCapability = typeof _adapterCapability;
+
+/** The single instance of the adapter capability token. Import and pass to lockRoutes(). */
+export const ADAPTER_LOCK_TOKEN: AdapterCapability = _adapterCapability;
+
+/** @deprecated Use AdapterCapability. Will be removed in v6. */
+export type AdapterLockToken = AdapterCapability;
 
 /**
  * Pluggable logger used across core for non-fatal warnings (hook errors,

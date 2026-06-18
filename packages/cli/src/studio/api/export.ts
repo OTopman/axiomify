@@ -79,7 +79,8 @@ function buildHtmlReport(
     .join('\n');
 
   // Security findings HTML
-  let securityHtml = '<p style="color:#64748b;font-style:italic;">No security findings.</p>';
+  let securityHtml =
+    '<p style="color:#64748b;font-style:italic;">No security findings.</p>';
   if (security.length > 0) {
     securityHtml = security
       .map(
@@ -95,7 +96,8 @@ function buildHtmlReport(
   }
 
   // Contract results HTML
-  let contractsHtml = '<p style="color:#64748b;font-style:italic;">No contract tests run.</p>';
+  let contractsHtml =
+    '<p style="color:#64748b;font-style:italic;">No contract tests run.</p>';
   if (contracts.length > 0) {
     const rows = contracts
       .map(
@@ -117,7 +119,12 @@ function buildHtmlReport(
   for (const r of httpRoutes) {
     const bucket = routeLatencies.get(`${r.method}:${r.path}`);
     if (bucket && bucket.count > 0) {
-      const p95Color = bucket.p95 <= 200 ? '#22c55e' : bucket.p95 <= 500 ? '#eab308' : '#ef4444';
+      const p95Color =
+        bucket.p95 <= 200
+          ? '#22c55e'
+          : bucket.p95 <= 500
+            ? '#eab308'
+            : '#ef4444';
       perfRows += `<tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;"><code>${escHtml(r.method)}</code></td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;"><code>${escHtml(r.path)}</code></td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;">${bucket.count}</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;">${bucket.p50.toFixed(1)}ms</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;"><strong style="color:${p95Color};">${bucket.p95.toFixed(1)}ms</strong></td></tr>`;
     }
   }
@@ -190,13 +197,17 @@ function buildHtmlReport(
       ${contractsHtml}
     </div>
 
-    ${perfRows ? `<div class="section">
+    ${
+      perfRows
+        ? `<div class="section">
       <h2>⚡ Performance Summary</h2>
       <table>
         <thead><tr style="background:#f8fafc;"><th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0;">Method</th><th style="padding:8px 12px;text-align:left;border-bottom:2px solid #e2e8f0;">Path</th><th style="padding:8px 12px;text-align:center;border-bottom:2px solid #e2e8f0;">Calls</th><th style="padding:8px 12px;text-align:center;border-bottom:2px solid #e2e8f0;">P50</th><th style="padding:8px 12px;text-align:center;border-bottom:2px solid #e2e8f0;">P95</th></tr></thead>
         <tbody>${perfRows}</tbody>
       </table>
-    </div>` : ''}
+    </div>`
+        : ''
+    }
 
     <div class="footer">
       Axiomify Studio v1.0 • Report generated automatically
@@ -310,13 +321,15 @@ function buildMarkdownReport(
 // ── PDF Report Generator ────────────────────────────────────────────────────
 
 function sanitizePdfText(text: string): string {
-  return text
-    .replace(/[\u{1f300}-\u{1faff}]/gu, '')
-    // eslint-disable-next-line no-control-regex
-    .replace(/[^\x09\x0a\x0d\x20-\x7e]/g, '')
-    .replace(/\\/g, '\\\\')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)');
+  return (
+    text
+      .replace(/[\u{1f300}-\u{1faff}]/gu, '')
+      // eslint-disable-next-line no-control-regex
+      .replace(/[^\x09\x0a\x0d\x20-\x7e]/g, '')
+      .replace(/\\/g, '\\\\')
+      .replace(/\(/g, '\\(')
+      .replace(/\)/g, '\\)')
+  );
 }
 
 function stripMarkdown(text: string): string {
@@ -394,8 +407,7 @@ function buildPdfReport(markdown: string): Buffer {
       `<< /Length ${Buffer.byteLength(content, 'utf8')} >>\nstream\n${content}\nendstream`;
   }
 
-  objects[1] =
-    `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageObjectIds.length} >>`;
+  objects[1] = `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageObjectIds.length} >>`;
 
   let pdf = '%PDF-1.4\n';
   const offsets = [0];

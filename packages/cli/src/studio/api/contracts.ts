@@ -1,5 +1,9 @@
 import type { ServerResponse } from 'node:http';
-import type { DiscoveredRoute, DiscoveredSchema, StudioDiscoveryResult } from '../discovery/types';
+import type {
+  DiscoveredRoute,
+  DiscoveredSchema,
+  StudioDiscoveryResult,
+} from '../discovery/types';
 import { sendJson } from '../server/http-server';
 import { logCorrelationStorage } from './logs';
 
@@ -142,7 +146,9 @@ function validateResponse(
     const valid = validate(body);
     if (!valid) {
       const violations = (validate.errors || []).map((err: any) => {
-        const path = err.instancePath ? `response${err.instancePath}` : 'response';
+        const path = err.instancePath
+          ? `response${err.instancePath}`
+          : 'response';
         return `${path}: ${err.message}`;
       });
       return { passed: false, violations };
@@ -165,7 +171,11 @@ async function mockRequest(
   path: string,
   headers: Record<string, string> = {},
   body?: any,
-): Promise<{ status: number; headers: Record<string, string>; body?: string } | null> {
+): Promise<{
+  status: number;
+  headers: Record<string, string>;
+  body?: string;
+} | null> {
   return new Promise((resolve) => {
     let responseStatus = 200;
     const responseHeaders: Record<string, string> = {};
@@ -182,7 +192,7 @@ async function mockRequest(
         ...headers,
       },
       state: {},
-      signal: { addEventListener: () => { } },
+      signal: { addEventListener: () => {} },
       on: (event: string, callback: any) => {
         if (event === 'data' && body) {
           callback(Buffer.from(JSON.stringify(body)));
@@ -203,7 +213,8 @@ async function mockRequest(
         return this;
       },
       send(data: any) {
-        responseBody = typeof data === 'object' ? JSON.stringify(data) : String(data);
+        responseBody =
+          typeof data === 'object' ? JSON.stringify(data) : String(data);
         resolve({
           status: responseStatus,
           headers: responseHeaders,
@@ -254,7 +265,9 @@ export async function runContractTest(
   let targetPath = route.path;
   const paramMatches = targetPath.match(/:[a-zA-Z0-9_]+/g);
   if (paramMatches) {
-    const mockParams = schema.params ? generateMockFromSchema(schema.params) : {};
+    const mockParams = schema.params
+      ? generateMockFromSchema(schema.params)
+      : {};
     for (const match of paramMatches) {
       const key = match.slice(1);
       const val = mockParams[key] !== undefined ? mockParams[key] : '1';
@@ -269,7 +282,9 @@ export async function runContractTest(
       const qParts = [];
       for (const [k, v] of Object.entries(mockQuery)) {
         if (v !== undefined) {
-          qParts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+          qParts.push(
+            `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`,
+          );
         }
       }
       if (qParts.length > 0) {
@@ -286,7 +301,13 @@ export async function runContractTest(
 
   // 4. Send request
   try {
-    const res = await mockRequest(app, route.method, targetPath, {}, requestPayload);
+    const res = await mockRequest(
+      app,
+      route.method,
+      targetPath,
+      {},
+      requestPayload,
+    );
     if (!res) {
       return {
         routeId,
@@ -322,7 +343,9 @@ export async function runContractTest(
       !('allOf' in rawResponseSchema);
 
     if (isMapping) {
-      matchingSchema = (rawResponseSchema as Record<string, any>)[String(statusCode)];
+      matchingSchema = (rawResponseSchema as Record<string, any>)[
+        String(statusCode)
+      ];
     } else {
       // If not mapping, it's the direct schema for success (2xx)
       if (statusCode >= 200 && statusCode < 300) {
@@ -334,9 +357,14 @@ export async function runContractTest(
     const hasAuthPlugin =
       route.plugins &&
       route.plugins.some(
-        (p) => p.toLowerCase().includes('auth') || p.toLowerCase().includes('jwt'),
+        (p) =>
+          p.toLowerCase().includes('auth') || p.toLowerCase().includes('jwt'),
       );
-    if ((statusCode === 401 || statusCode === 403) && !matchingSchema && hasAuthPlugin) {
+    if (
+      (statusCode === 401 || statusCode === 403) &&
+      !matchingSchema &&
+      hasAuthPlugin
+    ) {
       return {
         routeId,
         route: route.path,
@@ -412,7 +440,9 @@ export async function runAllContractTests(
   for (const r of discovery.routes) {
     if (r.isWs) continue;
 
-    const schema = discovery.schemas.find((s) => s.routeId === `${r.method}:${r.path}`);
+    const schema = discovery.schemas.find(
+      (s) => s.routeId === `${r.method}:${r.path}`,
+    );
     if (schema) {
       const res = await runContractTest(app, r, schema);
       results.push(res);
@@ -455,7 +485,11 @@ export function handlePostRunContracts(
       sendJson(res, { success: true, results });
     })
     .catch((err) => {
-      sendJson(res, { error: 'Failed to run contract tests', details: String(err) }, 500);
+      sendJson(
+        res,
+        { error: 'Failed to run contract tests', details: String(err) },
+        500,
+      );
     });
 }
 

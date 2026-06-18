@@ -163,12 +163,22 @@ export class RequestDispatcher {
 
     // Unroll single-step pipeline: avoid loop + conditional overhead for the
     // common case of no plugins + no schema (just the handler).
+    //
+    // Sync fast-path: check whether the return value is a Promise before
+    // awaiting — avoids creating a microtask for synchronous middleware/handlers
+    // (the common case for lightweight in-process operations).
     if (pipeline.length === 1) {
-      if (!req.signal?.aborted) await pipeline[0](req, dispatchRes);
+      if (!req.signal?.aborted) {
+        const ret = pipeline[0](req, dispatchRes);
+        if (ret !== undefined && typeof (ret as any).then === 'function')
+          await ret;
+      }
     } else {
       for (let i = 0; i < pipeline.length; i++) {
         if (dispatchRes.headersSent || req.signal?.aborted) break;
-        await pipeline[i](req, dispatchRes);
+        const ret = pipeline[i](req, dispatchRes);
+        if (ret !== undefined && typeof (ret as any).then === 'function')
+          await ret;
       }
     }
 
@@ -188,15 +198,39 @@ export class RequestDispatcher {
     if (onErrorRet) await onErrorRet;
     if (res.headersSent) return;
 
+    const anyErr = err as Record<string, unknown>;
+
+    // Derive HTTP status code from error. HttpError / AxiomifyError / ValidationError
+    // all carry .statusCode; plain Error objects default to 500.
+    const statusCode =
+      typeof anyErr.statusCode === 'number'
+        ? anyErr.statusCode
+        : typeof anyErr.status === 'number'
+          ? anyErr.status
+          : 500;
+
+    const message =
+      typeof anyErr.message === 'string'
+        ? anyErr.message
+        : 'Internal Server Error';
+
+    // ValidationError carries structured field errors; always safe to send.
+    if (err instanceof ValidationError) {
+      res
+        .status(err.statusCode || 400)
+        .send(err.errors || (anyErr as any).issues, err.message);
+      return;
+    }
+
     const isProduction = process.env.NODE_ENV === 'production';
     if (isProduction) {
-      if (err instanceof ValidationError) {
-        res
-          .status(err.statusCode || 400)
-          .send(err.errors || (err as any).issues, err.message);
+      // In production: never leak internal details.
+      // Known HTTP errors (4xx) surface their message; 5xx are generic.
+      if (statusCode < 500) {
+        res.status(statusCode).send(null, message);
       } else {
         res
-          .status(500)
+          .status(statusCode)
           .send(
             { error: 'Internal Server Error', code: 'INTERNAL_ERROR' },
             'Internal Server Error',
@@ -205,21 +239,15 @@ export class RequestDispatcher {
       return;
     }
 
-    const anyErr = err as Record<string, unknown>;
-    const statusCode =
-      typeof anyErr.statusCode === 'number'
-        ? anyErr.statusCode
-        : typeof anyErr.status === 'number'
-          ? anyErr.status
-          : 500;
-    const message =
-      typeof anyErr.message === 'string'
-        ? anyErr.message
-        : 'Internal Server Error';
-    const errorData = anyErr.issues ??
-      anyErr.errors ?? {
-        stack: typeof anyErr.stack === 'string' ? anyErr.stack : undefined,
-      };
+    // Non-production: surface structured error detail but NEVER include stack
+    // traces in the HTTP response body — stacks belong in server logs only.
+    // Stack trace leakage in staging/dev has caused real breaches.
+    if (typeof anyErr.stack === 'string') {
+      // Log internally
+      console.error('[Axiomify] Unhandled error:', anyErr.stack);
+    }
+
+    const errorData = anyErr.issues ?? anyErr.errors ?? undefined;
     res.status(statusCode).send(errorData, message);
   }
 }

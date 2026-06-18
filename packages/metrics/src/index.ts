@@ -212,12 +212,14 @@ export function useMetrics(app: Axiomify, options: MetricsOptions = {}): void {
         output += `ws_connected_clients ${wsStats.connectedClients}\n`;
 
         if (wsStats.messagesReceived !== undefined) {
-          output += '\n# HELP ws_messages_received_total Total WebSocket messages received\n';
+          output +=
+            '\n# HELP ws_messages_received_total Total WebSocket messages received\n';
           output += '# TYPE ws_messages_received_total counter\n';
           output += `ws_messages_received_total ${wsStats.messagesReceived}\n`;
         }
         if (wsStats.messagesSent !== undefined) {
-          output += '\n# HELP ws_messages_sent_total Total WebSocket messages sent\n';
+          output +=
+            '\n# HELP ws_messages_sent_total Total WebSocket messages sent\n';
           output += '# TYPE ws_messages_sent_total counter\n';
           output += `ws_messages_sent_total ${wsStats.messagesSent}\n`;
         }

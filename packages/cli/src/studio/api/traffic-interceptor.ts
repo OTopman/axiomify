@@ -20,7 +20,9 @@ function safeClone(val: any): any {
   if (val === undefined) return undefined;
   if (val === null) return null;
   try {
-    const str = JSON.stringify(val, (_, v) => typeof v === 'bigint' ? v.toString() : v);
+    const str = JSON.stringify(val, (_, v) =>
+      typeof v === 'bigint' ? v.toString() : v,
+    );
     if (str.length > 50000) {
       return '[Payload too large (>50KB) — skipped]';
     }
@@ -42,7 +44,7 @@ function safeClone(val: any): any {
     seen.add(item);
 
     if (Array.isArray(item)) {
-      return item.map(i => clone(i));
+      return item.map((i) => clone(i));
     }
 
     const obj: any = {};
@@ -71,12 +73,15 @@ export function instrumentTrafficProfiling(app: any): void {
     app.addHook('onRequest', (req: any, res: any) => {
       if (!req) return;
       // Skip Studio's own internal requests
-      const path = req.path || (req.url ? new URL(req.url, 'http://x').pathname : '/');
+      const path =
+        req.path || (req.url ? new URL(req.url, 'http://x').pathname : '/');
       if (path.startsWith('/__studio/')) return;
-      
-      req.id = req.id || `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+      req.id =
+        req.id ||
+        `req-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       req.__perfStart = performance.now();
-      
+
       // Initialize profile container
       req._profile = {
         timeline: [],
@@ -101,26 +106,26 @@ export function instrumentTrafficProfiling(app: any): void {
         let responseBody: any = null;
 
         const originalStatus = res.status;
-        res.status = function(...args: any[]) {
+        res.status = function (...args: any[]) {
           responseStatus = args[0];
           return originalStatus.apply(this, args);
         };
 
         const originalHeader = res.header;
-        res.header = function(...args: any[]) {
+        res.header = function (...args: any[]) {
           responseHeaders[args[0].toLowerCase()] = args[1];
           return originalHeader.apply(this, args);
         };
 
         const originalSend = res.send;
-        res.send = function(...args: any[]) {
+        res.send = function (...args: any[]) {
           responseBody = args[0];
           return originalSend.apply(this, args);
         };
 
         const originalSendRaw = res.sendRaw;
         if (originalSendRaw) {
-          res.sendRaw = function(...args: any[]) {
+          res.sendRaw = function (...args: any[]) {
             responseBody = args[0];
             if (args[1]) responseHeaders['content-type'] = args[1];
             return originalSendRaw.apply(this, args);
@@ -129,7 +134,7 @@ export function instrumentTrafficProfiling(app: any): void {
 
         const originalStream = res.stream;
         if (originalStream) {
-          res.stream = function(...args: any[]) {
+          res.stream = function (...args: any[]) {
             responseBody = '[Streamed Content]';
             if (args[1]) responseHeaders['content-type'] = args[1];
             return originalStream.apply(this, args);
@@ -146,13 +151,18 @@ export function instrumentTrafficProfiling(app: any): void {
 
     app.addHook('onPostHandler', (req: any, _res: any) => {
       if (!req || req.__perfStart == null) return;
-      const path = req.path || (req.url ? new URL(req.url, 'http://x').pathname : '/');
+      const path =
+        req.path || (req.url ? new URL(req.url, 'http://x').pathname : '/');
       if (path.startsWith('/__studio/')) return;
 
       const totalDuration = performance.now() - req.__perfStart;
       const method = (req.method || 'GET').toUpperCase();
-      
-      const timeline = (req._profile?.timeline || req.__perfTimeline || []) as { name: string; type: string; duration: number }[];
+
+      const timeline = (req._profile?.timeline || req.__perfTimeline || []) as {
+        name: string;
+        type: string;
+        duration: number;
+      }[];
       const queryDurations = (req._profile?.queries || []).map((q: any) => ({
         query: String(q.query),
         durationMs: q.durationMs,
@@ -328,7 +338,9 @@ function _wrapCompiledPipelines(app: any): void {
         const stepName = fn.name || `step-${index}`;
         const isHandler = index === state.pipeline.length - 1;
         const typeStr = isHandler ? 'handler' : 'middleware';
-        const label = isHandler ? `Handler: ${stepName}` : `Middleware: ${stepName}`;
+        const label = isHandler
+          ? `Handler: ${stepName}`
+          : `Middleware: ${stepName}`;
 
         return async function perfWrappedStep(req: any, res: any) {
           const runStep = async () => {
@@ -382,7 +394,11 @@ function _wrapCompiledPipelines(app: any): void {
         };
       });
 
-      compiledStates.set(route, { ...state, pipeline: wrappedPipeline, __perfWrapped: true } as any);
+      compiledStates.set(route, {
+        ...state,
+        pipeline: wrappedPipeline,
+        __perfWrapped: true,
+      } as any);
     }
   } catch {
     // Non-fatal
@@ -403,19 +419,25 @@ function _wrapServiceMethods(app: any): void {
 
       const isNamedService =
         tokenStr.length > 2 &&
-        !['config', 'options', 'env'].some(w => tokenStr.includes(w));
+        !['config', 'options', 'env'].some((w) => tokenStr.includes(w));
       if (!isNamedService) continue;
 
       const proto = Object.getPrototypeOf(service);
-      const methods = proto && proto !== Object.prototype
-        ? Object.getOwnPropertyNames(proto).filter(k => k !== 'constructor' && typeof service[k] === 'function')
-        : Object.keys(service).filter(k => typeof service[k] === 'function');
+      const methods =
+        proto && proto !== Object.prototype
+          ? Object.getOwnPropertyNames(proto).filter(
+              (k) => k !== 'constructor' && typeof service[k] === 'function',
+            )
+          : Object.keys(service).filter(
+              (k) => typeof service[k] === 'function',
+            );
 
       for (const method of methods) {
         const original = service[method];
-        if (typeof original !== 'function' || (original as any).__perfWrapped) continue;
+        if (typeof original !== 'function' || (original as any).__perfWrapped)
+          continue;
 
-        service[method] = function(...args: any[]) {
+        service[method] = function (...args: any[]) {
           const start = performance.now();
           const req = requestContextStorage.getStore();
 
@@ -425,7 +447,9 @@ function _wrapServiceMethods(app: any): void {
               const serializedArgs = args
                 .map((arg) => {
                   if (typeof arg === 'object') {
-                    return JSON.stringify(arg, (_, v) => typeof v === 'bigint' ? v.toString() : v);
+                    return JSON.stringify(arg, (_, v) =>
+                      typeof v === 'bigint' ? v.toString() : v,
+                    );
                   }
                   return String(arg);
                 })

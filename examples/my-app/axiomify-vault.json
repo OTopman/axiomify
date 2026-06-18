@@ -1,0 +1,16 @@
+{
+  "wrappedDek": {
+    "ciphertext": "0ff3104a5668297b63ef2d19d0b77b5d10ab2454813928afa13e676adba165c7b9f9a554738d34764d29387f9286e7fff62938e2ef1e25c4c494176b393ea875",
+    "iv": "d0e79580114dc397e4dd1ab0",
+    "tag": "213acf1abb1a4e1726a18bbac2a10d5d"
+  },
+  "secrets": {
+    "JWT_SECRET": {
+      "ciphertext": "6f569a0f3c55ac55fd73872e29ab0312fc64b064139b7ab594b3a44dfd8d99cc2d8d75c8f5a1254da3b4e82556e90f523f2148681d93892ae1507b20514e93ec",
+      "iv": "39790e21c0972b7b471a4c87",
+      "tag": "2e92d88290608ad8e57103b48cd824d7"
+    }
+  },
+  "sourceChecksum": "1e309d76999263f1d46bff78137d413419ba98087547255061568719166adddb",
+  "version": 2
+}

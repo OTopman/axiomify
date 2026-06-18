@@ -1,6 +1,10 @@
 import type { ServerResponse } from 'node:http';
 import { sendJson } from '../server/http-server';
-import type { StudioDiscoveryResult, DiscoveredRoute, DiscoveredSchema } from '../discovery/types';
+import type {
+  StudioDiscoveryResult,
+  DiscoveredRoute,
+  DiscoveredSchema,
+} from '../discovery/types';
 
 export interface SdkImpact {
   id: string;
@@ -26,9 +30,12 @@ function diffJsonSchema(
   pathPrefix: string,
   before: any,
   after: any,
-  isResponse: boolean
+  isResponse: boolean,
 ): { changeType: 'breaking' | 'non-breaking' | 'patch'; detail: string }[] {
-  const changes: { changeType: 'breaking' | 'non-breaking' | 'patch'; detail: string }[] = [];
+  const changes: {
+    changeType: 'breaking' | 'non-breaking' | 'patch';
+    detail: string;
+  }[] = [];
 
   if (!before || !after) return changes;
 
@@ -36,7 +43,7 @@ function diffJsonSchema(
   if (before.type !== after.type) {
     changes.push({
       changeType: 'breaking',
-      detail: `Type of "${pathPrefix}" changed from ${before.type || 'any'} to ${after.type || 'any'}`
+      detail: `Type of "${pathPrefix}" changed from ${before.type || 'any'} to ${after.type || 'any'}`,
     });
     return changes;
   }
@@ -52,7 +59,7 @@ function diffJsonSchema(
       if (!(key in afterProps)) {
         changes.push({
           changeType: 'breaking',
-          detail: `Field "${pathPrefix ? `${pathPrefix}.${key}` : key}" was removed`
+          detail: `Field "${pathPrefix ? `${pathPrefix}.${key}` : key}" was removed`,
         });
       }
     }
@@ -64,12 +71,12 @@ function diffJsonSchema(
         if (isReq && !isResponse) {
           changes.push({
             changeType: 'breaking',
-            detail: `Required field "${pathPrefix ? `${pathPrefix}.${key}` : key}" was added`
+            detail: `Required field "${pathPrefix ? `${pathPrefix}.${key}` : key}" was added`,
           });
         } else {
           changes.push({
             changeType: 'non-breaking',
-            detail: `Optional field "${pathPrefix ? `${pathPrefix}.${key}` : key}" was added`
+            detail: `Optional field "${pathPrefix ? `${pathPrefix}.${key}` : key}" was added`,
           });
         }
       }
@@ -82,7 +89,7 @@ function diffJsonSchema(
           pathPrefix ? `${pathPrefix}.${key}` : key,
           beforeProps[key],
           afterProps[key],
-          isResponse
+          isResponse,
         );
         changes.push(...nestedChanges);
       }
@@ -95,7 +102,7 @@ function diffJsonSchema(
       `${pathPrefix}[]`,
       before.items,
       after.items,
-      isResponse
+      isResponse,
     );
     changes.push(...nestedChanges);
   }
@@ -115,14 +122,32 @@ export function computeImpacts(newDiscovery: StudioDiscoveryResult): void {
   const before = baselineDiscovery;
   const after = newDiscovery;
 
-  const oldRoutesMap = new Map<string, DiscoveredRoute>(before.routes.map(r => [`${r.method.toUpperCase()}:${r.path}`, r]));
-  const newRoutesMap = new Map<string, DiscoveredRoute>(after.routes.map(r => [`${r.method.toUpperCase()}:${r.path}`, r]));
+  const oldRoutesMap = new Map<string, DiscoveredRoute>(
+    before.routes.map((r) => [`${r.method.toUpperCase()}:${r.path}`, r]),
+  );
+  const newRoutesMap = new Map<string, DiscoveredRoute>(
+    after.routes.map((r) => [`${r.method.toUpperCase()}:${r.path}`, r]),
+  );
 
-  const oldSchemasMap = new Map<string, DiscoveredSchema>(before.schemas.map(s => [s.routeId || `${s.method.toUpperCase()}:${s.path}`, s]));
-  const newSchemasMap = new Map<string, DiscoveredSchema>(after.schemas.map(s => [s.routeId || `${s.method.toUpperCase()}:${s.path}`, s]));
+  const oldSchemasMap = new Map<string, DiscoveredSchema>(
+    before.schemas.map((s) => [
+      s.routeId || `${s.method.toUpperCase()}:${s.path}`,
+      s,
+    ]),
+  );
+  const newSchemasMap = new Map<string, DiscoveredSchema>(
+    after.schemas.map((s) => [
+      s.routeId || `${s.method.toUpperCase()}:${s.path}`,
+      s,
+    ]),
+  );
 
   const detected: SdkImpact[] = [];
-  const affectedSdks: ('typescript' | 'python' | 'dart')[] = ['typescript', 'python', 'dart'];
+  const affectedSdks: ('typescript' | 'python' | 'dart')[] = [
+    'typescript',
+    'python',
+    'dart',
+  ];
 
   // 1. Detect removed routes
   for (const [key, r] of oldRoutesMap.entries()) {
@@ -134,7 +159,7 @@ export function computeImpacts(newDiscovery: StudioDiscoveryResult): void {
         changeType: 'removed',
         affectedSdks,
         details: [`Route ${r.method} ${r.path} was deleted`],
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     }
   }
@@ -152,7 +177,7 @@ export function computeImpacts(newDiscovery: StudioDiscoveryResult): void {
         changeType: 'new',
         affectedSdks,
         details: [`Route ${r.method} ${r.path} was added`],
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
       continue;
     }
@@ -167,11 +192,15 @@ export function computeImpacts(newDiscovery: StudioDiscoveryResult): void {
       changeType = 'patch';
     }
     if (r.timeout !== oldRoute.timeout) {
-      details.push(`Timeout changed from ${oldRoute.timeout ?? 'default'} to ${r.timeout ?? 'default'}`);
+      details.push(
+        `Timeout changed from ${oldRoute.timeout ?? 'default'} to ${r.timeout ?? 'default'}`,
+      );
       changeType = 'patch';
     }
     if (r.operationId !== oldRoute.operationId) {
-      details.push(`operationId changed from "${oldRoute.operationId || 'none'}" to "${r.operationId || 'none'}"`);
+      details.push(
+        `operationId changed from "${oldRoute.operationId || 'none'}" to "${r.operationId || 'none'}"`,
+      );
       changeType = 'patch';
     }
 
@@ -179,12 +208,16 @@ export function computeImpacts(newDiscovery: StudioDiscoveryResult): void {
     const oldSchema = oldSchemasMap.get(key);
     const newSchema = newSchemasMap.get(key);
 
-    const schemaTargets: { type: 'body' | 'query' | 'params' | 'response' | 'message'; label: string; isResponse: boolean }[] = [
+    const schemaTargets: {
+      type: 'body' | 'query' | 'params' | 'response' | 'message';
+      label: string;
+      isResponse: boolean;
+    }[] = [
       { type: 'body', label: 'Body Request Schema', isResponse: false },
       { type: 'query', label: 'Query Parameter Schema', isResponse: false },
       { type: 'params', label: 'Path Parameter Schema', isResponse: false },
       { type: 'response', label: 'Response Schema', isResponse: true },
-      { type: 'message', label: 'WS Message Schema', isResponse: false }
+      { type: 'message', label: 'WS Message Schema', isResponse: false },
     ];
 
     for (const target of schemaTargets) {
@@ -195,7 +228,8 @@ export function computeImpacts(newDiscovery: StudioDiscoveryResult): void {
         details.push(`${target.label} was removed`);
         changeType = 'breaking';
       } else if (!oldVal && newVal) {
-        const hasReq = Array.isArray(newVal.required) && newVal.required.length > 0;
+        const hasReq =
+          Array.isArray(newVal.required) && newVal.required.length > 0;
         if (hasReq && !target.isResponse) {
           details.push(`${target.label} was added with required fields`);
           changeType = 'breaking';
@@ -204,12 +238,20 @@ export function computeImpacts(newDiscovery: StudioDiscoveryResult): void {
           changeType = 'non-breaking';
         }
       } else if (oldVal && newVal) {
-        const schemaChanges = diffJsonSchema('', oldVal, newVal, target.isResponse);
+        const schemaChanges = diffJsonSchema(
+          '',
+          oldVal,
+          newVal,
+          target.isResponse,
+        );
         for (const change of schemaChanges) {
           details.push(`[${target.type}] ${change.detail}`);
           if (change.changeType === 'breaking') {
             changeType = 'breaking';
-          } else if (change.changeType === 'non-breaking' && changeType !== 'breaking') {
+          } else if (
+            change.changeType === 'non-breaking' &&
+            changeType !== 'breaking'
+          ) {
             changeType = 'non-breaking';
           }
         }
@@ -224,7 +266,7 @@ export function computeImpacts(newDiscovery: StudioDiscoveryResult): void {
         changeType,
         affectedSdks,
         details,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     }
   }
@@ -245,12 +287,15 @@ export function handleDeleteSdkImpact(req: any, res: ServerResponse): void {
   const id = url.searchParams.get('id');
 
   if (id) {
-    pendingImpacts = pendingImpacts.filter(i => i.id !== id);
+    pendingImpacts = pendingImpacts.filter((i) => i.id !== id);
   }
   sendJson(res, { success: true });
 }
 
-export function handleDeleteAllSdkImpacts(_req: any, res: ServerResponse): void {
+export function handleDeleteAllSdkImpacts(
+  _req: any,
+  res: ServerResponse,
+): void {
   pendingImpacts = [];
   sendJson(res, { success: true });
 }

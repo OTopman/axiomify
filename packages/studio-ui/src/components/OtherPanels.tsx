@@ -943,7 +943,7 @@ export const ArchitecturePanel: React.FC<{ discovery: DiscoveryData }> = ({ disc
               placeholder="Search nodes..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              style={{ width: '100%', margin: 0, padding: '4px 8px', fontSize: '12px', height: '26px', boxSizing: 'border-box' }}
+              style={{ width: '200px', margin: 0, padding: '4px 8px', fontSize: '12px', height: '26px', boxSizing: 'border-box' }}
             />
             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
               <button
@@ -1597,6 +1597,55 @@ export const AnalyticsPanel: React.FC = () => {
                 )}
                 <AnalyticsChart history={history} dataKey="wsClients" color="var(--method-ws)" label="🔌 Active WebSocket Clients" unit=" clients" />
               </div>
+
+              {/* Endpoint Insights (Most / Least Hit Endpoints) */}
+              {metricsData && metricsData.available && metricsData.routesList && metricsData.routesList.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+                  {/* Most Hit Endpoint */}
+                  <div className="card" style={{ padding: '16px', margin: 0, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      🔥 Most Hit Endpoint
+                    </div>
+                    {metricsData.routesList[0] ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span className={`method-badge method-${metricsData.routesList[0].method}`} style={{ fontSize: '10px', padding: '3px 8px', fontWeight: 700 }}>
+                          {metricsData.routesList[0].method}
+                        </span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', flexGrow: 1, wordBreak: 'break-all' }}>
+                          {metricsData.routesList[0].route}
+                        </span>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
+                          {metricsData.routesList[0].requests} hit{metricsData.routesList[0].requests === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>No endpoints recorded yet</div>
+                    )}
+                  </div>
+
+                  {/* Least Hit Endpoint */}
+                  <div className="card" style={{ padding: '16px', margin: 0, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      ❄️ Least Hit Endpoint
+                    </div>
+                    {metricsData.routesList[metricsData.routesList.length - 1] ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span className={`method-badge method-${metricsData.routesList[metricsData.routesList.length - 1].method}`} style={{ fontSize: '10px', padding: '3px 8px', fontWeight: 700 }}>
+                          {metricsData.routesList[metricsData.routesList.length - 1].method}
+                        </span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', flexGrow: 1, wordBreak: 'break-all' }}>
+                          {metricsData.routesList[metricsData.routesList.length - 1].route}
+                        </span>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                          {metricsData.routesList[metricsData.routesList.length - 1].requests} hit{metricsData.routesList[metricsData.routesList.length - 1].requests === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>No endpoints recorded yet</div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div style={{ fontStyle: 'italic', color: 'var(--text-muted)', fontSize: '12px' }}>Analytics loading...</div>

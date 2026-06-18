@@ -8,7 +8,10 @@ import type { StudioDiscoveryResult } from '../../src/studio/discovery/types';
 // or we can test them via the handleExportHtml/handleExportMarkdown functions by mocking the ServerResponse.
 // Testing via handleExportHtml/handleExportMarkdown is extremely clean:
 
-import { handleExportHtml, handleExportMarkdown } from '../../src/studio/api/export';
+import {
+  handleExportHtml,
+  handleExportMarkdown,
+} from '../../src/studio/api/export';
 
 describe('Studio Report Exporter', () => {
   const mockDiscovery: StudioDiscoveryResult = {
@@ -34,7 +37,7 @@ describe('Studio Report Exporter', () => {
         pluginCount: 0,
         plugins: [],
         hasResponseSchema: false,
-      }
+      },
     ],
     schemas: [
       {
@@ -49,7 +52,7 @@ describe('Studio Report Exporter', () => {
         method: 'WS',
         path: '/ws/chat',
         message: { type: 'object' },
-      }
+      },
     ],
     hooks: [],
     config: {
@@ -88,15 +91,10 @@ describe('Studio Report Exporter', () => {
       end: (data: string) => {
         endCalled = true;
         responseHtml = data;
-      }
+      },
     };
 
-    handleExportHtml(
-      {} as any,
-      mockRes,
-      mockApp,
-      () => mockDiscovery
-    );
+    handleExportHtml({} as any, mockRes, mockApp, () => mockDiscovery);
 
     expect(writeHeadCalled).toBe(true);
     expect(endCalled).toBe(true);
@@ -125,15 +123,10 @@ describe('Studio Report Exporter', () => {
       end: (data: string) => {
         endCalled = true;
         responseMd = data;
-      }
+      },
     };
 
-    handleExportMarkdown(
-      {} as any,
-      mockRes,
-      mockApp,
-      () => mockDiscovery
-    );
+    handleExportMarkdown({} as any, mockRes, mockApp, () => mockDiscovery);
 
     expect(writeHeadCalled).toBe(true);
     expect(endCalled).toBe(true);

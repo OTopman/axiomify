@@ -37,6 +37,7 @@ Axiomify is an ultra high-performance Node.js framework built exclusively on `uW
 | [`@axiomify/rate-limit`](packages/rate-limit/)   | Sliding-window rate limiting + EVALSHA caching + ioredis/redis@4                                                                                   |
 | [`@axiomify/security`](packages/security/)       | XSS sanitisation, HPP normalisation, prototype-pollution + null-byte filtering, bot UA detection; opt-in narrow Mongo-operator detector            |
 | [`@axiomify/fingerprint`](packages/fingerprint/) | Server-side request fingerprinting with confidence scoring                                                                                         |
+| [`@axiomify/vault`](packages/vault/)             | Secure environment configuration vault: envelope encryption, process.env masking, Zod schema validation, stream redaction                          |
 
 ### Content & I/O
 

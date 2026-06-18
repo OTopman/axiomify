@@ -13,6 +13,8 @@ All examples are aligned with the 5.0 API surface.
 | `examples/secure-server.ts`     | Logger PII masking + security plugin payload examples                                                  |
 | `examples/my-app/src/index.ts`  | Fuller app: auth, uploads, OpenAPI, SSE, file streaming, WebSockets                                    |
 | `examples/sdk-client-demo.ts`   | SDK consumption client: retries, circuit breaker, caching, paginators, offline queue, SSE & WebSockets |
+| `examples/vault-server.ts`      | `@axiomify/vault` secure configuration environment management                                          |
+| `examples/jobs-server.ts`       | `@axiomify/jobs` background tasks and compensating Saga workflows                                      |
 
 ## Notes
 
@@ -27,6 +29,8 @@ Use the examples as patterns, not as a single unified starter:
 
 - Start from `native-zod-server.ts` if you want the smallest mental model.
 - Start from `openapi-server.ts` if you're building an API with first-class docs.
+- Start from `vault-server.ts` if you want to see secure configuration management and environment switching.
+- Start from `jobs-server.ts` if you want to see asynchronous background tasks and Saga workflows.
 - Start from `my-app` if you want a full feature tour with auth, WebSockets, uploads, and SSE.
 - Start from `sdk-client-demo.ts` if you want to see how to instantiate and configure a generated SDK client with advanced features (circuit breaker, retries, caching, paginators, offline queue, streaming).
 

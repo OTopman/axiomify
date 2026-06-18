@@ -7,18 +7,22 @@ export interface LoggerOptions {
   sensitiveFields?: string[];
   level?: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
   beautify?: boolean;
-  /**
-   * Include request headers in the log entry.
-   * Defaults to `false` — headers often contain auth tokens and cookies.
-   * Enable only when you are confident your log pipeline is secure and
-   * sensitive headers are masked via `sensitiveFields`.
-   */
+  /** Include request headers in the log entry. */
   includeHeaders?: boolean;
-  /**
-   * Include the response payload in the log entry.
-   * Defaults to `false` — payloads can contain PII.
-   */
+  /** Include request route parameters (req.params) in the log entry. */
+  includeParams?: boolean;
+  /** Include request query parameters (req.query) in the log entry. */
+  includeQuery?: boolean;
+  /** Include request body (req.body) in the log entry. */
+  includeBody?: boolean;
+  /** Include response headers in the log entry. */
+  includeResponseHeaders?: boolean;
+  /** Include response payload/data in the log entry. */
+  includeResponsePayload?: boolean;
+  /** Alias for includeResponsePayload. */
   includePayload?: boolean;
+  /** Include request state (req.state) in the log entry. */
+  includeState?: boolean;
 }
 
 type LogLevel = NonNullable<LoggerOptions['level']>;
@@ -49,7 +53,13 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
 
   // Safe defaults: opt-in to verbose logging, not opt-out.
   const includeHeaders = options.includeHeaders ?? false;
-  const includePayload = options.includePayload ?? false;
+  const includeParams = options.includeParams ?? false;
+  const includeQuery = options.includeQuery ?? false;
+  const includeBody = options.includeBody ?? false;
+  const includeResponseHeaders = options.includeResponseHeaders ?? false;
+  const includeResponsePayload =
+    options.includeResponsePayload ?? options.includePayload ?? false;
+  const includeState = options.includeState ?? false;
 
   const isProd = process.env.NODE_ENV === 'production';
 
@@ -79,19 +89,22 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
         level.toUpperCase(),
       )} ${pc.bold(message)}`;
       const details = Object.keys(maskedMeta).length
-        ? `\n${pc.dim(JSON.stringify(maskedMeta, null, 2))}`
+        ? `\n${pc.dim(JSON.stringify(maskedMeta, (_, v) => (typeof v === 'bigint' ? v.toString() : v), 2))}`
         : '';
       console.log(`${summary}${details}`);
       return;
     }
 
     process.stdout.write(
-      `${JSON.stringify({
-        timestamp,
-        level: level.toUpperCase(),
-        message,
-        ...maskedMeta,
-      })}\n`,
+      `${JSON.stringify(
+        {
+          timestamp,
+          level: level.toUpperCase(),
+          message,
+          ...maskedMeta,
+        },
+        (_, v) => (typeof v === 'bigint' ? v.toString() : v),
+      )}\n`,
     );
   };
 
@@ -106,6 +119,10 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
       path: req.path,
       ip: req.ip,
       ...(includeHeaders ? { headers: req.headers } : {}),
+      ...(includeParams ? { params: req.params } : {}),
+      ...(includeQuery ? { query: req.query } : {}),
+      ...(includeBody ? { body: req.body } : {}),
+      ...(includeState ? { state: req.state } : {}),
     });
   });
 
@@ -115,17 +132,25 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
       ? Number(endTime - req.state.startTime) / 1_000_000
       : 0;
 
+    const resHeaders = (res as any)._headers || (res as any).headers || {};
+
     emit('info', 'Outgoing Response', {
       requestId: req.id,
       method: req.method,
       path: req.path,
       durationMs: durationMs.toFixed(3),
       statusCode: res.statusCode,
-      ...(includePayload ? { payload: (res as any).payload } : {}),
+      ...(includeHeaders ? { headers: req.headers } : {}),
+      ...(includeParams ? { params: req.params } : {}),
+      ...(includeQuery ? { query: req.query } : {}),
+      ...(includeBody ? { body: req.body } : {}),
+      ...(includeResponseHeaders ? { responseHeaders: resHeaders } : {}),
+      ...(includeResponsePayload ? { payload: (res as any).payload } : {}),
+      ...(includeState ? { state: req.state } : {}),
     });
   });
 
-  app.addHook('onError', (err: any, req) => {
+  app.addHook('onError', (err: any, req, res) => {
     const endTime = process.hrtime.bigint();
     const durationMs = req.state.startTime
       ? Number(endTime - req.state.startTime) / 1_000_000
@@ -140,12 +165,26 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
           }
         : { message: String(err) };
 
+    const resHeaders = res
+      ? (res as any)._headers || (res as any).headers || {}
+      : {};
+
     emit('error', 'Request Failed', {
       requestId: req.id,
       method: req.method,
       path: req.path,
       durationMs: durationMs.toFixed(3),
+      ...(res ? { statusCode: res.statusCode } : {}),
       error: errorObj,
+      ...(includeHeaders ? { headers: req.headers } : {}),
+      ...(includeParams ? { params: req.params } : {}),
+      ...(includeQuery ? { query: req.query } : {}),
+      ...(includeBody ? { body: req.body } : {}),
+      ...(res && includeResponseHeaders ? { responseHeaders: resHeaders } : {}),
+      ...(res && includeResponsePayload
+        ? { payload: (res as any).payload }
+        : {}),
+      ...(includeState ? { state: req.state } : {}),
     });
   });
 }

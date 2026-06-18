@@ -28,7 +28,8 @@ export function redactPII(val: any, depth = 0): any {
   }
   if (typeof val === 'object') {
     const redacted: Record<string, any> = {};
-    const sensitiveKeys = /password|token|secret|key|auth|cookie|card|cvv|ssn|email|phone|jwt|credential/i;
+    const sensitiveKeys =
+      /password|token|secret|key|auth|cookie|card|cvv|ssn|email|phone|jwt|credential/i;
     for (const [k, v] of Object.entries(val)) {
       if (sensitiveKeys.test(k)) {
         redacted[k] = '[REDACTED]';
@@ -44,9 +45,12 @@ export function redactPII(val: any, depth = 0): any {
 /**
  * Redacts sensitive headers.
  */
-export function redactHeaders(headers: Record<string, any>): Record<string, string> {
+export function redactHeaders(
+  headers: Record<string, any>,
+): Record<string, string> {
   const redacted: Record<string, string> = {};
-  const sensitiveHeaders = /authorization|cookie|set-cookie|x-api-key|api-key|token|x-auth/i;
+  const sensitiveHeaders =
+    /authorization|cookie|set-cookie|x-api-key|api-key|token|x-auth/i;
   for (const [k, v] of Object.entries(headers || {})) {
     if (sensitiveHeaders.test(k)) {
       redacted[k] = '[REDACTED]';
@@ -67,6 +71,27 @@ export function buildContext(
   securityFindings: any[],
   contractResults: any[],
 ): any {
+  // Load active application package.json details
+  let packageMetadata: any = {};
+  try {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const pkgPath = path.resolve(process.cwd(), 'package.json');
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      packageMetadata = {
+        name: pkg.name,
+        version: pkg.version,
+        dependencies: pkg.dependencies ? Object.keys(pkg.dependencies) : [],
+        devDependencies: pkg.devDependencies
+          ? Object.keys(pkg.devDependencies)
+          : [],
+      };
+    }
+  } catch {
+    // Ignore error if package.json does not exist or fails to parse
+  }
+
   const routesSummary = (discovery.routes || []).map((r) => ({
     method: r.method,
     path: r.path,
@@ -76,15 +101,31 @@ export function buildContext(
     hasResponseSchema: !!r.hasResponseSchema,
   }));
 
-  const perfSummary = Array.from(routeLatencies.values() || []).map((b: any) => ({
-    method: b.method,
-    route: b.route,
-    count: b.count,
-    p50: b.p50,
-    p95: b.p95,
-    p99: b.p99,
-    avg: b.avg,
+  const servicesSummary = (discovery.services || []).map((s) => ({
+    token: s.token,
+    type: s.type,
+    methods: s.methods || [],
   }));
+
+  const eventsSummary = (discovery.events || []).map((e) => ({
+    emitterToken: e.emitterToken,
+    event: e.event,
+    listenerCount: e.listenerCount,
+  }));
+
+  const configSummary = discovery.config || {};
+
+  const perfSummary = Array.from(routeLatencies.values() || []).map(
+    (b: any) => ({
+      method: b.method,
+      route: b.route,
+      count: b.count,
+      p50: b.p50,
+      p95: b.p95,
+      p99: b.p99,
+      avg: b.avg,
+    }),
+  );
 
   const securitySummary = (securityFindings || []).map((f) => ({
     id: f.id,
@@ -120,12 +161,14 @@ export function buildContext(
           body: redactPII(req.body),
           timestamp: req.timestamp,
         },
-        response: res ? {
-          status: res.status,
-          headers: redactHeaders(res.headers || {}),
-          body: redactPII(res.body),
-          durationMs: res.durationMs,
-        } : undefined,
+        response: res
+          ? {
+              status: res.status,
+              headers: redactHeaders(res.headers || {}),
+              body: redactPII(res.body),
+              durationMs: res.durationMs,
+            }
+          : undefined,
         errors: (e.errors || []).map((err: any) => ({
           name: err.name,
           message: err.message,
@@ -140,7 +183,11 @@ export function buildContext(
     });
 
   return {
+    package: packageMetadata,
     routes: routesSummary,
+    services: servicesSummary,
+    events: eventsSummary,
+    config: configSummary,
     performance: perfSummary,
     security: securitySummary,
     contracts: contractsSummary,
@@ -156,7 +203,8 @@ export function handleGetAiStatus(
   res: ServerResponse,
   discovery: StudioDiscoveryResult,
 ): void {
-  const provider = (process.env.AXIOMIFY_AI_PROVIDER || '').toLowerCase() || 'gemini';
+  const provider =
+    (process.env.AXIOMIFY_AI_PROVIDER || '').toLowerCase() || 'gemini';
 
   const hasEnvKey = !!(
     process.env.AXIOMIFY_AI_KEY ||
@@ -206,7 +254,9 @@ export async function handlePostAiAnalyze(
   const customKey = req.headers['x-axiomify-ai-key'] as string;
   const customProvider = req.headers['x-axiomify-ai-provider'] as string;
 
-  const provider = (customProvider || process.env.AXIOMIFY_AI_PROVIDER || '').toLowerCase() || 'gemini';
+  const provider =
+    (customProvider || process.env.AXIOMIFY_AI_PROVIDER || '').toLowerCase() ||
+    'gemini';
   let apiKey = '';
 
   if (customKey) {
@@ -217,9 +267,11 @@ export async function handlePostAiAnalyze(
     } else if (provider === 'openai') {
       apiKey = process.env.AXIOMIFY_AI_KEY || process.env.OPENAI_API_KEY || '';
     } else if (provider === 'claude') {
-      apiKey = process.env.AXIOMIFY_AI_KEY || process.env.ANTHROPIC_API_KEY || '';
+      apiKey =
+        process.env.AXIOMIFY_AI_KEY || process.env.ANTHROPIC_API_KEY || '';
     } else if (provider === 'qwen') {
-      apiKey = process.env.AXIOMIFY_AI_KEY || process.env.DASHSCOPE_API_KEY || '';
+      apiKey =
+        process.env.AXIOMIFY_AI_KEY || process.env.DASHSCOPE_API_KEY || '';
     }
   }
 
@@ -258,7 +310,9 @@ Instructions:
 5. All PII and credentials have been redacted on the server before transmitting. Do not mention the redactions unless directly asked about security masking.`;
 
   let fetchUrl = '';
-  const fetchHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+  const fetchHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
   let fetchBody: any = {};
 
   if (provider === 'gemini') {
@@ -267,10 +321,7 @@ Instructions:
       contents: [
         {
           role: 'user',
-          parts: [
-            { text: systemInstruction },
-            { text: prompt },
-          ],
+          parts: [{ text: systemInstruction }, { text: prompt }],
         },
       ],
     };
@@ -297,7 +348,8 @@ Instructions:
       max_tokens: 4000,
     };
   } else if (provider === 'qwen') {
-    fetchUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
+    fetchUrl =
+      'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions';
     fetchHeaders['Authorization'] = `Bearer ${apiKey}`;
     fetchBody = {
       model: 'qwen-turbo',
@@ -323,7 +375,10 @@ Instructions:
       const errMsg = await aiResponse.text();
       sendJson(
         res,
-        { error: `AI Provider returned status ${aiResponse.status}`, details: errMsg },
+        {
+          error: `AI Provider returned status ${aiResponse.status}`,
+          details: errMsg,
+        },
         aiResponse.status,
       );
       return;
@@ -332,13 +387,15 @@ Instructions:
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
+      Connection: 'keep-alive',
       'Access-Control-Allow-Origin': '*',
     });
 
     const reader = aiResponse.body;
     if (!reader) {
-      res.write(`data: ${JSON.stringify({ error: 'Response body is empty' })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ error: 'Response body is empty' })}\n\n`,
+      );
       res.write('data: [DONE]\n\n');
       res.end();
       return;
@@ -383,9 +440,15 @@ Instructions:
     res.end();
   } catch (err: any) {
     if (!res.headersSent) {
-      sendJson(res, { error: 'Failed to request AI analysis', details: String(err) }, 500);
+      sendJson(
+        res,
+        { error: 'Failed to request AI analysis', details: String(err) },
+        500,
+      );
     } else {
-      res.write(`data: ${JSON.stringify({ error: 'Stream error during AI generation', details: String(err) })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ error: 'Stream error during AI generation', details: String(err) })}\n\n`,
+      );
       res.write('data: [DONE]\n\n');
       res.end();
     }
@@ -428,7 +491,7 @@ export async function handlePostAiConfig(
     const keyVar = 'AXIOMIFY_AI_KEY';
     const providerVar = 'AXIOMIFY_AI_PROVIDER';
 
-    const updatedLines = lines.map(line => {
+    const updatedLines = lines.map((line) => {
       const trimmed = line.trim();
       if (trimmed.startsWith(`${providerVar}=`)) {
         hasProvider = true;
@@ -456,6 +519,10 @@ export async function handlePostAiConfig(
 
     sendJson(res, { success: true });
   } catch (err: any) {
-    sendJson(res, { error: 'Failed to write to .env', details: String(err) }, 500);
+    sendJson(
+      res,
+      { error: 'Failed to write to .env', details: String(err) },
+      500,
+    );
   }
 }

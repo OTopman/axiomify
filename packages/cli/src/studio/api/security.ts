@@ -6,7 +6,14 @@ import { logCorrelationStorage } from './logs';
 export interface SecurityFinding {
   id: string;
   severity: 'critical' | 'high' | 'medium' | 'low';
-  category: 'auth' | 'cors' | 'headers' | 'graphql' | 'validation' | 'deprecation' | 'injection';
+  category:
+    | 'auth'
+    | 'cors'
+    | 'headers'
+    | 'graphql'
+    | 'validation'
+    | 'deprecation'
+    | 'injection';
   route?: string;
   method?: string;
   title: string;
@@ -25,7 +32,7 @@ let probeProgress = 0;
  */
 export async function runStaticAnalysis(
   discovery: StudioDiscoveryResult,
-  app: any
+  app: any,
 ): Promise<SecurityFinding[]> {
   const findings: SecurityFinding[] = [];
 
@@ -43,7 +50,10 @@ export async function runStaticAnalysis(
 
     const hasAuthPlugin =
       r.plugins &&
-      r.plugins.some((p) => p.toLowerCase().includes('auth') || p.toLowerCase().includes('jwt'));
+      r.plugins.some(
+        (p) =>
+          p.toLowerCase().includes('auth') || p.toLowerCase().includes('jwt'),
+      );
 
     if (!hasAuthPlugin && !isPublicPath) {
       const isMutating = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(r.method);
@@ -128,38 +138,50 @@ export async function runStaticAnalysis(
             severity: 'high',
             category: 'cors',
             title: 'CORS Wildcard with Credentials Allowed',
-            description: 'The CORS policy allows credential sharing (Access-Control-Allow-Credentials: true) with a wildcard or arbitrary origin.',
-            remediation: 'Do not allow arbitrary origins when credentials are enabled. Configure CORS origin to a specific trusted domain.',
+            description:
+              'The CORS policy allows credential sharing (Access-Control-Allow-Credentials: true) with a wildcard or arbitrary origin.',
+            remediation:
+              'Do not allow arbitrary origins when credentials are enabled. Configure CORS origin to a specific trusted domain.',
             cwe: 'CWE-942',
           });
         }
       }
 
       // CSP check
-      const csp = mockRes.headers['content-security-policy'] || mockRes.headers['content-security-policy-report-only'];
+      const csp =
+        mockRes.headers['content-security-policy'] ||
+        mockRes.headers['content-security-policy-report-only'];
       if (!csp) {
         findings.push({
           id: 'sec-csp-missing',
           severity: 'medium',
           category: 'headers',
           title: 'Missing Content-Security-Policy Header',
-          description: 'The application does not send a Content-Security-Policy header, leaving it vulnerable to XSS and clickjacking.',
-          remediation: 'Enable useHelmet() or configure explicit Content-Security-Policy headers.',
+          description:
+            'The application does not send a Content-Security-Policy header, leaving it vulnerable to XSS and clickjacking.',
+          remediation:
+            'Enable useHelmet() or configure explicit Content-Security-Policy headers.',
           cwe: 'CWE-1021',
-      });
+        });
+      }
     }
+  } catch {
+    // ignore
   }
-} catch {
-  // ignore
-}
 
   // 5. GraphQL Introspection check
   const hasGraphql = discovery.routes.some((r) => r.path === '/graphql');
   if (hasGraphql) {
     try {
-      const mockRes = await mockRequest(app, 'POST', '/graphql', {}, {
-        query: 'query { __schema { queryType { name } } }',
-      });
+      const mockRes = await mockRequest(
+        app,
+        'POST',
+        '/graphql',
+        {},
+        {
+          query: 'query { __schema { queryType { name } } }',
+        },
+      );
       if (mockRes && mockRes.body) {
         const parsed = JSON.parse(mockRes.body);
         if (parsed?.data?.__schema) {
@@ -170,8 +192,10 @@ export async function runStaticAnalysis(
             route: '/graphql',
             method: 'POST',
             title: 'GraphQL Introspection Enabled',
-            description: 'GraphQL introspection is enabled, allowing clients to query and discover the full schema structure.',
-            remediation: 'Disable introspection in production environments by passing `introspection: false` to the GraphQL middleware.',
+            description:
+              'GraphQL introspection is enabled, allowing clients to query and discover the full schema structure.',
+            remediation:
+              'Disable introspection in production environments by passing `introspection: false` to the GraphQL middleware.',
             cwe: 'CWE-200',
           });
         }
@@ -190,7 +214,7 @@ export async function runStaticAnalysis(
  */
 export async function runDynamicProbes(
   discovery: StudioDiscoveryResult,
-  app: any
+  app: any,
 ): Promise<SecurityFinding[]> {
   isProbing = true;
   probeProgress = 0;
@@ -221,16 +245,24 @@ export async function runDynamicProbes(
   ];
 
   // Pick up to 5 routes with schemas to test
-  const candidateRoutes = discovery.routes.filter(
-    (r) => !r.isWs && r.validation && r.validation.length > 0 && ['POST', 'PUT', 'PATCH'].includes(r.method)
-  ).slice(0, 5);
+  const candidateRoutes = discovery.routes
+    .filter(
+      (r) =>
+        !r.isWs &&
+        r.validation &&
+        r.validation.length > 0 &&
+        ['POST', 'PUT', 'PATCH'].includes(r.method),
+    )
+    .slice(0, 5);
 
   let completed = 0;
   const total = candidateRoutes.length * stringProbes.length;
 
   for (const r of candidateRoutes) {
     const routeSchemas = discovery.schemas.find(
-      (s) => (s.routeId || `${s.method.toUpperCase()}:${s.path}`) === `${r.method.toUpperCase()}:${r.path}`
+      (s) =>
+        (s.routeId || `${s.method.toUpperCase()}:${s.path}`) ===
+        `${r.method.toUpperCase()}:${r.path}`,
     );
 
     if (!routeSchemas || !routeSchemas.body) {
@@ -258,7 +290,7 @@ export async function runDynamicProbes(
 
       try {
         const res = await mockRequest(app, r.method, r.path, {}, testBody);
-        
+
         // If the route returns 200 OK or 500 without a proper validation error (400 Bad Request),
         // it means the input was either processed blindly or caused a database/internal crash.
         if (res && (res.status === 200 || res.status === 500)) {
@@ -297,8 +329,12 @@ async function mockRequest(
   method: string,
   path: string,
   headers: Record<string, string> = {},
-  body?: any
-): Promise<{ status: number; headers: Record<string, string>; body?: string } | null> {
+  body?: any,
+): Promise<{
+  status: number;
+  headers: Record<string, string>;
+  body?: string;
+} | null> {
   return new Promise((resolve) => {
     let responseStatus = 200;
     const responseHeaders: Record<string, string> = {};
@@ -362,7 +398,8 @@ async function mockRequest(
         return this;
       },
       send(data: any) {
-        responseBody = typeof data === 'object' ? JSON.stringify(data) : String(data);
+        responseBody =
+          typeof data === 'object' ? JSON.stringify(data) : String(data);
         resolveWithCleanup({
           status: responseStatus,
           headers: responseHeaders,
@@ -371,7 +408,8 @@ async function mockRequest(
       },
       end(data?: any) {
         if (data) {
-          responseBody = typeof data === 'object' ? JSON.stringify(data) : String(data);
+          responseBody =
+            typeof data === 'object' ? JSON.stringify(data) : String(data);
         }
         resolveWithCleanup({
           status: responseStatus,
@@ -407,23 +445,35 @@ async function mockRequest(
   });
 }
 
-export function handleGetSecurityReport(req: any, res: ServerResponse, app: any, getDiscovery: () => StudioDiscoveryResult): void {
+export function handleGetSecurityReport(
+  req: any,
+  res: ServerResponse,
+  app: any,
+  getDiscovery: () => StudioDiscoveryResult,
+): void {
   const discovery = getDiscovery();
-  
+
   // We run static checks dynamically on fetch to ensure it reflects current state
-  runStaticAnalysis(discovery, app).then((staticList) => {
-    sendJson(res, {
-      static: staticList,
-      dynamic: dynamicFindings,
-      isProbing,
-      progress: probeProgress,
+  runStaticAnalysis(discovery, app)
+    .then((staticList) => {
+      sendJson(res, {
+        static: staticList,
+        dynamic: dynamicFindings,
+        isProbing,
+        progress: probeProgress,
+      });
+    })
+    .catch(() => {
+      sendJson(res, { error: 'Failed to run security analysis' }, 500);
     });
-  }).catch(() => {
-    sendJson(res, { error: 'Failed to run security analysis' }, 500);
-  });
 }
 
-export function handlePostRunProbes(req: any, res: ServerResponse, app: any, getDiscovery: () => StudioDiscoveryResult): void {
+export function handlePostRunProbes(
+  req: any,
+  res: ServerResponse,
+  app: any,
+  getDiscovery: () => StudioDiscoveryResult,
+): void {
   if (isProbing) {
     sendJson(res, { error: 'Probing is already in progress' }, 400);
     return;

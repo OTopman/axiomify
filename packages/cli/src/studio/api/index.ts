@@ -9,19 +9,34 @@
 import type { StudioDiscoveryResult } from '../discovery';
 import { sendJson } from '../server/http-server';
 import { StudioRouter } from '../server/router';
-import { handleGetAiStatus, handlePostAiAnalyze, handlePostAiConfig } from './ai';
+import {
+  handleGetAiStatus,
+  handlePostAiAnalyze,
+  handlePostAiConfig,
+} from './ai';
 import { handleGetConfig } from './config';
-import { handleGetContractResults, handlePostRunContracts, handlePostToggleAutoRun } from './contracts';
+import {
+  handleGetContractResults,
+  handlePostRunContracts,
+  handlePostToggleAutoRun,
+} from './contracts';
 import { handlePostDebugFrames, handlePostDebugSource } from './debugger';
 import { handleGetErrors } from './errors';
-import { handleExportHtml, handleExportMarkdown, handleExportPdf } from './export';
+import {
+  handleExportHtml,
+  handleExportMarkdown,
+  handleExportPdf,
+} from './export';
 import { handleGetHealth } from './health';
 import { handleGetHooks } from './hooks';
 import { handleDeleteLogs, handleExportLogs, handleGetLogs } from './logs';
 import { handleGetAppMetrics } from './metrics';
 import { handleGetOpenApi, handlePostOpenApiSync } from './openapi';
 import { handleDeletePerf, handleGetPerf } from './perf';
-import { handleGetPlaygroundSdk, handlePostPlaygroundExecute } from './playground';
+import {
+  handleGetPlaygroundSdk,
+  handlePostPlaygroundExecute,
+} from './playground';
 import { handleGetQuality } from './quality';
 import {
   handleDeleteSession,
@@ -38,11 +53,23 @@ import {
 import { handlePostRequest } from './request';
 import { handleGetRoutes } from './routes';
 import { handleGetSchemas } from './schemas';
-import { handleDeleteAllSdkImpacts, handleDeleteSdkImpact, handleGetSdkImpacts } from './sdk-impact';
+import {
+  handleDeleteAllSdkImpacts,
+  handleDeleteSdkImpact,
+  handleGetSdkImpacts,
+} from './sdk-impact';
 import { handleGetSecurityReport, handlePostRunProbes } from './security';
 import { handleGetSystem } from './system';
 import { handleGetWsAnalytics } from './ws-analytics';
 import { handleGetWsRoutes } from './ws-tester';
+import { handleGetJobs } from './jobs';
+import {
+  handlePostOtlpTraces,
+  handlePostOtlpMetrics,
+  handlePostOtlpLogs,
+  handleGetOtlpTraces,
+  handleDeleteOtlpTraces,
+} from './otlp';
 
 export interface StudioApiContext {
   /** Returns the latest cached discovery result. */
@@ -102,6 +129,10 @@ export function registerStudioApi(
 
   router.get('/__studio/api/metrics', (req, res) => {
     handleGetAppMetrics(req, res, ctx.getApp());
+  });
+
+  router.get('/__studio/api/jobs', (req, res) => {
+    handleGetJobs(req, res, ctx.getApp());
   });
 
   router.post('/__studio/api/request', (req, res) => {
@@ -257,5 +288,26 @@ export function registerStudioApi(
 
   router.post('/__studio/api/playground/execute', (req, res) => {
     handlePostPlaygroundExecute(req, res, ctx.getApp());
+  });
+
+  // ── OpenTelemetry OTLP Receivers ───────────────────────────────────────────
+  router.post('/__studio/otlp/v1/traces', (req, res) => {
+    handlePostOtlpTraces(req, res);
+  });
+
+  router.post('/__studio/otlp/v1/metrics', (req, res) => {
+    handlePostOtlpMetrics(req, res);
+  });
+
+  router.post('/__studio/otlp/v1/logs', (req, res) => {
+    handlePostOtlpLogs(req, res);
+  });
+
+  router.get('/__studio/api/otlp/traces', (req, res) => {
+    handleGetOtlpTraces(req, res);
+  });
+
+  router.on('DELETE', '/__studio/api/otlp/traces', (req, res) => {
+    handleDeleteOtlpTraces(req, res);
   });
 }

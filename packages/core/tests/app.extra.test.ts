@@ -57,7 +57,7 @@ describe('Axiomify app — extended coverage', () => {
     it('throws when called without ADAPTER_LOCK_TOKEN', () => {
       const app = new Axiomify();
       expect(() => (app as any).lockRoutes('bad-token')).toThrow(
-        /reserved for adapter use/,
+        /requires the ADAPTER_LOCK_TOKEN/,
       );
     });
 
@@ -494,93 +494,7 @@ describe('Axiomify app — extended coverage', () => {
     });
   });
 
-  describe('unauthorized stack trace guard', () => {
-    it('throws when lockRoutes is called from an unauthorized caller frame', () => {
-      const app = new Axiomify();
-      const originalPrepare = Error.prepareStackTrace;
-      Error.prepareStackTrace = () => {
-        return 'Error\n    at someExternalModule (/Users/attacker/node_modules/attacker-lib/index.js:1:1)';
-      };
-      try {
-        expect(() => app.lockRoutes(ADAPTER_LOCK_TOKEN)).toThrow(
-          /lockRoutes\(\) is reserved for adapter use/,
-        );
-      } finally {
-        Error.prepareStackTrace = originalPrepare;
-      }
-    });
-
-    it('throws when handleMatchedRoute is called from an unauthorized caller frame', async () => {
-      const app = new Axiomify();
-      const originalPrepare = Error.prepareStackTrace;
-      Error.prepareStackTrace = () => {
-        return 'Error\n    at someExternalModule (/Users/attacker/node_modules/attacker-lib/index.js:1:1)';
-      };
-      try {
-        await expect(
-          (app as any).handleMatchedRoute(ADAPTER_LOCK_TOKEN, {}, {}, {}, {}),
-        ).rejects.toThrow(/handleMatchedRoute\(\) is reserved for adapter use/);
-      } finally {
-        Error.prepareStackTrace = originalPrepare;
-      }
-    });
-  });
-
-  describe('unauthorized stack trace guard — missing stack & caller frame fallback', () => {
-    it('handles undefined stack trace when locking routes', () => {
-      const app = new Axiomify();
-      const originalPrepare = Error.prepareStackTrace;
-      Error.prepareStackTrace = () => undefined;
-      try {
-        expect(() => app.lockRoutes(ADAPTER_LOCK_TOKEN)).toThrow(
-          /lockRoutes\(\) is reserved for adapter use/,
-        );
-      } finally {
-        Error.prepareStackTrace = originalPrepare;
-      }
-    });
-
-    it('handles undefined stack trace when handling matched route', async () => {
-      const app = new Axiomify();
-      const originalPrepare = Error.prepareStackTrace;
-      Error.prepareStackTrace = () => undefined;
-      try {
-        await expect(
-          (app as any).handleMatchedRoute(ADAPTER_LOCK_TOKEN, {}, {}, {}, {}),
-        ).rejects.toThrow(/handleMatchedRoute\(\) is reserved for adapter use/);
-      } finally {
-        Error.prepareStackTrace = originalPrepare;
-      }
-    });
-
-    it('handles missing caller frame fallback in lockRoutes when frames list is empty or only internal', () => {
-      const app = new Axiomify();
-      const originalPrepare = Error.prepareStackTrace;
-      Error.prepareStackTrace = () =>
-        'Error\n    at lockRoutes (src/app.ts:355:1)';
-      try {
-        expect(() => app.lockRoutes(ADAPTER_LOCK_TOKEN)).toThrow(
-          /lockRoutes\(\) is reserved for adapter use/,
-        );
-      } finally {
-        Error.prepareStackTrace = originalPrepare;
-      }
-    });
-
-    it('handles missing caller frame fallback in handleMatchedRoute when frames list only has internal files', async () => {
-      const app = new Axiomify();
-      const originalPrepare = Error.prepareStackTrace;
-      Error.prepareStackTrace = () =>
-        'Error\n    at handleMatchedRoute (src/app.ts:530:1)';
-      try {
-        await expect(
-          (app as any).handleMatchedRoute(ADAPTER_LOCK_TOKEN, {}, {}, {}, {}),
-        ).rejects.toThrow(/handleMatchedRoute\(\) is reserved for adapter use/);
-      } finally {
-        Error.prepareStackTrace = originalPrepare;
-      }
-    });
-  });
+  // Stack trace guards are removed in favor of object identity (ADAPTER_LOCK_TOKEN) checks.
 
   describe('locked routes without reason branch', () => {
     it('route() locked error formatting without reason', () => {
@@ -648,6 +562,53 @@ describe('Axiomify app — extended coverage', () => {
         Map.prototype.set = originalSet;
         Map.prototype.get = originalGet;
       }
+    });
+  });
+
+  describe('public resolve and vault scope coverage', () => {
+    it('throws when public resolve is called with an unregistered token', () => {
+      const app = new Axiomify();
+      expect(() => app.resolve('unregistered-token' as any)).toThrow(
+        /DI Error: Cannot resolve unregistered service "unregistered-token"/,
+      );
+    });
+
+    it('returns the registered service when token exists', () => {
+      const app = new Axiomify();
+      app.use((_, context) => {
+        context.provide('my-service' as any, { ok: true });
+      });
+      const result = app.resolve('my-service' as any);
+      expect(result).toEqual({ ok: true });
+    });
+
+    it('covers vault.scope in AppConfigurator functional context', () => {
+      const app = new Axiomify();
+      let scopeResult: string = '';
+      app.use((_, context) => {
+        scopeResult = context.vault.scope('func-module', () => 'func-val');
+      });
+      expect(scopeResult).toBe('func-val');
+    });
+
+    it('covers vault.scope in AppModule topological context', () => {
+      const app = new Axiomify();
+      let scopeResult: string = '';
+      app.use({
+        name: 'test-mod',
+        register: (_, context) => {
+          scopeResult = context.vault.scope('top-module', () => 'top-val');
+        },
+      });
+      expect(scopeResult).toBe('top-val');
+    });
+
+    it('seals the vault when lockRoutes is called directly (adapter bootstrap)', () => {
+      const app = new Axiomify();
+      const mockVault = { seal: vi.fn() };
+      app.forceProvide('vault', mockVault);
+      app.lockRoutes(ADAPTER_LOCK_TOKEN);
+      expect(mockVault.seal).toHaveBeenCalledOnce();
     });
   });
 });

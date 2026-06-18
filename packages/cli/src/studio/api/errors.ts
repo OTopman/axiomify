@@ -21,7 +21,9 @@ export function sanitizePayload(payload: any): any {
   if (!payload || typeof payload !== 'object') return payload;
   try {
     const serialized = JSON.parse(
-      JSON.stringify(payload, (_, v) => (typeof v === 'bigint' ? v.toString() : v))
+      JSON.stringify(payload, (_, v) =>
+        typeof v === 'bigint' ? v.toString() : v,
+      ),
     );
     const mask = (obj: any) => {
       for (const key of Object.keys(obj)) {

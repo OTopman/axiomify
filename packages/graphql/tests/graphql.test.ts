@@ -576,7 +576,9 @@ describeGQL('GraphQL execution paths', () => {
 
     expect(res._code).toBe(400);
     const body = JSON.parse(res._raw);
-    expect(body.errors[0].message).toContain('Query depth 3 exceeds maximum of 2');
+    expect(body.errors[0].message).toContain(
+      'Query depth 3 exceeds maximum of 2',
+    );
   });
 
   it('rejects subscription operations with 405 Method Not Allowed', async () => {
