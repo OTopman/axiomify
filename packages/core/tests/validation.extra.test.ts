@@ -916,5 +916,65 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
       const req = makeReq({ body: { name: 'Alice', age: 25 } });
       expect(() => compiler.execute('POST:/bad-schema-malformed', req)).not.toThrow();
     });
+
+    it('covers falsy and null-safe schema compilation paths for 100% patch coverage', () => {
+      const compiler = new ValidationCompiler();
+      
+      // 1. Falsy candidate in asZodV4 via response map with null schema
+      compiler.compile('POST:/null-response', {
+        response: {
+          200: null as any
+        }
+      });
+      
+      // 2. Falsy schema in isZodObject (schema.properties contains null property schema)
+      compiler.compile('POST:/null-property-schema', {
+        body: {
+          safeParse: (x: any) => ({ success: true, data: x }),
+          parse: (x: any) => x,
+          toJSONSchema: () => ({
+            type: 'object',
+            properties: {
+              field: null as any
+            }
+          })
+        } as any
+      });
+      
+      // 3. Null unwrapped schema in adjustAdditionalProperties to cover optional chaining
+      const nullUnwrappedSchemaAny = {
+        _def: {
+          typeName: 'ZodOptional',
+          inner: null
+        },
+        safeParse: (x: any) => ({ success: true, data: x }),
+        parse: (x: any) => x,
+        toJSONSchema: () => ({
+          type: 'object',
+          anyOf: [{ type: 'string' }]
+        })
+      } as any;
+
+      compiler.compile('POST:/null-unwrapped-any', {
+        body: nullUnwrappedSchemaAny
+      });
+
+      const nullUnwrappedSchemaOne = {
+        _def: {
+          typeName: 'ZodOptional',
+          inner: null
+        },
+        safeParse: (x: any) => ({ success: true, data: x }),
+        parse: (x: any) => x,
+        toJSONSchema: () => ({
+          type: 'object',
+          oneOf: [{ type: 'number' }]
+        })
+      } as any;
+
+      compiler.compile('POST:/null-unwrapped-one', {
+        body: nullUnwrappedSchemaOne
+      });
+    });
   });
 });

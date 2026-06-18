@@ -2656,5 +2656,241 @@ describe('Axiomify Distributed Jobs', () => {
     expect(sortedJobs.length).toBe(2);
     // B runAt is 200, A is 100. Sorted descending by runAt, so B should be first
     expect(sortedJobs[0].id).toBe('b');
+
+    // 8. Test getJobs without queue parameter to cover 'axiomify:jobs:all' path
+    const allJobs = await redisStorage.getJobs();
+    expect(allJobs.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('should cover additional RedisJobStorage client method fallbacks and corrupt JSON acquireNext', async () => {
+    // 1. camelCase Client
+    const mockCamelClient = {
+      store: new Map<string, string>(),
+      GET: vi.fn().mockImplementation(async (k) => mockCamelClient.store.get(k) || null),
+      SET: vi.fn().mockImplementation(async (k, v) => { mockCamelClient.store.set(k, v); }),
+      DEL: vi.fn().mockResolvedValue(1),
+      sAdd: vi.fn().mockResolvedValue(1),
+      sRem: vi.fn().mockResolvedValue(1),
+      sMembers: vi.fn().mockResolvedValue(['job-camel']),
+      zAdd: vi.fn().mockResolvedValue(1),
+      zRem: vi.fn().mockResolvedValue(1),
+      zRangeByScore: vi.fn().mockResolvedValue(['job-camel']),
+      mGet: vi.fn().mockResolvedValue([JSON.stringify({
+        id: 'job-camel', queue: 'camel-q', name: 'n', status: 'pending', priority: 0, runAt: Date.now(), attempts: 0, maxAttempts: 1
+      })]),
+      scan: vi.fn().mockResolvedValue(['0']), // undefined result[1] to cover L492 fallback
+      eval: vi.fn().mockResolvedValue(JSON.stringify({ id: 'job-camel', status: 'running' }))
+    };
+    const storageCamel = new RedisJobStorage(mockCamelClient as any);
+    await storageCamel.save({
+      id: 'job-camel', queue: 'camel-q', name: 'n', status: 'pending', priority: 0, runAt: Date.now(), attempts: 0, maxAttempts: 1, payload: {}
+    });
+    // Call acquireNext to trigger zRangeByScore
+    await storageCamel.acquireNext('camel-q', 1000);
+    // Call clear to trigger scan and delete
+    await storageCamel.clear();
+    const jobsCamel = await storageCamel.getJobs('camel-q');
+    expect(jobsCamel).toHaveLength(1);
+    expect(mockCamelClient.sMembers).toHaveBeenCalled();
+
+    // 2. UPPERCASE Client
+    const mockUpperClient = {
+      store: new Map<string, string>(),
+      GET: vi.fn().mockImplementation(async (k) => mockUpperClient.store.get(k) || null),
+      SET: vi.fn().mockImplementation(async (k, v) => { mockUpperClient.store.set(k, v); }),
+      DEL: vi.fn().mockResolvedValue(1),
+      SADD: vi.fn().mockResolvedValue(1),
+      SREM: vi.fn().mockResolvedValue(1),
+      SMEMBERS: vi.fn().mockResolvedValue(['job-upper']),
+      ZADD: vi.fn().mockResolvedValue(1),
+      ZREM: vi.fn().mockResolvedValue(1),
+      ZRANGEBYSCORE: vi.fn().mockResolvedValue(['job-upper']),
+      MGET: vi.fn().mockResolvedValue([JSON.stringify({
+        id: 'job-upper', queue: 'upper-q', name: 'n', status: 'pending', priority: 0, runAt: Date.now(), attempts: 0, maxAttempts: 1
+      })]),
+      SCAN: vi.fn().mockResolvedValue({ cursor: '0' }), // undefined keys to cover L496 fallback
+      EVAL: vi.fn().mockResolvedValue(JSON.stringify({ id: 'job-upper', status: 'running' }))
+    };
+    const storageUpper = new RedisJobStorage(mockUpperClient as any);
+    await storageUpper.save({
+      id: 'job-upper', queue: 'upper-q', name: 'n', status: 'pending', priority: 0, runAt: Date.now(), attempts: 0, maxAttempts: 1, payload: {}
+    });
+    // Call acquireNext to trigger ZRANGEBYSCORE
+    await storageUpper.acquireNext('upper-q', 1000);
+    // Call clear to trigger SCAN and delete
+    await storageUpper.clear();
+    const jobsUpper = await storageUpper.getJobs('upper-q');
+    expect(jobsUpper).toHaveLength(1);
+    expect(mockUpperClient.SMEMBERS).toHaveBeenCalled();
+
+    // 3. Corrupt/falsy items in RedisJobStorage.acquireNext candidates parsing
+    const mockRedisCorrupt = {
+      zsets: new Map<string, Map<string, number>>(),
+      store: new Map<string, string>(),
+      zrangebyscore: async function() {
+        return ['job-null', 'job-corrupt', 'job-valid'];
+      },
+      mget: async function() {
+        return [
+          null, // covers falsy raw check
+          '{invalid-json', // covers JSON parse catch block
+          JSON.stringify({
+            id: 'job-valid', queue: 'test-q', name: 'n', status: 'pending', priority: 10, runAt: Date.now() - 100, attempts: 0, maxAttempts: 1
+          })
+        ];
+      },
+      eval: async function() {
+        return JSON.stringify({ id: 'job-valid', status: 'running' });
+      }
+    };
+    const storageCorrupt = new RedisJobStorage(mockRedisCorrupt as any);
+    const acquiredCorrupt = await storageCorrupt.acquireNext('test-q', 1000);
+    expect(acquiredCorrupt?.id).toBe('job-valid');
+
+    // 4. Test acquireCronLock result permutations (true, 1) in RedisJobStorage
+    const mockCronClient = {
+      set: vi.fn().mockResolvedValue(true) // returns boolean true
+    };
+    const storageCron = new RedisJobStorage(mockCronClient as any);
+    const resCron1 = await storageCron.acquireCronLock('cron-key-1', 1000);
+    expect(resCron1).toBe(true);
+
+    const mockCronClient2 = {
+      set: vi.fn().mockResolvedValue(1) // returns number 1
+    };
+    const storageCron2 = new RedisJobStorage(mockCronClient2 as any);
+    const resCron2 = await storageCron2.acquireCronLock('cron-key-2', 1000);
+    expect(resCron2).toBe(true);
+  });
+
+  it('should handle non-string/falsy payloads and lowercase maxattempts in SQLJobStorage', async () => {
+    // 1. Non-string payload & non-string traceContext in acquireNext
+    const mockPg1 = {
+      query: async () => [{
+        id: 'sql-obj-payload',
+        queue: 'q',
+        name: 'n',
+        payload: { foo: 'bar' },
+        status: 'running',
+        priority: 0,
+        runAt: Date.now(),
+        attempts: 0,
+        maxAttempts: 3,
+        traceContext: { traceparent: 'tc-val' }
+      }]
+    };
+    const storage1 = new SQLJobStorage(mockPg1);
+    const acquired1 = await storage1.acquireNext('q', 5000);
+    expect(acquired1?.payload).toEqual({ foo: 'bar' });
+    expect(acquired1?.traceContext).toEqual({ traceparent: 'tc-val' });
+
+    // 2. Falsy payload in acquireNext
+    const mockPg2 = {
+      query: async () => [{
+        id: 'sql-falsy-payload',
+        queue: 'q',
+        name: 'n',
+        payload: null,
+        status: 'running',
+        priority: 0,
+        runAt: Date.now(),
+        attempts: 0,
+        maxAttempts: 3,
+        traceContext: null
+      }]
+    };
+    const storage2 = new SQLJobStorage(mockPg2);
+    const acquired2 = await storage2.acquireNext('q', 5000);
+    expect(acquired2?.payload).toBeNull();
+    expect(acquired2?.traceContext).toBeUndefined();
+
+    // 3. Missing attempts in fail
+    const mockPg3 = {
+      queries: [] as string[],
+      query: async (sql: string) => {
+        if (sql.includes('SELECT attempts')) {
+          return [{ attempts: null, maxAttempts: 3 }];
+        }
+        mockPg3.queries.push(sql);
+        return [];
+      }
+    };
+    const storage3 = new SQLJobStorage(mockPg3);
+    await storage3.fail('job-no-attempts', 'err', 1000);
+    expect(mockPg3.queries[0]).toContain("attempts = $1");
+
+    // 4. Lowercase maxattempts in fail
+    const mockPg4 = {
+      queries: [] as string[],
+      query: async (sql: string) => {
+        if (sql.includes('SELECT attempts')) {
+          return [{ attempts: 0, maxattempts: 5 }];
+        }
+        mockPg4.queries.push(sql);
+        return [];
+      }
+    };
+    const storage4 = new SQLJobStorage(mockPg4);
+    await storage4.fail('job-lowercase-maxattempts', 'err', 1000);
+    expect(mockPg4.queries[0]).toContain("attempts = $1");
+
+    // 5. Null rows in SQLJobStorage.getJobs
+    const mockPg5 = {
+      $queryRawUnsafe: async () => null as any
+    };
+    const storage5 = new SQLJobStorage(mockPg5);
+    const jobs5 = await storage5.getJobs();
+    expect(jobs5).toEqual([]);
+
+    // 6. Non-string payload & traceContext in getJobs
+    const mockPg6 = {
+      query: async () => [{
+        id: 'sql-jobs-obj',
+        queue: 'q',
+        name: 'n',
+        payload: { x: 1 },
+        status: 'pending',
+        priority: 0,
+        runAt: Date.now(),
+        attempts: 0,
+        maxAttempts: 3,
+        traceContext: { traceparent: 'tc-val-jobs' }
+      }, {
+        id: 'sql-jobs-falsy',
+        queue: 'q',
+        name: 'n',
+        payload: { x: 1 }, // truthy object, no _traceContext (covers L347 index 1 fallback)
+        status: 'pending',
+        priority: 0,
+        runAt: Date.now(),
+        attempts: 0,
+        maxAttempts: 3,
+        traceContext: null
+      }, {
+        id: 'sql-jobs-primitive',
+        queue: 'q',
+        name: 'n',
+        payload: '"primitive-payload"',
+        status: 'pending',
+        priority: 0,
+        runAt: Date.now(),
+        attempts: 0,
+        maxAttempts: 3,
+        traceContext: null
+      }]
+    };
+    const storage6 = new SQLJobStorage(mockPg6);
+    const jobs6 = await storage6.getJobs('q');
+    expect(jobs6[0].payload).toEqual({ x: 1 });
+    expect(jobs6[0].traceContext).toEqual({ traceparent: 'tc-val-jobs' });
+    expect(jobs6[1].payload).toEqual({ x: 1 });
+    expect(jobs6[1].traceContext).toBeUndefined();
+    expect(jobs6[2].payload).toBe('primitive-payload');
+  });
+
+  it('should ignore complete and fail for non-existent job in MemoryJobStorage', async () => {
+    const storage = new MemoryJobStorage();
+    await expect(storage.complete('non-existent')).resolves.not.toThrow();
+    await expect(storage.fail('non-existent', 'err')).resolves.not.toThrow();
   });
 });
