@@ -31,6 +31,21 @@
     "tsup": "^8.5.1",
     "typescript": "^6.0.2"
   },
+  "author": {
+    "name": "Topman",
+    "email": "okunlolatopman14@gmail.com",
+    "url": "https://github.com/OTopman"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/OTopman/axiomify/blob/main/docs/packages/vault.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OTopman/axiomify.git",
+    "directory": "packages/vault"
+  },
+  "bugs": {
+    "url": "https://github.com/OTopman/axiomify/issues"
+  },
   "publishConfig": {
     "access": "public"
   },
