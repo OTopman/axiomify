@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/metrics",
-  "version": "6.3.2",
+  "version": "6.3.3",
   "description": "Prometheus metrics for Axiomify — bounded label cardinality, WebSocket stats, route-level latency histograms.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
