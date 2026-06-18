@@ -182,7 +182,7 @@ interface ZodV4Schema {
 }
 function asZodV4(schema: ZodTypeAny): ZodV4Schema | null {
   const candidate = schema as unknown as { toJSONSchema?: unknown };
-  return typeof candidate.toJSONSchema === 'function'
+  return candidate && typeof candidate.toJSONSchema === 'function'
     ? (candidate as ZodV4Schema)
     : null;
 }
@@ -260,14 +260,13 @@ function adjustAdditionalProperties(jsonSchema: any, zodSchema: any): void {
 
   const unwrapped = unwrapZodSchema(zodSchema);
   const typeName =
-    unwrapped.constructor?.name ||
-    unwrapped._def?.typeName ||
-    unwrapped.def?.type;
+    unwrapped?.constructor?.name ||
+    unwrapped?._def?.typeName ||
+    unwrapped?.def?.type;
 
-  // 1. Recurse if the jsonSchema contains composite fields (anyOf, oneOf)
   if (jsonSchema.anyOf && Array.isArray(jsonSchema.anyOf)) {
     const options =
-      unwrapped.options || unwrapped.def?.options || unwrapped._def?.options;
+      unwrapped?.options || unwrapped?.def?.options || unwrapped?._def?.options;
     for (let i = 0; i < jsonSchema.anyOf.length; i++) {
       const subZod = Array.isArray(options) ? options[i] : unwrapped;
       adjustAdditionalProperties(jsonSchema.anyOf[i], subZod);
@@ -276,7 +275,7 @@ function adjustAdditionalProperties(jsonSchema: any, zodSchema: any): void {
   }
   if (jsonSchema.oneOf && Array.isArray(jsonSchema.oneOf)) {
     const options =
-      unwrapped.options || unwrapped.def?.options || unwrapped._def?.options;
+      unwrapped?.options || unwrapped?.def?.options || unwrapped?._def?.options;
     for (let i = 0; i < jsonSchema.oneOf.length; i++) {
       const subZod = Array.isArray(options) ? options[i] : unwrapped;
       adjustAdditionalProperties(jsonSchema.oneOf[i], subZod);

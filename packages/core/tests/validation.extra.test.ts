@@ -865,6 +865,24 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
         body: badDefSchema
       });
 
+      // 4. Trigger safeZodDef where unwrapZodSchema returns null (zodSchema unwraps ZodOptional with null innerType)
+      const weirdSchema = {
+        constructor: { name: 'ZodOptional' },
+        def: {
+          inner: null
+        },
+        parse: (x: any) => x,
+        safeParse: (x: any) => ({ success: true, data: x }),
+        toJSONSchema: () => ({
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          additionalProperties: false
+        })
+      } as any;
+      compiler.compile('POST:/bad-schema-weird', {
+        body: weirdSchema
+      });
+
       // Should not throw and successfully compile
       const req = makeReq({ body: {} });
       expect(() => compiler.execute('POST:/bad-schema-empty', req)).not.toThrow();
