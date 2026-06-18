@@ -2557,4 +2557,104 @@ describe('Axiomify Distributed Jobs', () => {
     // Save should run and not throw
     await expect(storage.save(job)).resolves.not.toThrow();
   });
+
+  it('should test remaining RedisJobStorage and SQLJobStorage edge cases for full coverage', async () => {
+    // A. SQLJobStorage edge cases
+    const mockPg = {
+      query: async (sql: string, params?: any[]) => {
+        return { rows: [] };
+      }
+    };
+    const sqlStorage = new SQLJobStorage(mockPg as any);
+    
+    // 1. empty acquire -> returns null (line 247)
+    const sqlAcquired = await sqlStorage.acquireNext('sql-empty-queue', 1000);
+    expect(sqlAcquired).toBeNull();
+
+    // 2. fail non-existent -> returns early (line 304)
+    await expect(sqlStorage.fail('non-existent-id', 'err')).resolves.not.toThrow();
+
+    // B. RedisJobStorage edge cases
+    const mockRedis = {
+      store: new Map<string, string>(),
+      sets: new Map<string, Set<string>>(),
+      zsets: new Map<string, Map<string, number>>(),
+      get: async function(key: string) { return this.store.get(key) || null; },
+      set: async function(key: string, value: string) { this.store.set(key, value); },
+      sadd: async function(key: string, val: string) {
+        if (!this.sets.has(key)) this.sets.set(key, new Set());
+        this.sets.get(key)!.add(val);
+      },
+      srem: async function(key: string, val: string) {
+        this.sets.get(key)?.delete(val);
+      },
+      smembers: async function(key: string) {
+        return Array.from(this.sets.get(key) || []);
+      },
+      zadd: async function(key: string, score: number, member: string) {
+        if (!this.zsets.has(key)) this.zsets.set(key, new Map());
+        this.zsets.get(key)!.set(member, score);
+      },
+      zrem: async function(key: string, member: string) {
+        this.zsets.get(key)?.delete(member);
+      },
+      zrangebyscore: async function(key: string, min: number, max: number) {
+        const map = this.zsets.get(key);
+        if (!map) return [];
+        return Array.from(map.entries())
+          .filter(([_, score]) => score >= min && score <= max)
+          .map(([member]) => member);
+      },
+      mget: async function(keys: string[]) {
+        return keys.map((k) => this.store.get(k) || null);
+      }
+    };
+
+    const redisStorage = new RedisJobStorage(mockRedis as any);
+
+    // 1. mget with empty keys (line 453)
+    const mgetRes = await (redisStorage as any).mget([]);
+    expect(mgetRes).toEqual([]);
+
+    // 2. acquireNext empty queue (line 560)
+    const acquiredEmpty = await redisStorage.acquireNext('empty-redis-queue', 1000);
+    expect(acquiredEmpty).toBeNull();
+
+    // 3. acquireNext with non-pending candidate / future candidate (line 579)
+    await mockRedis.zadd('axiomify:queue:test-q:pending_zset', Date.now() - 50, 'job-non-pending');
+    // Save job as running instead of pending
+    const runningJob = {
+      id: 'job-non-pending',
+      queue: 'test-q',
+      name: 'name',
+      status: 'running',
+      priority: 0,
+      runAt: Date.now() - 50,
+      attempts: 0,
+      maxAttempts: 3
+    };
+    await mockRedis.set('axiomify:job:job-non-pending', JSON.stringify(runningJob));
+    const acquiredNonPending = await redisStorage.acquireNext('test-q', 1000);
+    expect(acquiredNonPending).toBeNull();
+
+    // 4. complete on non-existent job (line 652)
+    await expect(redisStorage.complete('non-existent-redis-id')).resolves.not.toThrow();
+
+    // 5. fail on non-existent job (line 667)
+    await expect(redisStorage.fail('non-existent-redis-id', 'err')).resolves.not.toThrow();
+
+    // 6. getJobs empty queue (line 693)
+    const emptyJobs = await redisStorage.getJobs('empty-q');
+    expect(emptyJobs).toEqual([]);
+
+    // 7. getJobs sort comparator execution (line 707)
+    const jobA = { id: 'a', queue: 'sort-q', name: 'n', status: 'pending', priority: 0, runAt: 100, attempts: 0, maxAttempts: 1 };
+    const jobB = { id: 'b', queue: 'sort-q', name: 'n', status: 'pending', priority: 0, runAt: 200, attempts: 0, maxAttempts: 1 };
+    await redisStorage.save(jobA as any);
+    await redisStorage.save(jobB as any);
+    const sortedJobs = await redisStorage.getJobs('sort-q');
+    expect(sortedJobs.length).toBe(2);
+    // B runAt is 200, A is 100. Sorted descending by runAt, so B should be first
+    expect(sortedJobs[0].id).toBe('b');
+  });
 });

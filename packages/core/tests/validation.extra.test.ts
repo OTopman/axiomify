@@ -887,5 +887,34 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
       const req = makeReq({ body: {} });
       expect(() => compiler.execute('POST:/bad-schema-empty', req)).not.toThrow();
     });
+
+    it('handles malformed schemas to cover adjustAdditionalProperties guard clauses', () => {
+      const compiler = new ValidationCompiler();
+      
+      const malformedSchema = {
+        constructor: { name: 'ZodObject' },
+        shape: {
+          name: z.string(),
+          age: 'not-an-object-zod' as any
+        },
+        parse: (x: any) => x,
+        safeParse: (x: any) => ({ success: true, data: x }),
+        toJSONSchema: () => ({
+          type: 'object',
+          properties: {
+            name: 'not-an-object', // triggers !jsonSchema || typeof jsonSchema !== 'object' guard
+            age: { type: 'integer' } // triggers !zodSchema || typeof zodSchema !== 'object' guard
+          },
+          additionalProperties: false
+        })
+      } as any;
+      
+      compiler.compile('POST:/bad-schema-malformed', {
+        body: malformedSchema
+      });
+      
+      const req = makeReq({ body: { name: 'Alice', age: 25 } });
+      expect(() => compiler.execute('POST:/bad-schema-malformed', req)).not.toThrow();
+    });
   });
 });
