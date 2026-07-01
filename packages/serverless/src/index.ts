@@ -3,10 +3,16 @@ import {
   Axiomify,
   AxiomifyRequest,
   AxiomifyResponse,
+  makeSerialize,
   RequestStateImpl,
+  type SerializerInput,
 } from '@axiomify/core';
 import { randomUUID } from 'node:crypto';
 import { Readable, Transform } from 'node:stream';
+
+// Statuses that must not carry a response body per the Fetch spec — the
+// Response constructor throws if a non-null body is supplied for these.
+const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 
 export interface ServerlessAdapterOptions {
   /**
@@ -27,6 +33,7 @@ export class ServerlessAdapter {
   private readonly _lockToken = ADAPTER_LOCK_TOKEN;
   private readonly _maxBodySize: number;
   private readonly _trustProxy: boolean;
+  private readonly _serialize: (input: SerializerInput) => unknown;
 
   constructor(
     private readonly app: Axiomify,
@@ -35,6 +42,55 @@ export class ServerlessAdapter {
     this.app.lockRoutes(ADAPTER_LOCK_TOKEN, '@axiomify/serverless');
     this._maxBodySize = options.maxBodySize ?? 1_048_576;
     this._trustProxy = options.trustProxy ?? false;
+    // Capture the configured serializer after routes are locked, mirroring the
+    // native adapter, so serverless responses share the same envelope shape.
+    this._serialize = makeSerialize(this.app.serializer);
+  }
+
+  /**
+   * Reads the request body while enforcing `maxBodySize`. When the body is a
+   * readable stream it is consumed chunk-by-chunk and aborted as soon as the
+   * accumulated size exceeds the cap — the full payload is never buffered.
+   * Falls back to `arrayBuffer()` (then a post-read check) only on runtimes
+   * that don't expose a streamable `request.body`.
+   */
+  private async readBodyWithLimit(
+    request: Request,
+  ): Promise<{ overLimit: boolean; buffer: Buffer | null }> {
+    const stream = request.body as ReadableStream<Uint8Array> | null;
+    if (stream && typeof stream.getReader === 'function') {
+      const reader = stream.getReader();
+      const chunks: Buffer[] = [];
+      let total = 0;
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          total += value.byteLength;
+          if (total > this._maxBodySize) {
+            await reader.cancel().catch(() => {});
+            return { overLimit: true, buffer: null };
+          }
+          chunks.push(Buffer.from(value.buffer, value.byteOffset, value.byteLength));
+        }
+      } catch {
+        // Reading failed — treat as an empty body.
+        return { overLimit: false, buffer: null };
+      }
+      return { overLimit: false, buffer: chunks.length ? Buffer.concat(chunks, total) : null };
+    }
+
+    // Fallback: no streamable body — buffer, then check.
+    try {
+      const buf = Buffer.from(await request.arrayBuffer());
+      if (buf.length > this._maxBodySize) {
+        return { overLimit: true, buffer: null };
+      }
+      return { overLimit: false, buffer: buf };
+    } catch {
+      return { overLimit: false, buffer: null };
+    }
   }
 
   public async handle(request: Request): Promise<Response> {
@@ -69,21 +125,19 @@ export class ServerlessAdapter {
     let body: unknown = null;
     if (hasBody) {
       // M5 (CWE-400): cap request body size to avoid unbounded buffering.
-      // Reject early on the declared Content-Length, then re-check the
-      // actual byte length after reading in case the header lied.
+      // Cheap fast-path — reject on a declared Content-Length over the cap.
       const contentLength = Number(headers['content-length'] as string);
       if (Number.isFinite(contentLength) && contentLength > this._maxBodySize) {
         return new Response('Payload Too Large', { status: 413 });
       }
-      try {
-        const ab = await request.arrayBuffer();
-        rawBody = Buffer.from(ab);
-      } catch {
-        // Fallback to empty/null if reading body fails
-      }
-      if (rawBody && rawBody.length > this._maxBodySize) {
+      // Then read the body incrementally and abort the moment it crosses the
+      // cap, so a streamed or Content-Length-underreporting client cannot
+      // force the whole payload to be materialized before the check runs.
+      const read = await this.readBodyWithLimit(request);
+      if (read.overLimit) {
         return new Response('Payload Too Large', { status: 413 });
       }
+      rawBody = read.buffer;
     }
 
     if (rawBody && rawBody.length > 0) {
@@ -138,6 +192,10 @@ export class ServerlessAdapter {
       stream: rawBody ? Readable.from(rawBody) : Readable.from([]),
     };
 
+    // Captured once per request; used by res.send to build the response
+    // envelope through the app's configured serializer (see native adapter).
+    const serialize = this._serialize;
+
     return new Promise<Response>((resolve, reject) => {
       let responseStatusCode = 200;
       const responseHeaders = new Headers();
@@ -165,22 +223,39 @@ export class ServerlessAdapter {
           if (headersSent) return;
           headersSent = true;
 
-          if (data === null || data === undefined) {
+          // Route every response through the configured serializer so the
+          // envelope (status/message/data), custom serializers, and error
+          // metadata are identical to the native adapter. Raw/unwrapped
+          // payloads remain available via sendRaw().
+          const payload = serialize({
+            data,
+            message,
+            statusCode: responseStatusCode,
+            isError: responseStatusCode >= 400,
+            req,
+          });
+
+          if (payload === null || payload === undefined) {
             responseBody = null;
-          } else if (typeof data === 'string') {
-            responseBody = data;
-            if (!responseHeaders.has('content-type')) {
-              responseHeaders.set('content-type', 'text/plain; charset=utf-8');
-            }
           } else {
-            responseBody = JSON.stringify(data);
+            responseBody = JSON.stringify(payload);
             if (!responseHeaders.has('content-type')) {
-              responseHeaders.set('content-type', 'application/json; charset=utf-8');
+              responseHeaders.set(
+                'content-type',
+                'application/json; charset=utf-8',
+              );
             }
           }
 
+          // HEAD and null-body statuses (204/205/304) must not carry a body —
+          // the Fetch Response constructor throws otherwise.
+          const finalBody =
+            method === 'HEAD' || NULL_BODY_STATUSES.has(responseStatusCode)
+              ? null
+              : responseBody;
+
           resolve(
-            new Response(responseBody, {
+            new Response(finalBody, {
               status: responseStatusCode,
               headers: responseHeaders,
             })

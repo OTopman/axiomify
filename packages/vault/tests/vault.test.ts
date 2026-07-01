@@ -1109,3 +1109,120 @@ describe('Axiomify Vault', () => {
     }
   });
 });
+
+describe('SecretPolicyEngine', () => {
+  let SecretPolicyEngine: any;
+
+  beforeAll(async () => {
+    ({ SecretPolicyEngine } = await import('../src/policy'));
+  });
+
+  it('is permissive with no policy configured and warns exactly once (CWE-1188)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const engine = new SecretPolicyEngine();
+      expect(engine.isAllowed('anyModule', 'ANY_SECRET')).toBe(true);
+      // Second access must not warn again.
+      expect(engine.isAllowed('otherModule', 'OTHER_SECRET')).toBe(true);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain('no');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('denies all access with no policy when defaultDeny is enabled (strict mode)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const engine = new SecretPolicyEngine(undefined, { defaultDeny: true });
+      expect(engine.isAllowed('anyModule', 'ANY_SECRET')).toBe(false);
+      // Strict mode must not emit the permissive warning.
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('enforces module allow-lists and wildcards when a policy is configured', () => {
+    const engine = new SecretPolicyEngine({
+      modules: {
+        billing: { allow: ['STRIPE_KEY'] },
+        '*': { allow: ['PUBLIC_KEY'] },
+      },
+    });
+    // Direct module match
+    expect(engine.isAllowed('billing', 'STRIPE_KEY')).toBe(true);
+    expect(engine.isAllowed('billing', 'STRIPE_SECRET')).toBe(false);
+    // Wildcard module fallback
+    expect(engine.isAllowed('unknownModule', 'PUBLIC_KEY')).toBe(true);
+    expect(engine.isAllowed('unknownModule', 'PRIVATE_KEY')).toBe(false);
+  });
+
+  it('allows every secret for a module whose allow-list contains "*"', () => {
+    const engine = new SecretPolicyEngine({
+      modules: { admin: { allow: ['*'] } },
+    });
+    expect(engine.isAllowed('admin', 'ANYTHING')).toBe(true);
+    // Non-listed module is still denied once a policy exists.
+    expect(engine.isAllowed('guest', 'ANYTHING')).toBe(false);
+  });
+});
+
+describe('resolveConfidentCallerModuleName', () => {
+  let resolveConfidentCallerModuleName: any;
+  let UNKNOWN_CALLER: any;
+  let vaultScopeFn: any;
+
+  beforeAll(async () => {
+    const proxy = await import('../src/proxy');
+    resolveConfidentCallerModuleName = proxy.resolveConfidentCallerModuleName;
+    UNKNOWN_CALLER = proxy.UNKNOWN_CALLER;
+    const index = await import('../src/index');
+    vaultScopeFn = index.vaultScope;
+  });
+
+  it('exports the UNKNOWN_CALLER sentinel distinct from "default"', () => {
+    expect(UNKNOWN_CALLER).toBe('unknown');
+    expect(UNKNOWN_CALLER).not.toBe('default');
+  });
+
+  it('returns UNKNOWN_CALLER (not "default") when no ALS context and stack has no module match (CWE-807)', () => {
+    const OriginalError = globalThis.Error;
+    const MockError = class extends OriginalError {
+      constructor(message?: string) {
+        super(message);
+        this.stack = 'Error\n    at someUnrelatedFn (file.js:10:5)';
+      }
+    };
+    globalThis.Error = MockError as any;
+    try {
+      expect(resolveConfidentCallerModuleName()).toBe(UNKNOWN_CALLER);
+    } finally {
+      globalThis.Error = OriginalError;
+    }
+  });
+
+  it('uses the ALS context value when inside a vaultScope', () => {
+    const result = vaultScopeFn('billingModule', () =>
+      resolveConfidentCallerModuleName(),
+    );
+    expect(result).toBe('billingModule');
+  });
+
+  it('resolves a confident module name from the stack trace when outside a vaultScope', () => {
+    const OriginalError = globalThis.Error;
+    const MockError = class extends OriginalError {
+      constructor(message?: string) {
+        super(message);
+        this.stack =
+          'Error\n    at myAppModuleAction (file.js:10:5)\n    at AppModule.register (index.js:5:10)';
+      }
+    };
+    globalThis.Error = MockError as any;
+    try {
+      expect(resolveConfidentCallerModuleName()).toBe('myAppModuleAction');
+    } finally {
+      globalThis.Error = OriginalError;
+    }
+  });
+});
