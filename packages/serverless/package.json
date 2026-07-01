@@ -1,7 +1,7 @@
 {
-  "name": "@axiomify/ws",
+  "name": "@axiomify/serverless",
   "version": "6.3.3",
-  "description": "Native pub/sub room utility for @axiomify/native — O(1) broadcast, presence tracking, and typed rooms powered by uWebSockets.js topics. Not a wrapper for the ws npm package.",
+  "description": "Platform-independent serverless adapter for Axiomify using Web standard Request/Response objects (WinterCG compliant).",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "module": "./dist/index.mjs",
@@ -19,28 +19,21 @@
     "build": "tsup"
   },
   "dependencies": {
-    "@axiomify/core": "*",
-    "@axiomify/native": "*"
-  },
-  "peerDependencies": {
-    "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#624987739d4da0acb628aaf2a10fc43e7ce27c5c"
-  },
-  "peerDependenciesMeta": {
-    "uWebSockets.js": {
-      "optional": true
-    }
+    "@axiomify/core": "*"
   },
   "keywords": [
     "axiomify",
-    "websocket",
-    "pubsub",
-    "rooms",
-    "realtime",
-    "uwebsockets",
-    "native-adapter",
-    "broadcast",
-    "presence",
-    "topics"
+    "serverless",
+    "adapter",
+    "fetch",
+    "request",
+    "response",
+    "wintercg",
+    "cloudflare-workers",
+    "vercel-edge",
+    "aws-lambda",
+    "bun",
+    "deno"
   ],
   "author": {
     "name": "Topman",
@@ -48,11 +41,11 @@
     "url": "https://github.com/OTopman"
   },
   "license": "MIT",
-  "homepage": "https://github.com/OTopman/axiomify/blob/main/docs/packages/ws.md",
+  "homepage": "https://github.com/OTopman/axiomify/blob/main/docs/packages/serverless.md",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/OTopman/axiomify.git",
-    "directory": "packages/ws"
+    "directory": "packages/serverless"
   },
   "bugs": {
     "url": "https://github.com/OTopman/axiomify/issues"

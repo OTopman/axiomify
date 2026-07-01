@@ -83,3 +83,6 @@ codecov.SHA256SUM.sig
 review.md
 update.sh
 reports/
+
+# Example/app vault files contain secrets — never commit
+axiomify-vault*.json

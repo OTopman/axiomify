@@ -22,10 +22,23 @@ Axiomify is an ultra high-performance Node.js framework built exclusively on `uW
 
 ## Package ecosystem
 
-| Package                            | Description                                                          |
-| ---------------------------------- | -------------------------------------------------------------------- |
-| [`@axiomify/core`](packages/core/) | Router, AJV validation, hook manager, dispatcher, module system      |
-| [`@axiomify/cli`](packages/cli/)   | `init` · `dev` · `build` · `routes` · `openapi` · `check` · `doctor` |
+| Package                            | Description                                                                                                    |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| [`@axiomify/core`](packages/core/) | Router, AJV validation, hook manager, dispatcher, module system                                                |
+| [`@axiomify/cli`](packages/cli/)   | `init` · `dev` · `build` · `routes` · `openapi` · `check` · `doctor` · `studio` · `scaffold` · `route` · `sdk` |
+
+### Runtime & adapters
+
+| Package                                        | Description                                                                                             |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| [`@axiomify/native`](packages/native/)         | Production `uWebSockets.js` adapter — HTTP + native WebSocket, SSE, graceful shutdown, SO_REUSEPORT clustering |
+| [`@axiomify/serverless`](packages/serverless/) | Web-standard `Request`/`Response` adapter for serverless/edge runtimes (bounded body size, opt-in proxy trust) |
+
+### Background jobs
+
+| Package                            | Description                                                                                     |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [`@axiomify/jobs`](packages/jobs/) | Distributed job scheduler — retries, DLQ, cron schedules, saga coordination, pluggable storage  |
 
 ### Security
 
@@ -318,14 +331,19 @@ app.use({
 
 ## CLI
 
-`@axiomify/cli` ships with the framework. Beyond `init` / `dev` / `build`, it has commands for route inspection, OpenAPI generation, production-readiness auditing, and environment diagnostics — useful in CI as well as locally.
+`@axiomify/cli` ships with the framework. Beyond `init` / `dev` / `build`, it has commands for route inspection, OpenAPI generation, production-readiness auditing, environment diagnostics, a local developer console (Studio), and typed-client SDK generation — useful in CI as well as locally.
 
 ```bash
 npx axiomify routes                      # colour-coded route table (HTTP + WS)
 npx axiomify openapi -o openapi.json     # emit spec for client codegen
 npx axiomify check                       # static production-readiness audit
 npx axiomify doctor                      # diagnose Node version / uWS / ports
+npx axiomify studio                      # local dev console (traces, logs, playground)
+npx axiomify sdk build                   # generate a typed client SDK
+npx axiomify scaffold                    # scaffold routes/modules
 ```
+
+> **Studio note:** the Studio console binds to loopback only and rejects non-loopback `Host` headers. Its code-execution Playground is disabled by default — set `AXIOMIFY_STUDIO_ALLOW_EXEC=true` to enable it, and only on a trusted local machine (it runs snippets unsandboxed).
 
 `axiomify routes` example:
 
@@ -389,7 +407,7 @@ For authoritative clustered numbers: `SERVER_HOST=<server-ip> node benchmarks/ru
 - **Prototype pollution** — when `@axiomify/security` is registered, the sanitiser walks `req.body` / `req.query` / `req.params` and drops `__proto__` / `constructor` / `prototype` keys. Enabled by default.
 - **AJV non-coercing** — `coerceTypes: false` and no `removeAdditional` flag — AJV never mutates request data silently. Validation rejects on bad shape; transforms only run if you declared them in your Zod schema.
 - **JWT algorithm pinning** — `createAuthPlugin` and `createRefreshHandler` reject tokens signed with algorithms not in the configured list. Weak secrets (< 32 bytes / 256 bits per RFC 7518) throw at startup in production, warn in development.
-- **CORS startup validation** — `credentials: true` combined with a literal `origin: '*'` throws at construction time, not on first request.
+- **CORS startup validation** — `credentials: true` combined with a literal `origin: '*'` **or** `origin: true` (reflect-all) throws at construction time, not on first request; credentialed CORS requires an explicit origin allowlist. Reflect-all (`origin: true`) also never echoes a `null`/absent `Origin`.
 - **Path traversal** — `@axiomify/static` resolves via `realpath()` and verifies containment under the configured root.
 - **Body stream limits** — `NativeAdapter` enforces `maxBodySize` on the actual byte stream from uWS, not the Client-controlled `Content-Length` header.
 - **Header injection** — `res.header(name, value)` throws on CR / LF / NUL bytes in either argument, preventing response-splitting attacks.
@@ -399,7 +417,7 @@ For authoritative clustered numbers: `SERVER_HOST=<server-ip> node benchmarks/ru
 ## Testing
 
 ```bash
-npm test         # vitest — 524 tests across 50 files
+npm test         # vitest — 959 tests across 80 files
 npm run coverage # V8 coverage report (97% lines / 98% functions on gated packages)
 ```
 
@@ -445,7 +463,7 @@ Quick reference:
 
 ### Package docs
 
-[core](docs/packages/core.md) · [native](docs/packages/native.md) (HTTP + WebSocket adapter) · [auth](docs/packages/auth.md) · [cors](docs/packages/cors.md) · [rate-limit](docs/packages/rate-limit.md) · [openapi](docs/packages/openapi.md) · [security](docs/packages/security.md) · [static](docs/packages/static.md) · [upload](docs/packages/upload.md) · [helmet](docs/packages/helmet.md) · [logger](docs/packages/logger.md) · [metrics](docs/packages/metrics.md) · [fingerprint](docs/packages/fingerprint.md) · [graphql](docs/packages/graphql.md) · [cli](docs/packages/cli.md)
+[core](docs/packages/core.md) · [native](docs/packages/native.md) (HTTP + WebSocket adapter) · [serverless](docs/packages/serverless.md) · [auth](docs/packages/auth.md) · [cors](docs/packages/cors.md) · [rate-limit](docs/packages/rate-limit.md) · [vault](docs/packages/vault.md) · [openapi](docs/packages/openapi.md) · [security](docs/packages/security.md) · [static](docs/packages/static.md) · [upload](docs/packages/upload.md) · [helmet](docs/packages/helmet.md) · [logger](docs/packages/logger.md) · [metrics](docs/packages/metrics.md) · [fingerprint](docs/packages/fingerprint.md) · [graphql](docs/packages/graphql.md) · [ws](docs/packages/ws.md) · [socket.io](docs/packages/socket.io.md) · [jobs](docs/packages/jobs.md) · [sdk-runtime](docs/packages/sdk-runtime.md) · [cli](docs/packages/cli.md)
 
 ---
 

@@ -106,7 +106,9 @@ describe('Studio Server & Router', () => {
       const bodyOkToken = (await resOkToken.json()) as any;
       expect(bodyOkToken.ok).toBe(true);
 
-      // 3.5. OTLP request without token should bypass authentication and succeed
+      // 3.5. Security (L1): OTLP endpoints now REQUIRE the token too. The
+      // instrumented app sends `Authorization: Bearer <token>`, so a request
+      // without it must be rejected (blocks local span/log injection).
       const resOtlpNoToken = await fetch(
         `http://127.0.0.1:${port}/__studio/otlp/v1/traces`,
         {
@@ -114,8 +116,19 @@ describe('Studio Server & Router', () => {
           body: JSON.stringify({}),
         },
       );
-      expect(resOtlpNoToken.status).toBe(200);
-      const bodyOtlp = (await resOtlpNoToken.json()) as any;
+      expect(resOtlpNoToken.status).toBe(401);
+
+      // With the valid token, the OTLP endpoint succeeds.
+      const resOtlpToken = await fetch(
+        `http://127.0.0.1:${port}/__studio/otlp/v1/traces`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: JSON.stringify({}),
+        },
+      );
+      expect(resOtlpToken.status).toBe(200);
+      const bodyOtlp = (await resOtlpToken.json()) as any;
       expect(bodyOtlp.success).toBe(true);
 
       // 4. Request for non-API route should still succeed with 200 indexHtml without token

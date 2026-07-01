@@ -20,6 +20,7 @@ npm install --save-dev @types/jsonwebtoken
 import {
   createAuthPlugin,
   createRefreshHandler,
+  getAuthUser,
   MemoryTokenStore,
 } from '@axiomify/auth';
 
@@ -62,7 +63,7 @@ app.route({
 
 | Option       | Type                      | Description                                                                                                                            |
 | ------------ | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `secret`     | `string`                  | JWT signing secret. Minimum **32 bytes** (256 bits) per RFC 7518 §3.2. Throws in production / warns in development for shorter values. |
+| `secret`     | `string`                  | JWT signing secret. Minimum **32 bytes** (256 bits) per RFC 7518 §3.2. **Throws** for shorter values (in all environments).            |
 | `algorithms` | `Algorithm[]`             | Accepted algorithms. Default: `['HS256']`. Never include `'none'`.                                                                     |
 | `getToken`   | `(req) => string \| null` | Custom token extractor. Default: `Authorization: Bearer <token>`.                                                                      |
 | `issuer`     | `string`                  | Validates the `iss` claim.                                                                                                             |
@@ -91,12 +92,15 @@ await tokenStore.revoke(jti);
 
 | Option            | Type          | Description                                                                                                |
 | ----------------- | ------------- | ---------------------------------------------------------------------------------------------------------- |
-| `secret`          | `string`      | Access token secret.                                                                                       |
-| `refreshSecret`   | `string`      | Separate secret for refresh tokens.                                                                        |
-| `accessTokenTtl`  | `number`      | Access token TTL in seconds. Default: `900` (15 min).                                                      |
-| `refreshTokenTtl` | `number`      | Refresh token TTL in seconds. Default: `604800` (7 days).                                                  |
-| `store`           | `TokenStore`  | Refresh token revocation store. Strongly recommended. Without it, stolen refresh tokens cannot be revoked. |
-| `algorithms`      | `Algorithm[]` | Algorithms. Default: `['HS256']`.                                                                          |
+| `secret`          | `string`             | Access token secret. Minimum **32 bytes** (256 bits) per RFC 7518 §3.2.                                    |
+| `refreshSecret`   | `string`             | Separate secret for refresh tokens. Minimum **32 bytes** (256 bits).                                       |
+| `accessTokenTtl`  | `number`             | Access token TTL in seconds. Default: `900` (15 min).                                                      |
+| `refreshTokenTtl` | `number`             | Refresh token TTL in seconds. Default: `604800` (7 days).                                                  |
+| `store`           | `TokenStore`         | Refresh token revocation store. Strongly recommended. Without it, stolen refresh tokens cannot be revoked. |
+| `algorithms`      | `Algorithm[]`        | Algorithms. Default: `['HS256']`.                                                                          |
+| `issuer`          | `string`             | Validates the `iss` claim on refresh tokens and sets it on issued tokens.                                  |
+| `audience`        | `string \| string[]` | Validates the `aud` claim on refresh tokens and sets it on issued tokens.                                  |
+| `rateLimitPlugin` | `RouteMiddleware`    | Optional rate-limit plugin reference for route wiring. Apply it on `/auth/refresh` via `plugins: [rateLimitPlugin]`. |
 
 ## TokenStore interface
 
@@ -108,7 +112,7 @@ interface TokenStore {
 }
 ```
 
-**`MemoryTokenStore`** — in-process store. Only suitable for single-process development.
+**`MemoryTokenStore`** — in-process store. Only suitable for single-process development. It **throws** if constructed in clustered mode under `NODE_ENV=production` (revocation cannot propagate across workers) and warns otherwise. Call `store.close()` to clear its internal prune timer.
 
 **Production:** Implement `TokenStore` against Redis:
 
@@ -155,3 +159,5 @@ import { getAuthUser } from '@axiomify/auth';
 
 const user = getAuthUser(req); // AuthUser | undefined
 ```
+
+> `useAuth` is exported as an alias of `createAuthPlugin`.

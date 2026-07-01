@@ -34,7 +34,7 @@ import { MyGeneratedSDK } from './generated-sdks';
 
 const client = new MyGeneratedSDK({
   baseUrl: 'https://api.example.com/v1',
-  timeoutMs: 10000, // default is 5000ms
+  timeoutMs: 10000, // optional; when omitted, no request timeout is applied
 });
 
 const users = await client.getUsers({ limit: 100 });
@@ -46,55 +46,94 @@ Interceptors allow you to mutate requests before they are sent, or intercept res
 
 ```ts
 // 1. Add a Request Interceptor
-client.interceptors.request.use(async (req) => {
-  req.headers.set('X-Request-Start', Date.now().toString());
+client.interceptors.useRequest(async (req) => {
+  req.headers = { ...req.headers, 'X-Request-Start': Date.now().toString() };
   return req;
 });
 
 // 2. Add a Response Interceptor
-client.interceptors.response.use(async (res) => {
+client.interceptors.useResponse(async (res) => {
   if (res.status === 401) {
     console.error('Unauthorized! Redirecting to login...');
   }
   return res;
 });
+
+// 3. Add an Error Interceptor
+client.interceptors.useError(async (err) => {
+  console.error('Request failed:', err);
+  return err;
+});
 ```
+
+A request interceptor receives a `ClientRequest` whose `headers` is a plain `Record<string, string>` (not a `Headers` instance), so mutate it as an object.
 
 ## Retry Engine
 
 Network requests fail. `@axiomify/sdk-runtime` handles retries automatically using exponential backoff and full jitter.
 
-By default, the client retries **3 times** on `429 Too Many Requests` and `5xx` server errors.
+By default, the client retries **3 times**. The default retryable status codes are `[408, 409, 429, 500, 502, 503, 504]`, with a base delay of 500ms and a maximum delay of 5000ms.
 
-You can override the retry config at initialization:
+You can override the retry config at initialization via `retryConfig` (all fields optional and merged over the defaults):
 
 ```ts
 const client = new MyGeneratedSDK({
   baseUrl: 'https://api.example.com/v1',
-  retries: {
-    maxAttempts: 5, // Retry up to 5 times
-    initialDelayMs: 200, // Start with a 200ms delay
+  retryConfig: {
+    maxRetries: 5, // Retry up to 5 times
+    baseDelayMs: 200, // Start with a 200ms delay
     maxDelayMs: 5000, // Cap the delay at 5000ms
-    retryableStatuses: [429, 500, 502, 503, 504],
+    retryableStatusCodes: [429, 500, 502, 503, 504],
   },
 });
 ```
 
 ## Authentication
 
-Injecting tokens into every request is tedious. Use the integrated `AuthProvider` to automatically manage tokens.
+Injecting tokens into every request is tedious. Use an `AuthProvider` to automatically manage tokens. An `AuthProvider` is any object with a `getToken()` method that returns the full `Authorization` header value (e.g. `"Bearer eyJ..."`), or `null` to skip auth. The client calls `getToken()` before every request and sets the returned value as the `Authorization` header.
 
-### OAuth2 / Bearer Tokens
+### Static Tokens
+
+For a fixed token, use `StaticTokenProvider`:
+
+```ts
+import { StaticTokenProvider } from '@axiomify/sdk-runtime';
+
+const client = new MyGeneratedSDK({
+  baseUrl: 'https://api.example.com/v1',
+  authProvider: new StaticTokenProvider('Bearer eyJ...'),
+});
+```
+
+### Custom Providers
+
+For tokens sourced from memory, local storage, or a credential store, implement `AuthProvider` directly:
+
+```ts
+const client = new MyGeneratedSDK({
+  baseUrl: 'https://api.example.com/v1',
+  authProvider: {
+    getToken: async () => {
+      const token = localStorage.getItem('access_token');
+      return token ? `Bearer ${token}` : null;
+    },
+  },
+});
+```
+
+### OAuth2 Client Credentials
+
+`OAuth2BearerProvider` performs the OAuth2 `client_credentials` flow for you, caching the token until it nears expiry and refreshing it automatically. It attaches the `Authorization: Bearer <token>` header before the request hits the network.
 
 ```ts
 import { OAuth2BearerProvider } from '@axiomify/sdk-runtime';
 
-const authProvider = new OAuth2BearerProvider({
-  getToken: async () => {
-    // Fetch from memory, local storage, or a secure credential store
-    return localStorage.getItem('access_token');
-  },
-});
+const authProvider = new OAuth2BearerProvider(
+  'https://auth.example.com/oauth/token', // token URL
+  'my-client-id',
+  'my-client-secret',
+  'read write', // optional scope
+);
 
 const client = new MyGeneratedSDK({
   baseUrl: 'https://api.example.com/v1',
@@ -102,19 +141,23 @@ const client = new MyGeneratedSDK({
 });
 ```
 
-The `OAuth2BearerProvider` automatically intercepts requests and attaches the `Authorization: Bearer <token>` header before the request hits the network.
+## Advanced: Custom Fetch Implementation
 
-## Advanced: Raw Fetch Configuration
-
-Because the runtime uses the native `fetch` API, you can pass arbitrary native fetch initialization options into the client.
+Because the runtime uses the native `fetch` API, you can supply your own `fetch` implementation (for example, a mock in tests or a polyfill) via the `fetch` option:
 
 ```ts
 const client = new MyGeneratedSDK({
   baseUrl: 'https://api.example.com/v1',
-  fetchOptions: {
-    cache: 'no-store',
-    keepalive: true,
-  },
+  fetch: myCustomFetch,
+});
+```
+
+Static headers applied to every request can be supplied via the `headers` option:
+
+```ts
+const client = new MyGeneratedSDK({
+  baseUrl: 'https://api.example.com/v1',
+  headers: { 'X-App-Version': '1.2.3' },
 });
 ```
 

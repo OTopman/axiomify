@@ -1012,9 +1012,15 @@ describe('Axiomify Distributed Jobs', () => {
     });
     await scheduler.enqueue('throw-string', {});
     scheduler.start();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Poll for the terminal state instead of a fixed sleep: a fixed window is
+    // flaky under load (retries can slip past the deadline, leaving 'pending').
+    const deadline = Date.now() + 3000;
+    let jobs = await storage.getJobs();
+    while (jobs[0]?.status !== 'failed' && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      jobs = await storage.getJobs();
+    }
     await scheduler.stop();
-    const jobs = await storage.getJobs();
     expect(jobs[0].status).toBe('failed');
     expect(jobs[0].error).toBe('raw-string-error');
   });

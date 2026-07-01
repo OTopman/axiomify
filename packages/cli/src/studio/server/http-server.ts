@@ -62,6 +62,32 @@ const FALLBACK_HTML = `<!DOCTYPE html>
 </html>`;
 
 /**
+ * Anti-DNS-rebinding guard. Studio binds to loopback only, so a legitimate
+ * request's `Host` header must resolve to a loopback name. A malicious web
+ * page that rebinds its own domain to 127.0.0.1 will still send its own
+ * hostname in `Host`, so we reject any non-loopback Host outright. This is
+ * the primary defense that prevents a page the developer merely visits from
+ * driving Studio's privileged endpoints.
+ */
+export function isLoopbackHost(hostHeader: string | undefined): boolean {
+  if (!hostHeader) return false;
+  // Strip port (handle IPv6 bracket form `[::1]:4399`).
+  let hostname = hostHeader.trim();
+  if (hostname.startsWith('[')) {
+    hostname = hostname.slice(1, hostname.indexOf(']'));
+  } else {
+    hostname = hostname.split(':')[0];
+  }
+  hostname = hostname.toLowerCase();
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '0.0.0.0'
+  );
+}
+
+/**
  * Helper to send a JSON response with standard headers.
  */
 export function sendJson(
@@ -136,6 +162,15 @@ export function createStudioServer(options: StudioServerOptions): Server {
       const pathname = parsedUrl.pathname;
       const method = (req.method ?? 'GET').toUpperCase();
 
+      // ── Anti-DNS-rebinding: reject non-loopback Host headers ────────────
+      // Studio listens on 127.0.0.1 only; any request whose Host is not a
+      // loopback name is either misrouted or a DNS-rebinding attempt.
+      if (!isLoopbackHost(req.headers.host)) {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Forbidden: invalid Host header');
+        return;
+      }
+
       // ── CORS preflight ──────────────────────────────────────────────────
       if (method === 'OPTIONS') {
         const origin = req.headers.origin;
@@ -160,8 +195,11 @@ export function createStudioServer(options: StudioServerOptions): Server {
       // ── Studio API routes ────────────────────────────────────────────────
       const handler = router.match(method, pathname);
       if (handler) {
-        const isOtlpReceiver = pathname.startsWith('/__studio/otlp/');
-        if (options.token && !isOtlpReceiver) {
+        // OTLP receiver endpoints are authenticated too: the instrumented app
+        // sends `Authorization: Bearer <AXIOMIFY_STUDIO_TOKEN>` (see
+        // @axiomify/core telemetry), so requiring the token here blocks other
+        // local processes from injecting spoofed spans/logs.
+        if (options.token) {
           const authHeader = req.headers['authorization'];
           const suppliedToken = authHeader?.startsWith('Bearer ')
             ? authHeader.substring(7)

@@ -71,6 +71,8 @@ describe('Fingerprint Package', () => {
     };
 
     await hook(req);
-    expect(req.state.fingerprintData.ip).toBe('203.0.113.4');
+    // Security (M7): the right-most XFF entry (closest trusted hop) is used;
+    // the left-most is client-spoofable and must not be trusted for identity.
+    expect(req.state.fingerprintData.ip).toBe('10.0.0.1');
   });
 });

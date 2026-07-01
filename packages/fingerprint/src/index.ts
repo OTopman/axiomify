@@ -161,8 +161,16 @@ function getTrustedIp(
 
   const forwardedFor = normalizeHeader(req.headers['x-forwarded-for']);
   if (forwardedFor) {
-    const first = forwardedFor.split(',')[0]?.trim();
-    return normalizeIp(first || req.ip || '127.0.0.1');
+    // M7 (CWE-290): X-Forwarded-For is appended left-to-right, so the
+    // LEFT-MOST entry is the client-supplied (and therefore spoofable)
+    // value. The RIGHT-MOST entry is the address seen by the closest
+    // trusted hop, which is the only value a client cannot forge. Use it.
+    const parts = forwardedFor
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean);
+    const rightMost = parts[parts.length - 1];
+    return normalizeIp(rightMost || req.ip || '127.0.0.1');
   }
 
   const realIp = normalizeHeader(req.headers['x-real-ip']);

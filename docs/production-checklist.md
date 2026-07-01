@@ -46,7 +46,7 @@ adapter.listenClustered({
 
 - [ ] `app.enableRequestId()` called (opt-in since v5)
 - [ ] `@axiomify/helmet` registered for CSP / HSTS / COOP / CORP / framing headers
-- [ ] `@axiomify/cors` — explicit `origin` list, never `'*'` in production; `credentials: true` + `'*'` throws at startup
+- [ ] `@axiomify/cors` — explicit `origin` list, never `'*'` in production; `credentials: true` combined with `'*'` **or** `true` (reflect-all) throws at startup
 - [ ] `@axiomify/rate-limit` with `RedisStore` on all public routes (multi-process / multi-host deployments require Redis, not MemoryStore)
 - [ ] JWT secret ≥ **32 bytes (256 bits)** per RFC 7518 §3.2 — the framework throws in production on weaker secrets. Generate one via `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`
 - [ ] JWT algorithms pinned via `createAuthPlugin({ algorithms: ['HS256'] })` — `'none'` is always rejected

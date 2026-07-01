@@ -47,8 +47,10 @@ new NativeAdapter(app, { port: 3000 }).listen(() =>
 - `ValidationCompiler` — AJV + transform-aware Zod integration
 - `HookManager` — microtask-free hook execution with fast paths
 - `RequestDispatcher` — per-request orchestration
-- `ADAPTER_LOCK_TOKEN` — adapter authentication symbol
+- `ADAPTER_LOCK_TOKEN` — adapter authentication capability token (a frozen object, not a symbol)
 - `AxiomifyLogger` — injectable structured logger interface
+- HTTP error classes — `HttpError` plus `BadRequestError`, `UnauthorizedError`, `ForbiddenError`, `NotFoundError`, `ConflictError`, `UnprocessableError`, `TooManyRequestsError`, `InternalServerError`, `ServiceUnavailableError`, `GatewayTimeoutError`
+- `createErrorSanitizer` — maps database driver errors (Prisma, TypeORM, Sequelize, MongoDB) to safe API errors
 
 ## Documentation
 
@@ -92,6 +94,9 @@ When creating an `Axiomify` instance, you can configure these options:
 
 - `strictSchema` (`boolean`, default: `false`): If `true`, throws a startup error when registering a route that has a typed handler but no schema definition. You can ignore this on specific routes by adding a `@axiomify-ignore-schema` comment.
 - `routeConflict` (`'throw' | 'warn'`, default: `'throw'`): Determines whether to throw an error or emit a warning when registering conflicting parameterized route paths (e.g. `/users/:id` and `/users/:userId`).
+- `timeout` (`number`, default: `0`): Per-request timeout in milliseconds propagated to routes and adapters. `0` disables the timeout.
+- `logger` (`AxiomifyLogger`, default: `console`-backed `defaultLogger`): Injectable structured logger used for non-fatal warnings (hook errors, response-validation drift). Available at runtime via the read-only `app.logger` getter.
+- `telemetry` (`{ startSpan(name, attributes) }`, optional): Span factory hook for custom tracing integrations.
 
 ## Custom Fallback Handlers
 
@@ -106,6 +111,29 @@ app.setMethodNotAllowedHandler((req, res) => {
   res.status(405).send({ error: 'MethodNotAllowed' }, 'Method not supported');
 });
 ```
+
+## HTTP Errors
+
+Throw any of the exported HTTP error classes from a handler or hook and the `RequestDispatcher` will reflect the `statusCode` in the response automatically — no custom `onError` hook required:
+
+```typescript
+import { NotFoundError, HttpError } from '@axiomify/core';
+
+app.route({
+  method: 'GET',
+  path: '/users/:id',
+  handler: async (req, res) => {
+    const user = await db.find(req.params.id);
+    if (!user) throw new NotFoundError('User does not exist');
+    res.send(user);
+  },
+});
+
+// Or throw an arbitrary status with HttpError:
+throw new HttpError(418, "I'm a teapot");
+```
+
+`HttpError(statusCode, message)` is the base class; the named subclasses (`BadRequestError`, `UnauthorizedError`, `ForbiddenError`, `NotFoundError`, `ConflictError`, `UnprocessableError`, `TooManyRequestsError`, `InternalServerError`, `ServiceUnavailableError`, `GatewayTimeoutError`) each take an optional `message` and default to their conventional status code.
 
 ## Service Container Sealing
 

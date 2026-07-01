@@ -249,14 +249,17 @@ export async function runContractTest(
 ): Promise<ContractTestResult> {
   const routeId = `${route.method}:${route.path}`;
 
-  if (!schema || !schema.response) {
+  const hasRequestSchema = !!(schema && (schema.body || schema.query || schema.params));
+  const hasResponseSchema = !!(schema && schema.response);
+
+  if (!schema || (!hasRequestSchema && !hasResponseSchema)) {
     return {
       routeId,
       route: route.path,
       method: route.method,
       passed: false,
       status: 'missing-schema',
-      violations: ['No response schema defined on this route.'],
+      violations: ['No schemas defined on this route.'],
       timestamp: new Date().toISOString(),
     };
   }
@@ -383,6 +386,24 @@ export async function runContractTest(
     }
 
     if (!matchingSchema) {
+      if (!hasResponseSchema && statusCode >= 200 && statusCode < 300) {
+        return {
+          routeId,
+          route: route.path,
+          method: route.method,
+          passed: true,
+          status: 'passed',
+          violations: [
+            `Note: Request returned success status ${statusCode}. Skipped response schema validation since no response schema was defined on this route.`,
+          ],
+          timestamp: new Date().toISOString(),
+          statusCode,
+          requestPayload,
+          responseBody,
+          responseHeaders,
+        };
+      }
+
       return {
         routeId,
         route: route.path,
@@ -453,7 +474,7 @@ export async function runAllContractTests(
         method: r.method,
         passed: false,
         status: 'missing-schema',
-        violations: ['No response schema defined on this route.'],
+        violations: ['No schemas defined on this route.'],
         timestamp: new Date().toISOString(),
       });
     }

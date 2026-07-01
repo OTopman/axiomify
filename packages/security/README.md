@@ -5,7 +5,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-Request security hardening for Axiomify. XSS sanitization, HTTP Parameter Pollution protection, prototype pollution prevention, null-byte blocking, SQL/NoSQL injection heuristics, and bot detection.
+Request security hardening for Axiomify. XSS sanitization, HTTP Parameter Pollution protection, prototype pollution prevention, null-byte blocking, opt-in NoSQL injection heuristics, and bot detection.
 
 ## Install
 
@@ -20,20 +20,23 @@ import { useSecurity } from '@axiomify/security';
 useSecurity(app);
 ```
 
-All protections are enabled by default.
+All protections are enabled by default, **except** `noSqlInjectionProtection`, which is opt-in (see Options).
 
 ## Options
 
-| Option                         | Type      | Default   | Description                                                                        |
-| ------------------------------ | --------- | --------- | ---------------------------------------------------------------------------------- |
-| `xssProtection`                | `boolean` | `true`    | Strip `<script>`, event handlers, `javascript:` from strings                       |
-| `hppProtection`                | `boolean` | `true`    | Deduplicate repeated query params (last value wins)                                |
-| `prototypePollutionProtection` | `boolean` | `true`    | Remove `__proto__`, `constructor`, `prototype` keys                                |
-| `nullByteProtection`           | `boolean` | `true`    | Remove null bytes (`\0`) from strings                                              |
-| `botProtection`                | `boolean` | `true`    | Block known scanner/crawler User-Agent patterns                                    |
-| ~~`sqlInjectionProtection`~~   | removed   | —         | **Removed in v6.0** — TypeScript excess-property error. Use parameterised queries. |
-| `noSqlInjectionProtection`     | `boolean` | `true`    | Heuristic NoSQL pattern detection                                                  |
-| `maxBodySize`                  | `number`  | `1048576` | Reject requests where Content-Length exceeds this value                            |
+| Option                         | Type       | Default                       | Description                                                                                                |
+| ------------------------------ | ---------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `xssProtection`                | `boolean`  | `true`                        | Strip `<script>`, event handlers, `javascript:` from strings                                               |
+| `hppProtection`                | `boolean`  | `true`                        | Deduplicate repeated query params (last value wins)                                                        |
+| `prototypePollutionProtection` | `boolean`  | `true`                        | Remove `__proto__`, `constructor`, `prototype` keys                                                        |
+| `nullByteProtection`           | `boolean`  | `true`                        | Remove null bytes (`\0`) from strings                                                                      |
+| `botProtection`                | `boolean`  | `true`                        | Block known scanner/crawler User-Agent patterns                                                            |
+| ~~`sqlInjectionProtection`~~   | removed    | —                             | **Removed in v6.0** — TypeScript excess-property error. Use parameterised queries.                         |
+| `noSqlInjectionProtection`     | `boolean`  | `false`                       | Heuristic NoSQL operator-key detection. **Opt-in** — supplementary defense for code without full Zod schema coverage; prefer schema validation. |
+| `maxBodySize`                  | `number`   | `1048576`                     | Reject requests where Content-Length exceeds this value                                                    |
+| `blockedUserAgentPatterns`     | `RegExp[]` | `DEFAULT_BLOCKED_UA_PATTERNS` | Override the User-Agent patterns blocked when `botProtection` is on.                                       |
+| `noSqlPatterns`                | `RegExp[]` | `DEFAULT_NOSQL_PATTERNS`      | Override the NoSQL operator patterns matched when `noSqlInjectionProtection` is on.                        |
+| `sanitizerMaxDepth`            | `number`   | `64`                          | Maximum object depth the body/query/params sanitizer recurses into.                                        |
 
 ## Caveats
 

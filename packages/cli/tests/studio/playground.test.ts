@@ -34,7 +34,38 @@ describe('SDK Playground & Sandbox execution', () => {
     expect(clientFile?.content).toContain('class ApiClient');
   });
 
+  it('refuses to execute code unless AXIOMIFY_STUDIO_ALLOW_EXEC is set', async () => {
+    // Security (C1): code execution is disabled by default.
+    const prev = process.env.AXIOMIFY_STUDIO_ALLOW_EXEC;
+    delete process.env.AXIOMIFY_STUDIO_ALLOW_EXEC;
+    let responseData: any = null;
+    const mockReq: any = {
+      on: (event: string, cb: any) => {
+        if (event === 'data') {
+          cb(Buffer.from(JSON.stringify({ code: 'console.log("hi");' })));
+        }
+        if (event === 'end') cb();
+        return mockReq;
+      },
+    };
+    let statusCode = 200;
+    const mockRes: any = {
+      writeHead: (code: number) => {
+        statusCode = code;
+      },
+      end: (data: string) => {
+        responseData = JSON.parse(data);
+      },
+    };
+    await handlePostPlaygroundExecute(mockReq, mockRes, mockApp);
+    expect(statusCode).toBe(403);
+    expect(responseData.error).toContain('disabled');
+    if (prev !== undefined) process.env.AXIOMIFY_STUDIO_ALLOW_EXEC = prev;
+  });
+
   it('should execute arbitrary TS code inside sandboxed VM and capture console logs', async () => {
+    // Explicit opt-in required (security gate for C1).
+    process.env.AXIOMIFY_STUDIO_ALLOW_EXEC = 'true';
     let responseData: any = null;
 
     const mockReq: any = {

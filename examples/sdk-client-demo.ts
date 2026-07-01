@@ -83,7 +83,10 @@ class AxiomifyApiClient extends BaseClient {
 // ============================================================================
 // 3. Client Instance & Advanced Config
 // ============================================================================
-const authProvider = new StaticTokenProvider('Bearer my-secret-jwt-token');
+// Load tokens from the environment — never hardcode credentials in source.
+const authProvider = new StaticTokenProvider(
+  `Bearer ${process.env.API_TOKEN ?? ''}`,
+);
 
 // Alternatively, for OAuth2 client credentials:
 // const authProvider = new OAuth2BearerProvider(
@@ -213,7 +216,8 @@ function setupStreamingDemo() {
   // 7.1 Server-Sent Events (SSE) Client
   const sse = new SseClient('http://localhost:3000/live-feed', {
     headers: {
-      Authorization: 'Bearer token123',
+      // Load tokens from the environment — never hardcode credentials.
+      Authorization: `Bearer ${process.env.API_TOKEN ?? ''}`,
     },
     maxRetries: 5,
     onOpen: () => {

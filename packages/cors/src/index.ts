@@ -92,6 +92,16 @@ export function useCors(app: Axiomify, options: CorsOptions = {}): void {
     );
   }
 
+  // Security (H3, CWE-942): reflect-all (`origin: true`) with credentials is
+  // equivalent to `*` with credentials — it lets ANY site make authenticated
+  // cross-origin requests and read the responses. Require an explicit
+  // allowlist (string/array/RegExp/function) for credentialed CORS.
+  if (credentials && origin === true) {
+    throw new Error(
+      '[axiomify/cors] `credentials: true` cannot be combined with `origin: true` (reflect-all). Specify an explicit origin allowlist.',
+    );
+  }
+
   let normalizedOrigin = origin;
   if (origin instanceof RegExp) {
     normalizedOrigin = anchorRegExp(origin);
@@ -108,7 +118,11 @@ export function useCors(app: Axiomify, options: CorsOptions = {}): void {
     let resolvedOrigin: string | undefined;
 
     if (normalizedOrigin === true) {
-      resolvedOrigin = requestOrigin;
+      // Security (M6, CWE-346): when reflecting, never echo an absent or
+      // literal `null` origin (sandboxed iframes, data:/file: documents),
+      // which would otherwise grant those opaque origins access.
+      resolvedOrigin =
+        requestOrigin && requestOrigin !== 'null' ? requestOrigin : undefined;
     } else if (normalizedOrigin === '*') {
       resolvedOrigin = '*';
     } else if (normalizedOrigin === false) {

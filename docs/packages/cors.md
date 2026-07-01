@@ -43,4 +43,5 @@ useCors(app, {
 - handles `OPTIONS` preflight automatically
 - merges `Vary` headers safely
 - reflects request `access-control-request-headers` when `allowedHeaders` is omitted
-- throws at startup if `credentials: true` is combined with `origin: "*"`
+- throws at startup if `credentials: true` is combined with `origin: "*"` **or** `origin: true` (reflect-all) — credentialed CORS requires an explicit origin allowlist
+- with `origin: true`, a missing or literal `null` origin is not reflected

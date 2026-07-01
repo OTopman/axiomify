@@ -45,7 +45,9 @@ req.state.fingerprintConfidence; // number — 0–98 weighted confidence score
 | `includeIp`         | `boolean`  | `true`     | Include client IP in the hash.                                        |
 | `includePath`       | `boolean`  | `false`    | Include request path. Disable for cross-path session correlation.     |
 | `additionalHeaders` | `string[]` | `[]`       | Extra request headers to include in the hash (lowercase).             |
-| `trustProxyHeaders` | `boolean`  | `false`    | Use `X-Forwarded-For` for IP extraction behind a proxy.               |
+| `trustProxyHeaders` | `boolean`  | `false`    | Use proxy headers (`X-Forwarded-For` / `X-Real-IP`) for IP extraction behind a proxy. See the note below. |
+
+> **Proxy-header trust:** when `trustProxyHeaders` is `true`, the client IP is taken from the **right-most** `X-Forwarded-For` entry (the hop closest to your proxy), not the left-most — the left-most value is fully client-controlled and trivially spoofable, which would let an attacker mint unlimited distinct fingerprints to evade fingerprint-keyed rate limiting. Only enable this when Axiomify sits directly behind a trusted proxy. When `false`, the socket IP is used. The `x-ja3-fingerprint` and `x-device-id` header signals are likewise only trusted when `trustProxyHeaders` is enabled.
 
 ## Confidence score
 

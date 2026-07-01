@@ -45,6 +45,23 @@ useOpenAPI(app, {
 });
 ```
 
+## Production access (secure by default)
+
+The docs UI and `openapi.json` spec are **denied in production by default**. When `NODE_ENV=production` and no `protect` callback is provided, requests are refused (and a warning is logged at startup). To expose docs in production you must opt in explicitly with one of:
+
+- `protect: (req) => boolean | Promise<boolean>` — gate access with your own check (recommended for internal/non-public APIs), or
+- `allowPublicInProduction: true` — serve the docs publicly in production (use only for genuinely public APIs).
+
+In non-production environments the docs are served without gating.
+
+```typescript
+useOpenAPI(app, {
+  info: { title: 'My API', version: '1.0.0' },
+  protect: (req) => req.headers['x-internal-token'] === process.env.DOCS_TOKEN,
+  // or: allowPublicInProduction: true,
+});
+```
+
 ## Security schemes
 
 ```typescript
