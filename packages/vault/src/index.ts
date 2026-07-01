@@ -549,10 +549,21 @@ export class AxiomifyVault {
       }
       console.warn(msg);
     } catch (e: any) {
-      if (e.status === 1) return;
+      // Re-throw the CRITICAL "key is tracked" error raised above in prod.
       if (e.message && e.message.includes('[Axiomify Vault] CRITICAL')) {
         throw e;
       }
+      // status === 1 means `git ls-files --error-unmatch` found the file to be
+      // untracked — this is the safe case, so stay silent.
+      if (e.status === 1) return;
+      // Any other failure (git not installed, not a git repo, spawn error)
+      // means the safeguard could not run. Warn that it was SKIPPED so the
+      // absence of a warning is not mistaken for "key is safely untracked".
+      console.warn(
+        `[Axiomify Vault] WARNING: could not verify that "${keyPath}" is untracked by git ` +
+          `(the git-tracking safeguard was SKIPPED: ${e.message ?? e}). ` +
+          `Ensure ".axiomify/" is in your .gitignore so the vault key is never committed.`,
+      );
     }
   }
 }

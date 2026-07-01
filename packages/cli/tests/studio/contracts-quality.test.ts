@@ -168,6 +168,80 @@ describe('Studio Contract Testing Center', () => {
       expect(result.status).toBe('passed');
       expect(result.violations[0]).toContain('Request returned 401');
     });
+
+    it('should pass when only request schema exists and response is successful (2xx)', async () => {
+      const mockApp = {
+        handle: vi.fn((req, res) => {
+          res.status(200).send({ message: 'Success' });
+        }),
+      };
+
+      const route = {
+        method: 'POST',
+        path: '/api/test',
+        isWs: false,
+        validation: ['body'],
+        tags: [],
+        deprecated: false,
+        pluginCount: 0,
+        hasResponseSchema: false,
+      };
+
+      const schema = {
+        routeId: 'POST:/api/test',
+        method: 'POST',
+        path: '/api/test',
+        body: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+          },
+          required: ['name'],
+        },
+      };
+
+      const result = await runContractTest(mockApp, route, schema);
+      expect(result.passed).toBe(true);
+      expect(result.status).toBe('passed');
+      expect(result.violations[0]).toContain('Request returned success status 200');
+    });
+
+    it('should fail when only request schema exists and response is unsuccessful (non-2xx)', async () => {
+      const mockApp = {
+        handle: vi.fn((req, res) => {
+          res.status(500).send({ error: 'Internal Error' });
+        }),
+      };
+
+      const route = {
+        method: 'POST',
+        path: '/api/test',
+        isWs: false,
+        validation: ['body'],
+        tags: [],
+        deprecated: false,
+        pluginCount: 0,
+        hasResponseSchema: false,
+      };
+
+      const schema = {
+        routeId: 'POST:/api/test',
+        method: 'POST',
+        path: '/api/test',
+        body: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+          },
+          required: ['name'],
+        },
+      };
+
+      const result = await runContractTest(mockApp, route, schema);
+      expect(result.passed).toBe(false);
+      expect(result.status).toBe('failed');
+      expect(result.violations[0]).toContain('Response returned status code 500');
+    });
   });
 });
 

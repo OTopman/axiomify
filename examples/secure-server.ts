@@ -43,13 +43,20 @@ useFingerprint(app);
 
 // Auth
 const tokenStore = new MemoryTokenStore(); // use RedisStore in production
+// Never fall back to a hardcoded secret — a copied example deployed without
+// these env vars would otherwise sign tokens with a publicly known constant.
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} env var is required`);
+  return value;
+}
 const requireAuth = createAuthPlugin({
-  secret: process.env.JWT_SECRET ?? 'dev-secret-min-32-chars-xxxxxxxxxxxxxxx',
+  secret: requireEnv('JWT_SECRET'),
   store: tokenStore, // enables immediate access token revocation
 });
 const refreshHandler = createRefreshHandler({
-  secret: process.env.JWT_SECRET ?? 'dev-secret-min-32-chars-xxxxxxxxxxxxxxx',
-  refreshSecret: process.env.JWT_REFRESH_SECRET ?? 'dev-refresh-secret-min-32-chars-xxx',
+  secret: requireEnv('JWT_SECRET'),
+  refreshSecret: requireEnv('JWT_REFRESH_SECRET'),
   store: tokenStore,
 });
 

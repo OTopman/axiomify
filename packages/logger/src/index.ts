@@ -27,6 +27,54 @@ export interface LoggerOptions {
 
 type LogLevel = NonNullable<LoggerOptions['level']>;
 
+/**
+ * Value-shape patterns for obvious secret formats. This is a best-effort
+ * secondary defense on top of the key-name deny-list masking: it catches
+ * secrets that appear under unlisted keys (e.g. inside a logged request
+ * body/query/state). It is NOT exhaustive and cannot catch every secret
+ * shape; treat it as defense-in-depth, not a guarantee.
+ */
+const SECRET_VALUE_PATTERNS: RegExp[] = [
+  // JWT: header.payload.signature (base64url segments, starts with eyJ)
+  /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
+  // Bearer <token>
+  /Bearer\s+[A-Za-z0-9._~+/-]+=*/gi,
+  // Long hex blob (>= 32 hex chars, e.g. API keys / hashes)
+  /\b[0-9a-fA-F]{32,}\b/g,
+  // Long base64/base64url blob (>= 40 chars)
+  /\b[A-Za-z0-9+/_-]{40,}={0,2}\b/g,
+];
+
+const SECRET_MASK = '••••••••';
+
+/**
+ * Recursively masks values whose string form matches an obvious secret shape.
+ * Best-effort only: complements, and does not replace, key-name masking.
+ */
+function maskSecretShapes(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (typeof value === 'string') {
+    let out = value;
+    for (const pattern of SECRET_VALUE_PATTERNS) {
+      pattern.lastIndex = 0;
+      out = out.replace(pattern, SECRET_MASK);
+    }
+    return out;
+  }
+  if (Array.isArray(value)) {
+    return value.map((v) => maskSecretShapes(v, seen));
+  }
+  if (value && typeof value === 'object') {
+    if (seen.has(value as object)) return value;
+    seen.add(value as object);
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      result[k] = maskSecretShapes(v, seen);
+    }
+    return result;
+  }
+  return value;
+}
+
 const LEVEL_RANK: Record<LogLevel, number> = {
   trace: 0,
   debug: 1,
@@ -61,6 +109,15 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
     options.includeResponsePayload ?? options.includePayload ?? false;
   const includeState = options.includeState ?? false;
 
+  // Value-shape masking is only meaningful (and only worth its cost) when we
+  // actually log potentially-secret-bearing values. Stays off-path by default.
+  const valueMaskingEnabled =
+    includeBody ||
+    includeQuery ||
+    includeState ||
+    includeParams ||
+    includeResponsePayload;
+
   const isProd = process.env.NODE_ENV === 'production';
 
   const emit = (
@@ -71,9 +128,14 @@ export function useLogger(app: Axiomify, options: LoggerOptions = {}): void {
     if (LEVEL_RANK[level] < LEVEL_RANK[logLevel]) return;
 
     const timestamp = new Date().toISOString();
-    const maskedMeta = Maskify.autoMask(meta, {
+    const keyMaskedMeta = Maskify.autoMask(meta, {
       sensitiveKeys: sensitiveFields,
     });
+    // Best-effort value-shape masking layered on top of key-name masking, so
+    // secrets under unlisted keys in logged body/query/state are still redacted.
+    const maskedMeta = valueMaskingEnabled
+      ? (maskSecretShapes(keyMaskedMeta) as Record<string, unknown>)
+      : keyMaskedMeta;
 
     if (beautify) {
       const colorMap = {

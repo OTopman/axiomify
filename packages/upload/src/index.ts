@@ -146,6 +146,10 @@ function mimeMatches(detected: string, accept: string[]): boolean {
   return accept.some((entry) => {
     const normalized = entry.toLowerCase();
     if (normalized.endsWith('/*')) {
+      // Scriptable SVG must never be admitted by a generic wildcard (e.g.
+      // `image/*`) — it can carry stored XSS. It is accepted only when
+      // explicitly listed as `image/svg+xml` (handled by the exact match below).
+      if (normalizedDetected === 'image/svg+xml') return false;
       return normalizedDetected.startsWith(normalized.slice(0, -1));
     }
     return normalizedDetected === normalized;
@@ -156,10 +160,32 @@ async function validateFileContent(
   filePath: string,
   accept: string[],
 ): Promise<void> {
-  if (!accept.some(isSniffableAccept)) return;
-
+  // Always sniff — never trust the client-declared MIME/Content-Type. Types
+  // such as application/octet-stream, text/csv or unknown types would
+  // otherwise skip magic-byte inspection and be admitted on attacker input.
   const detected = detectMime(await readFileHead(filePath));
-  if (!detected || !mimeMatches(detected, accept)) {
+
+  // Content whose type we can positively detect must be consistent with an
+  // accepted type; mismatches (e.g. a script disguised as image/png) reject.
+  if (detected) {
+    if (!mimeMatches(detected, accept)) {
+      throw new Error(
+        `File content does not match accepted types: ${accept.join(', ')}`,
+      );
+    }
+    return;
+  }
+
+  // Undetectable content: fail closed by default. Only accept it when the
+  // route explicitly opts into a non-sniffable accept rule (e.g. text/csv,
+  // application/octet-stream). Routes that intend to permit arbitrary/opaque
+  // uploads can bypass this check entirely via `validateContent: false`.
+  const routeAcceptsNonSniffable = accept.some((entry) => {
+    const normalized = entry.toLowerCase();
+    if (normalized.endsWith('/*')) return !isSniffableAccept(normalized);
+    return !SNIFFABLE_MIME_TYPES.has(normalized);
+  });
+  if (!routeAcceptsNonSniffable) {
     throw new Error(
       `File content does not match accepted types: ${accept.join(', ')}`,
     );
@@ -222,6 +248,13 @@ export function useUpload(
           (sum: number, config: any) => sum + (config.maxFiles ?? 1),
           0,
         );
+        // Busboy's `fileSize` is a single stream-wide ceiling applied to every
+        // file, so it can only be the largest per-field limit and cannot
+        // enforce a smaller field's limit on its own. The authoritative
+        // per-field limit is enforced by the byte counter in the `data`
+        // handler below, which aborts (and unlinks) the moment a field's own
+        // `config.maxSize` is exceeded — bounding any overshoot to a single
+        // chunk. The Busboy ceiling is kept as a coarse backstop.
         const maxFileSize = Math.max(
           ...Object.values(fileSchema).map((config: any) => config.maxSize),
         );
@@ -298,6 +331,10 @@ export function useUpload(
                 mimetype: info.mimeType,
               };
 
+              // Authoritative per-field size enforcement: abort as soon as the
+              // field's own limit is crossed (the catch block unlinks the
+              // partial file). This is what actually caps a small-limit field,
+              // independent of Busboy's stream-wide `fileSize` ceiling.
               file.on('data', (data) => {
                 byteCount += data.length;
                 if (byteCount > config.maxSize) {

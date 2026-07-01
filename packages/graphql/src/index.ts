@@ -41,6 +41,18 @@ export interface GraphQLPluginOptions<TContext = Record<string, unknown>> {
    * @default 100 in production, undefined in development
    */
   maxFields?: number;
+  /**
+   * Maximum allowed length (in characters) of the raw query string.
+   * Rejects oversized queries with a 400 before parsing (CWE-400).
+   * @default 10000
+   */
+  maxQueryLength?: number;
+  /**
+   * Maximum allowed length (in characters) of the serialized variables JSON.
+   * Rejects oversized variables with a 400 before parsing (CWE-400).
+   * @default 10000
+   */
+  maxVariablesLength?: number;
   validationRules?: ReadonlyArray<never>;
   /**
    * Disables GraphQL introspection queries (__schema, __type).
@@ -271,6 +283,8 @@ export function useGraphQL<TContext = Record<string, unknown>>(
     maxDepth = isProduction ? 12 : undefined,
     maxAliases = isProduction ? 15 : undefined,
     maxFields = isProduction ? 100 : undefined,
+    maxQueryLength = 10000,
+    maxVariablesLength = 10000,
     validationRules = [],
   } = options;
 
@@ -321,6 +335,37 @@ export function useGraphQL<TContext = Record<string, unknown>>(
           JSON.stringify({ errors: [{ message: 'Missing "query" field.' }] }),
           'application/json',
         );
+    }
+
+    // L4 (CWE-400): reject oversized inputs before parse()/validate() so a
+    // huge query or variables payload cannot exhaust CPU/memory in the parser.
+    if (query.length > maxQueryLength) {
+      return res.status(400).sendRaw(
+        JSON.stringify({
+          errors: [
+            {
+              message: `Query exceeds maximum length of ${maxQueryLength} characters.`,
+            },
+          ],
+        }),
+        'application/json',
+      );
+    }
+
+    if (variables !== undefined && variables !== null) {
+      const variablesLength = JSON.stringify(variables).length;
+      if (variablesLength > maxVariablesLength) {
+        return res.status(400).sendRaw(
+          JSON.stringify({
+            errors: [
+              {
+                message: `Variables exceed maximum length of ${maxVariablesLength} characters.`,
+              },
+            ],
+          }),
+          'application/json',
+        );
+      }
     }
 
     let document: DocumentNode;

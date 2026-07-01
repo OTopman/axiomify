@@ -146,7 +146,7 @@ describe('useFingerprint — extended paths', () => {
     expect(req.state.fingerprintData.ip).toBe('127.0.0.1');
   });
 
-  it('uses x-forwarded-for first hop when present (array form)', async () => {
+  it('uses x-forwarded-for closest trusted hop (right-most) when present (array form)', async () => {
     const hook = setup({ trustProxyHeaders: true });
     const req = makeReq({
       headers: {
@@ -157,7 +157,9 @@ describe('useFingerprint — extended paths', () => {
     });
     const res = makeRes();
     await hook(req, res);
-    expect(req.state.fingerprintData.ip).toBe('203.0.113.7');
+    // Security (M7): right-most entry is the closest trusted hop; the
+    // left-most (203.0.113.7) is attacker-controlled and must not be trusted.
+    expect(req.state.fingerprintData.ip).toBe('10.0.0.1');
   });
 
   it('includeIp:false produces ip-omitted entry', async () => {

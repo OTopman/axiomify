@@ -262,14 +262,22 @@ describe('useCors — setVary and edge case origins', () => {
     expect(res.headers['Access-Control-Allow-Origin']).toBeUndefined();
   });
 
-  it('origin: true combined with credentials: true sets dynamic origin and credentials header', async () => {
+  it('throws at startup when credentials=true and origin=true (reflect-all)', () => {
     const app = new Axiomify();
-    useCors(app, { origin: true, credentials: true });
-    const req = makeReq({ headers: { origin: 'https://any.com' } });
+    // Security (H3, CWE-942): reflect-all + credentials would let any site
+    // make authenticated cross-origin requests, so this combination is rejected.
+    expect(() => useCors(app, { origin: true, credentials: true })).toThrow(
+      /credentials.*origin: true|reflect-all/,
+    );
+  });
+
+  it('origin: true does not reflect a null/absent origin', async () => {
+    const app = new Axiomify();
+    useCors(app, { origin: true });
+    const req = makeReq({ headers: { origin: 'null' } });
     const res = makeRes();
     for (const h of (app as any).hooks.hooks.onRequest) await h(req, res);
-    expect(res.headers['Access-Control-Allow-Origin']).toBe('https://any.com');
-    expect(res.headers['Access-Control-Allow-Credentials']).toBe('true');
+    expect(res.headers['Access-Control-Allow-Origin']).toBeUndefined();
   });
 
   it('Vary header accumulates across multiple hooks', async () => {

@@ -87,6 +87,8 @@ const rooms = wsRooms(app, {
   presenceIntervalMs: 30_000, // Heartbeat interval (default: 30s, 0 to disable)
   maxPayloadLength: 256 * 1024,
   idleTimeout: 120,
+  compression: uWS.SHARED_COMPRESSOR, // per-message compression (uWS constant)
+  sanitize: true, // XSS / prototype-pollution / null-byte scrubbing (default: true; needs @axiomify/security)
   plugins: [authPlugin], // Axiomify plugins run on upgrade
   schema: z.object({
     // Optional Zod validation
@@ -126,6 +128,7 @@ The object returned by `wsRooms()`.
 | `clientCount`           | Number of connected clients             |
 | `clientIds`             | All connected client IDs                |
 | `broadcastAll(data)`    | Broadcast to every connected client     |
+| `getStats()`            | Snapshot of connections and per-room member counts |
 | `close()`               | Disconnect all clients, clear all rooms |
 | `on(event, handler)`    | Listen for room events                  |
 | `off(event, handler)`   | Remove an event listener                |

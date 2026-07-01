@@ -15,7 +15,10 @@ This package contains the front-end source code for the **Axiomify Studio** dash
 
 - **React 19** for UI component architecture.
 - **Vite** for fast HMR and compilation.
-- **Socket.io Client** for real-time live synchronization and file-change updates.
+- **Native WebSocket** for real-time Live Sync — connects to the CLI's
+  `/__studio/ws` endpoint to receive file-change and data-update events.
+- **Socket.io Client** (`socket.io-client`) — used by the Request Tester
+  to connect to Socket.io rooms in your running Axiomify application.
 - **Monaco Editor** (`@monaco-editor/react`) for structured JSON input payload editing.
 
 ## Development
@@ -26,8 +29,13 @@ Run the development server:
 npm run dev
 ```
 
-Build the production bundle (emitted to the package distribution target, which is served by the CLI's `axiomify studio` command):
+Build the production bundle. Output is emitted to `../cli/ui-dist` (see
+`vite.config.ts`), which the `@axiomify/cli` package ships and serves via
+the `axiomify studio` command:
 
 ```bash
 npm run build
 ```
+
+The `build` script runs `tsc -b` before `vite build`. Additional scripts:
+`npm run lint` (ESLint) and `npm run preview` (preview the built bundle).

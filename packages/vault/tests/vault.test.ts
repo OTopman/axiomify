@@ -15,6 +15,7 @@ let AxiomifyVault: any;
 let vaultModule: any;
 let vaultScope: any;
 let restoreProcessEnv: any;
+let setupProcessEnvProxy: any;
 let getCallerModuleName: any;
 let registerSecretForRedaction: any;
 let unregisterSecretForRedaction: any;
@@ -33,6 +34,7 @@ beforeAll(async () => {
 
   const proxy = await import('../src/proxy');
   restoreProcessEnv = proxy.restoreProcessEnv;
+  setupProcessEnvProxy = proxy.setupProcessEnvProxy;
   getCallerModuleName = proxy.getCallerModuleName;
   registerSecretForRedaction = proxy.registerSecretForRedaction;
   unregisterSecretForRedaction = proxy.unregisterSecretForRedaction;
@@ -962,6 +964,148 @@ describe('Axiomify Vault', () => {
       if (cachedOriginalEnv !== undefined) {
         (process as any).__originalEnv = cachedOriginalEnv;
       }
+    }
+  });
+
+  it('should enforce ABAC policies via process.env Proxy and vaultScope/vault.scope', () => {
+    delete process.env.DATABASE_URL;
+    delete process.env.STRIPE_SECRET;
+    delete process.env.PUBLIC_VAR;
+
+    const policy = {
+      modules: {
+        users: { allow: ['DATABASE_URL'] },
+        billing: { allow: ['STRIPE_SECRET'] },
+        '*': { allow: ['PUBLIC_VAR'] },
+      },
+    };
+
+    const vault = new AxiomifyVault({
+      projectRoot: testRoot,
+      policy,
+    });
+    vault.setSecret('DATABASE_URL', 'db-conn-string');
+    vault.setSecret('STRIPE_SECRET', 'sk_test_51');
+    vault.setSecret('PUBLIC_VAR', 'hello-world');
+
+    setupProcessEnvProxy(vault);
+
+    try {
+      // 1. Test vaultScope('users')
+      vaultScope('users', () => {
+        expect(process.env.DATABASE_URL).toBe('db-conn-string');
+        expect(process.env.STRIPE_SECRET).toBe('••••••••');
+        expect(process.env.PUBLIC_VAR).toBe('••••••••');
+      });
+
+      // 2. Test vaultScope('billing')
+      vaultScope('billing', () => {
+        expect(process.env.DATABASE_URL).toBe('••••••••');
+        expect(process.env.STRIPE_SECRET).toBe('sk_test_51');
+        expect(process.env.PUBLIC_VAR).toBe('••••••••');
+      });
+
+      // 3. Test wildcard module fallback (some-other-module has no specific rules, so falls back to '*')
+      vaultScope('some-other-module', () => {
+        expect(process.env.DATABASE_URL).toBe('••••••••');
+        expect(process.env.STRIPE_SECRET).toBe('••••••••');
+        expect(process.env.PUBLIC_VAR).toBe('hello-world');
+      });
+
+      // 4. Test vault.scope('users')
+      vault.scope('users', () => {
+        expect(process.env.DATABASE_URL).toBe('db-conn-string');
+        expect(process.env.STRIPE_SECRET).toBe('••••••••');
+      });
+
+      // 5. Test nested scopes
+      vaultScope('users', () => {
+        // Outer scope is 'users'
+        expect(process.env.DATABASE_URL).toBe('db-conn-string');
+        expect(process.env.STRIPE_SECRET).toBe('••••••••');
+
+        vaultScope('billing', () => {
+          // Inner scope is 'billing' and should take precedence
+          expect(process.env.DATABASE_URL).toBe('••••••••');
+          expect(process.env.STRIPE_SECRET).toBe('sk_test_51');
+        });
+
+        // Restores back to outer scope 'users'
+        expect(process.env.DATABASE_URL).toBe('db-conn-string');
+        expect(process.env.STRIPE_SECRET).toBe('••••••••');
+      });
+
+    } finally {
+      restoreProcessEnv();
+    }
+  });
+
+  it('should support wildcard key matching (allow: ["*"]) in process.env Proxy', () => {
+    delete process.env.SECRET_A;
+    delete process.env.SECRET_B;
+
+    const policy = {
+      modules: {
+        admin: { allow: ['*'] },
+      },
+    };
+
+    const vault = new AxiomifyVault({
+      projectRoot: testRoot,
+      policy,
+    });
+    vault.setSecret('SECRET_A', 'val-a');
+    vault.setSecret('SECRET_B', 'val-b');
+
+    setupProcessEnvProxy(vault);
+
+    try {
+      vaultScope('admin', () => {
+        expect(process.env.SECRET_A).toBe('val-a');
+        expect(process.env.SECRET_B).toBe('val-b');
+      });
+      vaultScope('other', () => {
+        expect(process.env.SECRET_A).toBe('••••••••');
+        expect(process.env.SECRET_B).toBe('••••••••');
+      });
+    } finally {
+      restoreProcessEnv();
+    }
+  });
+
+  it('should fallback to stack trace parsing in getCallerModuleName when not in vaultScope', () => {
+    delete process.env.SECRET_A;
+
+    const policy = {
+      modules: {
+        myAppModuleAction: { allow: ['SECRET_A'] },
+      },
+    };
+
+    const vault = new AxiomifyVault({
+      projectRoot: testRoot,
+      policy,
+    });
+    vault.setSecret('SECRET_A', 'val-a');
+
+    setupProcessEnvProxy(vault);
+
+    const OriginalError = globalThis.Error;
+    const MockError = class extends OriginalError {
+      constructor(message?: string) {
+        super(message);
+        this.stack =
+          'Error\n    at myAppModuleAction (file.js:10:5)\n    at AppModule.register (index.js:5:10)';
+      }
+    };
+    globalThis.Error = MockError as any;
+
+    try {
+      // Access outside vaultScope context — should check stack trace and match 'myAppModuleAction'
+      expect(process.env.SECRET_A).toBe('val-a');
+    } finally {
+      globalThis.Error = OriginalError;
+      restoreProcessEnv();
     }
   });
 });

@@ -14,6 +14,7 @@ import { adaptAxiomifyPlugin, attachSocketIO } from '@axiomify/socket.io';
 import { serveStatic } from '@axiomify/static';
 import { useUpload } from '@axiomify/upload';
 import { vaultModule } from '@axiomify/vault';
+import { NativeAdapter } from '@axiomify/native';
 import { wsRooms } from '@axiomify/ws';
 import { randomUUID } from 'crypto';
 import { createReadStream, existsSync } from 'fs';
@@ -47,6 +48,7 @@ function getRequiredEnv(name: string): string {
 }
 
 const requireAuth = createAuthPlugin({
+  // Never hardcode signing secrets — load from the environment (or the vault).
   secret: getRequiredEnv('JWT_SECRET'),
 });
 
@@ -85,12 +87,12 @@ useLogger(app, {
   includeResponseHeaders: true,
   includeState: true,
 });
-
+/* 
 serveStatic(app, {
   prefix: '/assets',
-  root: path.join(process.cwd(), 'public'),
+  root: path.resolve('public'),
   serveIndex: true,
-});
+}); */
 
 export class UserService {
   private users = [
@@ -421,41 +423,39 @@ useOpenAPI(app, {
 if (require.main === module) {
   app.build();
 
-  import('@axiomify/native').then(({ NativeAdapter }) => {
-    const adapter = new NativeAdapter(app, { port: 3000 });
+  const adapter = new NativeAdapter(app, { port: 3000 });
 
-    // Attach Socket.IO
-    attachSocketIO(adapter, {
-      cors: { origin: '*' },
-    }).then((io) => {
-      // Adapt the requireAuth middleware to authenticate socket connections
-      io.use(adaptAxiomifyPlugin(requireAuth));
+  // Attach Socket.IO
+  attachSocketIO(adapter, {
+    cors: { origin: '*' },
+  }).then((io) => {
+    // Adapt the requireAuth middleware to authenticate socket connections
+    io.use(adaptAxiomifyPlugin(requireAuth));
 
-      io.on('connection', (socket) => {
-        console.log(`⚡ [Socket.IO] Client connected: ${socket.id}`);
-        console.log(`👤 [Socket.IO] User metadata:`, socket.data.user);
+    io.on('connection', (socket) => {
+      console.log(`⚡ [Socket.IO] Client connected: ${socket.id}`);
+      console.log(`👤 [Socket.IO] User metadata:`, socket.data.user);
 
-        socket.on('chat', (data) => {
-          console.log(`💬 [Socket.IO] chat msg:`, data);
-          io.emit('chat', { sender: socket.id, message: data });
-        });
+      socket.on('chat', (data) => {
+        console.log(`💬 [Socket.IO] chat msg:`, data);
+        io.emit('chat', { sender: socket.id, message: data });
+      });
 
-        socket.on('disconnect', () => {
-          console.log(`🔌 [Socket.IO] Client disconnected: ${socket.id}`);
-        });
+      socket.on('disconnect', () => {
+        console.log(`🔌 [Socket.IO] Client disconnected: ${socket.id}`);
       });
     });
+  });
 
-    adapter.listen(() => {
-      console.log('🚀 Axiomify engine online on port 3000');
-      console.log('GraphQL ready at http://localhost:3000/graphql');
-      console.log('Playground at   http://localhost:3000/graphql/playground');
+  adapter.listen(() => {
+    console.log('🚀 Axiomify engine online on port 3000');
+    console.log('GraphQL ready at http://localhost:3000/graphql');
+    console.log('Playground at   http://localhost:3000/graphql/playground');
 
-      // Start the jobs scheduler using internal resolution
-      const jobs = app.resolve('jobs');
-      if (jobs) {
-        jobs.start();
-      }
-    });
+    // Start the jobs scheduler using internal resolution
+    const jobs = app.resolve('jobs');
+    if (jobs) {
+      jobs.start();
+    }
   });
 }

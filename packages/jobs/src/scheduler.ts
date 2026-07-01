@@ -4,6 +4,16 @@ import type { Job, JobStorage } from './storage';
 
 export type JobHandler<P = any> = (payload: P) => Promise<void> | void;
 
+/**
+ * Strips CR/LF and other control characters from a string before it is written
+ * to logs, preventing CRLF log-forging / log-injection (CWE-117).
+ */
+function sanitizeForLog(value: unknown): string {
+  const str = typeof value === 'string' ? value : String(value);
+  // Replace CR/LF and other C0/C1 control chars (except keep as single space).
+  return str.replace(/[\r\n]+/g, ' ').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
+}
+
 export interface EnqueueOptions {
   priority?: number;
   delayMs?: number;
@@ -524,8 +534,13 @@ export class SagaCoordinator {
               result: finished.result,
             });
           } catch (compErr) {
+            // Sanitize the interpolated step name to prevent CRLF log-forging
+            // (CWE-117); the Error object is passed separately and rendered
+            // safely by the console.
             console.error(
-              `[Axiomify Saga] Compensation failed for step "${finished.step.name}":`,
+              `[Axiomify Saga] Compensation failed for step "${sanitizeForLog(
+                finished.step.name,
+              )}":`,
               compErr,
             );
           }

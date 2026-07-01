@@ -133,9 +133,13 @@ Axiomify `AppModule` that:
 Key `options` options:
 
 - `queue`: Queue namespace target (defaults to `'default'`).
+- `storage`: Storage backend — `'memory'`, `'sql'`, or `'redis'` (default: `'memory'`).
+- `client`: Application storage client (Drizzle/Prisma/Redis) passed to the `'sql'` / `'redis'` backends.
 - `maxConcurrency`: Maximum background tasks processed in parallel (default: `5`).
 - `pollIntervalMs`: Interval to check for pending jobs (default: `100` ms).
 - `lockDurationMs`: Lease lock expiration time in ms (default: `30000` ms).
+- `jobTimeoutMs`: Maximum time a single job handler may run before timing out (default: `30000` ms).
+- `drainTimeoutMs`: Maximum time `stop()` waits for active workers to drain (default: `30000` ms).
 - `dlqQueue`: Queue to route permanently failed jobs to (default: `${queue}:dlq`).
 
 ### `JobScheduler` Class
@@ -180,13 +184,13 @@ Stops polling and waits for active jobs to finish executing.
 
 Creates a new coordinator instance.
 
-#### `addStep(name: string, execute: StepExec, compensate: StepComp): void`
+#### `addStep(name: string, run: (ctx) => Promise<any>, compensate: (ctx) => Promise<any>): this`
 
-Adds an action step and its matching compensation task to the workflow chain.
+Adds an action step and its matching compensation task to the workflow chain. The compensation is auto-registered as a `compensate:<name>` job handler on the scheduler. Returns the coordinator instance for chaining.
 
-#### `execute(initialPayload?: any): Promise<SagaResult>`
+#### `execute(initialContext: any): Promise<{ success: boolean; context: any; error?: string }>`
 
-Executes the workflow forwards. If a step throws, runs compensations for all preceding steps.
+Executes the workflow forwards. If a step throws, enqueues compensation jobs for all preceding completed steps in reverse order and returns `{ success: false, context, error }`.
 
 ---
 

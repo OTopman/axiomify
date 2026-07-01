@@ -83,10 +83,9 @@ serveStatic(app, {
   default so browsers download them instead of rendering. Override with `forceDownloadExtensions: []`.
 - **ETag**: weak ETags based on file size and mtime. `If-None-Match` returns 304.
 
-## SPA fallback
+## Directory index
 
 ```typescript
-// Serve index.html for all unmatched paths (SPA routing)
 serveStatic(app, {
   prefix: '/',
   root: './dist',
@@ -94,3 +93,8 @@ serveStatic(app, {
   cacheControl: 'no-store', // don't cache the HTML shell
 });
 ```
+
+`serveIndex` serves `index.html` when a **directory** path is requested (e.g. `/` → `./dist/index.html`).
+It is not a catch-all SPA rewrite: a request for a non-existent path such as `/client/route`
+returns `404`, not `index.html`. For client-side routing, add a fallback route of your own that
+returns the HTML shell for unmatched paths.
