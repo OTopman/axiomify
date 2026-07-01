@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/serverless",
-  "version": "6.3.3",
+  "version": "7.0.0",
   "description": "Platform-independent serverless adapter for Axiomify using Web standard Request/Response objects (WinterCG compliant).",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

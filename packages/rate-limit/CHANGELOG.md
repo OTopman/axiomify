@@ -1,5 +1,12 @@
 # @axiomify/rate-limit
 
+## 7.0.0
+
+### Patch Changes
+
+- Updated dependencies [79513fb]
+  - @axiomify/core@7.0.0
+
 ## 6.3.3
 
 ### Patch Changes
