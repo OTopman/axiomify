@@ -43,11 +43,11 @@ app.route({
     const { userId } = req.body;
     const file = req.files!.avatar;
 
-    // file.path       — absolute path on disk
-    // file.originalName — original filename (sanitized)
-    // file.savedName    — name on disk
-    // file.mimeType   — detected MIME type
-    // file.size       — bytes written
+    // file.path         — path on disk
+    // file.originalName — original filename (unsanitized, as reported by the client)
+    // file.savedName    — name on disk (sanitized; randomized unless preserved)
+    // file.mimetype     — MIME type reported in the multipart part header
+    // file.size         — bytes written
 
     res.send({ userId, avatarPath: file.path });
   },
@@ -56,16 +56,29 @@ app.route({
 
 ## Options — `useUpload(app, options?)`
 
-| Option             | Default       | Description                                                                   |
-| ------------------ | ------------- | ----------------------------------------------------------------------------- |
-| `dest`             | `os.tmpdir()` | Default save directory for files without `autoSaveTo`.                        |
-| `autoCleanup`      | `false`       | Automatically delete all uploaded temporary files after the handler finishes. |
-| `limits.fileSize`  | `10 MiB`      | Global max file size in bytes. Per-field `maxSize` overrides this.            |
-| `limits.files`     | `10`          | Max number of files per request.                                              |
-| `limits.fields`    | `50`          | Max number of text fields per request.                                        |
-| `limits.fieldSize` | `1 MiB`       | Max text field value size in bytes.                                           |
+| Option        | Default | Description                                                                    |
+| ------------- | ------- | ------------------------------------------------------------------------------ |
+| `autoCleanup` | `false` | Automatically delete all uploaded temporary files after the handler finishes. |
+
+All request-level multipart limits are derived from the per-field `files` schema, not
+from `useUpload` options: the file count ceiling is the sum of each field's `maxFiles`,
+and the per-field `maxSize` values are enforced per byte written. Multipart field limits
+are fixed at 100 text fields and 64 KiB per field value.
 
 ## Per-field `files` schema
+
+Each field in `schema.files` is configured with the following properties. `accept` and
+`maxSize` are required; the rest are optional.
+
+| Property               | Required | Default        | Description                                                                                  |
+| ---------------------- | -------- | -------------- | -------------------------------------------------------------------------------------------- |
+| `accept`               | yes      | —              | MIME type allowlist (exact types or `type/*` wildcards).                                     |
+| `maxSize`              | yes      | —              | Max size in bytes per file, enforced on the stream.                                          |
+| `autoSaveTo`           | yes      | —              | Directory to save files to (created recursively if missing).                                 |
+| `maxFiles`             | no       | `1`            | Max number of files accepted for this field.                                                 |
+| `preserveOriginalName` | no       | `false`        | Keep the (sanitized) original filename instead of generating a random UUID name.             |
+| `rename`               | no       | —              | `(originalName, mimetype) => string \| Promise<string>` to compute the saved filename.       |
+| `validateContent`      | no       | `true`         | Verify the saved file's magic bytes against `accept`. Set `false` to skip content sniffing.  |
 
 ```typescript
 schema: {
@@ -74,7 +87,7 @@ schema: {
     profilePhoto: {
       autoSaveTo: './uploads/photos',   // directory to save to
       accept: ['image/jpeg', 'image/png'],  // MIME type allowlist
-      maxSize: 2 * 1024 * 1024,         // 2 MB (overrides global limit)
+      maxSize: 2 * 1024 * 1024,         // 2 MB per file
     },
     resume: {
       autoSaveTo: './uploads/resumes',
@@ -87,9 +100,18 @@ schema: {
 
 ## Security
 
-- **Path traversal:** original filenames are sanitized — `../../../etc/passwd` attempts are rejected with 400.
-- **MIME type validation:** files with disallowed MIME types are rejected. Checks the actual content-type from Busboy, not just the file extension.
-- **Size limits:** enforced on the stream — clients cannot bypass the limit by omitting `Content-Length`.
+- **Path traversal:** filenames are sanitized (path separators and parent-directory
+  segments stripped) and the resolved save path is verified to stay inside `autoSaveTo`.
+- **MIME type validation:** the multipart part's declared MIME type is checked against
+  `accept` as a fast pre-check, then the saved file's actual **magic bytes** are always
+  sniffed and matched against `accept` (unless `validateContent: false`). The
+  client-declared content-type is never trusted on its own.
+- **Fail closed on undetectable content:** if the magic bytes cannot be identified, the
+  file is rejected — unless the field's `accept` explicitly opts into a non-sniffable type
+  (e.g. `text/csv`, `application/octet-stream`).
+- **SVG XSS:** a generic wildcard such as `image/*` never admits `image/svg+xml` (which can
+  carry stored XSS). SVG is only accepted when `'image/svg+xml'` is listed explicitly in `accept`.
+- **Size limits:** enforced on the stream per byte written — clients cannot bypass the limit by omitting `Content-Length`.
 - **Automatic cleanup:** if the handler throws, validation fails, or the client disconnects, any partially written files are automatically deleted via the `onError` hook.
 
 ## Multiple files, same field

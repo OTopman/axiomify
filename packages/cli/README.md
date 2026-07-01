@@ -32,6 +32,8 @@ the same major as your `@axiomify/*` runtime packages.
 | `axiomify check [entry]`    | Static production-readiness audit                |
 | `axiomify studio [entry]`   | Launch Axiomify Studio visual dashboard          |
 | `axiomify doctor`           | Diagnose the host environment                    |
+| `axiomify scaffold route`   | Generate a new route file under `src/routes/`    |
+| `axiomify migrate`          | Codemod: migrate a v5 project to v6              |
 | `axiomify sdk <subcommand>` | Manage, generate, build, validate, and diff SDKs |
 
 `[entry]` defaults to `src/index.ts` everywhere it's accepted.
@@ -63,6 +65,14 @@ axiomify build             # bundles to dist/index.js
 
 Both use esbuild. `dev` sends SIGTERM first so your `gracefulShutdown`
 hooks can drain, with a SIGKILL fallback after 3 seconds.
+
+`dev` also accepts `--watch-sdk <langs...>` to automatically regenerate
+type-safe SDKs (see `axiomify sdk`) for the given target languages
+whenever your source files change:
+
+```bash
+axiomify dev --watch-sdk typescript python
+```
 
 ## `axiomify routes`
 
@@ -104,7 +114,7 @@ axiomify openapi --minify > spec.min.json
 axiomify openapi --title "My API" --spec-version "$(git describe)"
 ```
 
-Generates the OpenAPI 3.0.3 spec from the app's registered routes.
+Generates the OpenAPI 3.1.0 spec from the app's registered routes.
 Useful in CI for client codegen pipelines (`openapi-typescript`,
 `openapi-generator`, `oazapfts`) without booting an HTTP listener.
 
@@ -131,6 +141,30 @@ protected, security plugins active.
 
 Exit code 1 on any fail — wire into CI to gate deploys.
 
+## `axiomify scaffold route`
+
+```bash
+axiomify scaffold route GET /users/:id
+```
+
+Generates a new route file under `src/routes/` from the method and path.
+Flags: `--auth` (include the `requireAuth` plugin + import), `--rate-limit`
+(include a default rate-limit plugin), `--dir <dir>` (target directory,
+default `src/routes`), `--dry-run` (print the source without writing),
+and `--force` (overwrite an existing file).
+
+## `axiomify migrate`
+
+```bash
+axiomify migrate                 # rewrites files under src/ in place
+axiomify migrate --dry-run       # show the unified diff without writing
+axiomify migrate --report-only   # print a migration report and exit
+axiomify migrate --dir app       # scan a different directory (default: src)
+```
+
+v5 → v6 codemod: merges `meta:` fields into `schema:`, renames
+`routePrefix` → `prefix`, and applies other breaking-change fixups.
+
 ## `axiomify studio`
 
 ```bash
@@ -152,6 +186,29 @@ Flags:
 
 - `-p, --port <number>`: Port to start the Studio server on (default: `4399`, falls back to a random port if busy).
 - `--no-open`: Disable auto-opening the dashboard in the browser.
+
+### Studio security
+
+Studio is a local developer tool and is hardened accordingly:
+
+- **Loopback only.** The server binds to `127.0.0.1` and rejects any
+  request whose `Host` header is not a loopback name (`localhost`,
+  `127.0.0.1`, `::1`, `0.0.0.0`) with `403`. This is an anti-DNS-rebinding
+  guard so a page you merely visit cannot drive Studio's endpoints.
+- **Bearer token.** Every launch mints a random access token. The API,
+  the Live Sync WebSocket, and the OTLP receiver endpoints
+  (`/__studio/otlp/*`) all require it — the token is embedded in the URL
+  Studio opens (`?token=…`) and printed to the console. It is also exposed
+  to the loaded app via the `AXIOMIFY_STUDIO_TOKEN` environment variable
+  (alongside `AXIOMIFY_STUDIO=true` and `AXIOMIFY_STUDIO_PORT`) so
+  telemetry auto-export can authenticate to the receiver.
+- **Playground code execution is disabled by default.** The Playground's
+  "run snippet" endpoint writes user-supplied code to disk and executes it
+  (`node` / `python3` / `dart`) with the full privileges of the Studio
+  process and **no sandbox**. It is therefore off by default and returns
+  `403` unless you explicitly opt in with `AXIOMIFY_STUDIO_ALLOW_EXEC=true`.
+  Only enable this on a trusted, single-user machine — never on a shared
+  host — as it is effectively arbitrary code execution.
 
 ## `axiomify doctor`
 
@@ -175,11 +232,23 @@ Subcommands for compiling type-safe client SDKs from specs:
 # Generate SDKs for TS, Python, and Go:
 axiomify sdk generate spec.json --target typescript python go -o ./sdks
 
+# Validate a schema against the SDK compiler:
+axiomify sdk validate spec.json
+
 # Deep structural diff for breaking changes:
 axiomify sdk diff old-spec.json new-spec.json
 
 # Get client migration guidance:
 axiomify sdk migrate old-spec.json new-spec.json
+
+# Build a generated SDK:
+axiomify sdk build
+
+# Publish a generated SDK:
+axiomify sdk publish
+
+# Upgrade a generated SDK:
+axiomify sdk upgrade
 
 # Run generation hot-reloads on file change:
 axiomify sdk watch spec.json --target typescript python

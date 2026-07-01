@@ -65,6 +65,8 @@ app.build();
 
 Once built, trying to access `process.env.DATABASE_URL` from an unauthorized caller (e.g., in a logs module or outside provider context) will return `••••••••` to prevent leaks.
 
+> **No policy configured?** When `policy.modules` is empty, access is **permissive** by default (any module can read any secret) and a one-time warning is logged on first access (CWE-1188). Configure `policy.modules` to enforce ABAC.
+
 ### 2. Standalone Instance
 
 You can also initialize and manage an `AxiomifyVault` instance manually:
@@ -100,12 +102,12 @@ vault.seal();
 
 The vault resolves the Master KEK using the following order of precedence:
 
-1. **Explicit Option**: Passed via options during construction:
+1. **Explicit Option**: Passed via options during construction. Accepts a `Buffer` or a string — either a 64-character hex string or a base64 string — that decodes to **exactly 32 bytes** (AES-256). Anything else throws:
    ```typescript
-   new AxiomifyVault({ kek: 'my-custom-hex-or-base64-key' });
+   new AxiomifyVault({ kek: process.env.MY_KEK }); // 64-char hex or 32-byte base64
    ```
-2. **Environment Variable**: Loaded from `process.env.AXIOMIFY_VAULT_KEK`.
-3. **Local File Fallback**: Dynamically loads or generates a local dev key at `<projectRoot>/.axiomify/vault.key`.
+2. **Environment Variable**: Loaded from `process.env.AXIOMIFY_VAULT_KEK` (same 32-byte hex/base64 requirement).
+3. **Local File Fallback**: Dynamically loads or generates a local dev key (32 random bytes, hex-encoded) at `<projectRoot>/.axiomify/vault.key`.
 
 ---
 
@@ -119,6 +121,8 @@ Returns an Axiomify `AppModule` that:
 - Sets up standard stream redaction.
 - Hooks into `process.env` with a proxy handler.
 - registers `'vault'` inside the dependency injection context.
+
+Also accepts a legacy signature `vaultModule(policy, projectRoot?)` where the first argument is a raw `VaultPolicy` (an object with a `modules` key). The options form above is preferred.
 
 ### `AxiomifyVault` Class
 
@@ -146,6 +150,10 @@ Encrypts the value, registers it for stream redaction, caches it, and writes it 
 
 Dynamically rotates a secret in the active memory cache and redactors. Safe to call at runtime even after sealing.
 
+#### `removeSecret(key: string): void`
+
+Removes a secret from the in-memory cache, encrypted secrets map, and redaction set. Primarily used by the `process.env` proxy's `deleteProperty` trap.
+
 #### `listSecretKeys(): string[]`
 
 Returns a list of all secret keys currently registered in the vault.
@@ -165,6 +173,22 @@ Erase the DEK buffer in memory (Strategy A Sealing), locking the vault from furt
 #### `vaultScope<T>(moduleName: string, fn: () => T): T`
 
 Standalone equivalent of the `scope` method, which can be imported directly from `@axiomify/vault`.
+
+---
+
+### Caller-Identity Helpers (`@axiomify/vault/proxy`)
+
+The `@axiomify/vault/proxy` subpath exposes lower-level, opt-in helpers for advanced caller-identity handling:
+
+- **`UNKNOWN_CALLER`** — a sentinel string (`'unknown'`), deliberately distinct from `'default'`, so that a policy granting the `'default'` module does not implicitly grant unidentified callers (CWE-807).
+- **`resolveConfidentCallerModuleName(): string`** — resolves the caller module from the active ALS context; if none is present and stack parsing yields no confident match, returns `UNKNOWN_CALLER` instead of `'default'`.
+
+```typescript
+import {
+  UNKNOWN_CALLER,
+  resolveConfidentCallerModuleName,
+} from '@axiomify/vault/proxy';
+```
 
 ---
 

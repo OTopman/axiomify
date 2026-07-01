@@ -27,18 +27,24 @@ Point your Prometheus scrape config at `http://localhost:3000/metrics`.
 
 ## Options
 
-| Option         | Type                                   | Default      | Description                                           |
-| -------------- | -------------------------------------- | ------------ | ----------------------------------------------------- |
-| `path`         | `string`                               | `'/metrics'` | Endpoint path for the metrics export.                 |
-| `protect`      | `(req) => boolean \| Promise<boolean>` | —            | Return `false` to reject with 403.                    |
-| `requireToken` | `string`                               | —            | Require `X-Metrics-Token` header to match this value. |
-| `allowlist`    | `string[]`                             | —            | Allow only these IPv4 addresses or CIDR ranges.       |
+| Option                    | Type                                   | Default      | Description                                                                             |
+| ------------------------- | -------------------------------------- | ------------ | --------------------------------------------------------------------------------------- |
+| `path`                    | `string`                               | `'/metrics'` | Endpoint path for the metrics export.                                                   |
+| `protect`                 | `(req) => boolean \| Promise<boolean>` | —            | Return `false` to reject with 403.                                                      |
+| `requireToken`            | `string`                               | —            | Require `X-Metrics-Token` header to match this value (compared in constant time).       |
+| `allowlist`               | `string[]`                             | —            | Allow only these IPv4 addresses or CIDR ranges.                                         |
+| `wsManager`               | `{ getStats(): {...} }`                | —            | Optional WebSocket manager. When set, WebSocket connection/room metrics are exported.   |
+| `allowPublicInProduction` | `boolean`                              | `false`      | When `NODE_ENV === 'production'` and no `protect` is set, allow unauthenticated access.  |
 
 If none of `protect`, `requireToken`, or `allowlist` are set, a startup warning is emitted:
 
 ```
-[axiomify/metrics] Warning: /metrics is publicly accessible. Set protect, requireToken, or allowlist.
+[axiomify/metrics] Warning: /metrics is publicly accessible. Set protect, allowlist, or requireToken in production.
 ```
+
+### Production hardening
+
+In production (`NODE_ENV === 'production'`), if no `protect` function is set the endpoint is **denied by default** (403) unless you opt in with `allowPublicInProduction: true`. Note this default-deny path applies only to the `protect` check; `requireToken` and `allowlist` are enforced independently regardless of environment. Token comparison uses `crypto.timingSafeEqual` to avoid leaking the token via timing.
 
 ## Securing the endpoint
 
@@ -64,24 +70,46 @@ useMetrics(app, {
 ## Exported metrics
 
 ```
-# HELP axiomify_requests_total Total number of handled requests by route and status
-# TYPE axiomify_requests_total counter
-axiomify_requests_total{method="GET",route="/users/:id",status="200"} 1432
-axiomify_requests_total{method="POST",route="/users",status="201"} 87
-axiomify_requests_total{method="POST",route="/users",status="400"} 12
+# HELP http_requests_total Total number of HTTP requests.
+# TYPE http_requests_total counter
+http_requests_total{method="GET",route="/users/:id",status="200"} 1432
+http_requests_total{method="POST",route="/users",status="201"} 87
+http_requests_total{method="POST",route="/users",status="400"} 12
 
-# HELP axiomify_request_duration_ms_total Cumulative request duration in ms by route
-# TYPE axiomify_request_duration_ms_total counter
-axiomify_request_duration_ms_total{method="GET",route="/users/:id"} 14320.5
-
-# HELP axiomify_process_uptime_seconds Process uptime in seconds
-# TYPE axiomify_process_uptime_seconds gauge
-axiomify_process_uptime_seconds 3600.2
+# HELP http_request_duration_ms Total duration of HTTP requests in ms.
+# TYPE http_request_duration_ms counter
+http_request_duration_ms{method="GET",route="/users/:id"} 14320.500
 ```
 
-**Cardinality is bounded** — labels use matched route patterns (`/users/:id`), never concrete URLs (`/users/42`). This prevents label explosion from path parameters.
+**Cardinality is bounded** — labels use matched route patterns (`/users/:id`), never concrete URLs (`/users/42`). This prevents label explosion from path parameters. Requests that never match a route are labelled `__unmatched__`, and requests to the metrics endpoint itself are not counted.
+
+### WebSocket metrics
+
+When a `wsManager` is provided, additional series are appended:
+
+```
+# HELP ws_connected_clients WebSocket clients
+# TYPE ws_connected_clients gauge
+ws_connected_clients 42
+
+# HELP ws_messages_received_total Total WebSocket messages received
+# TYPE ws_messages_received_total counter
+ws_messages_received_total 1200
+
+# HELP ws_messages_sent_total Total WebSocket messages sent
+# TYPE ws_messages_sent_total counter
+ws_messages_sent_total 980
+
+# HELP ws_room_clients WebSocket room client count
+# TYPE ws_room_clients gauge
+ws_room_clients{room="lobby"} 12
+```
+
+`ws_messages_received_total` and `ws_messages_sent_total` are emitted only when the manager's stats include those fields.
 
 ## Prometheus scrape config
+
+When using `requireToken`, the token is read from the `X-Metrics-Token` request header, so configure it via `authorization` is not applicable — pass it as a custom header:
 
 ```yaml
 scrape_configs:
@@ -90,5 +118,6 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:3000']
     metrics_path: '/metrics'
-    bearer_token: 'your-metrics-token'
+    headers:
+      X-Metrics-Token: 'your-metrics-token'
 ```

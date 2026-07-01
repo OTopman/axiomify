@@ -160,6 +160,27 @@ export async function handlePostPlaygroundExecute(
 ): Promise<void> {
   let tmpDir = '';
   try {
+    // SECURITY (C1): this endpoint writes user-supplied code to disk and
+    // executes it (`node`/`python3`/`dart`) with the full privileges of the
+    // Studio process and NO sandbox (the timeout is not an isolation
+    // boundary). That is arbitrary code execution on the developer's machine.
+    // It is therefore disabled by default and must be explicitly opted into
+    // via AXIOMIFY_STUDIO_ALLOW_EXEC=true, and even then should only be used
+    // on a trusted, single-user host. Do not enable on shared machines.
+    if (process.env.AXIOMIFY_STUDIO_ALLOW_EXEC !== 'true') {
+      sendJson(
+        res,
+        {
+          error: 'Playground code execution is disabled',
+          message:
+            'Set AXIOMIFY_STUDIO_ALLOW_EXEC=true to enable running SDK snippets. ' +
+            'This runs arbitrary code unsandboxed with the Studio process privileges — only enable on a trusted local machine.',
+        },
+        403,
+      );
+      return;
+    }
+
     const raw = await readBody(req);
     const body = JSON.parse(raw);
     const { code, target = 'typescript' } = body;

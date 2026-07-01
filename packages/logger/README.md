@@ -33,11 +33,11 @@ useLogger(app, {
 
 ## Options
 
-| Option                   | Type                                     | Default  | Description                                                                          |
-| ------------------------ | ---------------------------------------- | -------- | ------------------------------------------------------------------------------------ |
-| `level`                  | `'debug' \| 'info' \| 'warn' \| 'error'` | `'info'` | Minimum log level. Messages below this level are suppressed.                         |
-| `sensitiveFields`        | `string[]`                               | `[]`     | Field names (case-insensitive) to mask in headers and body. Masked as `'****'`.      |
-| `beautify`               | `boolean`                                | `false`  | Colorised, human-readable output for local development. JSON in production.          |
+| Option                   | Type                                                          | Default                | Description                                                                          |
+| ------------------------ | ------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------ |
+| `level`                  | `'trace' \| 'debug' \| 'info' \| 'warn' \| 'error' \| 'fatal'` | `'info'`               | Minimum log level. Messages below this level are suppressed.                         |
+| `sensitiveFields`        | `string[]`                                                    | see below              | Field names (case-insensitive) whose values are masked. Overrides the default list.  |
+| `beautify`               | `boolean`                                                     | `process.stdout.isTTY` | Colorised, human-readable output for local development. Emits JSON when off.         |
 | `includeHeaders`         | `boolean`                                | `false`  | Include request headers in log entries. Enable only when the log pipeline is secure. |
 | `includeParams`          | `boolean`                                | `false`  | Include request route parameters (`req.params`) in log entries.                      |
 | `includeQuery`           | `boolean`                                | `false`  | Include request query parameters (`req.query`) in log entries.                       |
@@ -49,57 +49,95 @@ useLogger(app, {
 
 ## Log output
 
-Each request produces two log entries:
+Each request produces two log entries (an incoming-request line and an outgoing-response line), plus an error line when a handler throws.
 
-**On `onRequest`** — incoming request:
+**On `onRequest`** — incoming request (message `"Incoming Request"`):
 
 ```json
 {
-  "level": "info",
+  "timestamp": "2024-01-01T00:00:00.000Z",
+  "level": "INFO",
+  "message": "Incoming Request",
   "requestId": "abc-123",
   "method": "POST",
   "path": "/users",
-  "ip": "10.0.0.1",
-  "ts": "2024-01-01T00:00:00.000Z"
+  "ip": "10.0.0.1"
 }
 ```
 
-**On `onPostHandler`** — response sent:
+**On `onPostHandler`** — response sent (message `"Outgoing Response"`):
 
 ```json
 {
-  "level": "info",
+  "timestamp": "2024-01-01T00:00:00.001Z",
+  "level": "INFO",
+  "message": "Outgoing Response",
   "requestId": "abc-123",
-  "status": 201,
-  "latencyMs": 12,
-  "ts": "2024-01-01T00:00:00.001Z"
+  "method": "POST",
+  "path": "/users",
+  "durationMs": "12.000",
+  "statusCode": 201
 }
 ```
 
-**On `onError`** — handler threw:
+**On `onError`** — handler threw (message `"Request Failed"`):
 
 ```json
 {
-  "level": "error",
+  "timestamp": "2024-01-01T00:00:00.001Z",
+  "level": "ERROR",
+  "message": "Request Failed",
   "requestId": "abc-123",
-  "error": "Validation failed",
-  "status": 400,
-  "latencyMs": 3
+  "method": "POST",
+  "path": "/users",
+  "durationMs": "3.000",
+  "statusCode": 400,
+  "error": { "name": "ValidationError", "message": "Validation failed" }
 }
 ```
+
+Error stack traces are included only when `NODE_ENV !== 'production'`.
 
 ## Masking
 
-Masking is recursive — it traverses nested objects and arrays:
+Two complementary layers protect sensitive data.
+
+### Key-name masking (always on)
+
+Values under sensitive keys are masked recursively across nested objects and arrays. Keys are matched case-insensitively on word boundaries, so `author` won't match `auth`. Values are partially masked (leading/trailing characters may remain visible), not replaced with a fixed string. Common formats found in values (emails, phone numbers, card numbers, IPs, JWTs) are also detected and masked automatically.
+
+The default `sensitiveFields` list is:
+
+```typescript
+[
+  'password',
+  'token',
+  'authorization',
+  'credit_card',
+  'ssn',
+  'cookie',
+  'set-cookie',
+  'x-api-key',
+  'x-auth-token',
+]
+```
+
+Passing `sensitiveFields` replaces this default list.
 
 ```typescript
 useLogger(app, { sensitiveFields: ['password', 'token'] });
-
-// Request body { email: 'ada@example.com', password: 'secret123', nested: { token: 'xyz' } }
-// Logged as:   { email: 'ada@example.com', password: '****', nested: { token: '****' } }
 ```
 
-Field names are matched case-insensitively. Masking depth is bounded to prevent stack overflow on adversarially deep objects.
+### Value-shape masking (best-effort)
+
+When request/response body, query, params, or state logging is enabled (any of `includeBody`, `includeQuery`, `includeParams`, `includeState`, `includeResponsePayload`), the logger performs an additional pass that redacts values matching obvious secret shapes even when they appear under keys not in `sensitiveFields`:
+
+- JWTs (`eyJ...` three-segment tokens)
+- `Bearer <token>` headers
+- Long hex blobs (32+ hex chars, e.g. API keys / hashes)
+- Long base64 / base64url blobs (40+ chars)
+
+Matches are replaced with `••••••••`. This is best-effort defence-in-depth — it is not exhaustive and does not replace key-name masking. It stays off the hot path when no such payloads are logged.
 
 ## Development mode
 

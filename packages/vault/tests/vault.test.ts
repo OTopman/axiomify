@@ -15,6 +15,7 @@ let AxiomifyVault: any;
 let vaultModule: any;
 let vaultScope: any;
 let restoreProcessEnv: any;
+let setupProcessEnvProxy: any;
 let getCallerModuleName: any;
 let registerSecretForRedaction: any;
 let unregisterSecretForRedaction: any;
@@ -33,6 +34,7 @@ beforeAll(async () => {
 
   const proxy = await import('../src/proxy');
   restoreProcessEnv = proxy.restoreProcessEnv;
+  setupProcessEnvProxy = proxy.setupProcessEnvProxy;
   getCallerModuleName = proxy.getCallerModuleName;
   registerSecretForRedaction = proxy.registerSecretForRedaction;
   unregisterSecretForRedaction = proxy.unregisterSecretForRedaction;
@@ -962,6 +964,265 @@ describe('Axiomify Vault', () => {
       if (cachedOriginalEnv !== undefined) {
         (process as any).__originalEnv = cachedOriginalEnv;
       }
+    }
+  });
+
+  it('should enforce ABAC policies via process.env Proxy and vaultScope/vault.scope', () => {
+    delete process.env.DATABASE_URL;
+    delete process.env.STRIPE_SECRET;
+    delete process.env.PUBLIC_VAR;
+
+    const policy = {
+      modules: {
+        users: { allow: ['DATABASE_URL'] },
+        billing: { allow: ['STRIPE_SECRET'] },
+        '*': { allow: ['PUBLIC_VAR'] },
+      },
+    };
+
+    const vault = new AxiomifyVault({
+      projectRoot: testRoot,
+      policy,
+    });
+    vault.setSecret('DATABASE_URL', 'db-conn-string');
+    vault.setSecret('STRIPE_SECRET', 'sk_test_51');
+    vault.setSecret('PUBLIC_VAR', 'hello-world');
+
+    setupProcessEnvProxy(vault);
+
+    try {
+      // 1. Test vaultScope('users')
+      vaultScope('users', () => {
+        expect(process.env.DATABASE_URL).toBe('db-conn-string');
+        expect(process.env.STRIPE_SECRET).toBe('••••••••');
+        expect(process.env.PUBLIC_VAR).toBe('••••••••');
+      });
+
+      // 2. Test vaultScope('billing')
+      vaultScope('billing', () => {
+        expect(process.env.DATABASE_URL).toBe('••••••••');
+        expect(process.env.STRIPE_SECRET).toBe('sk_test_51');
+        expect(process.env.PUBLIC_VAR).toBe('••••••••');
+      });
+
+      // 3. Test wildcard module fallback (some-other-module has no specific rules, so falls back to '*')
+      vaultScope('some-other-module', () => {
+        expect(process.env.DATABASE_URL).toBe('••••••••');
+        expect(process.env.STRIPE_SECRET).toBe('••••••••');
+        expect(process.env.PUBLIC_VAR).toBe('hello-world');
+      });
+
+      // 4. Test vault.scope('users')
+      vault.scope('users', () => {
+        expect(process.env.DATABASE_URL).toBe('db-conn-string');
+        expect(process.env.STRIPE_SECRET).toBe('••••••••');
+      });
+
+      // 5. Test nested scopes
+      vaultScope('users', () => {
+        // Outer scope is 'users'
+        expect(process.env.DATABASE_URL).toBe('db-conn-string');
+        expect(process.env.STRIPE_SECRET).toBe('••••••••');
+
+        vaultScope('billing', () => {
+          // Inner scope is 'billing' and should take precedence
+          expect(process.env.DATABASE_URL).toBe('••••••••');
+          expect(process.env.STRIPE_SECRET).toBe('sk_test_51');
+        });
+
+        // Restores back to outer scope 'users'
+        expect(process.env.DATABASE_URL).toBe('db-conn-string');
+        expect(process.env.STRIPE_SECRET).toBe('••••••••');
+      });
+
+    } finally {
+      restoreProcessEnv();
+    }
+  });
+
+  it('should support wildcard key matching (allow: ["*"]) in process.env Proxy', () => {
+    delete process.env.SECRET_A;
+    delete process.env.SECRET_B;
+
+    const policy = {
+      modules: {
+        admin: { allow: ['*'] },
+      },
+    };
+
+    const vault = new AxiomifyVault({
+      projectRoot: testRoot,
+      policy,
+    });
+    vault.setSecret('SECRET_A', 'val-a');
+    vault.setSecret('SECRET_B', 'val-b');
+
+    setupProcessEnvProxy(vault);
+
+    try {
+      vaultScope('admin', () => {
+        expect(process.env.SECRET_A).toBe('val-a');
+        expect(process.env.SECRET_B).toBe('val-b');
+      });
+      vaultScope('other', () => {
+        expect(process.env.SECRET_A).toBe('••••••••');
+        expect(process.env.SECRET_B).toBe('••••••••');
+      });
+    } finally {
+      restoreProcessEnv();
+    }
+  });
+
+  it('should fallback to stack trace parsing in getCallerModuleName when not in vaultScope', () => {
+    delete process.env.SECRET_A;
+
+    const policy = {
+      modules: {
+        myAppModuleAction: { allow: ['SECRET_A'] },
+      },
+    };
+
+    const vault = new AxiomifyVault({
+      projectRoot: testRoot,
+      policy,
+    });
+    vault.setSecret('SECRET_A', 'val-a');
+
+    setupProcessEnvProxy(vault);
+
+    const OriginalError = globalThis.Error;
+    const MockError = class extends OriginalError {
+      constructor(message?: string) {
+        super(message);
+        this.stack =
+          'Error\n    at myAppModuleAction (file.js:10:5)\n    at AppModule.register (index.js:5:10)';
+      }
+    };
+    globalThis.Error = MockError as any;
+
+    try {
+      // Access outside vaultScope context — should check stack trace and match 'myAppModuleAction'
+      expect(process.env.SECRET_A).toBe('val-a');
+    } finally {
+      globalThis.Error = OriginalError;
+      restoreProcessEnv();
+    }
+  });
+});
+
+describe('SecretPolicyEngine', () => {
+  let SecretPolicyEngine: any;
+
+  beforeAll(async () => {
+    ({ SecretPolicyEngine } = await import('../src/policy'));
+  });
+
+  it('is permissive with no policy configured and warns exactly once (CWE-1188)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const engine = new SecretPolicyEngine();
+      expect(engine.isAllowed('anyModule', 'ANY_SECRET')).toBe(true);
+      // Second access must not warn again.
+      expect(engine.isAllowed('otherModule', 'OTHER_SECRET')).toBe(true);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain('no');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('denies all access with no policy when defaultDeny is enabled (strict mode)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const engine = new SecretPolicyEngine(undefined, { defaultDeny: true });
+      expect(engine.isAllowed('anyModule', 'ANY_SECRET')).toBe(false);
+      // Strict mode must not emit the permissive warning.
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('enforces module allow-lists and wildcards when a policy is configured', () => {
+    const engine = new SecretPolicyEngine({
+      modules: {
+        billing: { allow: ['STRIPE_KEY'] },
+        '*': { allow: ['PUBLIC_KEY'] },
+      },
+    });
+    // Direct module match
+    expect(engine.isAllowed('billing', 'STRIPE_KEY')).toBe(true);
+    expect(engine.isAllowed('billing', 'STRIPE_SECRET')).toBe(false);
+    // Wildcard module fallback
+    expect(engine.isAllowed('unknownModule', 'PUBLIC_KEY')).toBe(true);
+    expect(engine.isAllowed('unknownModule', 'PRIVATE_KEY')).toBe(false);
+  });
+
+  it('allows every secret for a module whose allow-list contains "*"', () => {
+    const engine = new SecretPolicyEngine({
+      modules: { admin: { allow: ['*'] } },
+    });
+    expect(engine.isAllowed('admin', 'ANYTHING')).toBe(true);
+    // Non-listed module is still denied once a policy exists.
+    expect(engine.isAllowed('guest', 'ANYTHING')).toBe(false);
+  });
+});
+
+describe('resolveConfidentCallerModuleName', () => {
+  let resolveConfidentCallerModuleName: any;
+  let UNKNOWN_CALLER: any;
+  let vaultScopeFn: any;
+
+  beforeAll(async () => {
+    const proxy = await import('../src/proxy');
+    resolveConfidentCallerModuleName = proxy.resolveConfidentCallerModuleName;
+    UNKNOWN_CALLER = proxy.UNKNOWN_CALLER;
+    const index = await import('../src/index');
+    vaultScopeFn = index.vaultScope;
+  });
+
+  it('exports the UNKNOWN_CALLER sentinel distinct from "default"', () => {
+    expect(UNKNOWN_CALLER).toBe('unknown');
+    expect(UNKNOWN_CALLER).not.toBe('default');
+  });
+
+  it('returns UNKNOWN_CALLER (not "default") when no ALS context and stack has no module match (CWE-807)', () => {
+    const OriginalError = globalThis.Error;
+    const MockError = class extends OriginalError {
+      constructor(message?: string) {
+        super(message);
+        this.stack = 'Error\n    at someUnrelatedFn (file.js:10:5)';
+      }
+    };
+    globalThis.Error = MockError as any;
+    try {
+      expect(resolveConfidentCallerModuleName()).toBe(UNKNOWN_CALLER);
+    } finally {
+      globalThis.Error = OriginalError;
+    }
+  });
+
+  it('uses the ALS context value when inside a vaultScope', () => {
+    const result = vaultScopeFn('billingModule', () =>
+      resolveConfidentCallerModuleName(),
+    );
+    expect(result).toBe('billingModule');
+  });
+
+  it('resolves a confident module name from the stack trace when outside a vaultScope', () => {
+    const OriginalError = globalThis.Error;
+    const MockError = class extends OriginalError {
+      constructor(message?: string) {
+        super(message);
+        this.stack =
+          'Error\n    at myAppModuleAction (file.js:10:5)\n    at AppModule.register (index.js:5:10)';
+      }
+    };
+    globalThis.Error = MockError as any;
+    try {
+      expect(resolveConfidentCallerModuleName()).toBe('myAppModuleAction');
+    } finally {
+      globalThis.Error = OriginalError;
     }
   });
 });

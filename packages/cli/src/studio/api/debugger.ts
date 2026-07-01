@@ -7,9 +7,9 @@
  * POST /__studio/api/debug/source    — Read source file lines around a target line
  * POST /__studio/api/debug/frames    — Parse a raw stack trace into structured frames
  */
-import { readFile } from 'node:fs/promises';
+import { readFile, realpath } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { sendJson } from '../server/http-server';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -94,10 +94,22 @@ export async function readSourceContext(
       ? filePath
       : resolve(process.cwd(), filePath);
 
-    // Security: only read files within the project directory
-    const cwd = process.cwd();
-    const resolved = resolve(absPath);
-    if (!resolved.startsWith(cwd) && !resolved.includes('node_modules')) {
+    // Security (H1, CWE-22): only read files strictly contained within the
+    // project directory. Canonicalize both the project root and the target
+    // via realpath so symlinks cannot escape the sandbox, and require a
+    // trailing-separator prefix match so sibling directories that merely
+    // share a name prefix (e.g. `<cwd>-secret`) are not accepted. The old
+    // guard allowed any path containing the substring `node_modules`, which
+    // let callers read arbitrary files outside the project.
+    let cwdReal: string;
+    let resolved: string;
+    try {
+      cwdReal = await realpath(process.cwd());
+      resolved = await realpath(resolve(absPath));
+    } catch {
+      return null;
+    }
+    if (resolved !== cwdReal && !resolved.startsWith(cwdReal + sep)) {
       return null;
     }
 

@@ -29,19 +29,19 @@ useCors(app, {
 
 ## Options
 
-| Option                 | Type                                               | Default                                        | Description                                                                                                      |
-| ---------------------- | -------------------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `origin`               | `boolean \| string \| RegExp \| Array \| Function` | `false`                                        | Allowed origins. `true` = reflect all, `false` = block all, string = exact match, function = async custom logic. |
-| `methods`              | `string[]`                                         | `['GET','HEAD','PUT','PATCH','POST','DELETE']` | Allowed HTTP methods.                                                                                            |
-| `allowedHeaders`       | `string[]`                                         | Reflects `Access-Control-Request-Headers`      | Allowed request headers.                                                                                         |
-| `exposedHeaders`       | `string[]`                                         | `[]`                                           | Headers exposed to the browser.                                                                                  |
-| `credentials`          | `boolean`                                          | `false`                                        | Send `Access-Control-Allow-Credentials: true`.                                                                   |
-| `maxAge`               | `number`                                           | `0`                                            | Preflight cache duration in seconds (`Access-Control-Max-Age`).                                                  |
+| Option                 | Type                                               | Default                                                     | Description                                                                                                      |
+| ---------------------- | -------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `origin`               | `boolean \| string \| RegExp \| Array \| Function` | `'*'`                                                       | Allowed origins. `true` = reflect all, `false` = block all, string = exact match, function = async custom logic. |
+| `methods`              | `string[]`                                         | `['GET','POST','PUT','PATCH','DELETE','OPTIONS','HEAD']`    | Allowed HTTP methods.                                                                                            |
+| `allowedHeaders`       | `string[]`                                         | Reflects `Access-Control-Request-Headers`, else `Content-Type, Authorization` | Allowed request headers. When unset, reflects the requested headers, falling back to `Content-Type, Authorization`. |
+| `exposedHeaders`       | `string[]`                                         | `[]`                                                       | Headers exposed to the browser.                                                                                  |
+| `credentials`          | `boolean`                                          | `false`                                                     | Send `Access-Control-Allow-Credentials: true`.                                                                   |
+| `maxAge`               | `number`                                           | `86400`                                                     | Preflight cache duration in seconds (`Access-Control-Max-Age`).                                                  |
 | `optionsSuccessStatus` | `number`                                           | `204`                                          | Status code for preflight responses.                                                                             |
 | `preflightContinue`    | `boolean`                                          | `false`                                        | Pass preflight to the next handler instead of responding.                                                        |
 | `allowPrivateNetwork`  | `boolean`                                          | `false`                                        | Emit `Access-Control-Allow-Private-Network: true` for private network access.                                    |
 | `varyOnRequestHeaders` | `boolean`                                          | `true`                                         | Append `Access-Control-Request-Headers` to `Vary`.                                                               |
-| `strictPreflight`      | `boolean`                                          | `false`                                        | Reject preflights missing `Access-Control-Request-Method`.                                                       |
+| `strictPreflight`      | `boolean`                                          | `false`                                                     | Reject `OPTIONS` preflights that are missing an `Origin` header with `400`.                                     |
 
 ## Dynamic origin
 
@@ -60,19 +60,7 @@ useCors(app, {
 
 - **Preflight:** `OPTIONS` requests receive `Access-Control-Allow-*` headers and a `204 No Content` response automatically — no route registration needed.
 - **Vary header:** `Origin` is appended to `Vary` whenever the origin is not `*`. This prevents CDNs from caching a CORS response for one origin and serving it to another.
-- **Startup validation:** `credentials: true` combined with `origin: true` or `origin: '*'` throws at startup — this combination violates the CORS spec and browsers will reject it.
+- **Startup validation:** `credentials: true` combined with `origin: true` (reflect-all) or `origin: '*'` throws at startup. Both are equivalent to letting any site make authenticated cross-origin requests (CWE-942), so credentialed CORS requires an explicit allowlist (string, array, `RegExp`, or function).
+- **Reflect-all safety:** with `origin: true`, a missing `Origin` header or a literal `null` origin (sandboxed iframes, `data:`/`file:` documents) is **not** reflected — no `Access-Control-Allow-Origin` is sent for those opaque origins.
 - **Non-browser requests:** Requests without an `Origin` header pass through without any CORS headers.
-
-## Per-route CORS
-
-For routes with different CORS requirements, skip `useCors` and use it as a plugin:
-
-```typescript
-import { createCorsPlugin } from '@axiomify/cors';
-
-const publicCors  = createCorsPlugin({ origin: '*' });
-const privateCors = createCorsPlugin({ origin: 'https://admin.example.com', credentials: true });
-
-app.route({ method: 'GET', path: '/public',  plugins: [publicCors],  handler: ... });
-app.route({ method: 'GET', path: '/private', plugins: [privateCors], handler: ... });
-```
+- **Unanchored RegExp origins:** a `RegExp` origin that is not anchored with `^`/`$` is auto-anchored (with a console warning) to prevent partial-match bypasses such as `attacker-domain.com`.

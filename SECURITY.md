@@ -4,9 +4,9 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 5.x     | ✅ Latest stable; active security maintenance |
-| 4.x     | ⚠️ Security fixes for 6 months after the 5.0 release; no new features |
-| < 4.0   | ❌ Unsupported |
+| 6.x     | ✅ Latest stable; active security maintenance |
+| 5.x     | ⚠️ Security fixes for 6 months after the 6.0 release; no new features |
+| < 5.0   | ❌ Unsupported |
 
 ## Reporting a Vulnerability
 

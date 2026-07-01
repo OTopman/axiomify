@@ -251,6 +251,12 @@ export async function handlePostAiAnalyze(
     return;
   }
 
+  // Security (M1): these per-request overrides let the developer use a key
+  // configured in the Studio panel instead of a server env var. This endpoint
+  // is gated by the Studio bearer token AND the loopback Host-header check
+  // (see http-server.ts), so a cross-origin page cannot invoke it to redirect
+  // this app's telemetry to an attacker-controlled provider account. The
+  // destination URL is always a fixed per-provider constant below.
   const customKey = req.headers['x-axiomify-ai-key'] as string;
   const customProvider = req.headers['x-axiomify-ai-provider'] as string;
 
@@ -474,6 +480,31 @@ export async function handlePostAiConfig(
   const { provider, apiKey } = payload;
   if (!provider || !apiKey) {
     sendJson(res, { error: 'Missing provider or apiKey' }, 400);
+    return;
+  }
+
+  // Security (M2, CWE-74/CWE-73): these values are written verbatim into the
+  // project `.env`. Reject anything that could break out of a single
+  // `KEY=value` line (newlines/carriage returns) or otherwise inject config.
+  // The provider must be one of the known identifiers; the API key must be a
+  // single-line token with no `=`, quotes, whitespace, or control characters.
+  const ALLOWED_PROVIDERS = ['gemini', 'openai', 'claude', 'qwen'];
+  if (
+    typeof provider !== 'string' ||
+    !ALLOWED_PROVIDERS.includes(provider.toLowerCase())
+  ) {
+    sendJson(res, { error: 'Invalid provider' }, 400);
+    return;
+  }
+  if (typeof apiKey !== 'string' || !/^[A-Za-z0-9._\-]{1,512}$/.test(apiKey)) {
+    sendJson(
+      res,
+      {
+        error:
+          'Invalid apiKey: must be a single-line token of letters, digits, dot, underscore or hyphen (max 512 chars).',
+      },
+      400,
+    );
     return;
   }
 

@@ -239,3 +239,35 @@ export function getCallerModuleName(): string {
   }
   return 'default';
 }
+
+/**
+ * Sentinel returned for callers that cannot be confidently identified.
+ * Deliberately distinct from 'default' so that a policy granting the
+ * 'default' module does not implicitly grant unidentified callers (CWE-807).
+ */
+export const UNKNOWN_CALLER = 'unknown';
+
+/**
+ * Resolves the caller module name for security-sensitive policy checks.
+ *
+ * If an ALS context is present, its value is used (unchanged behavior).
+ * Otherwise, stack parsing is attempted; if it yields no confident module
+ * match, {@link UNKNOWN_CALLER} is returned instead of 'default', so that
+ * unidentified callers are not implicitly granted a 'default' policy.
+ */
+export function resolveConfidentCallerModuleName(): string {
+  const store = vaultContext.getStore();
+  if (store) return store;
+
+  const stack = new Error().stack ?? '';
+  const lines = stack.split('\n');
+  for (const line of lines) {
+    if (line.includes('AppModule') || line.includes('AppConfigurator')) {
+      const match = line.match(/at\s+([a-zA-Z0-9_$]+)/);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+  }
+  return UNKNOWN_CALLER;
+}
