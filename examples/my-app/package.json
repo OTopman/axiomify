@@ -36,9 +36,9 @@
     "tsup": "^8.5.1"
   },
   "devDependencies": {
-    "@opentelemetry/auto-instrumentations-node": "^0.77.0",
-    "@opentelemetry/exporter-trace-otlp-grpc": "^0.219.0",
-    "@opentelemetry/sdk-node": "^0.219.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.79.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "^0.221.0",
+    "@opentelemetry/sdk-node": "^0.221.0",
     "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^20.0.0",
     "jsonwebtoken": "^9.0.2",
