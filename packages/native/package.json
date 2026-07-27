@@ -34,7 +34,7 @@
     "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#624987739d4da0acb628aaf2a10fc43e7ce27c5c"
   },
   "devDependencies": {
-    "ws": "^8.21.0",
+    "ws": "^8.21.1",
     "@types/ws": "^8.5.13"
   },
   "keywords": [
