@@ -73,6 +73,9 @@ describe('parseApiKey / generateApiKey / hashApiKeySecret', () => {
     expect(h1).toMatch(/^pbkdf2\$\d+\$[0-9a-f]+\$[0-9a-f]+$/i);
     expect(h2).toMatch(/^pbkdf2\$\d+\$[0-9a-f]+\$[0-9a-f]+$/i);
     expect(h1).not.toBe(h2);
+
+    const hexSalt = '0123456789abcdef0123456789abcdef';
+    expect(hashApiKeySecret('abc', hexSalt)).toBe(hashApiKeySecret('abc', hexSalt));
   });
 
   it('hashApiKeySecretPbkdf2 generates valid pbkdf2 format string and authenticates', () => {
@@ -80,6 +83,21 @@ describe('parseApiKey / generateApiKey / hashApiKeySecret', () => {
     const pbkdf2Hash = hashApiKeySecretPbkdf2('mysecret', { salt });
     expect(pbkdf2Hash).toMatch(/^pbkdf2:sha256:\d+:[0-9a-f]{32}:[0-9a-f]{64}$/);
     expect(hashApiKeySecretPbkdf2('mysecret', { salt })).toBe(pbkdf2Hash);
+
+    const defaultOptHash = hashApiKeySecretPbkdf2('mysecret');
+    expect(defaultOptHash).toMatch(/^pbkdf2:sha256:10000:[0-9a-f]{32}:[0-9a-f]{64}$/);
+  });
+
+  it('rejects keys with invalid iteration count in PBKDF2 format', async () => {
+    const plugin = createApiKeyPlugin({
+      keys: {
+        baditer: { hashedKey: 'pbkdf2$0$0123456789abcdef0123456789abcdef$1234' },
+      },
+    });
+    const req = makeReq('ax_baditer_secret');
+    const res = makeRes();
+    await plugin.requireApiKey()(req, res);
+    expect(res.status).toHaveBeenCalledWith(401);
   });
 });
 
