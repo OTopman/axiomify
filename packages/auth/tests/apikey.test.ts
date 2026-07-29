@@ -76,9 +76,10 @@ describe('parseApiKey / generateApiKey / hashApiKeySecret', () => {
   });
 
   it('hashApiKeySecretPbkdf2 generates valid pbkdf2 format string and authenticates', () => {
-    const pbkdf2Hash = hashApiKeySecretPbkdf2('mysecret');
+    const salt = '0123456789abcdef0123456789abcdef';
+    const pbkdf2Hash = hashApiKeySecretPbkdf2('mysecret', { salt });
     expect(pbkdf2Hash).toMatch(/^pbkdf2:sha256:\d+:[0-9a-f]{32}:[0-9a-f]{64}$/);
-    expect(hashApiKeySecretPbkdf2('mysecret')).toBe(pbkdf2Hash);
+    expect(hashApiKeySecretPbkdf2('mysecret', { salt })).toBe(pbkdf2Hash);
   });
 });
 

@@ -39,9 +39,10 @@ describe('API key primitives', () => {
     expect(() => generateApiKey('has_underscore')).toThrow(/must not contain "_"/);
   });
 
-  it('hashApiKeySecret is deterministic', () => {
-    expect(hashApiKeySecret('abc')).toBe(hashApiKeySecret('abc'));
-    expect(hashApiKeySecret('abc')).not.toBe(hashApiKeySecret('abd'));
+  it('hashApiKeySecret is deterministic given the same salt', () => {
+    const salt = Buffer.alloc(16, 1);
+    expect(hashApiKeySecret('abc', salt)).toBe(hashApiKeySecret('abc', salt));
+    expect(hashApiKeySecret('abc', salt)).not.toBe(hashApiKeySecret('abd', salt));
   });
 
   it.each([
