@@ -5,7 +5,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-JWT authentication and refresh-token rotation for Axiomify.
+JWT authentication (HS256 and RS256/RS384/RS512/ES256/ES384 with JWKS), refresh-token rotation, API keys and OAuth 2.0 / OIDC (Authorization Code + PKCE) for Axiomify.
 
 ## Install
 
@@ -61,14 +61,21 @@ app.route({
 
 ### `createAuthPlugin(options)`
 
-| Option       | Type                      | Description                                                                                                                            |
-| ------------ | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `secret`     | `string`                  | JWT signing secret. Minimum **32 bytes** (256 bits) per RFC 7518 §3.2. **Throws** for shorter values (in all environments).            |
-| `algorithms` | `Algorithm[]`             | Accepted algorithms. Default: `['HS256']`. Never include `'none'`.                                                                     |
-| `getToken`   | `(req) => string \| null` | Custom token extractor. Default: `Authorization: Bearer <token>`.                                                                      |
-| `issuer`     | `string`                  | Validates the `iss` claim.                                                                                                             |
-| `audience`   | `string \| string[]`      | Validates the `aud` claim.                                                                                                             |
-| `store`      | `TokenStore`              | **Access token revocation store.** When set, every request checks `store.exists(jti)`. Rejected if false.                              |
+Exactly **one** of `secret`, `publicKey` or `jwks` must be provided.
+
+| Option           | Type                              | Description                                                                                                                            |
+| ---------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `secret`         | `string`                          | HS* shared secret. Minimum **32 bytes** (256 bits) per RFC 7518 §3.2. **Throws** for shorter values (in all environments).             |
+| `publicKey`      | `string \| KeyObject`             | RS256/RS384/RS512/ES256/ES384 verification key (PEM or `node:crypto` KeyObject). Default allowlist: `['RS256']`.                       |
+| `jwks`           | `JwksClient \| JwksClientOptions` | JWKS-backed verification (e.g. an OIDC provider): `{ url: 'https://issuer/.well-known/jwks.json' }`.                                   |
+| `algorithms`     | `Algorithm[]`                     | Accepted algorithms. Default: `['HS256']` with `secret`, `['RS256']` with `publicKey`/`jwks`. Never include `'none'`.                  |
+| `getToken`       | `(req) => string \| null`         | Custom token extractor. Default: `Authorization: Bearer <token>`.                                                                      |
+| `issuer`         | `string`                          | Validates the `iss` claim.                                                                                                             |
+| `audience`       | `string \| string[]`              | Validates the `aud` claim.                                                                                                             |
+| `clockTolerance` | `number`                          | Seconds of leeway for `exp`/`nbf` comparisons. Default `0`.                                                                            |
+| `store`          | `TokenStore`                      | **Access token revocation store.** When set, every request checks `store.exists(jti)`. Rejected if false.                              |
+
+HS* algorithms can never be combined with `publicKey`/`jwks`, and RS*/ES* can never be verified with `secret` — both directions of the classic JWT algorithm-confusion attack are rejected at plugin creation or verification time.
 
 ### Access token revocation with `store`
 
@@ -151,6 +158,128 @@ app.route({
   handler: refreshTokens,
 });
 ```
+
+## RS256 / ES256 and JWKS
+
+Asymmetric verification runs on a built-in `node:crypto` engine (no extra
+dependencies). `signJwt`/`verifyJwt` support `HS256/HS384/HS512`,
+`RS256/RS384/RS512` and `ES256/ES384` (ES* signatures use the JOSE raw
+`r||s` format, never DER).
+
+```typescript
+import { createAuthPlugin, signJwt, verifyJwt, JwksClient } from '@axiomify/auth';
+
+// Verify with a local public key (PEM string or KeyObject)
+const requireAuth = createAuthPlugin({
+  publicKey: process.env.JWT_PUBLIC_KEY!,
+  algorithms: ['RS256'],
+  issuer: 'https://issuer.example.com',
+  audience: 'my-api',
+});
+
+// Or verify against a remote JWKS (OIDC providers, key rotation)
+const requireOidcAuth = createAuthPlugin({
+  jwks: { url: 'https://issuer.example.com/.well-known/jwks.json' },
+  algorithms: ['RS256', 'ES256'],
+  issuer: 'https://issuer.example.com',
+});
+
+// Issue tokens yourself
+const token = signJwt(
+  { sub: user.id },
+  { algorithm: 'RS256', privateKey: process.env.JWT_PRIVATE_KEY!, expiresIn: 900, keyid: 'key-1' },
+);
+```
+
+`JwksClient` caches keys by `kid` (default TTL 10 minutes), refetches on
+unknown `kid` for key rotation — but never more often than every 30 seconds
+(forged-`kid` DoS protection) — and retains at most 32 keys. Symmetric
+(`oct`) JWKs are discarded so a hostile JWKS can never enable HS*.
+
+Security guarantees (both engines):
+
+- `alg: none` is rejected unconditionally and can never be allowlisted.
+- The token header's `alg` must be in the caller's explicit allowlist.
+- Key material type is bound to the algorithm family: a public/JWKS key can
+  never verify an HS* token and a symmetric secret can never verify RS*/ES*
+  (algorithm-confusion defence in both directions).
+- JWKS outages surface as **503**, never 401.
+
+## API keys
+
+Key format: `ax_<id>_<secret>`. Only the SHA-256 hash of the secret is
+stored; comparison is constant-time (`crypto.timingSafeEqual`), and unknown
+ids cost the same as wrong secrets (no enumeration timing oracle).
+
+```typescript
+import { createApiKeyPlugin, generateApiKey, hashApiKeySecret, getApiKey } from '@axiomify/auth';
+
+// Generate a key: give `apiKey` to the caller ONCE, persist { id, hashedKey }
+const { apiKey, id, hashedKey } = generateApiKey();
+
+// Static keys (hashed)…
+const apiKeys = createApiKeyPlugin({
+  keys: { [id]: { hashedKey, scopes: ['read', 'write'], meta: { plan: 'pro' } } },
+});
+
+// …or a dynamic lookup (database) — errors here → 503, never 401
+const apiKeysDb = createApiKeyPlugin({
+  lookup: async (id) => db.apiKeys.findById(id), // { hashedKey, scopes?, meta? } | null
+  header: 'x-api-key', // default
+});
+
+app.route({
+  method: 'GET',
+  path: '/admin',
+  plugins: [apiKeys.requireApiKey(['admin'])], // 401 invalid key, 403 missing scope
+  handler: async (req, res) => res.send(getApiKey(req)),
+});
+```
+
+Plaintext values in `keys` are hashed at startup but log a warning — store
+`hashApiKeySecret(secret)` output instead. On success `req.state.user`
+(`{ id, scopes, authType: 'api-key' }`, frozen) and `req.state.apiKey` are
+populated.
+
+## OAuth 2.0 / OIDC (Authorization Code + PKCE)
+
+```typescript
+import { createOAuthPlugin } from '@axiomify/auth';
+
+const google = createOAuthPlugin({
+  provider: 'google', // 'google' | 'github' | 'auth0' | 'oidc'
+  clientId: process.env.GOOGLE_CLIENT_ID!,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+  redirectUri: 'https://app.example.com/auth/google/callback',
+  cookieSecret: process.env.COOKIE_SECRET!, // ≥ 32 bytes, signs the state cookie
+});
+
+app.route({ method: 'GET', path: '/auth/google', handler: google.authorizeHandler });
+app.route({
+  method: 'GET',
+  path: '/auth/google/callback',
+  handler: google.callbackHandler(async (req, res, { tokens, profile }) => {
+    // tokens.accessToken, tokens.idTokenClaims (verified), profile (userinfo)
+    const session = await createSession(profile);
+    res.status(302).header('Location', '/dashboard').send(null);
+  }),
+});
+```
+
+- **PKCE is always on** with the `S256` method — never `plain`.
+- `state`, the PKCE `code_verifier` and the OIDC `nonce` travel in a signed,
+  HttpOnly, `SameSite=Lax` cookie with a 10-minute lifetime; the state
+  comparison is constant-time and the cookie is one-shot.
+- For `auth0`/`oidc`, pass `issuer` — endpoints are discovered from
+  `<issuer>/.well-known/openid-configuration` and cached for an hour.
+  Manual `endpoints` overrides always win.
+- ID tokens are verified via JWKS (`iss`, `aud = clientId`, `exp`, `nonce`)
+  before they are trusted; set `verifyIdToken: false` only if your provider
+  has no published JWKS.
+- Error handling: pass an optional `onError(req, res, error)` as the second
+  argument of `callbackHandler`; otherwise failures respond with the
+  `OAuthError`'s status (400 for state/CSRF issues, 401 for ID-token
+  failures, 502/503 for provider outages).
 
 ## Helper
 

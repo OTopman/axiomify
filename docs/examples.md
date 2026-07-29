@@ -11,6 +11,7 @@ All examples are aligned with the 5.0 API surface.
 | `examples/openapi-server.ts`    | OpenAPI generation + Swagger UI (`useOpenAPI`)                                                         |
 | `examples/graphql-server.ts`    | GraphQL endpoint via `useGraphQL` with depth + alias limits                                            |
 | `examples/secure-server.ts`     | Logger PII masking + security plugin payload examples                                                  |
+| `examples/session-cache-server.ts` | Cookie sessions (`useSession`), response cache with SWR + ETag/304 (`useCache`), compression, group-scoped hooks |
 | `examples/my-app/src/index.ts`  | Fuller app: auth, uploads, OpenAPI, SSE, file streaming, WebSockets                                    |
 | `examples/sdk-client-demo.ts`   | SDK consumption client: retries, circuit breaker, caching, paginators, offline queue, SSE & WebSockets |
 | `examples/vault-server.ts`      | `@axiomify/vault` secure configuration environment management                                          |

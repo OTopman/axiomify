@@ -258,6 +258,16 @@ export class RequestDispatcher {
  *
  * Only instantiated when the route has a schema.response defined.
  * For all other routes the dispatcher uses the inner response directly.
+ *
+ * Every `AxiomifyResponse` member is forwarded by hand rather than through a
+ * generic Proxy (the extra indirection isn't worth paying on a path this
+ * hot). Because `cookie`, `clearCookie`, `sseInit`, `sseSend`, `isStreaming`
+ * and `onStreamClose` are all OPTIONAL on the interface, `implements
+ * AxiomifyResponse` does NOT catch a forwarder that's missing for a new
+ * optional member — `tests/dispatcher-forwarding.test.ts` is the actual
+ * safety net: it asserts every property a real adapter response exposes
+ * also exists here. Update that test's reference shape (and this class)
+ * together whenever `AxiomifyResponse` gains a new member.
  */
 class ValidatingResponse implements AxiomifyResponse {
   private _sent = false;
@@ -281,6 +291,34 @@ class ValidatingResponse implements AxiomifyResponse {
   }
   removeHeader(key: string): this {
     this.inner.removeHeader(key);
+    return this;
+  }
+  cookie(
+    name: string,
+    value: string,
+    options?: import('./cookies').CookieOptions,
+  ): this {
+    if (typeof this.inner.cookie !== 'function') {
+      throw new Error(
+        '[Axiomify] The active adapter does not implement res.cookie().',
+      );
+    }
+    this.inner.cookie(name, value, options);
+    return this;
+  }
+  clearCookie(
+    name: string,
+    options?: Pick<
+      import('./cookies').CookieOptions,
+      'domain' | 'path' | 'secure' | 'sameSite'
+    >,
+  ): this {
+    if (typeof this.inner.clearCookie !== 'function') {
+      throw new Error(
+        '[Axiomify] The active adapter does not implement res.clearCookie().',
+      );
+    }
+    this.inner.clearCookie(name, options);
     return this;
   }
 

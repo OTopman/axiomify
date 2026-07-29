@@ -45,6 +45,26 @@ function mergePlugins(
   return [...inherited, ...local];
 }
 
+/**
+ * Compile a group prefix into a request-path matcher for prefix-scoped hooks.
+ * `:param` segments match any single path segment; a terminal `*` matches the
+ * rest of the path. `/api/v1` matches `/api/v1` and `/api/v1/...` but NOT
+ * `/api/v10`.
+ */
+function buildPrefixMatcher(prefix: string): RegExp {
+  if (prefix === '/' || prefix === '') return /^\//;
+  const pattern = prefix
+    .split('/')
+    .map((segment) => {
+      if (segment === '') return '';
+      if (segment === '*') return '.*';
+      if (segment.startsWith(':')) return '[^/]+';
+      return segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    })
+    .join('/');
+  return new RegExp(`^${pattern}(?:/|$)`);
+}
+
 // True per-process state for enableRequestId(). Module-level so that two
 // Axiomify instances in the same process share one monotonic sequence
 // (avoids collisions across instances) and so that per-instance closure
@@ -499,21 +519,53 @@ export class Axiomify {
 
     if (!callback) throw new Error('A route group callback is required.');
 
+    this._createGroup(prefix, options, callback, []);
+    return this;
+  }
+
+  /**
+   * Group construction with encapsulation support.
+   *
+   * `ancestorMembers` threads every enclosing group's route-membership set
+   * down to nested groups, so a route registered three levels deep is a
+   * member of all three scopes — a parent's scoped `onPreHandler` fires for
+   * it, exactly like Fastify's child-context inheritance.
+   */
+  private _createGroup(
+    prefix: string,
+    options: RouteGroupOptions,
+    callback: (group: RouteGroup) => void,
+    ancestorMembers: WeakSet<object>[],
+  ): void {
     const inheritedPlugins = options.plugins ?? [];
+    // Routes registered through THIS group (and its children). WeakSet is
+    // safe here because the registry holds strong references to every
+    // registered definition for the app's lifetime.
+    const members = new WeakSet<object>();
+    const allScopes = [...ancestorMembers, members];
+    // Lazily compiled — most groups never register prefix-scoped hooks.
+    let matcher: RegExp | null = null;
+
     const groupProxy: RouteGroup = {
       route: <S extends RouteSchema>(def: RouteDefinition<S>) => {
-        return this.route({
+        const finalDef = {
           ...def,
           path: joinRoutePath(prefix, def.path),
           plugins: mergePlugins(inheritedPlugins, def.plugins),
-        });
+        };
+        // Register membership BEFORE this.route(): the registry stores the
+        // exact object, and dispatch compares by identity.
+        for (const scope of allScopes) scope.add(finalDef);
+        this.route(finalDef);
+        return groupProxy;
       },
       ws: <S extends RouteSchema, M = any>(def: WsRouteDefinition<S, M>) => {
-        return this.ws<S, M>({
+        this.ws<S, M>({
           ...def,
           path: joinRoutePath(prefix, def.path),
           plugins: mergePlugins(inheritedPlugins, def.plugins),
         });
+        return groupProxy;
       },
       group: ((subPrefix, subOptionsOrCallback, subMaybeCallback) => {
         const subOptions =
@@ -524,17 +576,63 @@ export class Axiomify {
           typeof subOptionsOrCallback === 'function'
             ? subOptionsOrCallback
             : subMaybeCallback;
+        if (!subCallback) throw new Error('A route group callback is required.');
 
-        this.group(
+        this._createGroup(
           joinRoutePath(prefix, subPrefix),
           { plugins: mergePlugins(inheritedPlugins, subOptions.plugins) },
-          subCallback!,
+          subCallback,
+          allScopes,
         );
         return groupProxy;
       }) as RouteGroup['group'],
+      addHook: <T extends HookType>(
+        type: T,
+        handler: HookHandlerMap[T],
+      ): RouteGroup => {
+        if (type === 'onPreHandler' || type === 'onPostHandler') {
+          // Exact scoping: these hooks receive the matched route, and the
+          // dispatcher passes the identical definition object the group
+          // registered — a WeakSet lookup decides membership in O(1).
+          const scoped = (
+            req: AxiomifyRequest,
+            res: AxiomifyResponse,
+            match: { route: RouteDefinition; params: Record<string, string> },
+          ) => {
+            if (!members.has(match.route)) return;
+            return (
+              handler as HookHandlerMap['onPreHandler' | 'onPostHandler']
+            )(req, res, match);
+          };
+          this.hooks.add(type, scoped as HookHandlerMap[T]);
+        } else if (type === 'onError') {
+          matcher ??= buildPrefixMatcher(prefix);
+          const prefixMatcher = matcher;
+          const scoped = (
+            err: unknown,
+            req: AxiomifyRequest,
+            res: AxiomifyResponse,
+          ) => {
+            if (!prefixMatcher.test(req.path)) return;
+            return (handler as HookHandlerMap['onError'])(err, req, res);
+          };
+          this.hooks.add(type, scoped as HookHandlerMap[T]);
+        } else {
+          matcher ??= buildPrefixMatcher(prefix);
+          const prefixMatcher = matcher;
+          const scoped = (req: AxiomifyRequest, res: AxiomifyResponse) => {
+            if (!prefixMatcher.test(req.path)) return;
+            return (handler as HookHandlerMap['onRequest' | 'onClose'])(
+              req,
+              res,
+            );
+          };
+          this.hooks.add(type, scoped as HookHandlerMap[T]);
+        }
+        return groupProxy;
+      },
     };
     callback(groupProxy);
-    return this;
   }
 
   public healthCheck(

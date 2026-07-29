@@ -31,7 +31,7 @@ Axiomify is an ultra high-performance Node.js framework built exclusively on `uW
 
 | Package                                        | Description                                                                                             |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| [`@axiomify/native`](packages/native/)         | Production `uWebSockets.js` adapter — HTTP + native WebSocket, SSE, graceful shutdown, SO_REUSEPORT clustering |
+| [`@axiomify/native`](packages/native/)         | Production `uWebSockets.js` adapter — HTTP + native WebSocket, SSE, graceful shutdown, SO_REUSEPORT clustering; plus `Http2Adapter` (node:http2, ALPN h2/http1.1) |
 | [`@axiomify/serverless`](packages/serverless/) | Web-standard `Request`/`Response` adapter for serverless/edge runtimes (bounded body size, opt-in proxy trust) |
 
 ### Background jobs
@@ -40,11 +40,24 @@ Axiomify is an ultra high-performance Node.js framework built exclusively on `uW
 | ---------------------------------- | ----------------------------------------------------------------------------------------------- |
 | [`@axiomify/jobs`](packages/jobs/) | Distributed job scheduler — retries, DLQ, cron schedules, saga coordination, pluggable storage  |
 
+### Data
+
+| Package                          | Description                                                                                                     |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| [`@axiomify/db`](packages/db/)   | Client-agnostic database integration — Prisma/Drizzle/pg/mysql2/better-sqlite3 via DI, health checks, shutdown  |
+
+### Testing
+
+| Package                                    | Description                                                                                      |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| [`@axiomify/testing`](packages/testing/)   | Inject-style test client — no sockets, typed responses, Zod response-schema assertions            |
+
 ### Security
 
 | Package                                          | Description                                                                                                                                        |
 | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@axiomify/auth`](packages/auth/)               | JWT + refresh rotation + access token revocation via `TokenStore` (`MemoryTokenStore` shipped; Redis/DB stores BYO via the `TokenStore` interface) |
+| [`@axiomify/auth`](packages/auth/)               | JWT (HS/RS/ES + JWKS), refresh rotation, revocation via `TokenStore`, API keys, OAuth 2.0/OIDC with PKCE                                           |
+| [`@axiomify/session`](packages/session/)         | Signed cookie sessions — pluggable stores (memory shipped, Redis BYO), rolling expiry, ID regeneration                                             |
 | [`@axiomify/cors`](packages/cors/)               | CORS with strict preflight, `Vary` management, startup validation                                                                                  |
 | [`@axiomify/helmet`](packages/helmet/)           | 15 security headers (CSP, HSTS, COEP, COOP, CORP, …)                                                                                               |
 | [`@axiomify/rate-limit`](packages/rate-limit/)   | Sliding-window rate limiting + EVALSHA caching + ioredis/redis@4                                                                                   |
@@ -57,10 +70,12 @@ Axiomify is an ultra high-performance Node.js framework built exclusively on `uW
 | Package                                      | Description                                                                                 |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | [`@axiomify/upload`](packages/upload/)       | RAM-safe multipart streaming via Busboy + auto cleanup on error                             |
-| [`@axiomify/static`](packages/static/)       | Static file serving — 36 MIME types, ETag, SPA index fallback                               |
+| [`@axiomify/static`](packages/static/)       | Static file serving — 36 MIME types, ETag, Range/206 partial content, SPA index fallback    |
+| [`@axiomify/compress`](packages/compress/)   | HTTP response compression — brotli/gzip/deflate, q-value negotiation, streaming             |
+| [`@axiomify/cache`](packages/cache/)         | Response caching — ETag/304 conditional GET, stale-while-revalidate, memory/Redis stores    |
 | [`@axiomify/graphql`](packages/graphql/)     | GraphQL endpoint + GraphiQL 3 + depth/alias limits                                          |
 | [`@axiomify/socket.io`](packages/socket.io/) | Socket.IO 4.4+ bridge — attaches to the same uWS server as HTTP, so one process serves both |
-| [`@axiomify/ws`](packages/ws/)               | Native pub/sub rooms wrapper leveraging kernel-level WebSocket broadcasting                 |
+| [`@axiomify/ws`](packages/ws/)               | Native pub/sub rooms + cross-process broker (Redis BYO) for `listenClustered()` deployments |
 
 ### Observability
 

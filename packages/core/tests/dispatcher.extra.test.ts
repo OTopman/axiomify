@@ -531,6 +531,81 @@ describe('Dispatcher — ValidatingResponse and error dev stack', () => {
     expect(typeof onStreamCloseCb).toBe('function');
   });
 
+  it('ValidatingResponse forwards every AxiomifyResponse member — exhaustiveness safety net', async () => {
+    // ValidatingResponse hand-forwards each AxiomifyResponse member instead
+    // of delegating through a generic Proxy (not worth the overhead on this
+    // hot path). Because cookie/clearCookie/sseInit/sseSend/isStreaming/
+    // onStreamClose are all OPTIONAL on the interface, `implements
+    // AxiomifyResponse` does NOT force a forwarder to exist for a future
+    // addition — TypeScript stays silent if one is forgotten. This test is
+    // the actual safety net: REFERENCE_MEMBERS below must be kept in sync
+    // with every member types.ts declares on AxiomifyResponse; when a new
+    // one is added, add it here AND to ValidatingResponse in the same PR —
+    // this test fails loudly if either half of that is skipped.
+    const REFERENCE_MEMBERS = [
+      'status',
+      'header',
+      'getHeader',
+      'removeHeader',
+      'send',
+      'sendRaw',
+      'stream',
+      'capabilities',
+      'cookie',
+      'clearCookie',
+      'sseInit',
+      'sseSend',
+      'statusCode',
+      'raw',
+      'headersSent',
+      'isStreaming',
+      'onStreamClose',
+    ] as const;
+
+    const app = new Axiomify();
+    const { z } = await import('zod');
+    let captured: any;
+    app.route({
+      method: 'GET',
+      path: '/exhaustive',
+      schema: { response: z.object({ ok: z.boolean() }) },
+      handler: async (_req, res: any) => {
+        captured = res;
+        res.send({ ok: true });
+      },
+    });
+
+    const inner: any = {
+      status: vi.fn().mockReturnThis(),
+      header: vi.fn().mockReturnThis(),
+      getHeader: vi.fn(),
+      removeHeader: vi.fn().mockReturnThis(),
+      send: vi.fn(),
+      sendRaw: vi.fn(),
+      stream: vi.fn(),
+      capabilities: { sse: true, streaming: true },
+      cookie: vi.fn().mockReturnThis(),
+      clearCookie: vi.fn().mockReturnThis(),
+      sseInit: vi.fn(),
+      sseSend: vi.fn(),
+      statusCode: 200,
+      raw: {},
+      headersSent: false,
+      isStreaming: false,
+      onStreamClose: null,
+    };
+    await app.handle(makeAxiomifyReq({ path: '/exhaustive' }), inner);
+
+    for (const member of REFERENCE_MEMBERS) {
+      expect(
+        member in captured,
+        `ValidatingResponse is missing a forwarder for "${member}" — ` +
+          'add one alongside updating this test\'s REFERENCE_MEMBERS list.',
+      ).toBe(true);
+      expect(typeof captured[member]).toBe(typeof inner[member]);
+    }
+  });
+
   it('ValidatingResponse: capabilities fallback when inner has none', async () => {
     const app = new Axiomify();
     const { z } = await import('zod');

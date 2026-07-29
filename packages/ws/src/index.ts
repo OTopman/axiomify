@@ -39,3 +39,19 @@ export type {
   ClientAction,
   ServerEvent,
 } from './types';
+export {
+  MemoryWsBroker,
+  RedisWsBroker,
+  createMemoryBrokerHub,
+  WS_CTL_CHANNEL,
+  wsRoomChannel,
+} from './broker';
+export type {
+  WsBroker,
+  WsBrokerEnvelope,
+  WsBrokerControlMessage,
+  WsBrokerOptions,
+  RedisPubLike,
+  RedisSubLike,
+  RedisWsBrokerClients,
+} from './broker';

@@ -79,6 +79,71 @@ const MIME_TYPES: Record<string, string> = {
 
 const DEFAULT_FORCE_DOWNLOAD = new Set(['.svg', '.html', '.htm', '.xml']);
 
+interface ByteRange {
+  start: number;
+  end: number;
+}
+
+/**
+ * Parse a `Range` request header per RFC 9110 §14.
+ *
+ * Returns:
+ *   - `ByteRange`        — a single satisfiable range, clamped to the file.
+ *   - `'unsatisfiable'`  — a syntactically valid range that cannot be
+ *                          satisfied (416 with an unsatisfied-range Content-Range).
+ *   - `null`             — malformed, non-`bytes` unit, or multi-range
+ *                          (serve the full representation with 200).
+ */
+function parseRange(
+  header: string,
+  size: number,
+): ByteRange | 'unsatisfiable' | null {
+  const match = /^bytes=(.*)$/i.exec(header.trim());
+  if (!match) return null;
+  const spec = match[1].trim();
+  // Multi-range responses require multipart/byteranges framing; serving the
+  // full representation with 200 is always a valid fallback (RFC 9110 §15.3.7).
+  if (spec.includes(',')) return null;
+
+  const parts = /^(\d*)-(\d*)$/.exec(spec);
+  if (!parts) return null;
+  const [, startStr, endStr] = parts;
+  if (startStr === '' && endStr === '') return null;
+
+  // suffix-length form: bytes=-N (final N bytes)
+  if (startStr === '') {
+    const suffix = Number(endStr);
+    if (suffix === 0 || size === 0) return 'unsatisfiable';
+    return { start: Math.max(0, size - suffix), end: size - 1 };
+  }
+
+  const start = Number(startStr);
+  if (start >= size) return 'unsatisfiable';
+  const end = endStr === '' ? size - 1 : Math.min(Number(endStr), size - 1);
+  // last-byte-pos < first-byte-pos is invalid — ignore the header (RFC 9110 §14.1.1).
+  if (end < start) return null;
+  return { start, end };
+}
+
+/**
+ * Evaluate `If-Range` (RFC 9110 §13.1.5): the Range header is honored only
+ * when the validator still matches the current representation; otherwise the
+ * full file is served with 200.
+ */
+function ifRangeMatches(ifRange: string, etag: string, mtime: Date): boolean {
+  const value = ifRange.trim();
+  // Entity-tag form (either weak-prefixed or quoted).
+  if (value.startsWith('W/') || value.startsWith('"')) {
+    return value === etag;
+  }
+  // HTTP-date form: valid when the file has not been modified since the date.
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) return false;
+  // Last-Modified has one-second precision; truncate mtime for the compare.
+  const mtimeSeconds = Math.floor(mtime.getTime() / 1000) * 1000;
+  return mtimeSeconds <= parsed;
+}
+
 function realpathSafe(target: string): Promise<string> {
   if (typeof fs.promises.realpath === 'function') {
     return fs.promises.realpath(target);
@@ -163,19 +228,54 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
           return res.status(404).send(null, 'File not found');
         }
 
+        // Range requests are supported for real files only (RFC 9110 §14).
+        res.header('Accept-Ranges', 'bytes');
+        res.header('Last-Modified', stat.mtime.toUTCString());
+
         const ino = stat.ino ?? 0;
         const etag = `W/"${ino.toString(16)}-${stat.size.toString(16)}-${stat.mtime.getTime().toString(16)}"`;
         res.header('ETag', etag);
 
+        // If-None-Match takes precedence over Range (RFC 9110 §13.2.2).
         if (req.headers['if-none-match'] === etag) {
           return res.status(304).sendRaw('');
+        }
+
+        // ── Range negotiation ───────────────────────────────────────────────
+        let range: ByteRange | null = null;
+        const rangeHeader = req.headers['range'];
+        if (typeof rangeHeader === 'string' && rangeHeader) {
+          // If-Range: honor Range only while the validator still matches;
+          // a stale validator downgrades to the full 200 representation.
+          const ifRange = req.headers['if-range'];
+          const applicable =
+            typeof ifRange === 'string' && ifRange
+              ? ifRangeMatches(ifRange, etag, stat.mtime)
+              : true;
+          if (applicable) {
+            const parsed = parseRange(rangeHeader, stat.size);
+            if (parsed === 'unsatisfiable') {
+              res.header('Content-Range', `bytes */${stat.size}`);
+              return res.status(416).send(null, 'Range Not Satisfiable');
+            }
+            range = parsed;
+          }
         }
 
         const ext = path.extname(realPath).toLowerCase();
         const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
         res.header('Cache-Control', cacheControl);
-        res.header('Content-Length', String(stat.size));
+        if (range) {
+          res.status(206);
+          res.header(
+            'Content-Range',
+            `bytes ${range.start}-${range.end}/${stat.size}`,
+          );
+          res.header('Content-Length', String(range.end - range.start + 1));
+        } else {
+          res.header('Content-Length', String(stat.size));
+        }
         res.header('X-Content-Type-Options', 'nosniff');
 
         // Force download for executable content types. SVG and HTML served
@@ -190,7 +290,9 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
           );
         }
 
-        const stream = fs.createReadStream(realPath);
+        const stream = range
+          ? fs.createReadStream(realPath, { start: range.start, end: range.end })
+          : fs.createReadStream(realPath);
         res.stream(stream, contentType);
       } catch (err: any) {
         if (err.code === 'ENOENT') {

@@ -26,9 +26,10 @@
 
 ### Patch Changes
 
+- Updated dependencies
 - Updated dependencies [79513fb]
-  - @axiomify/native@7.0.0
   - @axiomify/core@7.0.0
+  - @axiomify/native@7.0.0
 
 ## 6.3.3
 

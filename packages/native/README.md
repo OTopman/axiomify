@@ -45,6 +45,27 @@ adapter.listenClustered({
 // Zero-downtime reload: kill -USR2 <primary-pid>
 ```
 
+## HTTP/2
+
+uWebSockets.js exposes **no HTTP/2 API** from its JS bindings, so HTTP/2 support ships as a separate adapter built on `node:http2`:
+
+- **`NativeAdapter` (uWS)** — the HTTP/1.1 raw-throughput path. Pick it when requests/second is the metric that matters.
+- **`Http2Adapter` (node:http2)** — trades peak throughput for HTTP/2 semantics: stream multiplexing over one connection, HPACK header compression, and TLS+ALPN deployments.
+
+```typescript
+import { Http2Adapter } from '@axiomify/native';
+
+const adapter = new Http2Adapter(app, {
+  port: 443,
+  tls: { keyFile: './key.pem', certFile: './cert.pem' }, // or inline { key, cert }
+});
+adapter.listen(() => console.log('h2 ready on :443'));
+```
+
+The secure server advertises ALPN `['h2', 'http/1.1']` with `allowHTTP1: true`, so non-h2 clients transparently fall back to HTTP/1.1 over the same port. For local development and tests, cleartext HTTP/2 is available with `h2c: true` (no TLS — browsers will not connect to h2c).
+
+Same API surface as `NativeAdapter`: `maxBodySize`, `trustProxy` + `proxyIpValidator`, cookies, SSE, streaming, `gracefulShutdown()`. See [docs/packages/native.md](https://github.com/OTopman/axiomify/blob/main/docs/packages/native.md#http2) for the full option table.
+
 ## Benchmarks
 
 | Scenario                     |  Req/s |   p99 |

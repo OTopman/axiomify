@@ -295,3 +295,52 @@ Registers a WebSocket route and returns a `RoomManager` instance.
 - `leaveAll(): void` — Leave all rooms.
 - `disconnect(): void` — Gracefully disconnect the socket connection.
 - `getBufferedAmount(): number` — Bytes currently buffered in the native send queue (useful for backpressure management).
+
+## Scaling across processes
+
+uWS topic broadcast is per-process. Under `listenClustered()` (SO_REUSEPORT)
+each worker holds its own room state, so two clients in the same room but on
+different workers never see each other's messages. A `WsBroker` bridges the
+workers:
+
+```ts
+import Redis from 'ioredis';
+import { wsRooms, RedisWsBroker } from '@axiomify/ws';
+
+const pub = new Redis();
+const sub = new Redis(); // subscriber connections are dedicated in Redis
+
+const rooms = wsRooms(app, {
+  path: '/chat',
+  broker: new RedisWsBroker({ pub, sub }),
+});
+```
+
+`RedisWsBroker` duck-types both `ioredis` and `redis@4` (node-redis) clients —
+no Redis dependency is added; you inject your own. For tests or single-node
+semantic parity, `MemoryWsBroker` connects managers in-process:
+
+```ts
+import { createMemoryBrokerHub, MemoryWsBroker } from '@axiomify/ws';
+const hub = createMemoryBrokerHub();
+const brokerA = new MemoryWsBroker(hub); // node A
+const brokerB = new MemoryWsBroker(hub); // node B
+```
+
+How it works:
+
+- Public room broadcasts are delivered locally via the uWS topic first, then
+  forwarded to `axiomify:ws:room:<room>`. Messages arriving from the broker
+  re-enter through a local-only path — no echo loops, exactly-once delivery
+  per node. Binary frames travel base64-encoded (documented cost).
+- Room channels are subscribed lazily on the first local join and dropped
+  after the last local leave (local membership is the refcount).
+- `manager.getGlobalPresence(room)` aggregates presence over a control
+  channel (`axiomify:ws:ctl`) with a fixed 250 ms collection window. It is a
+  best-effort, eventually-consistent snapshot: nodes slower than the window
+  are missing from the count, and there is no node registry. Without a
+  broker it degrades to the local view.
+- Broker failures never break the local message path: delivery proceeds,
+  the error surfaces on the manager's `error` event, and
+  `getStats().brokerDropped` counts the misses.
+- `manager.close()` also closes the broker.

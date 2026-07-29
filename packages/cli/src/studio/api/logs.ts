@@ -125,11 +125,19 @@ function recordRawLog(level: RecordedLog['level'], message: string): void {
         'packages/static',
         'packages/upload',
         'packages/native',
+        'packages/session',
+        'packages/cache',
+        'packages/compress',
+        'packages/db',
         'node_modules/@axiomify/core',
         'node_modules/@axiomify/logger',
         'node_modules/@axiomify/ws',
         'node_modules/@axiomify/auth',
         'node_modules/@axiomify/metrics',
+        'node_modules/@axiomify/session',
+        'node_modules/@axiomify/cache',
+        'node_modules/@axiomify/compress',
+        'node_modules/@axiomify/db',
       ];
 
       const hasAppFrame = appPatterns.some((p) => callerStack.includes(p));

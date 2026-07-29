@@ -17,6 +17,7 @@ Node.js ≥ 18, < 23. uWS is a pre-compiled native binary — check the [uWebSoc
 - `adapter.listenClustered(opts)` — fork N worker processes with SO_REUSEPORT (Linux only by default)
 - `adapter.gracefulShutdown(opts?)` — wire SIGINT/SIGTERM to a drain + onShutdown sequence
 - `adapter.close()` — synchronously closes the listening socket (low-level)
+- `new Http2Adapter(app, options?)` — HTTP/2 adapter on `node:http2` (uWS has no h2 API) — see [HTTP/2](#http2)
 
 ## Options
 
@@ -169,6 +170,70 @@ app.route({
   },
 });
 ```
+
+## HTTP/2
+
+> [!IMPORTANT]
+> **The tradeoff, up front:** uWebSockets.js exposes **no HTTP/2 API** from its JS bindings, so HTTP/2 support is a **separate adapter class built on `node:http2`** — it does not run on uWS. `NativeAdapter` (uWS) remains the HTTP/1.1 raw-throughput path; `Http2Adapter` trades that peak throughput for HTTP/2 semantics: stream multiplexing over a single connection, HPACK header compression, and mandatory-TLS deployments where clients negotiate `h2` via ALPN. If requests/second behind an L4 balancer is your metric, stay on `NativeAdapter`. If you need h2 multiplexing (many concurrent streams per client, gRPC-web-style fan-in, HOL-blocking-sensitive frontends), use `Http2Adapter`.
+
+```typescript
+import { Axiomify } from '@axiomify/core';
+import { Http2Adapter } from '@axiomify/native';
+
+const app = new Axiomify();
+app.route({
+  method: 'GET',
+  path: '/ping',
+  handler: async (_req, res) => res.send({ pong: true }),
+});
+
+const adapter = new Http2Adapter(app, {
+  port: 443,
+  tls: { keyFile: './key.pem', certFile: './cert.pem' }, // or inline: { key, cert }
+});
+adapter.listen((port) => console.log(`h2 ready on :${port}`));
+```
+
+### Options
+
+| Option             | Type                      | Default     | Description                                                                    |
+| ------------------ | ------------------------- | ----------- | ------------------------------------------------------------------------------ |
+| `port`             | `number`                  | `3000`      | Listen port (`0` = ephemeral, bound port passed to the `listen` callback)      |
+| `tls`              | `Http2AdapterTlsOptions`  | —           | TLS material. Required unless `h2c: true`                                      |
+| `h2c`              | `boolean`                 | `false`     | Opt-in cleartext HTTP/2 (`http2.createServer`) for local dev/tests             |
+| `maxBodySize`      | `number`                  | `1048576`   | Max request body (1 MB); overflow → `413` and the stream is destroyed          |
+| `trustProxy`       | `boolean`                 | `false`     | Trust `X-Forwarded-For` for `req.ip` (requires `proxyIpValidator`)             |
+| `proxyIpValidator` | `(ip: string) => boolean` | `undefined` | Validates the socket peer address before `X-Forwarded-For` is trusted          |
+| `requestTimeout`   | `number`                  | `0`         | Answer with `504` if headers are not sent within N ms (`0` disables)           |
+| `closeTimeout`     | `number`                  | `10000`     | Grace period `close()` allows sessions to drain before force-destroy           |
+| `logger`           | `AxiomifyLogger`-like     | `console`   | Structured logger for adapter warnings                                         |
+
+`Http2AdapterTlsOptions`: inline `key`/`cert` (string or Buffer) **or** `keyFile`/`certFile` paths (read synchronously at construction with clear errors), plus optional `passphrase`, `alpnProtocols` (default `['h2', 'http/1.1']`), and `allowHTTP1` (default `true`).
+
+The same `trustProxy` spoofing guard as `NativeAdapter` applies: enabling `trustProxy` without a `proxyIpValidator` logs a warning, and throws when the app has `strictSchema` enabled.
+
+### ALPN fallback
+
+The secure server advertises ALPN `['h2', 'http/1.1']` with `allowHTTP1: true`. Clients that cannot speak h2 (older proxies, plain `https` clients) transparently fall back to HTTP/1.1 **over the same TLS port** — one request/response implementation (the node:http2 Compat API) serves both protocols, so cookies, SSE, streaming, and validation behave identically on either.
+
+### h2c (cleartext HTTP/2)
+
+For local development, tests, and trusted internal meshes you can skip TLS:
+
+```typescript
+const adapter = new Http2Adapter(app, { h2c: true, port: 0 });
+adapter.listen((port) => console.log(`h2c on :${port}`));
+```
+
+> [!WARNING]
+> Browsers only negotiate HTTP/2 over TLS+ALPN — they will **not** connect to an h2c server. Use h2c for `node:http2` clients, service meshes that terminate TLS upstream, and test suites.
+
+### Behavior notes
+
+- **Pseudo-headers** (`:path`, `:method`, `:authority`, …) are stripped from `req.headers`; `:authority` is mapped to `host` when no literal Host header is present, so host-based logic works identically across h2 and the h1 fallback.
+- **Full response surface**: serializer envelope on `send()`, `sendRaw()`, `res.stream()` with backpressure, SSE (`sseInit`/`sseSend`, heartbeat cleared on disconnect), `cookie()`/`clearCookie()` emitting one `Set-Cookie` line per cookie, HEAD body suppression, and `204/205/304` null-body handling.
+- **Graceful shutdown**: `adapter.gracefulShutdown(opts?)` mirrors `NativeAdapter` — `close()` stops the listener and sends GOAWAY to live sessions, in-flight streams drain, then `onShutdown` runs; stragglers are force-destroyed after `closeTimeout`.
+- **Connection-specific headers** (`Connection`, `Keep-Alive`, `Transfer-Encoding`, …) are dropped silently — they are illegal on HTTP/2 responses and unnecessary on the h1 fallback.
 
 ## Benchmarks (8-core machine, autocannon 100 conns, pipelining 10, 12 s)
 

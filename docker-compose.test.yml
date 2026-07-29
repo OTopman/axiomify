@@ -1,0 +1,8 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    # Ephemeral — integration tests scope every key under a run-unique
+    # prefix and clean up after themselves; no volume needed.
+    command: ['redis-server', '--save', '', '--appendonly', 'no']

@@ -2,7 +2,7 @@
   "name": "axiomify-workspace",
   "description": "Zero-compromise Node.js framework with Radix routing, Zod-native validation, and a modular plugin ecosystem for building high-performance, type-safe APIs.",
   "private": true,
-  "version": "7.0.0",
+  "version": "7.0.1",
   "engines": {
     "node": ">=20.0.0 <23.0.0"
   },
@@ -12,14 +12,15 @@
   ],
   "scripts": {
     "publish": "node scripts/publish-workspace.mjs",
-    "build": "npm run build:core && npm run build:vault && npm run build:jobs && npm run build:adapters && npm run build:plugins && npm run build:studio-ui && npm run build:cli && npm run build:sdk-runtime",
+    "build": "npm run build:core && npm run build:vault && npm run build:jobs && npm run build:adapters && npm run build:plugins && npm run build:studio-ui && npm run build:cli && npm run build:sdk-runtime && npm run build:testing",
     "build:core": "npm run build -w @axiomify/core",
     "build:vault": "npm run build -w @axiomify/vault",
     "build:jobs": "npm run build -w @axiomify/jobs",
     "build:adapters": "npm run build -w @axiomify/native -w @axiomify/serverless",
-    "build:plugins": "npm run build -w @axiomify/auth -w @axiomify/cors -w @axiomify/fingerprint -w @axiomify/graphql -w @axiomify/helmet -w @axiomify/logger -w @axiomify/metrics -w @axiomify/openapi -w @axiomify/rate-limit -w @axiomify/security -w @axiomify/socket.io -w @axiomify/static -w @axiomify/upload -w @axiomify/ws",
+    "build:plugins": "npm run build -w @axiomify/auth -w @axiomify/cache -w @axiomify/compress -w @axiomify/cors -w @axiomify/db -w @axiomify/fingerprint -w @axiomify/graphql -w @axiomify/helmet -w @axiomify/logger -w @axiomify/metrics -w @axiomify/openapi -w @axiomify/rate-limit -w @axiomify/security -w @axiomify/session -w @axiomify/socket.io -w @axiomify/static -w @axiomify/upload -w @axiomify/ws",
     "build:cli": "npm run build -w @axiomify/cli",
     "build:sdk-runtime": "npm run build -w @axiomify/sdk-runtime",
+    "build:testing": "npm run build -w @axiomify/testing",
     "build:studio-ui": "npm run build -w @axiomify/studio-ui",
     "build:serverless": "npm run build -w @axiomify/serverless",
     "clean": "rm -rf packages/*/dist && rm -rf packages/*/.tsconfig.tsbuildinfo",
@@ -39,7 +40,7 @@
     "@typescript-eslint/parser": "^8.65.0",
     "@vitest/coverage-v8": "^4.1.10",
     "autocannon": "^8.0.0",
-    "eslint": "^8.57.1",
+    "eslint": "^10.8.0",
     "eslint-config-prettier": "^10.1.8",
     "fast-check": "^4.9.0",
     "fastify-plugin": "^5.1.0",
@@ -80,6 +81,9 @@
     "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#624987739d4da0acb628aaf2a10fc43e7ce27c5c"
   },
   "overrides": {
-    "uuid": "^11.1.1"
+    "uuid": "^11.1.1",
+    "brace-expansion": "5.0.8",
+    "dompurify": "3.4.12",
+    "esbuild": "0.28.1"
   }
 }

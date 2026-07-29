@@ -178,7 +178,7 @@ type ValidateFunction = (data: unknown) => {
 // method; Zod v3 does not. We isolate the unsafe cast in one place rather
 // than `as unknown as <inline-type>` at every call site.
 interface ZodV4Schema {
-  toJSONSchema(): object;
+  toJSONSchema(options?: { io?: 'input' | 'output' }): object;
 }
 function asZodV4(schema: ZodTypeAny): ZodV4Schema | null {
   const candidate = schema as unknown as { toJSONSchema?: unknown };
@@ -328,13 +328,22 @@ function adjustAdditionalProperties(jsonSchema: any, zodSchema: any): void {
  * Extracts the JSON Schema from a Zod schema. Tries Zod v4's built-in
  * `toJSONSchema()` first, then falls back to `zod-to-json-schema`.
  * Returns `null` if neither is available.
+ *
+ * `io` matters for `.default()` fields: with Zod's default (`'output'`),
+ * defaulted fields are `required` — correct for handler-produced response
+ * data, but wrong for request input, where the whole point of a default is
+ * that the client may omit the field. Request-side validators must pass
+ * `'input'` or AJV's fast-rejection path 400s bodies that Zod would accept.
  */
-function extractJsonSchema(schema: ZodTypeAny): object | null {
+function extractJsonSchema(
+  schema: ZodTypeAny,
+  io: 'input' | 'output',
+): object | null {
   const v4 = asZodV4(schema);
   let jsonSchema: object | null = null;
   if (v4) {
     try {
-      jsonSchema = v4.toJSONSchema();
+      jsonSchema = v4.toJSONSchema({ io });
     } catch {
       jsonSchema = null;
     }
@@ -396,7 +405,10 @@ function buildValidator(
   schema: ZodTypeAny,
   source: ValidatorSource = 'body',
 ): ValidateFunction {
-  const jsonSchema = extractJsonSchema(schema);
+  const jsonSchema = extractJsonSchema(
+    schema,
+    source === 'response' ? 'output' : 'input',
+  );
 
   // ── Query / Params: Zod-only path with pre-coercion ──────────────────────
   // These always arrive as strings from HTTP. Pre-coerce first, then let

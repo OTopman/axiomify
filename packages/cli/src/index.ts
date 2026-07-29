@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import pkg from '../package.json';
 import { buildProject } from './commands/build';
 import { runCheck } from './commands/check';
+import { registerDbCommand } from './commands/db';
 import { devServer } from './commands/dev';
 import { runDoctor } from './commands/doctor';
 import { initProject } from './commands/init';
@@ -87,7 +88,25 @@ program
   .argument('[entry]', 'Entry file', 'src/index.ts')
   .option(
     '--json',
-    'Emit machine-readable JSON instead of the formatted table',
+    'Emit the machine-readable route surface (schema hashes) instead of the table',
+    false,
+  )
+  .option(
+    '--snapshot [file]',
+    'Write the route surface to a baseline file (default: routes-baseline.json)',
+  )
+  .option(
+    '--diff <baseline>',
+    'Compare the current route surface against a baseline file; exit 1 on breaking changes',
+  )
+  .option(
+    '--strict-response',
+    'With --diff: treat response-schema changes as breaking instead of warnings',
+    false,
+  )
+  .option(
+    '--allow-breaking',
+    'With --diff: report breaking changes but exit 0',
     false,
   )
   .option(
@@ -120,6 +139,16 @@ program
     '--spec-version <version>',
     'Override info.version in the generated spec',
   )
+  .option(
+    '--validate',
+    'Validate the generated spec (official OAS 3.1 schema + semantic lints); exit 1 on errors',
+    false,
+  )
+  .option(
+    '--json',
+    'With --validate: emit the findings as JSON instead of the report',
+    false,
+  )
   .action(
     (
       entry: string,
@@ -129,6 +158,8 @@ program
         minify?: boolean;
         title?: string;
         specVersion?: string;
+        validate?: boolean;
+        json?: boolean;
       },
     ) =>
       emitOpenApi(entry, {
@@ -210,6 +241,10 @@ program
   .action((options: { dryRun?: boolean; reportOnly?: boolean; dir?: string }) =>
     runMigrate(options),
   );
+
+// `db` is a parent command that runs the project's database workflow
+// (migrate / seed / generate / status) through the axiomify.db manifest.
+registerDbCommand(program);
 
 // `sdk` is a parent command for the Type-Safe SDK Generation Platform
 const sdk = program

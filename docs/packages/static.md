@@ -1,7 +1,7 @@
 # @axiomify/static
 
-Static file serving for Axiomify with ETag caching, 36 MIME types, configurable cache control,
-SPA index fallback, and path traversal protection.
+Static file serving for Axiomify with ETag caching, HTTP Range requests, 36 MIME types,
+configurable cache control, SPA index fallback, and path traversal protection.
 
 ## Install
 
@@ -68,6 +68,58 @@ serveStatic(app, {
   serveIndex: true, // default — serves index.html for directories
 });
 ```
+
+## Range requests (RFC 9110)
+
+Real files are served with `Accept-Ranges: bytes` and `Last-Modified`, and honor
+single-byte-range requests — video seeking, resumable downloads and PDF viewers
+work out of the box.
+
+```
+GET /media/video.mp4
+Range: bytes=1048576-2097151
+
+HTTP/1.1 206 Partial Content
+Content-Range: bytes 1048576-2097151/52428800
+Content-Length: 1048576
+Accept-Ranges: bytes
+```
+
+Supported forms:
+
+| Range header      | Response                                                             |
+| ----------------- | -------------------------------------------------------------------- |
+| `bytes=0-499`     | `206` — first 500 bytes (`end` clamped to the last byte of the file). |
+| `bytes=500-`      | `206` — from offset 500 to end of file.                               |
+| `bytes=-500`      | `206` — final 500 bytes (clamped to the whole file when longer).      |
+| `bytes=0-1,5-9`   | `200` — multi-range is not emitted; the full file is served instead.  |
+| `bytes=99999-` (past EOF), `bytes=-0` | `416` with `Content-Range: bytes */<size>`.       |
+| malformed / non-`bytes` unit | Header ignored — full `200` response.                      |
+
+The byte slice is streamed directly via `createReadStream(path, { start, end })`
+— a range request never reads the whole file.
+
+### `If-Range`
+
+When `If-Range` is present, the `Range` header is honored only while the
+validator still matches the current file (RFC 9110 §13.1.5):
+
+- **ETag form** (`W/"..."` or `"..."`): must equal the file's current ETag.
+- **HTTP-date form**: satisfied when the file has not been modified after the
+  supplied date (compared at one-second precision against `Last-Modified`).
+
+A stale validator downgrades to a full `200` response — a client resuming a
+download of a changed file gets consistent bytes, never a corrupt splice.
+
+### Precedence and interplay
+
+- `If-None-Match` wins over `Range`: a matching ETag returns `304` with no body.
+- Range applies to **real files only** — the SPA `index.html` directory fallback
+  ignores `Range` and serves the full document with `200`.
+- Traversal protection, null-byte rejection and 404 handling run before any
+  range parsing.
+- Pairs cleanly with `@axiomify/compress`: partial (`206`) responses are never
+  compressed, so `Content-Range` offsets always address the on-disk bytes.
 
 ## Supported MIME types (36)
 

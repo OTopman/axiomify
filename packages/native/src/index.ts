@@ -455,12 +455,19 @@ export class NativeAdapter {
           if (!aborted && !axiomifyRes.headersSent) {
             aborted = true;
             axiomifyReq.onAbort();
+            // Route through NativeResponse.sendRaw() — not a direct raw
+            // uWS write — so any Set-Cookie lines already queued via
+            // res.cookie() are flushed via _writeCookies() instead of
+            // silently dropped. statusLine()/JSON.stringify() results are
+            // shared via the same module-level cache as `cached504`, so
+            // this costs no extra allocation over the direct write.
+            // `aborted` must flip AFTER this call: sendRaw()'s own guard
+            // (`this.headersSent || this.aborted`) would otherwise no-op
+            // the write before it starts.
+            axiomifyRes
+              .status(504)
+              .sendRaw(errorCache.cached504.body, 'application/json');
             axiomifyRes.aborted = true;
-            res.cork(() => {
-              res.writeStatus(errorCache.cached504.statusLine);
-              res.writeHeader('Content-Type', 'application/json');
-              res.end(errorCache.cached504.body);
-            });
           }
         }, adapter._requestTimeout);
       }
@@ -1440,6 +1447,12 @@ export class NativeAdapter {
 }
 
 export { adaptMiddleware } from './bridge';
+
+// HTTP/2 adapter — built on node:http2, NOT uWS (uWebSockets.js exposes no
+// HTTP/2 API from its JS bindings). Trades uWS's raw HTTP/1.1 throughput for
+// h2 multiplexing/HPACK; see packages/native/README.md § HTTP/2.
+export { Http2Adapter, Http2Request, Http2Response } from './http2';
+export type { Http2AdapterOptions, Http2AdapterTlsOptions } from './http2';
 
 /**
  * Internal helpers exposed for unit testing only.

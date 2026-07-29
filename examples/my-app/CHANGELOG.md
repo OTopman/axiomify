@@ -26,7 +26,13 @@
 
 ### Patch Changes
 
+- Updated dependencies
 - Updated dependencies [79513fb]
+  - @axiomify/core@7.0.0
+  - @axiomify/auth@7.0.0
+  - @axiomify/native@7.0.0
+  - @axiomify/static@7.0.0
+  - @axiomify/ws@7.0.0
   - @axiomify/fingerprint@7.0.0
   - @axiomify/sdk-runtime@7.0.0
   - @axiomify/socket.io@7.0.0
@@ -36,15 +42,10 @@
   - @axiomify/openapi@7.0.0
   - @axiomify/helmet@7.0.0
   - @axiomify/logger@7.0.0
-  - @axiomify/native@7.0.0
-  - @axiomify/static@7.0.0
   - @axiomify/upload@7.0.0
   - @axiomify/vault@7.0.0
-  - @axiomify/auth@7.0.0
-  - @axiomify/core@7.0.0
   - @axiomify/cors@7.0.0
   - @axiomify/jobs@7.0.0
-  - @axiomify/ws@7.0.0
   - @axiomify/rate-limit@7.0.0
 
 ## 6.3.4

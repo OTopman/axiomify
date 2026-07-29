@@ -34,6 +34,33 @@ npm run test
 ```
 All features must include tests.
 
+### Redis integration tests
+
+`@axiomify/cache`, `@axiomify/session` and `@axiomify/ws` accept BYO Redis
+clients (no Redis dependency ships in the repo). Their unit suites cover
+this against in-memory fake clients for both the `ioredis` and `redis@4`
+calling conventions; a small set of opt-in integration tests additionally
+exercise the real protocol (TTL expiry, atomic `NX` locks, real
+PUBLISH/SUBSCRIBE) against an actual Redis:
+
+```bash
+docker compose -f docker-compose.test.yml up -d redis
+REDIS_URL=redis://localhost:6379 npx vitest run \
+  packages/cache/tests/redis.integration.test.ts \
+  packages/session/tests/redis.integration.test.ts \
+  packages/ws/tests/redis.integration.test.ts
+docker compose -f docker-compose.test.yml down
+```
+
+Without `REDIS_URL` set, these three files skip cleanly — they run as part
+of the normal suite with zero setup. Each file scopes every key/channel it
+touches under a run-unique prefix (pid + timestamp) and cleans up in
+`afterAll`, so it's safe to point `REDIS_URL` at a shared instance.
+
+The protocol client used by these tests
+(`test-helpers/mini-redis.ts`) is test-only — it exists so the integration
+suite doesn't require adding a Redis client as a real dependency.
+
 ## 🚫 Hard Rules
 - Any usage of any will be rejected
 - PRs without tests will not be reviewed
