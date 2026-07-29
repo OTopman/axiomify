@@ -436,10 +436,21 @@ describe('createOAuthPlugin — option validation', () => {
     ).toThrow(/at least 32 bytes/);
   });
 
-  it('requires issuer or explicit endpoints for the generic oidc provider', () => {
+  it('requires issuer or explicit endpoints for the generic oidc provider and trims issuer trailing slashes', () => {
     expect(() =>
       createOAuthPlugin({ ...githubOptions, provider: 'oidc' }),
     ).toThrow(/requires `issuer`/);
+
+    const plugin = createOAuthPlugin({
+      ...githubOptions,
+      provider: 'oidc',
+      issuer: 'https://auth.example.com///',
+      endpoints: {
+        authorizationEndpoint: 'https://auth.example.com/oauth/authorize',
+        tokenEndpoint: 'https://auth.example.com/oauth/token',
+      },
+    });
+    expect(plugin).toBeDefined();
   });
 
   it('callbackHandler requires an onSuccess function', () => {

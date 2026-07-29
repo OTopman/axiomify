@@ -980,4 +980,35 @@ describe('createCacheModule', () => {
     app.use(mod);
     expect(() => app.use(mod)).not.toThrow(); // second use() is a no-op
   });
+
+  it('handles custom stores without lock functions and res.getHeaders() fallback', async () => {
+    const map = new Map<string, any>();
+    const customStore: any = {
+      get: (k: string) => Promise.resolve(map.get(k) ?? null),
+      set: (k: string, v: any) => { map.set(k, v); return Promise.resolve(); },
+      delete: (k: string) => { map.delete(k); return Promise.resolve(); },
+      clear: () => { map.clear(); return Promise.resolve(); },
+    };
+
+    const app = new Axiomify();
+    app.use(createCacheModule({ store: customStore }));
+    app.route({
+      method: 'GET',
+      path: '/custom',
+      handler: async (_req, res: any) => {
+        if (typeof res.getHeaders !== 'function') {
+          res.getHeaders = () => ({ 'X-Custom-Header': 'value' });
+        }
+        res.send({ ok: true });
+      },
+    });
+
+    const res1 = makeRes();
+    await app.handle(makeReq({ path: '/custom' }), res1);
+    expect(res1.headers['X-Cache']).toBe('MISS');
+
+    const res2 = makeRes();
+    await app.handle(makeReq({ path: '/custom' }), res2);
+    expect(res2.headers['X-Cache']).toBe('HIT');
+  });
 });

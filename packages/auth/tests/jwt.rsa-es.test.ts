@@ -453,4 +453,21 @@ describe('verifyJwt/decodeJwt — malformed token shapes', () => {
     expect(header).toMatchObject({ alg: 'RS256', typ: 'JWT', kid: 'kid-9' });
     expect(payload.sub).toBe('x');
   });
+
+  it('rejects invalid key types and derives public key from private PEM for verification', async () => {
+    const pubPem = rsa.publicKey.export({ type: 'spki', format: 'pem' }) as string;
+    const privPem = rsa.privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
+
+    expect(() => signJwt({ sub: 'x' }, { algorithm: 'RS256', privateKey: pubPem })).toThrow(
+      /Signing with RS256 requires a private key/,
+    );
+
+    const token = signJwt({ sub: 'x' }, { algorithm: 'RS256', privateKey: privPem });
+    const payload = await verifyJwt(token, { algorithms: ['RS256'], publicKey: privPem });
+    expect(payload.sub).toBe('x');
+
+    await expect(verifyJwt(token, { algorithms: ['ES256'], publicKey: rsa.publicKey })).rejects.toThrow(
+      /requires an EC key, got rsa/,
+    );
+  });
 });

@@ -324,4 +324,24 @@ describe('setCookie / clearCookie helpers', () => {
     expect(res.valid).toBe(true);
     expect(res.value).toBe('val');
   });
+
+  it('ResponseWrapper cookie and clearCookie delegate or throw when unsupported', async () => {
+    const { RequestDispatcher } = await import('../src/dispatcher');
+    const innerWithCookie: any = {
+      statusCode: 200,
+      cookie: (n: string, v: string, o?: any) => { innerWithCookie.calledCookie = [n, v, o]; },
+      clearCookie: (n: string, o?: any) => { innerWithCookie.calledClear = [n, o]; },
+    };
+    const mockValidator: any = { validateResponse: () => {} };
+    const dispatcher1 = new RequestDispatcher({ routeId: 'r1', innerRes: innerWithCookie, validator: mockValidator } as any);
+    dispatcher1.cookie('c1', 'v1', { path: '/' });
+    expect(innerWithCookie.calledCookie).toEqual(['c1', 'v1', { path: '/' }]);
+    dispatcher1.clearCookie('c1', { path: '/' });
+    expect(innerWithCookie.calledClear).toEqual(['c1', { path: '/' }]);
+
+    const innerWithoutCookie: any = { statusCode: 200 };
+    const dispatcher2 = new RequestDispatcher({ routeId: 'r2', innerRes: innerWithoutCookie, validator: mockValidator } as any);
+    expect(() => dispatcher2.cookie('c1', 'v1')).toThrow(/does not implement res.cookie/);
+    expect(() => dispatcher2.clearCookie('c1')).toThrow(/does not implement res.clearCookie/);
+  });
 });
