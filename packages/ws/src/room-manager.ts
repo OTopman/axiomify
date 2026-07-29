@@ -865,17 +865,24 @@ export class RoomManager extends TypedEmitter {
         // Broadcast to all room members via the WsClient's publish method.
         // This uses uWS topic publish — O(1) regardless of room size.
         const wsClient = this._wsClients.get(clientId);
+        const payload = {
+          event: 'message',
+          room: action.room,
+          from: client.id,
+          data: action.data,
+        };
+        const payloadStr = JSON.stringify(payload);
         if (wsClient) {
-          const payload = {
-            event: 'message',
-            room: action.room,
-            from: client.id,
-            data: action.data,
-          };
-          wsClient.publish(action.room, payload);
+          wsClient.publish(action.room, payloadStr);
           // Send it back to the sender since uWS publish excludes the publisher
-          client.send(payload);
+          client.send(payloadStr);
+        } else {
+          const roomObj = this._rooms.get(action.room);
+          roomObj?._localBroadcast(payloadStr);
         }
+        // Forward to the cross-process broker (if configured) so clients on other nodes receive it
+        const roomObj = this._rooms.get(action.room);
+        roomObj?._forward?.(payloadStr);
         return true;
       }
 

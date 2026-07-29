@@ -369,4 +369,28 @@ describe.each([
     const broker = new RedisWsBroker(makePair(bus) as any);
     await expect(broker.close()).resolves.toBeUndefined();
   });
+
+  it('forwards wire-protocol room messages across the broker to other nodes', async () => {
+    const hub = createMemoryBrokerHub();
+    const a = makeNode(new MemoryWsBroker(hub), 'lobby');
+    const b = makeNode(new MemoryWsBroker(hub), 'lobby');
+    await flush();
+
+    a.manager._processAction(a.client.id, {
+      action: 'message',
+      room: 'lobby',
+      data: 'cluster-wide payload',
+    });
+    await flush();
+
+    const remote = b.ws.published.filter(([t]) => t === 'lobby');
+    expect(remote).toHaveLength(1);
+    const envelope = JSON.parse(String(remote[0][1]));
+    expect(envelope).toEqual({
+      event: 'message',
+      room: 'lobby',
+      from: a.client.id,
+      data: 'cluster-wide payload',
+    });
+  });
 });

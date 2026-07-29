@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Axiomify } from '@axiomify/core';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   MemoryCacheStore,
   cacheControl,
@@ -64,7 +64,7 @@ function makeRes(overrides: any = {}): any {
       res.rawBody = payload;
       res.rawContentType = contentType;
     },
-    stream() {},
+    stream() { },
     get headersSent() {
       return sent;
     },
@@ -595,6 +595,25 @@ describe('shared response cache', () => {
     expect(hit.headers.ETag).toBeDefined();
   });
 
+  it('bypasses cache when set-cookie header is added case-insensitively', async () => {
+    const { app, store } = makeApp();
+    app.route({
+      path: '/auth-cookie',
+      handler: async (_req, res) => {
+        res.header('set-cookie', 'session=123');
+        return res.send({ ok: true });
+      },
+    });
+    const res1 = makeRes();
+    await app.handle(makeReq({ path: '/auth-cookie' }), res1);
+    expect(res1.headers['X-Cache']).toBeUndefined();
+
+    const res2 = makeRes();
+    await app.handle(makeReq({ path: '/auth-cookie' }), res2);
+    expect(res2.headers['X-Cache']).toBeUndefined();
+    expect(store.size).toBe(0);
+  });
+
   it('fails open when the store throws', async () => {
     const app = new Axiomify();
     const store = new MemoryCacheStore();
@@ -910,9 +929,9 @@ describe('invalidation', () => {
     const app = new Axiomify();
     const bare = {
       get: async () => undefined,
-      set: async () => {},
-      delete: async () => {},
-      clear: async () => {},
+      set: async () => { },
+      delete: async () => { },
+      clear: async () => { },
     };
     const api = useCache(app, { store: bare });
     await expect(api.invalidatePath('/x')).rejects.toThrow(/deleteByPrefix/);

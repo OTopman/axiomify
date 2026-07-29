@@ -322,13 +322,43 @@ export function useCache(app: Axiomify, options: CacheOptions = {}): CacheApi {
         return res;
       };
     }
+    if (typeof res.header === 'function') {
+      const originalHeader = res.header.bind(res);
+      res.header = (name: string, value: any) => {
+        if (typeof name === 'string' && name.toLowerCase() === 'set-cookie') {
+          sawSetCookie = true;
+        }
+        return originalHeader(name, value);
+      };
+    }
+
+    const getHeaderCaseInsensitive = (name: string): string | undefined => {
+      const lower = name.toLowerCase();
+      const direct =
+        res.getHeader(name) ??
+        res.getHeader(lower) ??
+        res.getHeader('Set-Cookie') ??
+        res.getHeader('set-cookie');
+      if (direct !== undefined) return direct;
+      if (typeof (res as any).getHeaders === 'function') {
+        const headers = (res as any).getHeaders();
+        if (headers) {
+          const foundKey = Object.keys(headers).find(
+            (k) => k.toLowerCase() === lower,
+          );
+          if (foundKey) return headers[foundKey];
+        }
+      }
+      return undefined;
+    };
 
     let finished = false;
 
     const shouldStore = (status: number): { ttl: number; swr: number } | null => {
       if (!reqEligible) return null;
       if (!cacheableStatuses.has(status)) return null;
-      if (sawSetCookie || res.getHeader('Set-Cookie')) return null;
+      if (sawSetCookie || getHeaderCaseInsensitive('set-cookie') !== undefined)
+        return null;
       // Never cache a response another plugin has already content-encoded
       // (e.g. @axiomify/compress running "inside" this hook's wrapper chain).
       // This entry's `payload` would be compressed bytes with no

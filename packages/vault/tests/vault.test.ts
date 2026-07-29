@@ -7,7 +7,7 @@ import {
   beforeAll,
   vi,
 } from 'vitest';
-import { existsSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Axiomify, z } from '@axiomify/core';
 
@@ -46,12 +46,14 @@ beforeAll(async () => {
 });
 
 describe('Axiomify Vault', () => {
-  const testRoot = join(__dirname, 'test-vault-env');
+  let testRoot: string;
 
   beforeEach(() => {
+    testRoot = join(__dirname, `test-vault-env-${Math.random().toString(36).slice(2)}`);
     if (existsSync(testRoot)) {
       rmSync(testRoot, { recursive: true, force: true });
     }
+    mkdirSync(testRoot, { recursive: true });
   });
 
   afterEach(() => {
@@ -221,12 +223,6 @@ describe('Axiomify Vault', () => {
   });
 
   it('should support importing from custom raw env files and arrays of env files with overrides', () => {
-    if (!existsSync(testRoot)) {
-      rmSync(testRoot, { recursive: true, force: true });
-    }
-    const fs = require('node:fs');
-    fs.mkdirSync(testRoot, { recursive: true });
-
     // Setup mock env files
     writeFileSync(
       join(testRoot, '.env.default'),
@@ -254,12 +250,6 @@ describe('Axiomify Vault', () => {
   });
 
   it('should support double-quoted escape sequence unescaping in env files', () => {
-    if (!existsSync(testRoot)) {
-      rmSync(testRoot, { recursive: true, force: true });
-    }
-    const fs = require('node:fs');
-    fs.mkdirSync(testRoot, { recursive: true });
-
     // Setup mock env file with complex escape characters
     writeFileSync(
       join(testRoot, '.env.escaped'),
@@ -305,11 +295,6 @@ describe('Axiomify Vault', () => {
 
     // 2. Validation Pass: Coerces types and injects defaults
     // Setup raw env first
-    const fs = require('node:fs');
-    if (existsSync(testRoot)) {
-      rmSync(testRoot, { recursive: true, force: true });
-    }
-    fs.mkdirSync(testRoot, { recursive: true });
     writeFileSync(
       join(testRoot, '.env'),
       'API_SECRET=super-secure-token\n',
@@ -378,12 +363,6 @@ describe('Axiomify Vault', () => {
   });
 
   it('should automatically sync and update the vault when raw env files change', () => {
-    if (existsSync(testRoot)) {
-      rmSync(testRoot, { recursive: true, force: true });
-    }
-    const fs = require('node:fs');
-    fs.mkdirSync(testRoot, { recursive: true });
-
     // 1. Initial creation
     writeFileSync(join(testRoot, '.env'), 'MY_VAR=initial-value\n', 'utf8');
     const vault1 = new AxiomifyVault({

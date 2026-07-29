@@ -471,12 +471,20 @@ describe('Http2Adapter TLS + ALPN', () => {
 
   beforeAll(async () => {
     fs.mkdirSync(fixturesDir, { recursive: true });
-    execSync(
-      `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" ` +
-        `-days 1 -nodes -subj "/CN=localhost" ` +
-        `-addext "subjectAltName=DNS:localhost,IP:127.0.0.1"`,
-      { stdio: 'ignore' },
-    );
+    try {
+      execSync(
+        `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" ` +
+          `-days 1 -nodes -subj "/CN=localhost" ` +
+          `-addext "subjectAltName=DNS:localhost,IP:127.0.0.1"`,
+        { stdio: 'ignore' },
+      );
+    } catch {
+      execSync(
+        `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" ` +
+          `-days 1 -nodes -subj "/CN=localhost"`,
+        { stdio: 'ignore' },
+      );
+    }
 
     const { Axiomify } = await import('@axiomify/core');
     const app = new Axiomify();
@@ -502,9 +510,9 @@ describe('Http2Adapter TLS + ALPN', () => {
   });
 
   afterAll(() => {
-    adapter.close();
-    fs.rmSync(keyPath, { force: true });
-    fs.rmSync(certPath, { force: true });
+    adapter?.close();
+    if (fs.existsSync(keyPath)) fs.rmSync(keyPath, { force: true });
+    if (fs.existsSync(certPath)) fs.rmSync(certPath, { force: true });
   });
 
   it('negotiates h2 via ALPN', async () => {
