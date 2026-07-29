@@ -4,6 +4,7 @@ import {
   generateApiKey,
   getApiKey,
   hashApiKeySecret,
+  hashApiKeySecretPbkdf2,
   parseApiKey,
 } from '../src/index';
 
@@ -70,6 +71,12 @@ describe('parseApiKey / generateApiKey / hashApiKeySecret', () => {
     expect(hashApiKeySecret('abc')).toBe(hashApiKeySecret('abc'));
     expect(hashApiKeySecret('abc')).toHaveLength(64);
     expect(hashApiKeySecret('abc')).not.toBe(hashApiKeySecret('abd'));
+  });
+
+  it('hashApiKeySecretPbkdf2 generates valid pbkdf2 format string and authenticates', () => {
+    const pbkdf2Hash = hashApiKeySecretPbkdf2('mysecret');
+    expect(pbkdf2Hash).toMatch(/^pbkdf2:sha256:\d+:[0-9a-f]{32}:[0-9a-f]{64}$/);
+    expect(hashApiKeySecretPbkdf2('mysecret')).toBe(pbkdf2Hash);
   });
 });
 

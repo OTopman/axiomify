@@ -12,10 +12,10 @@ import {
   AxiomifyResponse,
   RouteMiddleware,
 } from '@axiomify/core';
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export interface ApiKeyRecord {
-  /** Hex-encoded SHA-256 hash of the key's secret part (64 hex chars). */
+  /** Hex-encoded SHA-256 hash or PBKDF2 string (`pbkdf2:sha256:iter:salt:hash`) of the key's secret part. */
   hashedKey: string;
   /** Scopes granted to this key. */
   scopes?: string[];
@@ -34,7 +34,7 @@ export type ApiKeyLookup = (
 
 export interface ApiKeyPluginOptions {
   /**
-   * Static key map: id → record with `hashedKey` (sha256 hex of the secret).
+   * Static key map: id → record with `hashedKey` (sha256 hex or PBKDF2 digest of the secret).
    * A plain-string value is treated as a PLAINTEXT secret and hashed at
    * startup — allowed for development, but a warning is logged because the
    * secret then lives in config/source.
@@ -65,11 +65,31 @@ export interface ApiKeyPlugin {
 
 const API_KEY_PREFIX = 'ax';
 const HASH_HEX = /^[0-9a-f]{64}$/i;
+const PBKDF2_PREFIX = 'pbkdf2:sha256:';
+const DEFAULT_PBKDF2_ITERATIONS = 100000;
+const PBKDF2_FORMAT = /^pbkdf2:sha256:(\d+):([0-9a-f]{32}):([0-9a-f]{64})$/i;
 const MAX_KEY_LENGTH = 512;
 
-/** SHA-256 hash of an API-key secret, hex-encoded — what you store. */
+/** SHA-256 hash of an API-key secret, hex-encoded — 64 hex chars. */
 export function hashApiKeySecret(secret: string): string {
   return createHash('sha256').update(secret, 'utf8').digest('hex');
+}
+
+/**
+ * Hash an API key secret with PBKDF2-HMAC-SHA256 (recommended for high computational effort).
+ * Returns a `pbkdf2:sha256:iterations:salt:hash` formatted string.
+ */
+export function hashApiKeySecretPbkdf2(
+  secret: string,
+  options?: { iterations?: number; salt?: string },
+): string {
+  const iterations = options?.iterations ?? DEFAULT_PBKDF2_ITERATIONS;
+  const saltHex =
+    options?.salt ??
+    createHash('sha256').update(`axiomify-salt:${secret}`).digest('hex').slice(0, 32);
+  const salt = Buffer.from(saltHex, 'hex');
+  const derived = pbkdf2Sync(secret, salt, iterations, 32, 'sha256').toString('hex');
+  return `${PBKDF2_PREFIX}${iterations}:${saltHex}:${derived}`;
 }
 
 /**
@@ -110,17 +130,31 @@ export function parseApiKey(
 // Dummy digest compared against when the key id is unknown, so unknown ids
 // cost the same as wrong secrets (no key-enumeration timing oracle).
 const DUMMY_DIGEST = createHash('sha256').update('axiomify-dummy').digest();
+const DUMMY_PBKDF2_SALT = Buffer.alloc(16, 0);
+const DUMMY_PBKDF2_HASH = pbkdf2Sync('axiomify-dummy', DUMMY_PBKDF2_SALT, 1, 32, 'sha256');
 
 function secretMatches(secret: string, hashedKey: string): boolean {
+  const pbkdf2Match = PBKDF2_FORMAT.exec(hashedKey);
+  if (pbkdf2Match) {
+    const [, iterText, saltHex, hashHex] = pbkdf2Match;
+    const iterations = Number(iterText);
+    if (!Number.isInteger(iterations) || iterations <= 0) return false;
+    const salt = Buffer.from(saltHex, 'hex');
+    const stored = Buffer.from(hashHex, 'hex');
+    const provided = pbkdf2Sync(secret, salt, iterations, stored.length, 'sha256');
+    return provided.length === stored.length && timingSafeEqual(provided, stored);
+  }
+
+  // Legacy SHA-256 digest comparison for backward compatibility
   const provided = createHash('sha256').update(secret, 'utf8').digest();
   let stored: Buffer;
   if (HASH_HEX.test(hashedKey)) {
     stored = Buffer.from(hashedKey, 'hex');
   } else {
+    // Also run dummy PBKDF2 so non-existent IDs with PBKDF2 or legacy format have balanced cost
+    pbkdf2Sync(secret, DUMMY_PBKDF2_SALT, 1, 32, 'sha256');
     stored = DUMMY_DIGEST; // misconfigured record can never match
   }
-  // Both digests are always 32 bytes, so timingSafeEqual never throws and
-  // the comparison time is independent of where the mismatch occurs.
   return timingSafeEqual(provided, stored) && stored !== DUMMY_DIGEST;
 }
 
@@ -145,9 +179,9 @@ function normalizeStaticKeys(
         `[axiomify/auth] API key "${id}" record must include a "hashedKey"`,
       );
     }
-    if (!HASH_HEX.test(value.hashedKey)) {
+    if (!HASH_HEX.test(value.hashedKey) && !PBKDF2_FORMAT.test(value.hashedKey)) {
       throw new Error(
-        `[axiomify/auth] API key "${id}" hashedKey must be a 64-char hex SHA-256 digest. ` +
+        `[axiomify/auth] API key "${id}" hashedKey must be a 64-char hex SHA-256 digest or pbkdf2:sha256:... digest. ` +
           'Generate one with hashApiKeySecret(secret).',
       );
     }

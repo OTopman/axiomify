@@ -196,6 +196,14 @@ function queryParam(req: AxiomifyRequest, name: string): string | undefined {
   return new URLSearchParams(url.slice(qs + 1)).get(name) ?? undefined;
 }
 
+function trimTrailingSlashes(str: string): string {
+  let end = str.length;
+  while (end > 0 && str.charCodeAt(end - 1) === 47 /* '/' */) {
+    end--;
+  }
+  return str.slice(0, end);
+}
+
 /** Create an OAuth 2.0 / OIDC Authorization Code (+PKCE) plugin. */
 export function createOAuthPlugin(options: OAuthPluginOptions): OAuthPlugin {
   if (!options?.provider) {
@@ -217,9 +225,10 @@ export function createOAuthPlugin(options: OAuthPluginOptions): OAuthPlugin {
       `[axiomify/auth] createOAuthPlugin \`cookieSecret\` must be at least ${MIN_COOKIE_SECRET_BYTES} bytes`,
     );
   }
+
   const preset = PRESETS[options.provider];
   const needsDiscovery = !preset;
-  const issuer = options.issuer?.replace(/\/+$/, '');
+  const issuer = options.issuer ? trimTrailingSlashes(options.issuer) : undefined;
   if (needsDiscovery && !issuer && !options.endpoints?.authorizationEndpoint) {
     throw new Error(
       `[axiomify/auth] provider "${options.provider}" requires \`issuer\` (for OIDC discovery) or explicit \`endpoints\``,

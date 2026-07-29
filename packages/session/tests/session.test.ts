@@ -873,4 +873,17 @@ describe('error-path persistence', () => {
     expect(res.status).toHaveBeenCalledWith(500);
     expect(handler).not.toHaveBeenCalled();
   });
+
+  it('handles delete on nested tracked object proxy and getOwnPropertyDescriptor on missing keys', async () => {
+    const { app } = buildApp({}, async (req, res) => {
+      const s = getSession(req);
+      s.user = { role: 'admin', age: 30 };
+      const user = s.user as Record<string, unknown>;
+      delete user.age;
+      expect(user.age).toBeUndefined();
+      expect(Object.getOwnPropertyDescriptor(s, 'nonExistentKey')).toBeUndefined();
+      res.send({});
+    });
+    await app.handle(makeReq(), makeRes());
+  });
 });

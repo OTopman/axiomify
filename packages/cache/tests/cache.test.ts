@@ -585,6 +585,8 @@ describe('shared response cache', () => {
     const miss = makeRes();
     await app.handle(makeReq({ method: 'HEAD', path: '/items' }), miss);
     expect(miss.headers['X-Cache']).toBe('MISS');
+    expect(miss.rawBody).toBe('');
+    expect(miss.headers.ETag).toBeDefined();
 
     const hit = makeRes();
     await app.handle(makeReq({ method: 'HEAD', path: '/items' }), hit);

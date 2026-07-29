@@ -317,4 +317,11 @@ describe('setCookie / clearCookie helpers', () => {
     clearCookie(res, 'sid');
     expect(res.cookieCalls).toEqual([['sid', '', undefined]]);
   });
+
+  it('skips empty secrets in secret array when unsigning', () => {
+    const signed = signCookieValue('val', 'secret_b');
+    const res = unsignCookieValue(signed, ['', 'secret_b']);
+    expect(res.valid).toBe(true);
+    expect(res.value).toBe('val');
+  });
 });

@@ -458,7 +458,10 @@ export function useCache(app: Axiomify, options: CacheOptions = {}): CacheApi {
       finish(body, 'application/json', () => {
         (res as unknown as Record<string, unknown>).payload = payload;
         (res as unknown as Record<string, unknown>).responseMessage = message;
-        originalSendRaw(body as string, 'application/json');
+        originalSendRaw(
+          req.method === 'HEAD' ? '' : (body as string),
+          'application/json',
+        );
       });
     };
 
@@ -469,7 +472,10 @@ export function useCache(app: Axiomify, options: CacheOptions = {}): CacheApi {
           ? payload
           : String(payload);
       finish(body, contentType ?? 'text/plain', () =>
-        originalSendRaw(payload, contentType),
+        originalSendRaw(
+          req.method === 'HEAD' ? '' : payload,
+          contentType,
+        ),
       );
     };
   };
