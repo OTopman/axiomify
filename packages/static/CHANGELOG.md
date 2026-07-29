@@ -1,5 +1,13 @@
 # @axiomify/static
 
+## 7.0.1
+
+### Patch Changes
+
+- af39365: Maintenance & Security Patch: Security audit hardening, header removal options, documentation reconciliation, and framework stability improvements.
+- Updated dependencies [af39365]
+  - @axiomify/core@7.0.1
+
 ## 7.0.0
 
 ### Major Changes

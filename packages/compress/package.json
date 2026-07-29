@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/compress",
-  "version": "7.0.0",
+  "version": "7.0.1",
   "description": "HTTP response compression for Axiomify — brotli, gzip and deflate with content negotiation, streaming support and sensible MIME/size heuristics.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

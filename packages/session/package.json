@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/session",
-  "version": "7.0.0",
+  "version": "7.0.1",
   "description": "Cookie sessions for Axiomify — signed session cookies, pluggable stores (memory shipped, Redis/DB via SessionStore interface), rolling expiry and ID regeneration.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
