@@ -462,6 +462,55 @@ describe('Http2Adapter lifecycle', () => {
 // TLS / ALPN — h2 over TLS with transparent http/1.1 fallback
 // ---------------------------------------------------------------------------
 
+const TEST_KEY_PEM = `-----BEGIN PRIVATE KEY-----
+MIIEugIBADANBgkqhkiG9w0BAQEFAASCBKQwggSgAgEAAoIBAQDMotiPF10ZjYEO
+amSfB6L44SBhty8bRHbybtVDSQBVbXleeTJC8aqsr0SCP/ofNGjLmaUeszMpPm7q
+3uV8EKlgfArPD5GGCGbvMg9xA2c/Ur529pa0D387v6e6lHMrvn48Vij/xI72ivNo
++HAA5gg3TLd3O+2EmP6B43fZFa6IMM9jrkSouvPV/pGQxEvUWZbt8+11pbXIwHx0
+RxxH1y3VRUgBV2FVKTz+4qXmLb7JYshx/k5kdH4b9isbbCMrO4ExnekaM90JFWeM
+jLCe4gkIpRL7lVoOZiENjffpk3ecRe026CtuCUk6/no21ywLqNyi7WzUlQ4lAgjB
+148iB0djAgMBAAECgf8VA3Zj6yTTaaM4ac2c1Yu5LU8Jrr+jrV9u2Pd7TG0DBX/5
+uqRMGP9sLtIiaDoLYe63V9QMaP3LYo+/T8q+n3tPXWc3rPOnkQYxov1cKuwGDZJH
+UdQefWYN3AzOV8BBykSI7Ar7Ok0Y3mkrbgkNo8VZ6GK5Ofn0lBx6DIgwzAecM0FS
+iRyrOUdAr4VvcyT6JnOo7R2Gm4u0kyVsrVPWHvUYL+YuTN4frSLMoKMMxMMj5/BP
+LMvmuiUJiM1eNvPG/ffTH4Ewqa1FEf0mWO18U2HscGbtR9LP7q9wwRri4D2R2gud
+QGXvJFtF2xQH8S8ngzBE97mXYOd9u81jrUIn09ECgYEA7UjwNPv/uckPhYKfHP3M
+cRpmJd01ACGANnFofoys9mGkUn4zc3YvIxhXikU1wm8zT1wC02xLm+OCOzCp92BG
+pLO1iYT8HseKpqAhR/4GY/7trxy4Ur1HR0hD3aa9kJ4rJpIgGM4S1BhG0FvLreAC
+o8m4V3+vQrH6H+nGD3Hn9fkCgYEA3MawoW3WkODGpt3qfBxUdM3181i0LhhOgQtX
+gIjqU+IAT8khIGg6IGGHVnOO0JyQgPdr9m7ZRruq+IO3WGE3JYzK4QtAvvjZAe6U
+89fdDEvMHcC8oRat7gmYq5eOxLie+OPoCKGxMTrRR4uRMYlLLgIp2L619BbZQpNq
+9YVoDzsCgYAwWnuwoGWlS2ahU1PvSXze031bW++P/kOtVIDxwOMCNjWRJeyAK+ZB
+JZW5NI9W9ugi1OIyiVADDWKdgzYvlevvZjupMXNbJliHyfveOtK8j9eJprWdDrs2
+uHAz++WHUeQDMSXfSCcoF2Ze0UX5Qbvn+pRZKEjjs3cAB9h3j0OwqQKBgGLaE/wz
+0f7MpiXQ90za4nXqQlXTQdnhyES/b059/23Po5QV2l9IS75z7MUouKlvcMROBGky
++NZS8RqU32MTJD4L7EsXXsYjZgcXbFpCLRd0WNB5m/wEy5vpcBJkqegrQgLvCNXU
+kCIa09nVBA3KC39uOI5z1cSU9nJ4z0tfkFhBAoGAISxLsa67LMTgDe/R8EhvuL5g
+t+Mxu+ExDKp4g7GCvcFO1cTuUzLf/7IPbgt7104KU/dy8tn2QI7Jtu5bAjk6D+we
+YyrdB9AbgmiIY1ZU/XHtY8sJruVw5drluKN4HcFDIKHoXWeesV3qGrzhFyurh2VM
+qhPPFUBBlWQayk11NhU=
+-----END PRIVATE KEY-----`;
+
+const TEST_CERT_PEM = `-----BEGIN CERTIFICATE-----
+MIIDCTCCAfGgAwIBAgIUFOcxtv2mn5QsOjIbVowh/DBRhSgwDQYJKoZIhvcNAQEL
+BQAwFDESMBAGA1UEAwwJbG9jYWxob3N0MB4XDTI2MDcyOTIyNDY1OVoXDTM2MDcy
+NjIyNDY1OVowFDESMBAGA1UEAwwJbG9jYWxob3N0MIIBIjANBgkqhkiG9w0BAQEF
+AAOCAQ8AMIIBCgKCAQEAzKLYjxddGY2BDmpknwei+OEgYbcvG0R28m7VQ0kAVW15
+XnkyQvGqrK9Egj/6HzRoy5mlHrMzKT5u6t7lfBCpYHwKzw+Rhghm7zIPcQNnP1K+
+dvaWtA9/O7+nupRzK75+PFYo/8SO9orzaPhwAOYIN0y3dzvthJj+geN32RWuiDDP
+Y65EqLrz1f6RkMRL1FmW7fPtdaW1yMB8dEccR9ct1UVIAVdhVSk8/uKl5i2+yWLI
+cf5OZHR+G/YrG2wjKzuBMZ3pGjPdCRVnjIywnuIJCKUS+5VaDmYhDY336ZN3nEXt
+NugrbglJOv56NtcsC6jcou1s1JUOJQIIwdePIgdHYwIDAQABo1MwUTAdBgNVHQ4E
+FgQUIQ3ibW7Z/BtF1KEM3oh916m4FmkwHwYDVR0jBBgwFoAUIQ3ibW7Z/BtF1KEM
+3oh916m4FmkwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAH2ZG
+V7Nd18EFWKedj1HMN+ddZe4EtuhQOk0i2eQkHTBoPWQ0Bssn4SBsg3N8fwDZngpi
+B/yt2Q87ypJ6ThIST+riCmD8iUTw1Wvh6P5yzqs0sDXcPtFDYrAPXp6dRw02Ekkq
+BmVpuTSndCp1e5Qoj4/oAFi2+TFiv3nfZYzQFEYbvVuBhohj9xeUxfn7nxOmHjep
+Ldh38j2nkTLg8Lr+n58dT9u1baSL6qc1MkJ1pfqXBDLpofTjhKPIMUmsZUjBDP3e
+JwtSUuzijPgLhyDBMK09oc9Zf+8Ml5fFBZ4GufaJREgDDYbMPzCtQXDyGJD6koYj
+btiFYgFHfRu5nnb42Q==
+-----END CERTIFICATE-----`;
+
 describe('Http2Adapter TLS + ALPN', () => {
   const fixturesDir = path.resolve(__dirname, 'fixtures');
   const keyPath = path.resolve(fixturesDir, 'h2-key.pem');
@@ -471,29 +520,11 @@ describe('Http2Adapter TLS + ALPN', () => {
 
   beforeAll(async () => {
     fs.mkdirSync(fixturesDir, { recursive: true });
-    if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
-      try {
-        execSync(
-          `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" ` +
-            `-days 1 -nodes -subj "/CN=localhost" ` +
-            `-addext "subjectAltName=DNS:localhost,IP:127.0.0.1"`,
-          { stdio: 'ignore' },
-        );
-      } catch {
-        try {
-          execSync(
-            `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" ` +
-              `-days 1 -nodes -subj "/CN=localhost"`,
-            { stdio: 'ignore' },
-          );
-        } catch {
-          // OpenSSL generation failed or spawned process hit ENOMEM
-        }
-      }
+    if (!fs.existsSync(keyPath)) {
+      fs.writeFileSync(keyPath, TEST_KEY_PEM);
     }
-
-    if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
-      return;
+    if (!fs.existsSync(certPath)) {
+      fs.writeFileSync(certPath, TEST_CERT_PEM);
     }
 
     const { Axiomify } = await import('@axiomify/core');
@@ -521,14 +552,9 @@ describe('Http2Adapter TLS + ALPN', () => {
 
   afterAll(() => {
     adapter?.close();
-    if (fs.existsSync(keyPath)) fs.rmSync(keyPath, { force: true });
-    if (fs.existsSync(certPath)) fs.rmSync(certPath, { force: true });
   });
 
   it('negotiates h2 via ALPN', async () => {
-    if (!fs.existsSync(certPath) || !adapter) {
-      return; // Skip if cert generation failed or was restricted in CI
-    }
     const ca = fs.readFileSync(certPath);
     const result = await new Promise<H2Result>((resolve, reject) => {
       const client = http2.connect(`https://localhost:${PORT}`, { ca });
