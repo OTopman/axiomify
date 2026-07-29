@@ -70,9 +70,17 @@ const DEFAULT_PBKDF2_ITERATIONS = 100000;
 const PBKDF2_FORMAT = /^pbkdf2:sha256:(\d+):([0-9a-f]{32}):([0-9a-f]{64})$/i;
 const MAX_KEY_LENGTH = 512;
 
-/** SHA-256 hash of an API-key secret, hex-encoded — 64 hex chars. */
+/** SHA-256 hash of an API-key secret, hex-encoded — what you store. */
 export function hashApiKeySecret(secret: string): string {
-  return createHash('sha256').update(secret, 'utf8').digest('hex');
+  const salt = randomBytes(PBKDF2_SALT_BYTES);
+  const derived = pbkdf2Sync(
+    secret,
+    salt,
+    PBKDF2_ITERATIONS,
+    PBKDF2_KEYLEN,
+    PBKDF2_DIGEST,
+  );
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${salt.toString('hex')}$${derived.toString('hex')}`;
 }
 
 /**
@@ -134,18 +142,6 @@ const DUMMY_PBKDF2_SALT = Buffer.alloc(16, 0);
 const DUMMY_PBKDF2_HASH = pbkdf2Sync('axiomify-dummy', DUMMY_PBKDF2_SALT, 1, 32, 'sha256');
 
 function secretMatches(secret: string, hashedKey: string): boolean {
-  const pbkdf2Match = PBKDF2_FORMAT.exec(hashedKey);
-  if (pbkdf2Match) {
-    const [, iterText, saltHex, hashHex] = pbkdf2Match;
-    const iterations = Number(iterText);
-    if (!Number.isInteger(iterations) || iterations <= 0) return false;
-    const salt = Buffer.from(saltHex, 'hex');
-    const stored = Buffer.from(hashHex, 'hex');
-    const provided = pbkdf2Sync(secret, salt, iterations, stored.length, 'sha256');
-    return provided.length === stored.length && timingSafeEqual(provided, stored);
-  }
-
-  // Legacy SHA-256 digest comparison for backward compatibility
   const provided = createHash('sha256').update(secret, 'utf8').digest();
   let stored: Buffer;
   if (HASH_HEX.test(hashedKey)) {
