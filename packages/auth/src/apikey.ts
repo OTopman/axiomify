@@ -9,10 +9,10 @@ import {
   AxiomifyResponse,
   RouteMiddleware,
 } from '@axiomify/core';
-import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
+import { pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export interface ApiKeyRecord {
-  /** Hex-encoded SHA-256 hash or PBKDF2 string (`pbkdf2$iter$salt$hash` / `pbkdf2:sha256:iter:salt:hash`) of the key's secret part. */
+  /** PBKDF2 string (`pbkdf2$iter$salt$hash` / `pbkdf2:sha256:iter:salt:hash`) of the key's secret part. */
   hashedKey: string;
   /** Scopes granted to this key. */
   scopes?: string[];
@@ -31,7 +31,7 @@ export type ApiKeyLookup = (
 
 export interface ApiKeyPluginOptions {
   /**
-   * Static key map: id → record with `hashedKey` (sha256 hex or PBKDF2 digest of the secret).
+   * Static key map: id → record with `hashedKey` (PBKDF2 digest of the secret).
    * A plain-string value is treated as a PLAINTEXT secret and hashed at
    * startup — allowed for development, but a warning is logged because the
    * secret then lives in config/source.
@@ -68,7 +68,6 @@ const PBKDF2_SALT_BYTES = 16;
 const PBKDF2_KEYLEN = 32;
 const PBKDF2_DIGEST = 'sha256';
 
-const HASH_HEX = /^[0-9a-f]{64}$/i;
 const PBKDF2_FORMAT_DOLLAR = /^pbkdf2\$(\d+)\$([0-9a-f]+)\$([0-9a-f]+)$/i;
 const PBKDF2_FORMAT_COLON = /^pbkdf2:sha256:(\d+):([0-9a-f]{32}):([0-9a-f]{64})$/i;
 
@@ -100,11 +99,6 @@ export function hashApiKeySecretPbkdf2(
   const salt = Buffer.from(saltHex, 'hex');
   const derived = pbkdf2Sync(secret, salt, iterations, PBKDF2_KEYLEN, PBKDF2_DIGEST).toString('hex');
   return `pbkdf2:sha256:${iterations}:${saltHex}:${derived}`;
-}
-
-/** Legacy plain SHA-256 hash of an API-key secret (64 hex chars). */
-export function hashApiKeySecretSha256(secret: string): string {
-  return createHash('sha256').update(secret, 'utf8').digest('hex');
 }
 
 /**
@@ -167,16 +161,7 @@ function secretMatches(secret: string, hashedKey: string): boolean {
     );
   }
 
-  // Legacy SHA-256 digest comparison for backward compatibility
-  if (HASH_HEX.test(hashedKey)) {
-    const provided = createHash('sha256').update(secret, 'utf8').digest();
-    const stored = Buffer.from(hashedKey, 'hex');
-    return (
-      provided.length === stored.length && timingSafeEqual(provided, stored)
-    );
-  }
-
-  // Dummy PBKDF2 pass for unknown key IDs so non-existent key lookups take constant time
+  // Dummy PBKDF2 pass for unknown or unsupported hash formats so lookups take constant time
   pbkdf2Sync('axiomify-dummy', DUMMY_PBKDF2_SALT, 1, PBKDF2_KEYLEN, PBKDF2_DIGEST);
   return false;
 }
@@ -203,7 +188,6 @@ function normalizeStaticKeys(
       );
     }
     if (
-      !HASH_HEX.test(value.hashedKey) &&
       !PBKDF2_FORMAT_DOLLAR.test(value.hashedKey) &&
       !PBKDF2_FORMAT_COLON.test(value.hashedKey)
     ) {
@@ -217,7 +201,7 @@ function normalizeStaticKeys(
   if (plaintextCount > 0) {
     console.warn(
       `[axiomify/auth] ${plaintextCount} API key(s) were provided as PLAINTEXT secrets. ` +
-        'Store sha256 hashes instead ({ hashedKey: hashApiKeySecret(secret) }) so a config ' +
+        'Store PBKDF2 hashes instead ({ hashedKey: hashApiKeySecret(secret) }) so a config ' +
         'leak does not leak usable credentials.',
     );
   }
