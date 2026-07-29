@@ -12,7 +12,7 @@ import {
   AxiomifyResponse,
   RouteMiddleware,
 } from '@axiomify/core';
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export interface ApiKeyRecord {
   /** Hex-encoded SHA-256 hash of the key's secret part (64 hex chars). */
@@ -67,9 +67,23 @@ const API_KEY_PREFIX = 'ax';
 const HASH_HEX = /^[0-9a-f]{64}$/i;
 const MAX_KEY_LENGTH = 512;
 
-/** SHA-256 hash of an API-key secret, hex-encoded — what you store. */
+const PBKDF2_ITERATIONS = 210000;
+const PBKDF2_KEYLEN = 32;
+const PBKDF2_DIGEST = 'sha256';
+const PBKDF2_SALT_BYTES = 16;
+const PBKDF2_FORMAT = /^pbkdf2\$(\d+)\$([0-9a-f]+)\$([0-9a-f]+)$/i;
+
+/** PBKDF2 hash of an API-key secret, encoded as `pbkdf2$iterations$saltHex$hashHex`. */
 export function hashApiKeySecret(secret: string): string {
-  return createHash('sha256').update(secret, 'utf8').digest('hex');
+  const salt = randomBytes(PBKDF2_SALT_BYTES);
+  const derived = pbkdf2Sync(
+    secret,
+    salt,
+    PBKDF2_ITERATIONS,
+    PBKDF2_KEYLEN,
+    PBKDF2_DIGEST,
+  );
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${salt.toString('hex')}$${derived.toString('hex')}`;
 }
 
 /**
@@ -112,6 +126,21 @@ export function parseApiKey(
 const DUMMY_DIGEST = createHash('sha256').update('axiomify-dummy').digest();
 
 function secretMatches(secret: string, hashedKey: string): boolean {
+  const pbkdf2Match = PBKDF2_FORMAT.exec(hashedKey);
+  if (pbkdf2Match) {
+    const [, iterText, saltHex, hashHex] = pbkdf2Match;
+    const iterations = Number(iterText);
+    if (!Number.isInteger(iterations) || iterations <= 0) return false;
+
+    const salt = Buffer.from(saltHex, 'hex');
+    const stored = Buffer.from(hashHex, 'hex');
+    const provided = pbkdf2Sync(secret, salt, iterations, stored.length, PBKDF2_DIGEST);
+    return (
+      provided.length === stored.length && timingSafeEqual(provided, stored)
+    );
+  }
+
+  // Backward compatibility for legacy SHA-256 hex hashes.
   const provided = createHash('sha256').update(secret, 'utf8').digest();
   let stored: Buffer;
   if (HASH_HEX.test(hashedKey)) {

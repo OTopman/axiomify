@@ -53,12 +53,12 @@ describe('parseApiKey / generateApiKey / hashApiKeySecret', () => {
     expect(parseApiKey(`ax_id_${'a'.repeat(600)}`)).toBeNull();
   });
 
-  it('generateApiKey returns a parseable key whose hash matches the secret', () => {
+  it('generateApiKey returns a parseable key with a stored hash string', () => {
     const { apiKey, id, hashedKey } = generateApiKey();
     const parsed = parseApiKey(apiKey)!;
     expect(parsed.id).toBe(id);
-    expect(hashedKey).toBe(hashApiKeySecret(parsed.secret));
-    expect(hashedKey).toMatch(/^[0-9a-f]{64}$/);
+    expect(typeof hashedKey).toBe('string');
+    expect(hashedKey).toMatch(/^pbkdf2\$\d+\$[0-9a-f]+\$[0-9a-f]+$/i);
   });
 
   it('generateApiKey honours a custom id and rejects ids with underscores', () => {
@@ -66,10 +66,12 @@ describe('parseApiKey / generateApiKey / hashApiKeySecret', () => {
     expect(() => generateApiKey('bad_id')).toThrow(/must not contain "_"/);
   });
 
-  it('hashApiKeySecret is a deterministic sha256 hex digest', () => {
-    expect(hashApiKeySecret('abc')).toBe(hashApiKeySecret('abc'));
-    expect(hashApiKeySecret('abc')).toHaveLength(64);
-    expect(hashApiKeySecret('abc')).not.toBe(hashApiKeySecret('abd'));
+  it('hashApiKeySecret returns a salted PBKDF2 encoding', () => {
+    const h1 = hashApiKeySecret('abc');
+    const h2 = hashApiKeySecret('abc');
+    expect(h1).toMatch(/^pbkdf2\$\d+\$[0-9a-f]+\$[0-9a-f]+$/i);
+    expect(h2).toMatch(/^pbkdf2\$\d+\$[0-9a-f]+\$[0-9a-f]+$/i);
+    expect(h1).not.toBe(h2);
   });
 });
 

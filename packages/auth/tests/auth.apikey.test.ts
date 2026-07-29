@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createApiKeyPlugin,
@@ -26,15 +25,13 @@ function reqWithKey(key?: string, header = 'x-api-key') {
 }
 
 describe('API key primitives', () => {
-  it('generateApiKey produces ax_<id>_<secret> and a matching sha256 hash', () => {
+  it('generateApiKey produces ax_<id>_<secret> and stores a PBKDF2 hash encoding', () => {
     const { apiKey, id, hashedKey } = generateApiKey();
     expect(apiKey).toMatch(/^ax_[0-9a-f]{16}_[A-Za-z0-9_-]+$/);
     const parsed = parseApiKey(apiKey)!;
     expect(parsed.id).toBe(id);
-    expect(hashApiKeySecret(parsed.secret)).toBe(hashedKey);
-    expect(hashedKey).toBe(
-      createHash('sha256').update(parsed.secret, 'utf8').digest('hex'),
-    );
+    expect(hashedKey).toMatch(/^pbkdf2\$\d+\$[0-9a-f]+\$[0-9a-f]+$/i);
+    expect(hashApiKeySecret(parsed.secret)).not.toBe(hashedKey);
   });
 
   it('generateApiKey accepts a custom id but rejects underscores', () => {
