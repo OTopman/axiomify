@@ -7,9 +7,10 @@ import path from 'path';
 // (the path listed in package.json exports) which doesn't exist in a
 // fresh clone and causes 21 test files to fail at import time.
 const packages = [
-  'auth', 'cli', 'core', 'cors', 'fingerprint', 'graphql', 'helmet',
-  'logger', 'metrics', 'native', 'openapi', 'rate-limit', 'security',
-  'socket.io', 'static', 'upload', 'sdk-runtime', 'ws', 'vault', 'jobs',
+  'auth', 'cache', 'cli', 'compress', 'core', 'cors', 'db', 'fingerprint',
+  'graphql', 'helmet', 'logger', 'metrics', 'native', 'openapi', 'rate-limit',
+  'security', 'session', 'socket.io', 'static', 'testing', 'upload',
+  'sdk-runtime', 'ws', 'vault', 'jobs',
 ];
 const alias = Object.fromEntries(
   packages.map((pkg) => [

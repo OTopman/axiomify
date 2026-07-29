@@ -4,7 +4,9 @@ import {
   AxiomifyRequest,
   AxiomifyResponse,
   makeSerialize,
+  parseCookieHeader,
   RequestStateImpl,
+  serializeCookie,
   type SerializerInput,
 } from '@axiomify/core';
 import { randomUUID } from 'node:crypto';
@@ -176,6 +178,9 @@ export class ServerlessAdapter {
       ? (headers['x-forwarded-for'] as string) || ''
       : '';
 
+    // Lazy cookie parsing — the header is only parsed on first access.
+    let parsedRequestCookies: Record<string, string> | undefined;
+
     const req: AxiomifyRequest = {
       // L3 (CWE-338): use a cryptographically strong id instead of Math.random.
       id: (headers['x-request-id'] as string) || randomUUID(),
@@ -190,6 +195,11 @@ export class ServerlessAdapter {
       state: new RequestStateImpl(),
       raw: request,
       stream: rawBody ? Readable.from(rawBody) : Readable.from([]),
+      get cookies() {
+        return (parsedRequestCookies ??= parseCookieHeader(
+          (headers['cookie'] as string) ?? '',
+        ));
+      },
     };
 
     // Captured once per request; used by res.send to build the response
@@ -217,6 +227,26 @@ export class ServerlessAdapter {
         },
         removeHeader(key) {
           responseHeaders.delete(key);
+          return this;
+        },
+        cookie(name, value, options) {
+          // Headers.append is the Fetch-spec mechanism for multiple
+          // Set-Cookie lines; set() would fold them into one invalid header.
+          responseHeaders.append(
+            'set-cookie',
+            serializeCookie(name, value, options),
+          );
+          return this;
+        },
+        clearCookie(name, options) {
+          responseHeaders.append(
+            'set-cookie',
+            serializeCookie(name, '', {
+              ...options,
+              expires: new Date(0),
+              maxAge: 0,
+            }),
+          );
           return this;
         },
         send(data, message) {

@@ -1,0 +1,55 @@
+{
+  "name": "@axiomify/db",
+  "version": "7.0.0",
+  "description": "Database integration for Axiomify — register any client (Prisma, Drizzle, pg, mysql2, better-sqlite3) through DI with health checks, graceful shutdown and vault-scoped credentials.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "module": "./dist/index.mjs",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@axiomify/core": "*"
+  },
+  "keywords": [
+    "axiomify",
+    "database",
+    "prisma",
+    "drizzle",
+    "postgres",
+    "mysql",
+    "sqlite",
+    "di"
+  ],
+  "author": {
+    "name": "Topman",
+    "email": "okunlolatopman14@gmail.com",
+    "url": "https://github.com/OTopman"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/OTopman/axiomify/blob/main/docs/packages/db.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OTopman/axiomify.git",
+    "directory": "packages/db"
+  },
+  "bugs": {
+    "url": "https://github.com/OTopman/axiomify/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -6,6 +6,7 @@
  */
 import type { RouteMiddleware, WsClient } from '@axiomify/core';
 import type { ZodTypeAny } from 'zod';
+import type { WsBroker } from './broker';
 
 // ---------------------------------------------------------------------------
 // RoomClient — a connected WebSocket client with room-aware extensions
@@ -209,6 +210,31 @@ export interface WsRoomOptions {
         nullByteProtection?: boolean;
         maxDepth?: number;
       };
+
+  /**
+   * Cross-process broadcast broker for multi-worker deployments
+   * (e.g. `listenClustered()`).
+   *
+   * uWS topic pub/sub is per-process: without a broker, a broadcast only
+   * reaches clients connected to THIS worker. With a broker configured:
+   *
+   *   - Every public room broadcast is also published to the broker on
+   *     `axiomify:ws:room:<room>`; other workers re-deliver it to their
+   *     local members (self-published messages are dropped by `nodeId`,
+   *     so there are no echo loops or double delivery).
+   *   - Room channels are subscribed on first local join and unsubscribed
+   *     after the last local leave (refcounted by local membership).
+   *   - `RoomManager.getGlobalPresence()` aggregates presence across all
+   *     workers over the `axiomify:ws:ctl` control channel.
+   *
+   * Broker failures never crash the message path — local delivery always
+   * proceeds; failures emit the `error` event and increment the
+   * `brokerDropped` counter in `getStats()`.
+   *
+   * Ships with `RedisWsBroker` (production, BYO ioredis or redis@4
+   * clients) and `MemoryWsBroker` (tests / single process).
+   */
+  broker?: WsBroker;
 
   /**
    * Called when a client connects (after successful upgrade).

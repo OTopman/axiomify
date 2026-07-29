@@ -114,7 +114,35 @@ if (require.main === module) {
 }
 ```
 
-Full CLI reference: [docs/packages/cli.md](./packages/cli.md).
+Full CLI reference: [docs/packages/cli.md](./packages/cli.md) — including
+`routes --snapshot` / `--diff` (breaking-change CI gates), `openapi --validate`
+and `axiomify db`.
+
+## Testing your routes
+
+`@axiomify/testing` dispatches requests through the framework without opening
+a socket — no adapter, no port:
+
+```typescript
+import { createTestClient } from '@axiomify/testing';
+import { app } from '../src/index';
+
+const client = createTestClient(app);
+const res = await client.post('/users', { body: { name: 'Ada' } });
+// res.statusCode, res.json(), res.cookies — production-identical envelopes
+```
+
+See [docs/packages/testing.md](./packages/testing.md).
+
+## Common next steps
+
+| Need | Package |
+| ---- | ------- |
+| Sessions & sign-in flows | [`@axiomify/session`](./packages/session.md), [`@axiomify/auth`](./packages/auth.md) (JWT/JWKS, API keys, OAuth + PKCE) |
+| Smaller & faster responses | [`@axiomify/compress`](./packages/compress.md), [`@axiomify/cache`](./packages/cache.md) |
+| A database | [`@axiomify/db`](./packages/db.md) (Prisma, Drizzle, pg, mysql2, better-sqlite3) |
+| Real-time across workers | [`@axiomify/ws`](./packages/ws.md) with a `WsBroker` |
+| HTTP/2 | [`Http2Adapter`](./packages/native.md) in `@axiomify/native` |
 
 ---
 

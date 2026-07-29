@@ -1,0 +1,54 @@
+{
+  "name": "@axiomify/cache",
+  "version": "7.0.0",
+  "description": "Response caching for Axiomify — ETag/conditional GET for dynamic responses, Cache-Control helpers, pluggable memory/Redis stores, stale-while-revalidate.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "module": "./dist/index.mjs",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@axiomify/core": "*"
+  },
+  "keywords": [
+    "axiomify",
+    "cache",
+    "caching",
+    "etag",
+    "cache-control",
+    "stale-while-revalidate",
+    "redis"
+  ],
+  "author": {
+    "name": "Topman",
+    "email": "okunlolatopman14@gmail.com",
+    "url": "https://github.com/OTopman"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/OTopman/axiomify/blob/main/docs/packages/cache.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OTopman/axiomify.git",
+    "directory": "packages/cache"
+  },
+  "bugs": {
+    "url": "https://github.com/OTopman/axiomify/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

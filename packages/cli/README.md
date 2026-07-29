@@ -27,13 +27,14 @@ the same major as your `@axiomify/*` runtime packages.
 | `axiomify init [directory]` | Bootstrap a new project                          |
 | `axiomify dev [entry]`      | Hot-reload dev server (esbuild watch)            |
 | `axiomify build [entry]`    | Compile a production bundle to `dist/`           |
-| `axiomify routes [entry]`   | Inspect every HTTP + WebSocket route             |
-| `axiomify openapi [entry]`  | Generate the OpenAPI 3.1.0 spec                  |
+| `axiomify routes [entry]`   | Inspect every HTTP + WebSocket route (+ snapshot/diff the surface) |
+| `axiomify openapi [entry]`  | Generate the OpenAPI 3.1.0 spec (+ `--validate`) |
 | `axiomify check [entry]`    | Static production-readiness audit                |
 | `axiomify studio [entry]`   | Launch Axiomify Studio visual dashboard          |
 | `axiomify doctor`           | Diagnose the host environment                    |
 | `axiomify scaffold route`   | Generate a new route file under `src/routes/`    |
 | `axiomify migrate`          | Codemod: migrate a v5 project to v6              |
+| `axiomify db <subcommand>`  | Run the project's db workflow (migrate/seed/generate/status) |
 | `axiomify sdk <subcommand>` | Manage, generate, build, validate, and diff SDKs |
 
 `[entry]` defaults to `src/index.ts` everywhere it's accepted.
@@ -104,6 +105,36 @@ Flags: `--json`, `--method GET,POST,WS`, `--filter "/api/v1/*"`,
 WebSocket routes (`app.ws(...)`) appear under the `WS` pseudo-method
 alongside HTTP routes — earlier CLI versions silently omitted them.
 
+### Route surface snapshot + diff
+
+`--json` emits the machine-readable **route surface**: every route with a
+sha256 fingerprint of each validation schema part (`body` / `query` /
+`params` / `response`), computed over canonically-sorted JSON Schema
+output so hashes only change when a schema genuinely changes.
+
+```bash
+axiomify routes --snapshot                 # writes routes-baseline.json
+axiomify routes --snapshot main.json       # custom file
+# … later, e.g. on a feature branch …
+axiomify routes --diff main.json           # exit 1 on breaking changes
+axiomify routes --diff main.json --json    # machine-readable, for CI
+```
+
+Snapshot output is deterministic (byte-identical repeat runs), so
+baselines diff cleanly in git. `--diff` categorises every change:
+
+| Change                             | Severity                                      |
+| ---------------------------------- | --------------------------------------------- |
+| Route added                        | info                                          |
+| Route removed                      | **BREAKING**                                  |
+| Method changed (same path)         | **BREAKING**                                  |
+| `body`/`query`/`params` schema     | **BREAKING**                                  |
+| `response` schema                  | warning (`--strict-response` → **BREAKING**)  |
+| Newly deprecated                   | info                                          |
+
+Exit code 1 on any breaking change; `--allow-breaking` reports them but
+exits 0 (useful while a break is being intentionally shipped).
+
 ## `axiomify openapi`
 
 ```bash
@@ -120,6 +151,31 @@ Useful in CI for client codegen pipelines (`openapi-typescript`,
 
 Requires `@axiomify/openapi` to be installed; dynamic-imports it at
 runtime and prints a clean error if missing.
+
+### `axiomify openapi --validate`
+
+```bash
+axiomify openapi --validate                # human report
+axiomify openapi --validate --json         # { valid, findings } for CI
+axiomify openapi --validate -o spec.json   # also write the spec
+```
+
+Validates the generated document in two layers:
+
+1. **Official OAS 3.1 JSON Schema** — the published
+   `spec.openapis.org/oas/3.1/schema/2022-10-07` schema, vendored into the
+   CLI and compiled with Ajv's 2020-12 dialect support. (The generator
+   emits `openapi: "3.1.0"` exclusively, so 3.1 is the only schema
+   shipped; other versions are rejected explicitly.)
+2. **Semantic lints** the schema can't express: responses missing
+   `description`, duplicate parameter `name`+`in` pairs, `operationId`
+   collisions, path template ↔ `in: path` parameter mismatches (both
+   directions), and security requirements referencing schemes not
+   declared in `components.securitySchemes`.
+
+Each finding is `{ code, severity, location, message }` with `location` a
+JSON pointer into the document. Exit code 1 on any `error`-severity
+finding — a hard CI gate.
 
 ## `axiomify check`
 
@@ -224,6 +280,44 @@ alignment, uWS bindings load successfully, recent build artefact, port
 Run on a fresh clone or new CI runner before chasing test failures that
 turn out to be Node-version mismatches.
 
+## `axiomify db`
+
+```bash
+axiomify db migrate            # run the manifest's migrate command
+axiomify db seed --dry-run     # print what would run, execute nothing
+axiomify db generate
+axiomify db status             # which manifest + commands are configured
+```
+
+Runs the project's database workflow through a manifest at the project
+root — either `axiomify.db.json` (shell-string commands) or
+`axiomify.db.mjs` (may export function commands; requires
+`@axiomify/db`). Schema v1:
+
+```json
+{
+  "version": 1,
+  "commands": {
+    "migrate": "npx prisma migrate deploy",
+    "seed": "node ./scripts/seed.mjs",
+    "generate": "npx prisma generate"
+  }
+}
+```
+
+The CLI **never runs anything not explicitly declared in the manifest.**
+Shell commands are spawned with inherited stdio and their exit code is
+propagated; function commands (`.mjs` manifests) are awaited.
+
+`@axiomify/db` is imported lazily: when it's installed its `loadDbConfig`
+loader is used; when it isn't, a built-in reader handles
+`axiomify.db.json` so the CLI stands alone (`.mjs` manifests without the
+package are a clear error).
+
+`axiomify db status` with no manifest performs best-effort ORM detection
+(`prisma/schema.prisma`, `drizzle.config.*`, `knexfile.*`) and prints a
+suggested manifest for what it finds.
+
 ## `axiomify sdk`
 
 Subcommands for compiling type-safe client SDKs from specs:
@@ -267,10 +361,12 @@ axiomify sdk benchmark
 - run: npx axiomify check # static readiness audit
 - run: npx axiomify build
 - run: npx axiomify openapi -o ./openapi.json --spec-version "$GITHUB_SHA"
-- run: npx axiomify routes --json > routes.json # surface snapshot
+- run: npx axiomify openapi --validate # official OAS 3.1 schema + lints
+- run: npx axiomify routes --diff routes-baseline.json # exit 1 on breaking changes
 - run: npx axiomify sdk validate ./openapi.json # schema verification
 - run: npx axiomify sdk diff old-spec.json ./openapi.json # check breaking changes
 ```
 
-Diff `routes.json` between commits to detect accidental API changes
-before they reach production.
+Commit a `routes-baseline.json` (from `axiomify routes --snapshot`) and
+the `--diff` step blocks accidental breaking API changes before they
+reach production.

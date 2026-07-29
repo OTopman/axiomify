@@ -5,7 +5,7 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-Static file serving for Axiomify with ETag caching, configurable cache control, and path traversal protection.
+Static file serving for Axiomify with ETag caching, HTTP Range requests (RFC 9110), configurable cache control, and path traversal protection.
 
 ## Install
 
@@ -74,6 +74,19 @@ serveStatic(app, {
 | `.wasm`                                  | `application/wasm`                      |
 | `.ico`                                   | `image/x-icon`                          |
 | anything else                            | `application/octet-stream`              |
+
+## Range requests
+
+Real files are served with `Accept-Ranges: bytes` and `Last-Modified`, and honor single
+byte-range requests (RFC 9110) — video seeking and resumable downloads work out of the box.
+
+- `bytes=0-499` / `bytes=500-` / `bytes=-500` → `206 Partial Content` with `Content-Range`
+  and an exact `Content-Length`; the slice is streamed via `createReadStream(start, end)`.
+- Unsatisfiable ranges (start past EOF, `bytes=-0`) → `416` with `Content-Range: bytes */<size>`.
+- Multi-range and malformed `Range` headers fall back to the full `200` response.
+- `If-Range` (ETag or HTTP-date) downgrades to a full `200` when the file changed.
+- `If-None-Match` takes precedence: a matching ETag returns `304`.
+- Range applies to real files only — the directory `index.html` fallback ignores it.
 
 ## Security
 

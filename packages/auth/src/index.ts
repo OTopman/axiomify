@@ -13,6 +13,9 @@ import type {
 } from 'jsonwebtoken';
 import { sign, verify } from 'jsonwebtoken';
 import cluster from 'cluster';
+import type { KeyObject } from 'node:crypto';
+import { validateAlgorithmAllowlist, verifyJwt } from './jwt';
+import { JwksClient, JwksClientOptions } from './jwks';
 
 export interface AuthUser {
   id: string;
@@ -20,11 +23,30 @@ export interface AuthUser {
 }
 
 export interface AuthOptions {
-  secret: string;
+  /**
+   * HS* shared secret (HS256 by default). Exactly one of `secret`,
+   * `publicKey` or `jwks` must be provided.
+   */
+  secret?: string;
+  /**
+   * RS256/RS384/RS512/ES256/ES384 verification key — a PEM string or a
+   * node:crypto KeyObject. Verification runs on the node:crypto engine with
+   * a strict algorithm allowlist (default ['RS256']). HS* algorithms cannot
+   * be combined with a public key (algorithm-confusion defence).
+   */
+  publicKey?: string | KeyObject;
+  /**
+   * JWKS-backed verification (e.g. an OIDC provider). Pass a `JwksClient`
+   * instance or its options (`{ url }`). Keys are cached by `kid`; HS*
+   * algorithms can never be served from a JWKS.
+   */
+  jwks?: JwksClient | JwksClientOptions;
   algorithms?: Algorithm[];
   getToken?: (req: AxiomifyRequest) => string | null;
   issuer?: string;
   audience?: string | string[];
+  /** Seconds of leeway for exp/nbf comparisons. Default 0. */
+  clockTolerance?: number;
   /**
    * Optional token store for access token revocation.
    *
@@ -313,8 +335,112 @@ export function createRefreshHandler(options: RefreshOptions): RouteMiddleware {
   return handler;
 }
 
+/**
+ * Shared revocation-store gate. Returns `true` when the request was rejected
+ * (401 already sent). Store outages surface as 503, never 401.
+ */
+async function rejectedByStore(
+  decoded: { jti?: unknown },
+  store: TokenStore,
+  res: AxiomifyResponse,
+): Promise<boolean> {
+  const jti = decoded.jti;
+  if (typeof jti !== 'string' || !jti) {
+    res.status(401).send(null, 'Unauthorized: Token missing jti claim');
+    return true;
+  }
+  let active: boolean;
+  try {
+    active = await store.exists(jti);
+  } catch {
+    throw Object.assign(new Error('Token store unavailable'), {
+      statusCode: 503,
+    });
+  }
+  if (!active) {
+    res.status(401).send(null, 'Unauthorized: Token has been revoked');
+    return true;
+  }
+  return false;
+}
+
+function setAuthUser(req: AxiomifyRequest, user: unknown): void {
+  if (typeof req.state.set === 'function') {
+    req.state.set('user', user);
+  } else {
+    (req.state as any).user = user;
+  }
+}
+
+/**
+ * Asymmetric (RS256/RS384/RS512/ES256/ES384) verification path, backed by the
+ * node:crypto JWT engine in ./jwt and, optionally, a JWKS key resolver.
+ */
+function createAsymmetricAuthPlugin(options: AuthOptions): RouteMiddleware {
+  const algorithms = validateAlgorithmAllowlist(options.algorithms ?? ['RS256']);
+  if (algorithms.some((a) => a.startsWith('HS'))) {
+    throw new Error(
+      '[axiomify/auth] HS* algorithms cannot be allowlisted when verifying ' +
+        'with a public key or JWKS (algorithm-confusion defence)',
+    );
+  }
+  const resolver =
+    options.jwks === undefined
+      ? undefined
+      : options.jwks instanceof JwksClient
+        ? options.jwks
+        : new JwksClient(options.jwks);
+  const getToken = buildGetToken(options);
+
+  return async (req: AxiomifyRequest, res: AxiomifyResponse) => {
+    const token = getToken(req);
+    if (!token)
+      return res.status(401).send(null, 'Unauthorized: Missing token');
+    try {
+      const decoded = await verifyJwt(token, {
+        algorithms,
+        ...(resolver
+          ? { keyResolver: resolver }
+          : { publicKey: options.publicKey! }),
+        ...(options.issuer ? { issuer: options.issuer } : {}),
+        ...(options.audience ? { audience: options.audience } : {}),
+        ...(options.clockTolerance !== undefined
+          ? { clockTolerance: options.clockTolerance }
+          : {}),
+      });
+      if (options.store && (await rejectedByStore(decoded, options.store, res)))
+        return;
+      setAuthUser(req, decoded);
+    } catch (err) {
+      const name = (err as Error)?.name ?? '';
+      if (
+        name === 'JsonWebTokenError' ||
+        name === 'TokenExpiredError' ||
+        name === 'NotBeforeError'
+      ) {
+        return res
+          .status(401)
+          .send(null, 'Unauthorized: Invalid or expired token');
+      }
+      throw err; // JwksFetchError (503) or other infra errors
+    }
+  };
+}
+
 export function createAuthPlugin(options: AuthOptions): RouteMiddleware {
-  validateSecret(options.secret, 'JWT secret');
+  const keyModes = [options.secret, options.publicKey, options.jwks].filter(
+    (v) => v !== undefined,
+  ).length;
+  if (keyModes !== 1) {
+    throw new Error(
+      '[axiomify/auth] createAuthPlugin requires exactly one of `secret`, `publicKey` or `jwks`',
+    );
+  }
+  if (options.publicKey !== undefined || options.jwks !== undefined) {
+    return createAsymmetricAuthPlugin(options);
+  }
+
+  validateSecret(options.secret!, 'JWT secret');
   const algorithms = validateAlgorithms(options.algorithms ?? ['HS256']);
   const getToken = buildGetToken(options);
   const issuerAudience = tokenOptions(options);
@@ -324,9 +450,12 @@ export function createAuthPlugin(options: AuthOptions): RouteMiddleware {
     if (!token)
       return res.status(401).send(null, 'Unauthorized: Missing token');
     try {
-      const decoded = await verifyAsync(token, options.secret, {
+      const decoded = await verifyAsync(token, options.secret!, {
         algorithms,
         ...issuerAudience,
+        ...(options.clockTolerance !== undefined
+          ? { clockTolerance: options.clockTolerance }
+          : {}),
       });
       if (options.store) {
         const jti = (decoded as any).jti as string | undefined;
@@ -375,3 +504,11 @@ export const useAuth = createAuthPlugin;
 export function getAuthUser(req: AxiomifyRequest): AuthUser | undefined {
   return req.state.user as AuthUser | undefined;
 }
+
+// ─── Extended auth surface ────────────────────────────────────────────────────
+// node:crypto JWT engine (HS*/RS*/ES* signing + verification), JWKS client,
+// API-key authentication and OAuth 2.0 / OIDC Authorization Code + PKCE.
+export * from './jwt';
+export * from './jwks';
+export * from './apikey';
+export * from './oauth';

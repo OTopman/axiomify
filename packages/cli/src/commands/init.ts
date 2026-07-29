@@ -139,6 +139,7 @@ export async function initProject(
       start: 'node dist/index.js',
       routes: 'axiomify routes src/index.ts',
       typecheck: 'tsc --noEmit',
+      test: 'vitest run',
     },
     dependencies: {
       '@axiomify/core': AXIOMIFY_VERSION,
@@ -154,6 +155,8 @@ export async function initProject(
       typescript: '^5.4.0',
       '@types/node': '^22.0.0',
       '@axiomify/cli': AXIOMIFY_VERSION,
+      '@axiomify/testing': AXIOMIFY_VERSION,
+      vitest: '^4.1.8',
     },
   };
 
@@ -263,6 +266,24 @@ export async function initProject(
     }
     `;
 
+  // Inject-style test against the scaffolded route — no sockets, no ports.
+  // Requests dispatch through app.handle(), the same entry point the adapter
+  // uses, so hooks and validation behave exactly like a live server.
+  const appTestTs = `import { describe, expect, it } from 'vitest';
+    import { createTestClient } from '@axiomify/testing';
+    import { app } from '../src/index';
+
+    describe('GET /health', () => {
+      const client = createTestClient(app);
+
+      it('reports a healthy system', async () => {
+        const res = await client.get('/health');
+        expect(res.statusCode).toBe(200);
+        expect(res.data).toMatchObject({ status: 'healthy' });
+      });
+    });
+    `;
+
   // .gitignore — includes .axiomify (CLI temp build output) so it is never committed.
   const gitignore =
     [
@@ -284,6 +305,8 @@ export async function initProject(
     JSON.stringify(tsConfig, null, 2),
   );
   await fs.writeFile(path.join(dir, 'src', 'index.ts'), indexTs);
+  await fs.mkdir(path.join(dir, 'tests'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'tests', 'app.test.ts'), appTestTs);
   await fs.writeFile(path.join(dir, '.gitignore'), gitignore);
 
   console.log(pc.green(`\n✅ Axiomify project initialized in ${pc.bold(dir)}`));

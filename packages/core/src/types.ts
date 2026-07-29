@@ -87,6 +87,12 @@ export interface AxiomifyRequest<
   readonly raw: unknown;
   readonly stream: Readable;
   signal?: AbortSignal;
+  /**
+   * Parsed request cookies. Adapters populate this lazily; plugins that must
+   * work on any adapter should use `getCookies(req)` from core, which falls
+   * back to parsing the `Cookie` header directly.
+   */
+  readonly cookies?: Record<string, string>;
 }
 
 export interface ResponseCapabilities {
@@ -108,6 +114,26 @@ export interface AxiomifyResponse {
   readonly statusCode: number;
   readonly raw: unknown;
   readonly headersSent: boolean;
+
+  /**
+   * Queue a `Set-Cookie` header. Unlike `header()`, multiple calls emit
+   * multiple `Set-Cookie` lines (RFC 6265 forbids folding them into one).
+   * Optional — implemented by first-party adapters; use `setCookie(res, …)`
+   * from core for an adapter-agnostic call with a safe fallback.
+   */
+  cookie?(
+    name: string,
+    value: string,
+    options?: import('./cookies').CookieOptions,
+  ): this;
+  /** Expire a cookie previously set with matching domain/path attributes. */
+  clearCookie?(
+    name: string,
+    options?: Pick<
+      import('./cookies').CookieOptions,
+      'domain' | 'path' | 'secure' | 'sameSite'
+    >,
+  ): this;
 
   /** Set by the response implementation when streaming has begun. */
   isStreaming?: boolean;
@@ -380,6 +406,24 @@ export interface RouteGroup {
     callback: (group: RouteGroup) => void,
   ): this;
   group(prefix: string, callback: (group: RouteGroup) => void): this;
+  /**
+   * Register a hook scoped to this group — the encapsulation primitive.
+   * Unlike `app.addHook()`, the handler never fires for traffic outside
+   * the group, so plugins registered inside a group cannot pollute the
+   * rest of the application.
+   *
+   * Scoping semantics:
+   *   - `onPreHandler` / `onPostHandler` receive the matched route and are
+   *     scoped **exactly**: they fire only for routes registered through
+   *     this group (including nested groups).
+   *   - `onRequest` / `onError` / `onClose` run without a route match and
+   *     are scoped by **path prefix**: they fire for any request whose path
+   *     falls under the group prefix (`:param` segments match any value).
+   */
+  addHook<T extends HookType>(
+    type: T,
+    handler: import('./lifecycle').HookHandlerMap[T],
+  ): this;
 }
 
 export interface RouteDefinition<

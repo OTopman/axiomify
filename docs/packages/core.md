@@ -106,6 +106,66 @@ app.group('/api/v1', { plugins: [requireAuth] }, (v1) => {
 });
 ```
 
+### Group-scoped hooks (encapsulation)
+
+`group.addHook()` registers a hook that never fires for traffic outside the
+group — plugins registered inside a group cannot pollute the rest of the app:
+
+```typescript
+app.group('/admin', (admin) => {
+  admin.addHook('onPreHandler', auditAdminAccess); // admin routes only
+  admin.addHook('onError', reportAdminError);      // /admin/* errors only
+  admin.route({ method: 'GET', path: '/users', handler: listUsers });
+});
+```
+
+Scoping semantics:
+
+- `onPreHandler` / `onPostHandler` receive the matched route and are scoped
+  **exactly**: they fire only for routes registered through this group,
+  including routes added by nested groups.
+- `onRequest` / `onError` / `onClose` run without a route match and are scoped
+  by **path prefix**: they fire for any request whose path falls under the
+  group prefix. `:param` segments in the prefix match any single segment
+  (`/tenants/:id` scopes `/tenants/acme/...`), and matching respects segment
+  boundaries (`/api` does not scope `/apiv2`).
+
+Parent-group hooks fire for nested-group routes; global `app.addHook()` hooks
+continue to fire for everything.
+
+## Cookies
+
+Core ships the cookie layer shared by adapters and plugins
+(`@axiomify/session` builds on it):
+
+```typescript
+import { getCookies, signCookieValue, unsignCookieValue } from '@axiomify/core';
+
+app.route({
+  method: 'GET',
+  path: '/profile',
+  handler: (req, res) => {
+    const { sid } = req.cookies ?? getCookies(req); // lazy-parsed Cookie header
+    res.cookie('theme', 'dark', { maxAge: 31536000, sameSite: 'lax' });
+    res.clearCookie('legacy');
+    res.send({ sid });
+  },
+});
+```
+
+- `req.cookies` — lazy-parsed on first access (native, serverless and HTTP/2
+  adapters). `getCookies(req)` works on any adapter.
+- `res.cookie(name, value, options?)` / `res.clearCookie(name, options?)` —
+  queue `Set-Cookie` headers; multiple calls emit multiple lines (RFC 6265).
+  Secure-by-default: `HttpOnly; SameSite=Lax; Path=/` unless overridden.
+  `SameSite=None` auto-sets `Secure` and throws if `secure: false`.
+- `serializeCookie` / `parseCookieHeader` — the underlying primitives; both
+  reject header-injection attempts (CR/LF in names, values or attributes).
+- `signCookieValue(value, secret)` / `unsignCookieValue(signed, secrets)` —
+  HMAC-SHA256 signing in the Express-compatible `s:<value>.<sig>` format.
+  Pass an array of secrets to `unsignCookieValue` for zero-downtime rotation
+  (sign with the first, verify against all; constant-time comparison).
+
 ## `app.use(configurator | module)`
 
 ```typescript

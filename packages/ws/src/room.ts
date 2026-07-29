@@ -32,6 +32,14 @@ export class Room {
   /** Internal membership map: clientId → RoomMember. */
   private readonly _members = new Map<string, RoomMember>();
 
+  /**
+   * @internal Cross-process forwarding hook, set by the RoomManager when a
+   * `WsBroker` is configured. Invoked by the PUBLIC broadcast methods only —
+   * the `_localBroadcast()` path used for messages arriving FROM the broker
+   * never calls it, which is what prevents echo loops.
+   */
+  _forward?: (payload: string | Buffer, isBinary?: boolean) => void;
+
   constructor(name: string) {
     this.name = name;
     this.createdAt = Date.now();
@@ -93,14 +101,28 @@ export class Room {
    * @param isBinary — Send as binary frame. Default `false`.
    */
   broadcast(data: string | Buffer | object, isBinary?: boolean): void {
-    // Find any member to use for publishing.
-    const firstMember = this._members.values().next();
-    if (firstMember.done) return; // empty room
-
     const payload =
       typeof data === 'string' || Buffer.isBuffer(data)
         ? data
         : JSON.stringify(data);
+
+    this._localBroadcast(payload, isBinary);
+
+    // Forward to the cross-process broker (if configured). Messages that
+    // ARRIVE from the broker are delivered via _localBroadcast() directly,
+    // so they never re-enter this hook — no echo loops.
+    this._forward?.(payload, isBinary);
+  }
+
+  /**
+   * @internal Deliver a payload to all LOCAL members of this room via the
+   * native uWS topic publish. Does NOT forward to the broker — this is the
+   * re-entry point for messages received from other nodes.
+   */
+  _localBroadcast(payload: string | Buffer, isBinary?: boolean): void {
+    // Find any member to use for publishing.
+    const firstMember = this._members.values().next();
+    if (firstMember.done) return; // empty room
 
     const client = firstMember.value.client;
     const wsClient = wsClientMap.get(client);
@@ -147,6 +169,11 @@ export class Room {
         member.client.send(payload, isBinary);
       }
     }
+
+    // Forward to the cross-process broker (if configured). The excluded
+    // client is by definition connected to THIS node, so remote nodes
+    // deliver to all of their members — exclusion stays purely local.
+    this._forward?.(payload, isBinary);
   }
 
   // -------------------------------------------------------------------------

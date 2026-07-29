@@ -9,7 +9,16 @@
  * the `WS` pseudo-method so the report is comprehensive — earlier versions
  * only listed `app.registeredRoutes` and silently omitted WS endpoints.
  */
+import fs from 'fs/promises';
+import path from 'path';
 import pc from 'picocolors';
+import { DiffResult, RouteChange, diffSurfaces } from '../routes/diff';
+import {
+  RouteSurface,
+  buildRouteSurface,
+  parseSurface,
+  serialiseSurface,
+} from '../routes/surface';
 import {
   Column,
   badge,
@@ -25,7 +34,17 @@ export interface RoutesOptions {
   method?: string;
   filter?: string;
   sort?: 'method' | 'path';
+  /** Write the route surface to a baseline file (`true` → default name). */
+  snapshot?: string | boolean;
+  /** Compare the current surface against a baseline file. */
+  diff?: string;
+  /** Upgrade response-schema changes from warning to breaking. */
+  strictResponse?: boolean;
+  /** Exit 0 even when the diff contains breaking changes. */
+  allowBreaking?: boolean;
 }
+
+export const DEFAULT_SNAPSHOT_FILE = 'routes-baseline.json';
 
 interface NormalisedRoute {
   method: string;
@@ -138,6 +157,40 @@ export async function inspectRoutes(
   }
 
   try {
+    // ─── Surface modes: --json / --snapshot / --diff ───────────────────
+    // These operate on the machine-readable route surface (schema hashes,
+    // deterministic ordering) rather than the human table model.
+    if (opts.diff || opts.snapshot || opts.json) {
+      const surface = buildRouteSurface(app);
+      // `--method` / `--filter` narrow the surface exactly like the table.
+      surface.routes = surface.routes.filter((r) =>
+        matchesFilter(r as unknown as NormalisedRoute, opts),
+      );
+
+      if (opts.diff) {
+        await diffAgainstBaseline(surface, opts);
+        return;
+      }
+
+      if (opts.snapshot !== undefined && opts.snapshot !== false) {
+        const file =
+          typeof opts.snapshot === 'string'
+            ? opts.snapshot
+            : DEFAULT_SNAPSHOT_FILE;
+        const outPath = path.resolve(process.cwd(), file);
+        await fs.mkdir(path.dirname(outPath), { recursive: true });
+        await fs.writeFile(outPath, serialiseSurface(surface), 'utf8');
+        console.log(
+          `${symbols.ok} Route surface snapshot written to ${pc.cyan(file)} ` +
+            pc.dim(`(${pluralise(surface.routes.length, 'route')})`),
+        );
+        return;
+      }
+
+      process.stdout.write(serialiseSurface(surface));
+      return;
+    }
+
     const httpRoutes: NormalisedRoute[] = (app.registeredRoutes ?? []).map(
       (r: any) => normalise(r, false),
     );
@@ -146,12 +199,6 @@ export async function inspectRoutes(
     );
     const all = sortRoutes([...httpRoutes, ...wsRoutes], opts.sort ?? 'path');
     const filtered = all.filter((r) => matchesFilter(r, opts));
-
-    // ─── JSON output ───────────────────────────────────────────────────
-    if (opts.json) {
-      process.stdout.write(JSON.stringify(filtered, null, 2) + '\n');
-      return;
-    }
 
     // ─── Empty result ──────────────────────────────────────────────────
     if (filtered.length === 0) {
@@ -243,4 +290,113 @@ export async function inspectRoutes(
   } finally {
     await cleanup();
   }
+}
+
+// ─── `--diff` rendering ──────────────────────────────────────────────────────
+
+function severityBadge(severity: RouteChange['severity']): string {
+  switch (severity) {
+    case 'breaking':
+      return pc.bold(pc.red('BREAKING'));
+    case 'warning':
+      return pc.yellow('WARNING');
+    default:
+      return pc.cyan('info');
+  }
+}
+
+async function diffAgainstBaseline(
+  current: RouteSurface,
+  opts: RoutesOptions,
+): Promise<void> {
+  let baseline: RouteSurface;
+  try {
+    const raw = await fs.readFile(
+      path.resolve(process.cwd(), opts.diff!),
+      'utf8',
+    );
+    baseline = parseSurface(raw, opts.diff!);
+  } catch (err) {
+    console.error(
+      pc.red('✗ Failed to load baseline:'),
+      (err as Error).message,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  const result: DiffResult = diffSurfaces(baseline, current, {
+    strictResponse: opts.strictResponse,
+  });
+  const failed = result.breaking > 0 && !opts.allowBreaking;
+
+  // ─── JSON output (CI) ──────────────────────────────────────────────────
+  if (opts.json) {
+    process.stdout.write(
+      JSON.stringify(
+        {
+          version: 1,
+          baseline: opts.diff,
+          breaking: result.breaking,
+          warnings: result.warnings,
+          info: result.info,
+          changes: result.changes,
+        },
+        null,
+        2,
+      ) + '\n',
+    );
+    if (failed) process.exitCode = 1;
+    return;
+  }
+
+  // ─── Human output ──────────────────────────────────────────────────────
+  console.log();
+  console.log(pc.bold('  🧭 Route surface diff') + pc.dim(` vs ${opts.diff}`));
+  console.log();
+
+  if (result.changes.length === 0) {
+    console.log(
+      `  ${symbols.ok} No route surface changes ` +
+        pc.dim(`(${pluralise(current.routes.length, 'route')} checked)`),
+    );
+    console.log();
+    return;
+  }
+
+  const columns: Column[] = [
+    { header: 'SEVERITY', minWidth: 8 },
+    { header: 'METHOD', minWidth: 7 },
+    { header: 'PATH', minWidth: 20, maxWidth: 50 },
+    { header: 'CHANGE', maxWidth: 46 },
+  ];
+  const rows = result.changes.map((c) => [
+    severityBadge(c.severity),
+    colourMethod(c.method),
+    c.path,
+    c.detail,
+  ]);
+  console.log(renderTable(columns, rows));
+
+  const parts: string[] = [];
+  if (result.breaking > 0)
+    parts.push(pc.red(pluralise(result.breaking, 'breaking change')));
+  if (result.warnings > 0)
+    parts.push(pc.yellow(pluralise(result.warnings, 'warning')));
+  if (result.info > 0) parts.push(pc.cyan(`${result.info} info`));
+
+  console.log();
+  if (result.breaking > 0 && opts.allowBreaking) {
+    console.log(
+      `  ${symbols.warn} ${parts.join(pc.dim(' · '))} ` +
+        pc.dim('(--allow-breaking: exiting 0)'),
+    );
+  } else if (result.breaking > 0) {
+    console.log(`  ${symbols.fail} ${parts.join(pc.dim(' · '))}`);
+  } else {
+    console.log(`  ${symbols.ok} ${parts.join(pc.dim(' · '))}`);
+  }
+  console.log();
+
+  if (failed) process.exitCode = 1;
 }

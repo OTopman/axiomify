@@ -11,6 +11,7 @@ export type JobHandler<P = any> = (payload: P) => Promise<void> | void;
 function sanitizeForLog(value: unknown): string {
   const str = typeof value === 'string' ? value : String(value);
   // Replace CR/LF and other C0/C1 control chars (except keep as single space).
+  // eslint-disable-next-line no-control-regex -- the control characters are the target of this log-forging sanitizer
   return str.replace(/[\r\n]+/g, ' ').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
 }
 

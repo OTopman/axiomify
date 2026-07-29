@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/health"
+    },
+    {
+      "method": "PATCH",
+      "path": "/items/:id",
+      "schemaHashes": {
+        "body": "hash-items-body-v1"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/orders",
+      "schemaHashes": {
+        "response": "hash-orders-response-v2"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/profile",
+      "deprecated": true
+    },
+    {
+      "method": "GET",
+      "path": "/users",
+      "schemaHashes": {
+        "query": "hash-users-query-v2",
+        "response": "hash-users-response-v1"
+      },
+      "tags": ["users"]
+    },
+    {
+      "method": "POST",
+      "path": "/users",
+      "schemaHashes": {
+        "body": "hash-users-body-v1"
+      },
+      "tags": ["users"]
+    },
+    {
+      "method": "POST",
+      "path": "/webhooks",
+      "schemaHashes": {
+        "body": "hash-webhooks-body-v1"
+      }
+    }
+  ]
+}

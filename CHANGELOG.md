@@ -1,5 +1,65 @@
 # Changelog
 
+## 7.0.1
+
+### 🩹 Maintenance & Bug Fixes
+
+#### `@axiomify/helmet` & `@axiomify/core`
+- **Security & Header Configuration.** Updated header stripping rules to support customizable `removeHeaders` and `removePoweredBy` opt-out flags for custom proxy deployment compatibility.
+- **Documentation & Verification.** Updated package guides, test suite assertions, and security audit documentation.
+
+## 7.0.0
+
+### ✨ New Features
+
+#### `@axiomify/core` — Cookies & Encapsulation
+- **First-class cookie support.** `req.cookies` (lazy-parsed), `res.cookie()` / `res.clearCookie()` (multiple `Set-Cookie` lines per RFC 6265), plus exported primitives: `parseCookieHeader`, `serializeCookie` (secure-by-default: `HttpOnly; SameSite=Lax; Path=/`; header-injection rejection), and HMAC-SHA256 signing via `signCookieValue` / `unsignCookieValue` (Express-compatible `s:<value>.<sig>` format, secret-rotation arrays, constant-time comparison). Implemented across the native, serverless and HTTP/2 adapters.
+- **Group-scoped hooks (encapsulation).** `group.addHook()` registers hooks that never fire outside the group: `onPreHandler`/`onPostHandler` scope *exactly* to routes registered through the group (including nested groups); `onRequest`/`onError`/`onClose` scope by path prefix with segment-boundary matching and `:param` support. Parent-group hooks apply to nested-group routes; global hooks are unaffected.
+
+#### `@axiomify/testing` (New Package)
+- Inject-style test client — no sockets, no adapter: `createTestClient(app).inject()` plus verb shorthands, production-identical serializer envelopes, cookie round-trips (multiple `Set-Cookie`), streaming and SSE capture, timeout guard, and `expectValidResponse()` for asserting responses against the route's Zod `schema.response`.
+
+#### `@axiomify/compress` (New Package)
+- HTTP response compression on `node:zlib` (zero deps): brotli/gzip/deflate with full q-value negotiation (zstd feature-detected), async compression off the event loop, streaming support, MIME/threshold/`no-transform` guards, dedup-safe `Vary: Accept-Encoding`, and a `disableCompression` per-route escape hatch. 206/`Content-Range` responses are never compressed so Range offsets stay correct.
+
+#### `@axiomify/cache` (New Package)
+- Always-on ETag/`If-None-Match` conditional GET for dynamic responses (RFC 9110 weak comparison; 304s skip body and store writes) plus an opt-in shared response cache (`cached()` middleware or route prefixes) with stale-while-revalidate (single refresh claimant, everyone else gets `X-Cache: STALE`), `cacheControl()`/`noCache` helpers, LRU memory store (entry + byte bounds) and BYO-client Redis store, and a DI invalidation API (`app.resolve('cache')`).
+
+#### `@axiomify/session` (New Package)
+- Signed cookie sessions on core's new cookie layer: Proxy-based dirty tracking (nested plain objects/arrays included), eager cookie emission (headers are still writable), `destroy()`/`regenerate()` (fixation defence)/`touch()`/`save()`, rolling + `saveUninitialized` semantics, ≥32-byte secret enforcement with rotation support, `secure: 'auto'`, and Memory/Redis (BYO client) stores behind a `SessionStore` interface.
+
+#### `@axiomify/db` (New Package)
+- Client-agnostic database integration: `createDatabaseModule()` registers a stable Proxy handle in DI synchronously while the client factory connects asynchronously (`await db.ready` before `listen()`); duck-typed detection and derived connect/disconnect/health behavior for Prisma, Drizzle, pg, mysql2 and better-sqlite3; `withTransaction()` per-family transaction semantics; `dbHealthChecks()` composition with `app.healthCheck()`; `dbShutdown()` for graceful teardown; and the `axiomify.db.json`/`.mjs` manifest (`defineDbConfig`/`loadDbConfig`) consumed by the CLI.
+
+#### `@axiomify/auth` — RS/ES JWT, JWKS, API keys, OAuth 2.0/OIDC
+- **Asymmetric JWT**: RS256/384/512 and ES256/384 via `node:crypto` (ES* in raw `r||s` per JWT spec), wired into the existing `createAuthPlugin` (`secret | publicKey | jwks` — exactly one), with per-instance algorithm allowlists, unconditional `alg:none` rejection, and algorithm-confusion defence in both directions.
+- **`JwksClient`**: kid-cached JWKS fetching (10 min TTL, 30 s unknown-kid cooldown, bounded key count, in-flight dedupe); JWKS outages surface as 503, never 401.
+- **API keys**: `createApiKeyPlugin` — `ax_<id>_<secret>` format, sha256-only storage, constant-time comparison without id-enumeration timing oracles, scopes, static map or async lookup.
+- **OAuth 2.0 / OIDC**: `createOAuthPlugin` (google/github/auth0/generic OIDC with discovery) — Authorization Code + PKCE (S256 only), signed one-shot state cookie, ID-token verification through `JwksClient` (iss/aud/exp/nonce).
+
+#### `@axiomify/ws` — Cross-Process Rooms
+- `WsBroker` interface + `RedisWsBroker` (BYO ioredis or node-redis v4 clients) and `MemoryWsBroker` so rooms, broadcasts and presence work across `listenClustered()` workers: refcounted per-room channel subscriptions, echo-loop-free envelope forwarding (self-node drop), base64 binary transport, `getGlobalPresence()` over a control channel (250 ms best-effort window), and broker failures that never break local delivery (`getStats().brokerDropped`).
+
+#### `@axiomify/native` — HTTP/2
+- `Http2Adapter` on `node:http2` (the uWS bindings expose no h2 API): ALPN `h2` + `http/1.1` fallback on one port, opt-in `h2c` for local/testing, full request/response contract parity (cookies, SSE, streaming with backpressure, HEAD/null-body handling, header-injection guards, trustProxy semantics) and graceful GOAWAY shutdown. uWS remains the HTTP/1.1 throughput path — the tradeoff is documented.
+
+#### `@axiomify/cli` — Contract Governance & Database Commands
+- **`axiomify routes --snapshot [file]` / `--diff <baseline>`**: byte-deterministic route-surface snapshots (`{ version: 1, routes: [...] }` with sha256 schema hashes) and CI-ready diffing — removed routes / method changes / body-query-params schema changes are BREAKING (exit 1), response changes warn (`--strict-response` upgrades), `--allow-breaking` overrides. `routes --json` now emits the versioned surface (old bare-array baselines still accepted by `--diff`).
+- **`axiomify openapi --validate`**: validates generated specs against the vendored official OAS 3.1 JSON Schema (Ajv 2020-12) plus semantic lints — missing response descriptions, duplicate parameters/operationIds, path-template ↔ parameter mismatches, orphaned security-scheme references. JSON-pointer locations, `--json` output, exit 1 on errors.
+- **`axiomify db migrate|seed|generate|status`**: runs commands from the `axiomify.db.json`/`.mjs` manifest (`@axiomify/db` contract; built-in JSON fallback so the CLI stands alone), `--dry-run`, exit-code propagation, and ORM detection hints (Prisma/Drizzle/Knex) when no manifest exists. Only manifest-declared commands are ever executed.
+
+#### `@axiomify/static` — Range Requests
+- RFC 9110 single-range support: `Accept-Ranges: bytes`, 206 + `Content-Range` streamed slices, 416 for unsatisfiable ranges, `If-Range` (ETag and HTTP-date validators), multi-range/malformed fallback to full 200.
+
+### 🩹 Bug Fixes
+
+#### `@axiomify/core`
+- **Request validators now compile Zod schemas with `io: 'input'`.** Previously `z.toJSONSchema()`'s default (`io: 'output'`) marked `.default()` fields as `required`, so the AJV fast-rejection path returned 400 for bodies that omitted a defaulted field — exactly the case defaults exist for. Response validators keep output semantics.
+
+### 📝 Documentation
+- New package docs for testing, compress, cache, session and db; HTTP/2, Range and cross-process-scaling sections for native, static and ws; cookie + encapsulation sections for core; RS/ES/JWKS/API-key/OAuth sections for auth.
+
+---
 
 ## 6.3.3
 
