@@ -33,18 +33,18 @@
     "format:check": "prettier --check \"packages/**/*.{ts,json,md}\" \"docs/**/*.md\""
   },
   "devDependencies": {
-    "@changesets/cli": "^2.6.0",
-    "@hapi/hapi": "^21.4.9",
+    "@changesets/cli": "^2.31.1",
+    "@hapi/hapi": "^21.4.10",
     "@types/node": "^20.19.43",
-    "@typescript-eslint/eslint-plugin": "^8.61.0",
-    "@typescript-eslint/parser": "^8.61.0",
-    "@vitest/coverage-v8": "^4.1.9",
+    "@typescript-eslint/eslint-plugin": "^8.65.0",
+    "@typescript-eslint/parser": "^8.65.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "autocannon": "^8.0.0",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^10.1.8",
-    "fast-check": "^4.8.0",
+    "fast-check": "^4.9.0",
     "fastify-plugin": "^5.1.0",
-    "prettier": "^3.8.4",
+    "prettier": "^3.9.6",
     "tsup": "^8.5.1",
     "typescript": "^6.0.2",
     "vitest": "^4.1.8",
@@ -74,9 +74,9 @@
     "rest-api"
   ],
   "dependencies": {
-    "@opentelemetry/auto-instrumentations-node": "0.77.0",
-    "@opentelemetry/exporter-trace-otlp-grpc": "0.219.0",
-    "@opentelemetry/sdk-node": "0.219.0",
+    "@opentelemetry/auto-instrumentations-node": "0.79.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "0.221.0",
+    "@opentelemetry/sdk-node": "0.221.0",
     "ajv": "^8.20.0",
     "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#624987739d4da0acb628aaf2a10fc43e7ce27c5c"
   },
