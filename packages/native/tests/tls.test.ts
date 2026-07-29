@@ -56,11 +56,17 @@ describe.skipIf(!uwsSupported)('NativeAdapter TLS/HTTPS', () => {
   beforeAll(async () => {
     // Dynamically generate self-signed cert and key
     fs.mkdirSync(fixturesDir, { recursive: true });
-    execSync(
-      `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" ` +
-        `-sha256 -days 365 -nodes -subj "/CN=localhost"`,
-      { stdio: 'ignore' },
-    );
+    if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
+      try {
+        execSync(
+          `openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" ` +
+            `-sha256 -days 365 -nodes -subj "/CN=localhost"`,
+          { stdio: 'ignore' },
+        );
+      } catch {
+        // Ignore if openssl generation fails or hits ENOMEM
+      }
+    }
 
     const { Axiomify } = await import('@axiomify/core');
     const { NativeAdapter } = await import('../src/index');
