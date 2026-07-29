@@ -991,7 +991,7 @@ describe('createCacheModule', () => {
     };
 
     const app = new Axiomify();
-    app.use(createCacheModule({ store: customStore }));
+    app.use(createCacheModule({ store: customStore, routes: ['/custom'] }));
     app.route({
       method: 'GET',
       path: '/custom',

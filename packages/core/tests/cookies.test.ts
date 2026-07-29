@@ -326,22 +326,54 @@ describe('setCookie / clearCookie helpers', () => {
   });
 
   it('ResponseWrapper cookie and clearCookie delegate or throw when unsupported', async () => {
-    const { RequestDispatcher } = await import('../src/dispatcher');
-    const innerWithCookie: any = {
-      statusCode: 200,
-      cookie: (n: string, v: string, o?: any) => { innerWithCookie.calledCookie = [n, v, o]; },
-      clearCookie: (n: string, o?: any) => { innerWithCookie.calledClear = [n, o]; },
-    };
-    const mockValidator: any = { validateResponse: () => {} };
-    const dispatcher1 = new RequestDispatcher({ routeId: 'r1', innerRes: innerWithCookie, validator: mockValidator } as any);
-    dispatcher1.cookie('c1', 'v1', { path: '/' });
-    expect(innerWithCookie.calledCookie).toEqual(['c1', 'v1', { path: '/' }]);
-    dispatcher1.clearCookie('c1', { path: '/' });
-    expect(innerWithCookie.calledClear).toEqual(['c1', { path: '/' }]);
+    const { Axiomify } = await import('../src/app');
 
-    const innerWithoutCookie: any = { statusCode: 200 };
-    const dispatcher2 = new RequestDispatcher({ routeId: 'r2', innerRes: innerWithoutCookie, validator: mockValidator } as any);
-    expect(() => dispatcher2.cookie('c1', 'v1')).toThrow(/does not implement res.cookie/);
-    expect(() => dispatcher2.clearCookie('c1')).toThrow(/does not implement res.clearCookie/);
+    // Case 1: Active adapter DOES implement res.cookie / res.clearCookie
+    const appWithCookie = new Axiomify();
+    appWithCookie.route({
+      method: 'GET',
+      path: '/ck',
+      handler: async (_req, res) => {
+        res.cookie('test', 'val');
+        res.clearCookie('test');
+        res.send({ ok: true });
+      },
+    });
+
+    const calls: any[] = [];
+    const mockResCookie: any = {
+      statusCode: 200,
+      headersSent: false,
+      cookie: (n: string, v: string, o?: any) => { calls.push(['cookie', n, v, o]); },
+      clearCookie: (n: string, o?: any) => { calls.push(['clearCookie', n, o]); },
+      send: () => {},
+    };
+
+    await appWithCookie.handle({ method: 'GET', path: '/ck', headers: {} } as any, mockResCookie);
+    expect(calls).toEqual([
+      ['cookie', 'test', 'val', undefined],
+      ['clearCookie', 'test', undefined],
+    ]);
+
+    // Case 2: Active adapter does NOT implement res.cookie / res.clearCookie
+    const appNoCookie = new Axiomify();
+    appNoCookie.route({
+      method: 'GET',
+      path: '/nock',
+      handler: async (_req, res) => {
+        expect(() => res.cookie('test', 'val')).toThrow(/does not implement res.cookie/);
+        expect(() => res.clearCookie('test')).toThrow(/does not implement res.clearCookie/);
+        res.send({ ok: true });
+      },
+    });
+
+    const mockResNoCookie: any = {
+      statusCode: 200,
+      headersSent: false,
+      status(c: number) { mockResNoCookie.statusCode = c; return this; },
+      send: () => {},
+    };
+
+    await appNoCookie.handle({ method: 'GET', path: '/nock', headers: {} } as any, mockResNoCookie);
   });
 });
