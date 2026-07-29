@@ -144,7 +144,6 @@ export function parseApiKey(
 
 // Dummy digest compared against when the key id is unknown, so unknown ids
 // cost the same as wrong secrets (no key-enumeration timing oracle).
-const DUMMY_DIGEST = createHash('sha256').update('axiomify-dummy').digest();
 const DUMMY_PBKDF2_SALT = Buffer.alloc(PBKDF2_SALT_BYTES, 0);
 
 function secretMatches(secret: string, hashedKey: string): boolean {
@@ -169,16 +168,17 @@ function secretMatches(secret: string, hashedKey: string): boolean {
   }
 
   // Legacy SHA-256 digest comparison for backward compatibility
-  const provided = createHash('sha256').update(secret, 'utf8').digest();
-  let stored: Buffer;
   if (HASH_HEX.test(hashedKey)) {
-    stored = Buffer.from(hashedKey, 'hex');
-  } else {
-    // Also run dummy PBKDF2 so non-existent IDs with PBKDF2 or legacy format have balanced cost
-    pbkdf2Sync('axiomify-dummy', DUMMY_PBKDF2_SALT, 1, PBKDF2_KEYLEN, PBKDF2_DIGEST);
-    stored = DUMMY_DIGEST; // misconfigured record can never match
+    const provided = createHash('sha256').update(secret, 'utf8').digest();
+    const stored = Buffer.from(hashedKey, 'hex');
+    return (
+      provided.length === stored.length && timingSafeEqual(provided, stored)
+    );
   }
-  return timingSafeEqual(provided, stored) && stored !== DUMMY_DIGEST;
+
+  // Dummy PBKDF2 pass for unknown key IDs so non-existent key lookups take constant time
+  pbkdf2Sync('axiomify-dummy', DUMMY_PBKDF2_SALT, 1, PBKDF2_KEYLEN, PBKDF2_DIGEST);
+  return false;
 }
 
 function normalizeStaticKeys(
