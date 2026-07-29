@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/graphql",
-  "version": "7.0.0",
+  "version": "7.0.1",
   "description": "GraphQL plugin for Axiomify — schema-first, zero-boilerplate GraphQL endpoint with built-in GraphiQL playground.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

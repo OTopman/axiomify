@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/testing",
-  "version": "7.0.0",
+  "version": "7.0.1",
   "description": "Inject-style testing utilities for Axiomify — no sockets, no ports: build requests, capture responses, assert against route Zod schemas.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

@@ -1,5 +1,12 @@
 # @axiomify/graphql
 
+## 7.0.1
+
+### Patch Changes
+
+- Updated dependencies [af39365]
+  - @axiomify/core@7.0.1
+
 ## 7.0.0
 
 ### Major Changes
