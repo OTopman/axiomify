@@ -121,4 +121,49 @@ describe('Studio traffic interceptor', () => {
       },
     });
   });
+
+  it('captures unsupported and failed streamed responses', async () => {
+    const { hooks } = createHarness();
+    const unsupportedReq: any = {
+      id: 'traffic-unsupported-stream',
+      method: 'GET',
+      path: '/unsupported',
+      headers: {},
+      query: {},
+    };
+    const unsupportedRes: any = createResponse();
+    unsupportedRes.stream = vi.fn();
+    hooks.onRequest(unsupportedReq, unsupportedRes);
+    unsupportedRes.stream({ value: true }, 'application/octet-stream');
+    hooks.onPostHandler(unsupportedReq, unsupportedRes);
+    expect(
+      getSessionData().entries.find(
+        (item) => item.requestId === 'traffic-unsupported-stream',
+      )?.response?.body,
+    ).toBe('[Unsupported streamed response]');
+
+    const failedReq: any = {
+      id: 'traffic-failed-stream',
+      method: 'GET',
+      path: '/failed',
+      headers: {},
+      query: {},
+    };
+    const failedRes: any = createResponse();
+    hooks.onRequest(failedReq, failedRes);
+    const broken = new Readable({
+      read() {
+        this.destroy(new Error('stream failed'));
+      },
+    });
+    failedRes.stream(broken);
+    hooks.onPostHandler(failedReq, failedRes);
+    await failedReq._capturedResponse.getStreamCompletion();
+
+    expect(
+      getSessionData().entries.find(
+        (item) => item.requestId === 'traffic-failed-stream',
+      )?.response?.headers['x-studio-stream-error'],
+    ).toBe('stream failed');
+  });
 });

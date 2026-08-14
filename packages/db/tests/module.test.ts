@@ -247,6 +247,21 @@ describe('createDatabaseModule', () => {
     await expect(db.disconnect()).resolves.toBeUndefined();
   });
 
+  it('disconnect during a failing boot resolves without disconnecting', async () => {
+    let rejectFactory!: (error: Error) => void;
+    const db = createDatabaseModule({
+      client: () =>
+        new Promise((_, reject) => {
+          rejectFactory = reject;
+        }),
+    });
+    db.module.register(new Axiomify(), stubContext());
+    const closing = db.disconnect();
+    rejectFactory(new Error('boot failed'));
+    await expect(closing).resolves.toBeUndefined();
+    await expect(db.ready).rejects.toThrow('boot failed');
+  });
+
   it('disconnect before registration marks the handle disconnected', async () => {
     const factory = vi.fn(() => fakePrisma());
     const db = createDatabaseModule({ client: factory });

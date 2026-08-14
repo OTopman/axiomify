@@ -350,4 +350,13 @@ describe('group-scoped hooks (encapsulation)', () => {
     await app.handle(makeReq({ path: '/x' }), makeRes());
     expect(scoped).toHaveBeenCalledTimes(1);
   });
+
+  it('requires a callback for nested route groups', () => {
+    const app = new Axiomify();
+    app.group('/api', (group) => {
+      expect(() => (group as any).group('/v1')).toThrow(
+        'A route group callback is required.',
+      );
+    });
+  });
 });

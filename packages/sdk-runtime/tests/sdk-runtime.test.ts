@@ -947,6 +947,30 @@ describe('@axiomify/sdk-runtime tests', () => {
 
   // 12. client.ts Tests (BaseClient)
   describe('BaseClient', () => {
+    it('builds stable cache keys from sorted query parameters and headers', () => {
+      const client = new BaseClient({ baseUrl: 'https://api.test' });
+      const key = (client as any).createCacheKey(
+        {
+          path: '/items',
+          method: 'GET',
+          query: { zebra: 1, alpha: 2 },
+        },
+        new Headers({ 'x-zebra': '1', 'x-alpha': '2' }),
+      );
+      expect(JSON.parse(key)).toEqual([
+        'GET',
+        '/items',
+        [
+          ['alpha', 2],
+          ['zebra', 1],
+        ],
+        [
+          ['x-alpha', '2'],
+          ['x-zebra', '1'],
+        ],
+      ]);
+    });
+
     it('should perform basic request fetching and cache GETs', async () => {
       const headers = new Headers();
       headers.set('content-type', 'application/json');

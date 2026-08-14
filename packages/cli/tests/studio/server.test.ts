@@ -207,6 +207,42 @@ describe('Studio Server & Router', () => {
 
       expect(res.status).toBe(200);
       expect(body.health).toEqual(mockHealth);
+
+      const privacy = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/privacy`,
+      );
+      expect(privacy.status).toBe(200);
+
+      const updatePrivacy = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/privacy`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        },
+      );
+      expect(updatePrivacy.status).toBe(200);
+
+      const events = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/events`,
+      );
+      expect(events.status).toBe(200);
+
+      const metrics = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/otlp/metrics`,
+      );
+      expect(metrics.status).toBe(200);
+
+      const deleteMetrics = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/otlp/metrics`,
+        { method: 'DELETE' },
+      );
+      expect(deleteMetrics.status).toBe(200);
+
+      const playground = await fetch(
+        `http://127.0.0.1:${port}/__studio/api/playground/sdk?target=typescript`,
+      );
+      expect(playground.status).toBe(500);
     } finally {
       server.close();
     }
@@ -466,6 +502,7 @@ describe('Studio Server & Router', () => {
       const encoded = await request({
         bodyMode: 'urlencoded',
         body: { page: '2', filter: 'new' },
+        headers: { 'Content-Type': 'application/json' },
       });
       expect(encoded.body.data).toEqual({
         body: { page: '2', filter: 'new' },
@@ -481,6 +518,12 @@ describe('Studio Server & Router', () => {
         /^multipart\/form-data; boundary=/,
       );
       expect(formData.body.data.body).toBeUndefined();
+
+      const emptyJson = await request({ bodyMode: 'json' });
+      expect(emptyJson).toMatchObject({ status: 200 });
+
+      const plainText = await request({ body: 'untyped text' });
+      expect(plainText).toMatchObject({ status: 200 });
     } finally {
       server.close();
     }
@@ -516,8 +559,30 @@ describe('Studio Server & Router', () => {
       method: 'GET',
       path: '/events',
       handler: async (_req, res) => {
+        res.sseInit();
+        res.sseInit();
         res.sseSend({ ready: true }, 'status');
         res.sseSend('line one\nline two');
+      },
+    });
+    app.route({
+      method: 'GET',
+      path: '/stream-after-send',
+      handler: async (_req, res) => {
+        res.sendRaw('already sent');
+        res.stream(Readable.from(['ignored']));
+      },
+    });
+    app.route({
+      method: 'GET',
+      path: '/stream-error',
+      handler: async (_req, res) => {
+        const broken = new Readable({
+          read() {
+            this.destroy(new Error('stream failed'));
+          },
+        });
+        res.stream(broken);
       },
     });
     app.route({
@@ -578,6 +643,20 @@ describe('Studio Server & Router', () => {
           'transfer-encoding': 'chunked',
         },
       });
+
+      const alreadySent = await request({
+        method: 'GET',
+        path: '/stream-after-send',
+      });
+      expect(alreadySent.body).toBe('already sent');
+
+      const streamError = await request({
+        method: 'GET',
+        path: '/stream-error',
+      });
+      expect(streamError.headers['x-studio-stream-error']).toBe(
+        'stream failed',
+      );
 
       const events = await request({ method: 'GET', path: '/events' });
       expect(events.body).toBe(

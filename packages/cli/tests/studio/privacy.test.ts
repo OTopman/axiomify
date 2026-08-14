@@ -11,6 +11,7 @@ import {
   setStudioPrivacyOptions,
 } from '../../src/studio/api/privacy';
 import { sanitizeReplayItem } from '../../src/studio/api/replay';
+import { sanitizePayload } from '../../src/studio/api/errors';
 import {
   getSessionData,
   recordEvent,
@@ -51,11 +52,16 @@ describe('Studio recorder privacy', () => {
       sanitizeRecordedHeaders({
         Authorization: 'Bearer private',
         accept: 'application/json',
+        vary: ['accept', 'origin'],
       }),
     ).toEqual({
       Authorization: '••••••••',
       accept: 'application/json',
+      vary: 'accept, origin',
     });
+    expect(
+      sanitizePayload({ nested: { password: 'secret', safe: true } }),
+    ).toEqual({ nested: { password: '••••••••', safe: true } });
   });
 
   it('supports disabling body capture and project-specific redaction keys', () => {

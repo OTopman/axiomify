@@ -662,6 +662,43 @@ describe('OpenApiGenerator — `meta:` field removed in 6.0', () => {
 });
 
 describe('OpenApiGenerator — additional coverage', () => {
+  it('falls back to an empty schema when Zod input export fails', () => {
+    const schema = {
+      toJSONSchema(options?: Record<string, unknown>) {
+        if (options?.io === 'input') throw new Error('input export failed');
+        return { type: 'object' };
+      },
+    };
+    const app = {
+      registeredRoutes: [
+        {
+          method: 'POST',
+          path: '/broken-schema',
+          schema: { body: schema },
+          handler: () => {},
+        },
+      ],
+    } as unknown as Axiomify;
+    const spec = new OpenApiGenerator(app, {
+      info: { title: 'T', version: '1' },
+    }).generate() as any;
+    expect(
+      spec.paths['/broken-schema'].post.requestBody.content['application/json']
+        .schema,
+    ).toEqual({});
+  });
+
+  it('deduplicates identical generation warnings', () => {
+    const generator = new OpenApiGenerator(
+      { registeredRoutes: [] } as unknown as Axiomify,
+      { info: { title: 'T', version: '1' } },
+    );
+    const warn = (generator as any).warn.bind(generator);
+    warn('orphaned-security-scheme', 'missing', '/security/0');
+    warn('orphaned-security-scheme', 'missing', '/security/0');
+    expect(generator.getWarnings()).toHaveLength(1);
+  });
+
   it('synthesises operationId with "All" when path contains wildcard segment *', () => {
     const { Axiomify } = require('@axiomify/core');
     const app = new Axiomify();

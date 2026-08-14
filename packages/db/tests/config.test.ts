@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -157,6 +157,18 @@ describe('loadDbConfig', () => {
     await expect(loadDbConfig(badCommand)).rejects.toThrow(
       /command "migrate" must be a string, got type "number"/,
     );
+  });
+
+  it('rejects function commands from JSON manifests', async () => {
+    const dir = await tempProject({ 'axiomify.db.json': '{"version":1}' });
+    const parse = vi.spyOn(JSON, 'parse').mockReturnValueOnce({
+      version: 1,
+      commands: { seed: () => undefined },
+    });
+    await expect(loadDbConfig(dir)).rejects.toThrow(
+      /function, which JSON cannot express/,
+    );
+    parse.mockRestore();
   });
 
   it('errors when the .mjs module fails to import', async () => {

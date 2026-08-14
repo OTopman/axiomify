@@ -29,6 +29,17 @@ function mockRequest(bodyObj: any): IncomingMessage {
   return req;
 }
 
+function mockRawRequest(body: string): IncomingMessage {
+  const req = {
+    on: vi.fn((event, cb) => {
+      if (event === 'data' && body) cb(Buffer.from(body));
+      if (event === 'end') cb();
+      return req;
+    }),
+  } as any;
+  return req;
+}
+
 // Helper to mock response
 function mockResponse(): {
   res: ServerResponse;
@@ -282,6 +293,45 @@ describe('Studio OTLP HTTP/JSON API Receivers', () => {
       { name: 'queue.latency', type: 'exponentialHistogram', value: 12 },
       { name: 'rpc.duration.summary', type: 'summary', value: 40 },
     ]);
+  });
+
+  it('handles empty, malformed, unsupported, and oversized metric payloads', async () => {
+    const empty = mockResponse();
+    await handlePostOtlpMetrics(mockRawRequest(''), empty.res);
+    expect(empty.getBody()).toEqual({ success: true, accepted: 0 });
+
+    const malformed = mockResponse();
+    await handlePostOtlpMetrics(mockRawRequest('{'), malformed.res);
+    expect(malformed.getStatus()).toBe(500);
+    expect(malformed.getBody().error).toBe('Failed to process metrics');
+
+    const points = Array.from({ length: 2_001 }, (_, index) => ({
+      asInt: index,
+    }));
+    const mixed = mockResponse();
+    await handlePostOtlpMetrics(
+      mockRequest({
+        resourceMetrics: [
+          {
+            scopeMetrics: [
+              {
+                metrics: [
+                  { name: 'unsupported' },
+                  {
+                    name: 'invalid',
+                    sum: { dataPoints: [{ asDouble: 'not-a-number' }] },
+                  },
+                  { name: 'counter', sum: { dataPoints: points } },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+      mixed.res,
+    );
+    expect(mixed.getBody()).toEqual({ success: true, accepted: 2_001 });
+    expect(recordedMetrics).toHaveLength(2_000);
   });
 
   it('should clear recorded spans on delete', () => {
