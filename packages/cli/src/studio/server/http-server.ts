@@ -16,7 +16,7 @@ import {
   type ServerResponse,
 } from 'node:http';
 import { URL } from 'node:url';
-import { existsSync, promises as fsPromises } from 'node:fs';
+import { existsSync, promises as fsPromises, readFileSync } from 'node:fs';
 import { join, extname, sep, resolve, normalize } from 'node:path';
 import { StudioRouter, type StudioRouteHandler } from './router';
 
@@ -60,6 +60,30 @@ const FALLBACK_HTML = `<!DOCTYPE html>
   </div>
 </body>
 </html>`;
+
+/**
+ * A tracked or cached index.html can outlive Vite's content-hashed assets.
+ * Only serve a production bundle when every local asset referenced by the
+ * entry document exists; otherwise Studio shows the actionable fallback page.
+ */
+export function validateStudioBundle(directory: string): boolean {
+  const indexPath = join(directory, 'index.html');
+  if (!existsSync(indexPath)) return false;
+  try {
+    const html = readFileSync(indexPath, 'utf8');
+    const assetReferences = [
+      ...html.matchAll(/(?:src|href)=["'](\/assets\/[^"']+)["']/g),
+    ].map((match) => match[1]);
+    return (
+      assetReferences.length > 0 &&
+      assetReferences.every((reference) =>
+        existsSync(join(directory, reference.slice(1))),
+      )
+    );
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Anti-DNS-rebinding guard. Studio binds to loopback only, so a legitimate
@@ -146,7 +170,7 @@ export function createStudioServer(options: StudioServerOptions): Server {
   ];
   let uiDistPath = '';
   for (const p of pathsToTry) {
-    if (existsSync(join(p, 'index.html'))) {
+    if (validateStudioBundle(p)) {
       uiDistPath = p;
       break;
     }
@@ -284,6 +308,19 @@ export function createStudioServer(options: StudioServerOptions): Server {
             }
           }
         }
+      }
+
+      // Never return SPA HTML for a missing module, stylesheet, image, or
+      // other asset. Browsers reject that response as a strict MIME mismatch.
+      if (pathname.startsWith('/assets/')) {
+        res.writeHead(404, {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+        res.end(
+          'Studio asset not found. Rebuild with npm run build:studio-ui.',
+        );
+        return;
       }
 
       // ── SPA fallback — serve index.html for all non-API paths ───────────

@@ -1,5 +1,53 @@
 # Changelog
 
+## 7.1.0
+
+### Compatibility and migration notes
+
+- **Node.js:** Node 20 is no longer supported. Use an active Node 22 or Node 24
+  release; native prebuilt verification and CI now target those release lines.
+- **Uploads:** repeated files submitted under one field now produce an array
+  instead of replacing the previous file. Code that reads `req.files[field]`
+  must handle `UploadedFile | UploadedFile[]`.
+
+### Features
+
+- Add `@axiomify/observability` plus cache, compression, database, session, and
+  testing packages with Redis integrations, request injection, transactions,
+  signed sessions, and HTTP cache controls.
+- Expand authentication with PBKDF2 API keys, asymmetric JWT algorithms,
+  remote JWKS verification, OAuth 2.0/OIDC discovery, and PKCE.
+- Add cookies, group-scoped hooks, deprecation helpers, safer dispatch, and
+  corrected defaulted optional-field validation to core.
+- Add native HTTP/2 with ALPN fallback, request timeouts, response hardening,
+  RFC 9110 range responses, and Redis-backed cross-process WebSocket rooms.
+- Add database manifest commands, OpenAPI 3.1 validation, route snapshots and
+  diffs, improved SDK generation, diagnostics, and smaller CLI artifacts.
+- Expand Studio with request collections, multipart testing, traffic replay,
+  profiling, tracing, logs, metrics, jobs, WebSocket tooling, privacy controls,
+  OTLP retention, and current release versioning.
+
+### Correctness and security
+
+- Isolate SDK caches and in-flight GET deduplication by effective request
+  headers so authorization and tenant contexts cannot share responses.
+- Add serverless cookie and SSE parity, streaming cleanup, and correct HEAD and
+  null-body response handling.
+- Report unrepresentable Zod schemas and invalid OpenAPI security references.
+- Reserve pending job acquisitions to prevent workers exceeding configured
+  concurrency.
+- Preserve repeated uploads and clean partial files when requests abort.
+- Reject stale Studio bundles and return a real 404 for missing assets instead
+  of serving HTML with a JavaScript MIME mismatch.
+
+### Tooling and documentation
+
+- Add starters, recipes, API-versioning and contract-testing guides, package
+  documentation, community templates, portable repository checks, CodeQL and
+  release hardening, provenance, dependency policy, and strict coverage gates.
+- Remove tracked Playground scratch output and generated example SDK artifacts;
+  these outputs are regenerated when needed.
+
 ## 7.0.1
 
 ### 🩹 Maintenance & Bug Fixes

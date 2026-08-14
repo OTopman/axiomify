@@ -41,5 +41,9 @@ the `axiomify studio` command:
 npm run build
 ```
 
+The CLI validates that every content-hashed JavaScript and CSS asset referenced
+by `ui-dist/index.html` exists. A stale or incomplete bundle displays a rebuild
+message instead of serving HTML for a missing module request.
+
 The `build` script runs `tsc -b` before `vite build`. Additional scripts:
 `npm run lint` (ESLint) and `npm run preview` (preview the built bundle).

@@ -2,7 +2,10 @@ import { describe, it, expect, vi } from 'vitest';
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
 import { StudioRouter } from '../../src/studio/server/router';
-import { createStudioServer } from '../../src/studio/server/http-server';
+import {
+  createStudioServer,
+  validateStudioBundle,
+} from '../../src/studio/server/http-server';
 import { registerStudioApi } from '../../src/studio/api';
 import { StudioWsServer } from '../../src/studio/server/ws-server';
 import { Axiomify } from '@axiomify/core';
@@ -44,8 +47,35 @@ describe('Studio Server & Router', () => {
       expect(res.status).toBe(200);
       expect(res.headers.get('content-type')).toContain('text/html');
       expect(body).toBe(indexHtml);
+
+      const missingAsset = await fetch(
+        `http://127.0.0.1:${port}/assets/missing.js`,
+      );
+      expect(missingAsset.status).toBe(404);
+      expect(missingAsset.headers.get('content-type')).toContain('text/plain');
     } finally {
       server.close();
+    }
+  });
+
+  it('rejects stale Studio bundles whose hashed assets are missing', async () => {
+    const fs = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-bundle-'));
+    try {
+      fs.writeFileSync(
+        path.join(directory, 'index.html'),
+        '<script type="module" src="/assets/app.js"></script><link rel="stylesheet" href="/assets/app.css">',
+      );
+      expect(validateStudioBundle(directory)).toBe(false);
+
+      fs.mkdirSync(path.join(directory, 'assets'));
+      fs.writeFileSync(path.join(directory, 'assets/app.js'), 'export {};');
+      fs.writeFileSync(path.join(directory, 'assets/app.css'), 'body {}');
+      expect(validateStudioBundle(directory)).toBe(true);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
     }
   });
 
