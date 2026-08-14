@@ -10,7 +10,7 @@ import {
   type SerializerInput,
 } from '@axiomify/core';
 import { randomUUID } from 'node:crypto';
-import { Readable, Transform } from 'node:stream';
+import { PassThrough, Readable, Transform } from 'node:stream';
 
 // Statuses that must not carry a response body per the Fetch spec — the
 // Response constructor throws if a non-null body is supplied for these.
@@ -74,13 +74,18 @@ export class ServerlessAdapter {
             await reader.cancel().catch(() => {});
             return { overLimit: true, buffer: null };
           }
-          chunks.push(Buffer.from(value.buffer, value.byteOffset, value.byteLength));
+          chunks.push(
+            Buffer.from(value.buffer, value.byteOffset, value.byteLength),
+          );
         }
       } catch {
         // Reading failed — treat as an empty body.
         return { overLimit: false, buffer: null };
       }
-      return { overLimit: false, buffer: chunks.length ? Buffer.concat(chunks, total) : null };
+      return {
+        overLimit: false,
+        buffer: chunks.length ? Buffer.concat(chunks, total) : null,
+      };
     }
 
     // Fallback: no streamable body — buffer, then check.
@@ -143,7 +148,9 @@ export class ServerlessAdapter {
     }
 
     if (rawBody && rawBody.length > 0) {
-      const contentType = (headers['content-type'] as string || '').toLowerCase();
+      const contentType = (
+        (headers['content-type'] as string) || ''
+      ).toLowerCase();
       if (contentType.includes('application/json')) {
         try {
           body = JSON.parse(rawBody.toString('utf8'));
@@ -212,6 +219,19 @@ export class ServerlessAdapter {
       let responseBody: BodyInit | null = null;
       let headersSent = false;
       let isStreaming = false;
+      let sseStream: PassThrough | null = null;
+      let sseHeartbeat: NodeJS.Timeout | null = null;
+      let sseAbortListener: (() => void) | null = null;
+      let sseClosed = false;
+
+      const closeSse = () => {
+        if (sseClosed) return;
+        sseClosed = true;
+        if (sseHeartbeat) clearInterval(sseHeartbeat);
+        if (sseAbortListener)
+          request.signal.removeEventListener('abort', sseAbortListener);
+        res.onStreamClose?.();
+      };
 
       const res: AxiomifyResponse = {
         status(code) {
@@ -288,7 +308,7 @@ export class ServerlessAdapter {
             new Response(finalBody, {
               status: responseStatusCode,
               headers: responseHeaders,
-            })
+            }),
           );
         },
         sendRaw(payload, contentType) {
@@ -300,21 +320,37 @@ export class ServerlessAdapter {
             responseHeaders.set('content-type', contentType);
           }
 
+          const finalBody =
+            method === 'HEAD' || NULL_BODY_STATUSES.has(responseStatusCode)
+              ? null
+              : responseBody;
           resolve(
-            new Response(responseBody, {
+            new Response(finalBody, {
               status: responseStatusCode,
               headers: responseHeaders,
-            })
+            }),
           );
         },
         stream(readable, contentType) {
           if (headersSent) return;
           headersSent = true;
-          isStreaming = true;
 
           if (contentType) {
             responseHeaders.set('content-type', contentType);
           }
+
+          if (method === 'HEAD' || NULL_BODY_STATUSES.has(responseStatusCode)) {
+            readable.destroy();
+            resolve(
+              new Response(null, {
+                status: responseStatusCode,
+                headers: responseHeaders,
+              }),
+            );
+            return;
+          }
+
+          isStreaming = true;
 
           let streamClosed = false;
           const triggerClose = () => {
@@ -348,10 +384,69 @@ export class ServerlessAdapter {
             new Response(webStream as any, {
               status: responseStatusCode,
               headers: responseHeaders,
-            })
+            }),
           );
         },
-        capabilities: { sse: false, streaming: true },
+        sseInit(sseHeartbeatMs) {
+          if (headersSent) return;
+          headersSent = true;
+
+          if (method === 'HEAD' || NULL_BODY_STATUSES.has(responseStatusCode)) {
+            resolve(
+              new Response(null, {
+                status: responseStatusCode,
+                headers: responseHeaders,
+              }),
+            );
+            return;
+          }
+
+          isStreaming = true;
+          responseHeaders.set('content-type', 'text/event-stream');
+          if (!responseHeaders.has('cache-control'))
+            responseHeaders.set('cache-control', 'no-cache');
+          if (!responseHeaders.has('connection'))
+            responseHeaders.set('connection', 'keep-alive');
+
+          sseStream = new PassThrough();
+          sseStream.once('close', closeSse);
+          sseStream.once('end', closeSse);
+          sseStream.once('error', closeSse);
+          sseAbortListener = () => sseStream?.end();
+          request.signal.addEventListener('abort', sseAbortListener, {
+            once: true,
+          });
+
+          resolve(
+            new Response(Readable.toWeb(sseStream) as any, {
+              status: responseStatusCode,
+              headers: responseHeaders,
+            }),
+          );
+
+          if (sseHeartbeatMs && sseHeartbeatMs > 0) {
+            sseHeartbeat = setInterval(
+              () => res.sseSend?.(null, 'ping'),
+              sseHeartbeatMs,
+            );
+            sseHeartbeat.unref?.();
+          }
+        },
+        sseSend(data, event) {
+          if (!headersSent) res.sseInit?.();
+          if (!sseStream || sseClosed) return;
+          const parts: string[] = [];
+          if (event) parts.push('event: ', event, '\n');
+          if (data !== undefined && data !== null) {
+            const serialized =
+              typeof data === 'string' ? data : JSON.stringify(data);
+            for (const line of serialized.split('\n'))
+              parts.push('data: ', line, '\n');
+          }
+          parts.push('\n');
+          sseStream.write(parts.join(''));
+        },
+        capabilities: { sse: true, streaming: true },
         get statusCode() {
           return responseStatusCode;
         },

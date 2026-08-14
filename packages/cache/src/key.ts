@@ -19,7 +19,8 @@ export const KEY_SEPARATOR = '\u0000';
  *     forge a different logical query.
  */
 export function normalizeQuery(query: unknown): string {
-  if (query === null || query === undefined || typeof query !== 'object') return '';
+  if (query === null || query === undefined || typeof query !== 'object')
+    return '';
   const source = query as Record<string, unknown>;
   const keys = Object.keys(source).sort();
   if (keys.length === 0) return '';
@@ -34,7 +35,9 @@ export function normalizeQuery(query: unknown): string {
     } else if (value === undefined) {
       parts.push(encodeURIComponent(key));
     } else {
-      parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
+      parts.push(
+        `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`,
+      );
     }
   }
   return parts.join('&');

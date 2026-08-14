@@ -518,7 +518,10 @@ export class RedisJobStorage implements JobStorage {
         const oldJob = JSON.parse(rawOld) as Job;
         if (oldJob.queue !== job.queue) {
           await this.srem(`axiomify:queue:${oldJob.queue}:jobs`, job.id);
-          await this.zrem(`axiomify:queue:${oldJob.queue}:pending_zset`, job.id);
+          await this.zrem(
+            `axiomify:queue:${oldJob.queue}:pending_zset`,
+            job.id,
+          );
         }
       } catch {
         // Ignore JSON parse errors

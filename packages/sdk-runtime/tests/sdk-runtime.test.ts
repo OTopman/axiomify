@@ -947,6 +947,30 @@ describe('@axiomify/sdk-runtime tests', () => {
 
   // 12. client.ts Tests (BaseClient)
   describe('BaseClient', () => {
+    it('builds stable cache keys from sorted query parameters and headers', () => {
+      const client = new BaseClient({ baseUrl: 'https://api.test' });
+      const key = (client as any).createCacheKey(
+        {
+          path: '/items',
+          method: 'GET',
+          query: { zebra: 1, alpha: 2 },
+        },
+        new Headers({ 'x-zebra': '1', 'x-alpha': '2' }),
+      );
+      expect(JSON.parse(key)).toEqual([
+        'GET',
+        '/items',
+        [
+          ['alpha', 2],
+          ['zebra', 1],
+        ],
+        [
+          ['x-alpha', '2'],
+          ['x-zebra', '1'],
+        ],
+      ]);
+    });
+
     it('should perform basic request fetching and cache GETs', async () => {
       const headers = new Headers();
       headers.set('content-type', 'application/json');
@@ -1096,6 +1120,50 @@ describe('@axiomify/sdk-runtime tests', () => {
       expect(r1).toEqual({ data: 'dedup' });
       expect(r2).toEqual({ data: 'dedup' });
       expect(mockFetch).toHaveBeenCalledTimes(1); // Called only once!
+    });
+
+    it('keeps cached and in-flight GETs isolated by effective request headers', async () => {
+      const headers = new Headers({ 'content-type': 'application/json' });
+      const mockFetch = vi
+        .fn()
+        .mockImplementation(async (_url: string, options: RequestInit) => ({
+          ok: true,
+          status: 200,
+          headers,
+          json: async () => ({
+            tenant: new Headers(options.headers).get('x-tenant'),
+          }),
+          text: async () => '',
+        }));
+      const client = new BaseClient({
+        baseUrl: 'https://api.test',
+        enableCache: true,
+        fetch: mockFetch,
+      });
+
+      const [tenantA, tenantB] = await Promise.all([
+        client['request']({
+          path: '/items',
+          method: 'GET',
+          headers: { 'x-tenant': 'a' },
+        }),
+        client['request']({
+          path: '/items',
+          method: 'GET',
+          headers: { 'x-tenant': 'b' },
+        }),
+      ]);
+
+      expect(tenantA).toEqual({ tenant: 'a' });
+      expect(tenantB).toEqual({ tenant: 'b' });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      await client['request']({
+        path: '/items',
+        method: 'GET',
+        headers: { 'x-tenant': 'a' },
+      });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
     });
 
     it('should throw timeout error if timeoutMs is exceeded', async () => {

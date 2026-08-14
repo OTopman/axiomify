@@ -1,4 +1,5 @@
 import type { ServerResponse } from 'node:http';
+import { RequestStateImpl } from '@axiomify/core';
 import { sendJson } from '../server/http-server';
 import { logCorrelationStorage } from './logs';
 
@@ -408,7 +409,7 @@ async function fetchPrometheusText(app?: any): Promise<string | null> {
         body: {},
         query: {},
         params: {},
-        state: {},
+        state: new RequestStateImpl(),
         raw: {},
       };
 

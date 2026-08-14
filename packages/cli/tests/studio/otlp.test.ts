@@ -5,7 +5,11 @@ import {
   handlePostOtlpLogs,
   handleGetOtlpTraces,
   handleDeleteOtlpTraces,
+  handlePostOtlpMetrics,
+  handleGetOtlpMetrics,
+  handleDeleteOtlpMetrics,
   recordedSpans,
+  recordedMetrics,
 } from '../../src/studio/api/otlp';
 import { recordedLogs } from '../../src/studio/api/logs';
 
@@ -19,6 +23,17 @@ function mockRequest(bodyObj: any): IncomingMessage {
       if (event === 'end') {
         cb();
       }
+      return req;
+    }),
+  } as any;
+  return req;
+}
+
+function mockRawRequest(body: string): IncomingMessage {
+  const req = {
+    on: vi.fn((event, cb) => {
+      if (event === 'data' && body) cb(Buffer.from(body));
+      if (event === 'end') cb();
       return req;
     }),
   } as any;
@@ -56,6 +71,7 @@ function mockResponse(): {
 describe('Studio OTLP HTTP/JSON API Receivers', () => {
   beforeEach(() => {
     recordedSpans.length = 0;
+    recordedMetrics.length = 0;
     recordedLogs.length = 0;
   });
 
@@ -181,6 +197,141 @@ describe('Studio OTLP HTTP/JSON API Receivers', () => {
     expect(recordedLogs[0].stack).toBe(
       'Error: Database connection failed\n at ...',
     );
+  });
+
+  it('should retain OTLP metric datapoints for the Studio analytics view', async () => {
+    const req = mockRequest({
+      resourceMetrics: [
+        {
+          resource: {
+            attributes: [
+              { key: 'service.name', value: { stringValue: 'test-app' } },
+            ],
+          },
+          scopeMetrics: [
+            {
+              metrics: [
+                {
+                  name: 'http.server.duration',
+                  histogram: {
+                    dataPoints: [
+                      {
+                        sum: 42.5,
+                        count: '3',
+                        timeUnixNano: '1672531199000000000',
+                        attributes: [
+                          { key: 'http.method', value: { stringValue: 'GET' } },
+                        ],
+                      },
+                    ],
+                  },
+                },
+                {
+                  name: 'process.cpu.utilization',
+                  gauge: { dataPoints: [{ asDouble: 0.42 }] },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const { res, getBody, getStatus } = mockResponse();
+
+    await handlePostOtlpMetrics(req, res);
+
+    expect(getStatus()).toBe(200);
+    expect(getBody()).toMatchObject({ success: true, accepted: 2 });
+    expect(recordedMetrics).toHaveLength(2);
+    expect(recordedMetrics[0]).toMatchObject({
+      name: 'http.server.duration',
+      type: 'histogram',
+      value: 42.5,
+      attributes: { 'service.name': 'test-app', 'http.method': 'GET' },
+    });
+
+    const { res: getRes, getBody: getMetricsBody } = mockResponse();
+    handleGetOtlpMetrics({} as any, getRes);
+    expect(getMetricsBody().metrics).toHaveLength(2);
+    expect(getMetricsBody().metrics[0].name).toBe('process.cpu.utilization');
+
+    const { res: deleteRes, getStatus: getDeleteStatus } = mockResponse();
+    handleDeleteOtlpMetrics({} as any, deleteRes);
+    expect(getDeleteStatus()).toBe(200);
+    expect(recordedMetrics).toHaveLength(0);
+  });
+
+  it('should retain exponential histograms and summaries', async () => {
+    const req = mockRequest({
+      resourceMetrics: [
+        {
+          scopeMetrics: [
+            {
+              metrics: [
+                {
+                  name: 'queue.latency',
+                  exponentialHistogram: {
+                    dataPoints: [{ sum: 12, count: '2' }],
+                  },
+                },
+                {
+                  name: 'rpc.duration.summary',
+                  summary: { dataPoints: [{ sum: 40, count: '4' }] },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const { res, getBody } = mockResponse();
+
+    await handlePostOtlpMetrics(req, res);
+
+    expect(getBody()).toMatchObject({ success: true, accepted: 2 });
+    expect(recordedMetrics).toMatchObject([
+      { name: 'queue.latency', type: 'exponentialHistogram', value: 12 },
+      { name: 'rpc.duration.summary', type: 'summary', value: 40 },
+    ]);
+  });
+
+  it('handles empty, malformed, unsupported, and oversized metric payloads', async () => {
+    const empty = mockResponse();
+    await handlePostOtlpMetrics(mockRawRequest(''), empty.res);
+    expect(empty.getBody()).toEqual({ success: true, accepted: 0 });
+
+    const malformed = mockResponse();
+    await handlePostOtlpMetrics(mockRawRequest('{'), malformed.res);
+    expect(malformed.getStatus()).toBe(500);
+    expect(malformed.getBody().error).toBe('Failed to process metrics');
+
+    const points = Array.from({ length: 2_001 }, (_, index) => ({
+      asInt: index,
+    }));
+    const mixed = mockResponse();
+    await handlePostOtlpMetrics(
+      mockRequest({
+        resourceMetrics: [
+          {
+            scopeMetrics: [
+              {
+                metrics: [
+                  { name: 'unsupported' },
+                  {
+                    name: 'invalid',
+                    sum: { dataPoints: [{ asDouble: 'not-a-number' }] },
+                  },
+                  { name: 'counter', sum: { dataPoints: points } },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+      mixed.res,
+    );
+    expect(mixed.getBody()).toEqual({ success: true, accepted: 2_001 });
+    expect(recordedMetrics).toHaveLength(2_000);
   });
 
   it('should clear recorded spans on delete', () => {

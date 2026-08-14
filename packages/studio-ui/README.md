@@ -10,6 +10,10 @@ This package contains the front-end source code for the **Axiomify Studio** dash
 - **Lifecycle Hooks**: Review registered hook handlers across request lifecycle phases.
 - **Health Dashboard**: Inspect production-readiness finding audits.
 - **Request Tester**: Interactive console with an embedded Monaco editor to construct, send, and analyze test HTTP requests against your live Axiomify application.
+- **Operational tooling**: Inspect logs, errors, metrics, traces, profiling,
+  performance, background jobs, contracts, SDK impact, and security findings.
+- **Traffic workflows**: Record and replay traffic, manage request collections
+  and environments, and inspect WebSocket activity.
 
 ## Tech Stack
 
@@ -36,6 +40,10 @@ the `axiomify studio` command:
 ```bash
 npm run build
 ```
+
+The CLI validates that every content-hashed JavaScript and CSS asset referenced
+by `ui-dist/index.html` exists. A stale or incomplete bundle displays a rebuild
+message instead of serving HTML for a missing module request.
 
 The `build` script runs `tsc -b` before `vite build`. Additional scripts:
 `npm run lint` (ESLint) and `npm run preview` (preview the built bundle).

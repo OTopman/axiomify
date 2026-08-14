@@ -253,7 +253,10 @@ export class MemoryWsBroker implements WsBroker {
  * approach. No Redis dependency is added; you inject your own clients.
  */
 export interface RedisPubLike {
-  publish(channel: string, message: string | Buffer): Promise<unknown> | unknown;
+  publish(
+    channel: string,
+    message: string | Buffer,
+  ): Promise<unknown> | unknown;
 }
 
 export interface RedisSubLike {
@@ -316,8 +319,7 @@ export class RedisWsBroker implements WsBroker {
   private readonly _style: RedisSubStyle;
   private readonly _handlers = new Map<string, WsBrokerMessageHandler>();
   private _ioredisListener:
-    | ((channel: string, message: string | Buffer) => void)
-    | null = null;
+    ((channel: string, message: string | Buffer) => void) | null = null;
   private _closed = false;
 
   constructor(clients: RedisWsBrokerClients, options: WsBrokerOptions = {}) {

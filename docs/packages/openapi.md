@@ -190,6 +190,30 @@ app.route({
 Run `npx axiomify migrate` to flag `meta:` fields for manual merge into
 `schema:`, then `npx axiomify check` to gate CI.
 
+## Hiding endpoints from OpenAPI
+
+Routes are included by default. Use `openapi: false` inside `schema` to leave
+an internal endpoint out of the generated spec and Swagger UI. `openapi: true`
+explicitly includes a route.
+
+```typescript
+app.route({
+  method: 'GET',
+  path: '/internal/health',
+  schema: { openapi: false },
+  handler: async (_req, res) => res.send({ ok: true }),
+});
+```
+
+## Transform-safe generation and diagnostics
+
+Schemas containing Zod `.transform()` functions are exported as their input
+shape because arbitrary runtime code has no OpenAPI equivalent. Axiomify keeps
+generating the document and records details in `x-axiomify-warnings`. Run
+`axiomify openapi --validate` to report those warnings, unresolved security
+scheme references, and the common `securitySchemas` typo (use
+`securitySchemes`).
+
 ## Global security schemes
 
 ```typescript

@@ -130,6 +130,7 @@ function matchesCronExpression(pattern: string, date: Date): boolean {
 export class JobScheduler extends EventEmitter {
   private handlers = new Map<string, JobHandler>();
   private activeWorkers = new Set<string>();
+  private pendingAcquires = 0;
   private running = false;
   private timer?: NodeJS.Timeout;
 
@@ -267,15 +268,22 @@ export class JobScheduler extends EventEmitter {
       console.error('[Axiomify Jobs] Cron schedule error:', err);
     });
 
-    if (this.activeWorkers.size >= this.options.maxConcurrency) {
+    if (
+      this.activeWorkers.size + this.pendingAcquires >=
+      this.options.maxConcurrency
+    ) {
       // Re-schedule when concurrency slots open
-      this.timer = setTimeout(() => this.tick(), this.options.pollIntervalMs);
+      if (this.pendingAcquires === 0) {
+        this.timer = setTimeout(() => this.tick(), this.options.pollIntervalMs);
+      }
       return;
     }
 
+    this.pendingAcquires++;
     this.storage
       .acquireNext(this.options.queue, this.options.lockDurationMs)
       .then((job) => {
+        this.pendingAcquires--;
         if (job) {
           const workerId = randomUUID();
           this.activeWorkers.add(workerId);
@@ -292,9 +300,14 @@ export class JobScheduler extends EventEmitter {
         }
       })
       .catch((err) => {
+        this.pendingAcquires--;
         console.error('[Axiomify Jobs] Error acquiring job:', err);
         this.timer = setTimeout(() => this.tick(), this.options.pollIntervalMs);
       });
+
+    // Reserve and fill every available worker slot without racing concurrent
+    // acquireNext() calls past maxConcurrency.
+    this.tick();
   }
 
   private async executeJob(job: Job): Promise<void> {

@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'crypto';
-import {
-  computeEtag,
-  ifNoneMatchMatches,
-  parseIfNoneMatch,
-} from '../src/etag';
+import { computeEtag, ifNoneMatchMatches, parseIfNoneMatch } from '../src/etag';
 
 describe('computeEtag', () => {
   it('emits a weak tag by default', () => {

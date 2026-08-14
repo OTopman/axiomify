@@ -344,12 +344,19 @@ describe('setCookie / clearCookie helpers', () => {
     const mockResCookie: any = {
       statusCode: 200,
       headersSent: false,
-      cookie: (n: string, v: string, o?: any) => { calls.push(['cookie', n, v, o]); },
-      clearCookie: (n: string, o?: any) => { calls.push(['clearCookie', n, o]); },
+      cookie: (n: string, v: string, o?: any) => {
+        calls.push(['cookie', n, v, o]);
+      },
+      clearCookie: (n: string, o?: any) => {
+        calls.push(['clearCookie', n, o]);
+      },
       send: () => {},
     };
 
-    await appWithCookie.handle({ method: 'GET', path: '/ck', headers: {} } as any, mockResCookie);
+    await appWithCookie.handle(
+      { method: 'GET', path: '/ck', headers: {} } as any,
+      mockResCookie,
+    );
     expect(calls).toEqual([
       ['cookie', 'test', 'val', undefined],
       ['clearCookie', 'test', undefined],
@@ -361,8 +368,12 @@ describe('setCookie / clearCookie helpers', () => {
       method: 'GET',
       path: '/nock',
       handler: async (_req, res) => {
-        expect(() => res.cookie('test', 'val')).toThrow(/does not implement res.cookie/);
-        expect(() => res.clearCookie('test')).toThrow(/does not implement res.clearCookie/);
+        expect(() => res.cookie('test', 'val')).toThrow(
+          /does not implement res.cookie/,
+        );
+        expect(() => res.clearCookie('test')).toThrow(
+          /does not implement res.clearCookie/,
+        );
         res.send({ ok: true });
       },
     });
@@ -370,10 +381,16 @@ describe('setCookie / clearCookie helpers', () => {
     const mockResNoCookie: any = {
       statusCode: 200,
       headersSent: false,
-      status(c: number) { mockResNoCookie.statusCode = c; return this; },
+      status(c: number) {
+        mockResNoCookie.statusCode = c;
+        return this;
+      },
       send: () => {},
     };
 
-    await appNoCookie.handle({ method: 'GET', path: '/nock', headers: {} } as any, mockResNoCookie);
+    await appNoCookie.handle(
+      { method: 'GET', path: '/nock', headers: {} } as any,
+      mockResNoCookie,
+    );
   });
 });

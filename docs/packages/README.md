@@ -12,6 +12,7 @@ This index lists every Axiomify package alphabetically.
 - [@axiomify/jobs](./jobs.md)
 - [@axiomify/logger](./logger.md)
 - [@axiomify/metrics](./metrics.md)
+- [@axiomify/observability](./observability.md)
 - [@axiomify/native](./native.md)
 - [@axiomify/openapi](./openapi.md)
 - [@axiomify/rate-limit](./rate-limit.md)

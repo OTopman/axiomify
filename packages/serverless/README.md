@@ -3,9 +3,14 @@
 [![npm version](https://img.shields.io/npm/v/@axiomify/serverless.svg)](https://npmjs.com/package/@axiomify/serverless)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-Platform-independent serverless adapter for Axiomify using standard Fetch API `Request` and `Response` objects (WinterCG compliant).
+Node-compatible serverless adapter for Axiomify using standard Fetch API
+`Request` and `Response` objects at its boundary.
 
-Runs on Cloudflare Workers, Vercel Edge, AWS Lambda (with HTTP/Fetch integration), Bun, Deno, and any other WinterCG environment.
+Runs on Node.js serverless platforms and edge runtimes that provide the Node
+compatibility APIs required by Axiomify (`node:async_hooks`, `node:crypto`,
+`node:path`, and `node:stream`). Cloudflare Workers, Vercel Edge, Bun, and Deno
+must have an appropriate Node compatibility mode; generic WinterCG support is
+not currently provided.
 
 ## Install
 
@@ -13,7 +18,7 @@ Runs on Cloudflare Workers, Vercel Edge, AWS Lambda (with HTTP/Fetch integration
 npm install @axiomify/serverless @axiomify/core zod
 ```
 
-## Quick Example (Cloudflare Workers / WinterCG)
+## Quick Example (Fetch handler with Node compatibility)
 
 ```typescript
 import { Axiomify } from '@axiomify/core';
@@ -46,10 +51,10 @@ export default {
 
 ## Options — `new ServerlessAdapter(app, options?)`
 
-| Option        | Default             | Description                                                                                                                                          |
-| ------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `maxBodySize` | `1048576` (1 MiB)   | Maximum request body size in bytes. Requests exceeding this are rejected with `413 Payload Too Large` before parsing (checked against `Content-Length`, then re-checked against the actual bytes read). |
-| `trustProxy`  | `false`             | When `true`, derive the client IP from the `X-Forwarded-For` header. Only enable behind a trusted proxy — the header is client-spoofable. When `false`, `req.ip` is left empty. |
+| Option        | Default           | Description                                                                                                                                                                                             |
+| ------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `maxBodySize` | `1048576` (1 MiB) | Maximum request body size in bytes. Requests exceeding this are rejected with `413 Payload Too Large` before parsing (checked against `Content-Length`, then re-checked against the actual bytes read). |
+| `trustProxy`  | `false`           | When `true`, derive the client IP from the `X-Forwarded-For` header. Only enable behind a trusted proxy — the header is client-spoofable. When `false`, `req.ip` is left empty.                         |
 
 ```typescript
 const adapter = new ServerlessAdapter(app, {
@@ -59,6 +64,23 @@ const adapter = new ServerlessAdapter(app, {
 ```
 
 The request id is taken from the `X-Request-Id` header when present, otherwise generated with `crypto.randomUUID()`.
+
+## Server-Sent Events
+
+`res.sseInit()` and `res.sseSend()` are supported and return a standard
+streaming Fetch `Response`. The connection stays open until the client
+disconnects or cancels the response stream.
+
+```typescript
+app.route({
+  method: 'GET',
+  path: '/events',
+  handler: (_req, res) => {
+    res.sseInit(15_000);
+    res.sseSend({ ready: true }, 'status');
+  },
+});
+```
 
 ## AWS Lambda / Vercel Integration
 

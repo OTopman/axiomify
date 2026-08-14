@@ -11,9 +11,12 @@ It is organized in two layers:
 
 - [Getting Started](./getting-started.md)
 - [Core Concepts](./core-concepts.md)
+- [Contract Testing](./contract-testing.md)
+- [API Versioning](./api-versioning.md)
 - [Plugins and Hooks](./plugins-and-hooks.md)
 - [Examples](./examples.md)
 - [Production Checklist](./production-checklist.md)
+- [Community Recipes](./recipes/README.md)
 
 ## Package Docs
 
@@ -27,6 +30,7 @@ It is organized in two layers:
 - [@axiomify/helmet](./packages/helmet.md)
 - [@axiomify/logger](./packages/logger.md)
 - [@axiomify/metrics](./packages/metrics.md)
+- [@axiomify/observability](./packages/observability.md)
 - [@axiomify/native](./packages/native.md) — HTTP + WebSocket adapter (uWebSockets.js)
 - [@axiomify/openapi](./packages/openapi.md)
 - [@axiomify/rate-limit](./packages/rate-limit.md)

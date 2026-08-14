@@ -8,7 +8,7 @@ uWebSockets.js adapter — highest-throughput Axiomify transport.
 npm install @axiomify/native @axiomify/core zod
 ```
 
-Node.js ≥ 18, < 23. uWS is a pre-compiled native binary — check the [uWebSockets.js release page](https://github.com/uNetworking/uWebSockets.js) for your platform support.
+Use Node.js 22 or 24. uWS is a pre-compiled native binary — check the [uWebSockets.js release page](https://github.com/uNetworking/uWebSockets.js) for platform support.
 
 ## API
 
@@ -90,9 +90,7 @@ const adapter = new NativeAdapter(app, {
   port: 3000,
   allowUserspaceProxy: true, // acknowledge the perf cliff
 });
-adapter.listenClustered({
-  /* ... */
-});
+adapter.listenClustered({/* ... */});
 ```
 
 When the userspace proxy activates, the adapter emits a structured `logger.warn` so the degradation is visible in your log pipeline. For production, deploy on Linux or run a single process via `listen()`.
@@ -196,17 +194,17 @@ adapter.listen((port) => console.log(`h2 ready on :${port}`));
 
 ### Options
 
-| Option             | Type                      | Default     | Description                                                                    |
-| ------------------ | ------------------------- | ----------- | ------------------------------------------------------------------------------ |
-| `port`             | `number`                  | `3000`      | Listen port (`0` = ephemeral, bound port passed to the `listen` callback)      |
-| `tls`              | `Http2AdapterTlsOptions`  | —           | TLS material. Required unless `h2c: true`                                      |
-| `h2c`              | `boolean`                 | `false`     | Opt-in cleartext HTTP/2 (`http2.createServer`) for local dev/tests             |
-| `maxBodySize`      | `number`                  | `1048576`   | Max request body (1 MB); overflow → `413` and the stream is destroyed          |
-| `trustProxy`       | `boolean`                 | `false`     | Trust `X-Forwarded-For` for `req.ip` (requires `proxyIpValidator`)             |
-| `proxyIpValidator` | `(ip: string) => boolean` | `undefined` | Validates the socket peer address before `X-Forwarded-For` is trusted          |
-| `requestTimeout`   | `number`                  | `0`         | Answer with `504` if headers are not sent within N ms (`0` disables)           |
-| `closeTimeout`     | `number`                  | `10000`     | Grace period `close()` allows sessions to drain before force-destroy           |
-| `logger`           | `AxiomifyLogger`-like     | `console`   | Structured logger for adapter warnings                                         |
+| Option             | Type                      | Default     | Description                                                               |
+| ------------------ | ------------------------- | ----------- | ------------------------------------------------------------------------- |
+| `port`             | `number`                  | `3000`      | Listen port (`0` = ephemeral, bound port passed to the `listen` callback) |
+| `tls`              | `Http2AdapterTlsOptions`  | —           | TLS material. Required unless `h2c: true`                                 |
+| `h2c`              | `boolean`                 | `false`     | Opt-in cleartext HTTP/2 (`http2.createServer`) for local dev/tests        |
+| `maxBodySize`      | `number`                  | `1048576`   | Max request body (1 MB); overflow → `413` and the stream is destroyed     |
+| `trustProxy`       | `boolean`                 | `false`     | Trust `X-Forwarded-For` for `req.ip` (requires `proxyIpValidator`)        |
+| `proxyIpValidator` | `(ip: string) => boolean` | `undefined` | Validates the socket peer address before `X-Forwarded-For` is trusted     |
+| `requestTimeout`   | `number`                  | `0`         | Answer with `504` if headers are not sent within N ms (`0` disables)      |
+| `closeTimeout`     | `number`                  | `10000`     | Grace period `close()` allows sessions to drain before force-destroy      |
+| `logger`           | `AxiomifyLogger`-like     | `console`   | Structured logger for adapter warnings                                    |
 
 `Http2AdapterTlsOptions`: inline `key`/`cert` (string or Buffer) **or** `keyFile`/`certFile` paths (read synchronously at construction with clear errors), plus optional `passphrase`, `alpnProtocols` (default `['h2', 'http/1.1']`), and `allowHTTP1` (default `true`).
 

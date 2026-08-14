@@ -87,12 +87,20 @@ describe('route surface builder', () => {
   it('produces different hashes when the schema changes', () => {
     const before = buildRouteSurface({
       registeredRoutes: [
-        { method: 'POST', path: '/x', schema: { body: z.object({ a: z.string() }) } },
+        {
+          method: 'POST',
+          path: '/x',
+          schema: { body: z.object({ a: z.string() }) },
+        },
       ],
     });
     const after = buildRouteSurface({
       registeredRoutes: [
-        { method: 'POST', path: '/x', schema: { body: z.object({ a: z.number() }) } },
+        {
+          method: 'POST',
+          path: '/x',
+          schema: { body: z.object({ a: z.number() }) },
+        },
       ],
     });
     expect(before.routes[0].schemaHashes!.body).not.toBe(
@@ -130,9 +138,9 @@ describe('route surface builder', () => {
       /not a route surface/,
     );
     expect(() => parseSurface('{invalid', 'bad')).toThrow(/Failed to parse/);
-    expect(() => parseSurface('{"version":1,"routes":[{"method":1}]}', 'bad')).toThrow(
-      /invalid route entry/,
-    );
+    expect(() =>
+      parseSurface('{"version":1,"routes":[{"method":1}]}', 'bad'),
+    ).toThrow(/invalid route entry/);
   });
 });
 
@@ -234,15 +242,15 @@ describe('route surface diff (categorisation matrix)', () => {
       routes: baseline.routes.map(({ schemaHashes: _drop, ...rest }) => rest),
     };
     const res = diffSurfaces(legacyBaseline, current);
-    expect(res.changes.filter((c) => c.kind === 'schema-changed')).toHaveLength(0);
+    expect(res.changes.filter((c) => c.kind === 'schema-changed')).toHaveLength(
+      0,
+    );
   });
 
   it('treats a removed schema part as a change', () => {
     const withBody = {
       version: 1 as const,
-      routes: [
-        { method: 'POST', path: '/x', schemaHashes: { body: 'abc' } },
-      ],
+      routes: [{ method: 'POST', path: '/x', schemaHashes: { body: 'abc' } }],
     };
     const withoutBody = {
       version: 1 as const,

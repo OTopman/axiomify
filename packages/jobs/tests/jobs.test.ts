@@ -42,6 +42,51 @@ describe('Axiomify Distributed Jobs', () => {
     expect(resultList.length).toBe(2);
   });
 
+  it('runs up to maxConcurrency jobs in parallel', async () => {
+    const storage = new MemoryJobStorage();
+    const scheduler = new JobScheduler(storage, {
+      queue: 'parallel-queue',
+      maxConcurrency: 2,
+      pollIntervalMs: 5,
+      lockDurationMs: 1_000,
+      defaultRetryDelayMs: 10,
+    });
+    let running = 0;
+    let maxRunning = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let bothStarted!: () => void;
+    const bothStartedPromise = new Promise<void>((resolve) => {
+      bothStarted = resolve;
+    });
+
+    scheduler.register('parallel-job', async () => {
+      running += 1;
+      maxRunning = Math.max(maxRunning, running);
+      if (running === 2) bothStarted();
+      await gate;
+      running -= 1;
+    });
+    await scheduler.enqueue('parallel-job', {});
+    await scheduler.enqueue('parallel-job', {});
+    scheduler.start();
+
+    await Promise.race([
+      bothStartedPromise,
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('jobs did not run in parallel')),
+          250,
+        ),
+      ),
+    ]);
+    expect(maxRunning).toBe(2);
+    release();
+    await scheduler.stop();
+  });
+
   it('should retry failed jobs up to maxAttempts', async () => {
     const storage = new MemoryJobStorage();
     const scheduler = new JobScheduler(storage, {
@@ -181,8 +226,7 @@ describe('Axiomify Distributed Jobs', () => {
       // eval is required for atomic job locking
       public async eval(
         script:
-          | string
-          | { script: string; keys: string[]; arguments: string[] },
+          string | { script: string; keys: string[]; arguments: string[] },
         numkeys?: number,
         ...args: string[]
       ) {
@@ -446,8 +490,7 @@ describe('Axiomify Distributed Jobs', () => {
 
       public async eval(
         script:
-          | string
-          | { script: string; keys: string[]; arguments: string[] },
+          string | { script: string; keys: string[]; arguments: string[] },
         numkeys?: number,
         ...args: string[]
       ) {
@@ -1280,8 +1323,7 @@ describe('Axiomify Distributed Jobs', () => {
       // eval is required for atomic job locking
       public async eval(
         script:
-          | string
-          | { script: string; keys: string[]; arguments: string[] },
+          string | { script: string; keys: string[]; arguments: string[] },
         numkeys?: number,
         ...args: string[]
       ) {
@@ -1494,7 +1536,10 @@ describe('Axiomify Distributed Jobs', () => {
 
     scheduler.start();
     const startDeadline = Date.now() + 2000;
-    while (scheduler['activeWorkers'].size === 0 && Date.now() < startDeadline) {
+    while (
+      scheduler['activeWorkers'].size === 0 &&
+      Date.now() < startDeadline
+    ) {
       await new Promise((resolve) => setTimeout(resolve, 2));
     }
     await scheduler.stop();
@@ -2411,23 +2456,28 @@ describe('Axiomify Distributed Jobs', () => {
     const mockPg = {
       query: async (sql: string, params: any[]) => {
         const sqlUpper = sql.toUpperCase();
-        if (sqlUpper.includes('UPDATE AXIOMIFY_JOBS') && sqlUpper.includes('RETURNING')) {
+        if (
+          sqlUpper.includes('UPDATE AXIOMIFY_JOBS') &&
+          sqlUpper.includes('RETURNING')
+        ) {
           expect(sqlUpper).toContain('LOCKEDAT');
-          return [{
-            id: 'sql-reclaimed-job',
-            queue: 'q',
-            name: 'n',
-            payload: '{}',
-            status: 'running',
-            priority: 0,
-            runAt: Date.now() - 10000,
-            attempts: 0,
-            maxAttempts: 3,
-            lockedAt: Date.now() - 5000
-          }];
+          return [
+            {
+              id: 'sql-reclaimed-job',
+              queue: 'q',
+              name: 'n',
+              payload: '{}',
+              status: 'running',
+              priority: 0,
+              runAt: Date.now() - 10000,
+              attempts: 0,
+              maxAttempts: 3,
+              lockedAt: Date.now() - 5000,
+            },
+          ];
         }
         return [];
-      }
+      },
     };
     const storage = new SQLJobStorage(mockPg);
     const acquired = await storage.acquireNext('q', 5000);
@@ -2440,25 +2490,77 @@ describe('Axiomify Distributed Jobs', () => {
     const mockPg = {
       query: async (sql: string, params: any[]) => {
         const sqlUpper = sql.toUpperCase();
-        if (sqlUpper.includes('SELECT ID FROM AXIOMIFY_JOBS') && sqlUpper.includes('WHERE ID =')) {
+        if (
+          sqlUpper.includes('SELECT ID FROM AXIOMIFY_JOBS') &&
+          sqlUpper.includes('WHERE ID =')
+        ) {
           return db.has(params[0]) ? [db.get(params[0])] : [];
         }
         if (sqlUpper.includes('INSERT INTO AXIOMIFY_JOBS')) {
-          const [id, queue, name, payload, status, priority, runAt, attempts, maxAttempts, error, lockedAt, traceContext] = params;
-          const row = { id, queue, name, payload, status, priority, runAt, attempts, maxAttempts, error, lockedAt, traceContext };
+          const [
+            id,
+            queue,
+            name,
+            payload,
+            status,
+            priority,
+            runAt,
+            attempts,
+            maxAttempts,
+            error,
+            lockedAt,
+            traceContext,
+          ] = params;
+          const row = {
+            id,
+            queue,
+            name,
+            payload,
+            status,
+            priority,
+            runAt,
+            attempts,
+            maxAttempts,
+            error,
+            lockedAt,
+            traceContext,
+          };
           db.set(id, row);
           return [];
         }
-        if (sqlUpper.includes('UPDATE AXIOMIFY_JOBS') && sqlUpper.includes('SET STATUS =') && sqlUpper.includes('QUEUE =')) {
-          const [status, priority, runAt, attempts, maxAttempts, error, lockedAt, queue, id] = params;
+        if (
+          sqlUpper.includes('UPDATE AXIOMIFY_JOBS') &&
+          sqlUpper.includes('SET STATUS =') &&
+          sqlUpper.includes('QUEUE =')
+        ) {
+          const [
+            status,
+            priority,
+            runAt,
+            attempts,
+            maxAttempts,
+            error,
+            lockedAt,
+            queue,
+            id,
+          ] = params;
           const existing = db.get(id);
           if (existing) {
-            Object.assign(existing, { status, priority, runAt, attempts, maxAttempts, error, lockedAt, queue });
+            Object.assign(existing, {
+              status,
+              priority,
+              runAt,
+              attempts,
+              maxAttempts,
+              error,
+              lockedAt,
+              queue,
+            });
           }
           return [];
         }
         return [];
-      }
+      },
     };
 
     const storage = new SQLJobStorage(mockPg);
@@ -2471,7 +2573,7 @@ describe('Axiomify Distributed Jobs', () => {
       priority: 0,
       runAt: Date.now(),
       attempts: 0,
-      maxAttempts: 3
+      maxAttempts: 3,
     };
 
     await storage.save(job);
@@ -2488,23 +2590,27 @@ describe('Axiomify Distributed Jobs', () => {
       store: new Map<string, string>(),
       sets: new Map<string, Set<string>>(),
       zsets: new Map<string, Map<string, number>>(),
-      
-      get: async function(key: string) { return this.store.get(key) || null; },
-      set: async function(key: string, value: string) { this.store.set(key, value); },
-      sadd: async function(key: string, member: string) {
+
+      get: async function (key: string) {
+        return this.store.get(key) || null;
+      },
+      set: async function (key: string, value: string) {
+        this.store.set(key, value);
+      },
+      sadd: async function (key: string, member: string) {
         if (!this.sets.has(key)) this.sets.set(key, new Set());
         this.sets.get(key)!.add(member);
       },
-      srem: async function(key: string, member: string) {
+      srem: async function (key: string, member: string) {
         this.sets.get(key)?.delete(member);
       },
-      zadd: async function(key: string, score: number, member: string) {
+      zadd: async function (key: string, score: number, member: string) {
         if (!this.zsets.has(key)) this.zsets.set(key, new Map());
         this.zsets.get(key)!.set(member, score);
       },
-      zrem: async function(key: string, member: string) {
+      zrem: async function (key: string, member: string) {
         this.zsets.get(key)?.delete(member);
-      }
+      },
     };
 
     const storage = new RedisJobStorage(mockRedis as any);
@@ -2517,31 +2623,55 @@ describe('Axiomify Distributed Jobs', () => {
       priority: 0,
       runAt: Date.now(),
       attempts: 0,
-      maxAttempts: 3
+      maxAttempts: 3,
     };
 
     await storage.save(job);
-    expect(mockRedis.sets.get('axiomify:queue:main-queue:jobs')?.has('job-redis-shift')).toBe(true);
-    expect(mockRedis.zsets.get('axiomify:queue:main-queue:pending_zset')?.has('job-redis-shift')).toBe(true);
+    expect(
+      mockRedis.sets
+        .get('axiomify:queue:main-queue:jobs')
+        ?.has('job-redis-shift'),
+    ).toBe(true);
+    expect(
+      mockRedis.zsets
+        .get('axiomify:queue:main-queue:pending_zset')
+        ?.has('job-redis-shift'),
+    ).toBe(true);
 
     job.queue = 'main-queue:dlq';
     job.status = 'failed';
     await storage.save(job);
 
-    expect(mockRedis.sets.get('axiomify:queue:main-queue:dlq:jobs')?.has('job-redis-shift')).toBe(true);
-    expect(mockRedis.sets.get('axiomify:queue:main-queue:jobs')?.has('job-redis-shift')).toBe(false);
-    expect(mockRedis.zsets.get('axiomify:queue:main-queue:pending_zset')?.has('job-redis-shift')).toBe(false);
+    expect(
+      mockRedis.sets
+        .get('axiomify:queue:main-queue:dlq:jobs')
+        ?.has('job-redis-shift'),
+    ).toBe(true);
+    expect(
+      mockRedis.sets
+        .get('axiomify:queue:main-queue:jobs')
+        ?.has('job-redis-shift'),
+    ).toBe(false);
+    expect(
+      mockRedis.zsets
+        .get('axiomify:queue:main-queue:pending_zset')
+        ?.has('job-redis-shift'),
+    ).toBe(false);
   });
 
   it('should handle JSON parse errors gracefully in RedisJobStorage.save', async () => {
     const mockRedis = {
       store: new Map<string, string>(),
-      get: async function(key: string) { return this.store.get(key) || null; },
-      set: async function(key: string, value: string) { this.store.set(key, value); },
-      sadd: async function() {},
-      srem: async function() {},
-      zadd: async function() {},
-      zrem: async function() {},
+      get: async function (key: string) {
+        return this.store.get(key) || null;
+      },
+      set: async function (key: string, value: string) {
+        this.store.set(key, value);
+      },
+      sadd: async function () {},
+      srem: async function () {},
+      zadd: async function () {},
+      zrem: async function () {},
     };
 
     const storage = new RedisJobStorage(mockRedis as any);
@@ -2554,12 +2684,12 @@ describe('Axiomify Distributed Jobs', () => {
       priority: 0,
       runAt: Date.now(),
       attempts: 0,
-      maxAttempts: 3
+      maxAttempts: 3,
     };
 
     // Put invalid JSON in mock store to trigger catch block in save()
     mockRedis.store.set(`axiomify:job:${job.id}`, '{invalid-json');
-    
+
     // Save should run and not throw
     await expect(storage.save(job)).resolves.not.toThrow();
   });
@@ -2569,51 +2699,57 @@ describe('Axiomify Distributed Jobs', () => {
     const mockPg = {
       query: async (sql: string, params?: any[]) => {
         return { rows: [] };
-      }
+      },
     };
     const sqlStorage = new SQLJobStorage(mockPg as any);
-    
+
     // 1. empty acquire -> returns null (line 247)
     const sqlAcquired = await sqlStorage.acquireNext('sql-empty-queue', 1000);
     expect(sqlAcquired).toBeNull();
 
     // 2. fail non-existent -> returns early (line 304)
-    await expect(sqlStorage.fail('non-existent-id', 'err')).resolves.not.toThrow();
+    await expect(
+      sqlStorage.fail('non-existent-id', 'err'),
+    ).resolves.not.toThrow();
 
     // B. RedisJobStorage edge cases
     const mockRedis = {
       store: new Map<string, string>(),
       sets: new Map<string, Set<string>>(),
       zsets: new Map<string, Map<string, number>>(),
-      get: async function(key: string) { return this.store.get(key) || null; },
-      set: async function(key: string, value: string) { this.store.set(key, value); },
-      sadd: async function(key: string, val: string) {
+      get: async function (key: string) {
+        return this.store.get(key) || null;
+      },
+      set: async function (key: string, value: string) {
+        this.store.set(key, value);
+      },
+      sadd: async function (key: string, val: string) {
         if (!this.sets.has(key)) this.sets.set(key, new Set());
         this.sets.get(key)!.add(val);
       },
-      srem: async function(key: string, val: string) {
+      srem: async function (key: string, val: string) {
         this.sets.get(key)?.delete(val);
       },
-      smembers: async function(key: string) {
+      smembers: async function (key: string) {
         return Array.from(this.sets.get(key) || []);
       },
-      zadd: async function(key: string, score: number, member: string) {
+      zadd: async function (key: string, score: number, member: string) {
         if (!this.zsets.has(key)) this.zsets.set(key, new Map());
         this.zsets.get(key)!.set(member, score);
       },
-      zrem: async function(key: string, member: string) {
+      zrem: async function (key: string, member: string) {
         this.zsets.get(key)?.delete(member);
       },
-      zrangebyscore: async function(key: string, min: number, max: number) {
+      zrangebyscore: async function (key: string, min: number, max: number) {
         const map = this.zsets.get(key);
         if (!map) return [];
         return Array.from(map.entries())
           .filter(([_, score]) => score >= min && score <= max)
           .map(([member]) => member);
       },
-      mget: async function(keys: string[]) {
+      mget: async function (keys: string[]) {
         return keys.map((k) => this.store.get(k) || null);
-      }
+      },
     };
 
     const redisStorage = new RedisJobStorage(mockRedis as any);
@@ -2623,11 +2759,18 @@ describe('Axiomify Distributed Jobs', () => {
     expect(mgetRes).toEqual([]);
 
     // 2. acquireNext empty queue (line 560)
-    const acquiredEmpty = await redisStorage.acquireNext('empty-redis-queue', 1000);
+    const acquiredEmpty = await redisStorage.acquireNext(
+      'empty-redis-queue',
+      1000,
+    );
     expect(acquiredEmpty).toBeNull();
 
     // 3. acquireNext with non-pending candidate / future candidate (line 579)
-    await mockRedis.zadd('axiomify:queue:test-q:pending_zset', Date.now() - 50, 'job-non-pending');
+    await mockRedis.zadd(
+      'axiomify:queue:test-q:pending_zset',
+      Date.now() - 50,
+      'job-non-pending',
+    );
     // Save job as running instead of pending
     const runningJob = {
       id: 'job-non-pending',
@@ -2637,25 +2780,50 @@ describe('Axiomify Distributed Jobs', () => {
       priority: 0,
       runAt: Date.now() - 50,
       attempts: 0,
-      maxAttempts: 3
+      maxAttempts: 3,
     };
-    await mockRedis.set('axiomify:job:job-non-pending', JSON.stringify(runningJob));
+    await mockRedis.set(
+      'axiomify:job:job-non-pending',
+      JSON.stringify(runningJob),
+    );
     const acquiredNonPending = await redisStorage.acquireNext('test-q', 1000);
     expect(acquiredNonPending).toBeNull();
 
     // 4. complete on non-existent job (line 652)
-    await expect(redisStorage.complete('non-existent-redis-id')).resolves.not.toThrow();
+    await expect(
+      redisStorage.complete('non-existent-redis-id'),
+    ).resolves.not.toThrow();
 
     // 5. fail on non-existent job (line 667)
-    await expect(redisStorage.fail('non-existent-redis-id', 'err')).resolves.not.toThrow();
+    await expect(
+      redisStorage.fail('non-existent-redis-id', 'err'),
+    ).resolves.not.toThrow();
 
     // 6. getJobs empty queue (line 693)
     const emptyJobs = await redisStorage.getJobs('empty-q');
     expect(emptyJobs).toEqual([]);
 
     // 7. getJobs sort comparator execution (line 707)
-    const jobA = { id: 'a', queue: 'sort-q', name: 'n', status: 'pending', priority: 0, runAt: 100, attempts: 0, maxAttempts: 1 };
-    const jobB = { id: 'b', queue: 'sort-q', name: 'n', status: 'pending', priority: 0, runAt: 200, attempts: 0, maxAttempts: 1 };
+    const jobA = {
+      id: 'a',
+      queue: 'sort-q',
+      name: 'n',
+      status: 'pending',
+      priority: 0,
+      runAt: 100,
+      attempts: 0,
+      maxAttempts: 1,
+    };
+    const jobB = {
+      id: 'b',
+      queue: 'sort-q',
+      name: 'n',
+      status: 'pending',
+      priority: 0,
+      runAt: 200,
+      attempts: 0,
+      maxAttempts: 1,
+    };
     await redisStorage.save(jobA as any);
     await redisStorage.save(jobB as any);
     const sortedJobs = await redisStorage.getJobs('sort-q');
@@ -2672,8 +2840,12 @@ describe('Axiomify Distributed Jobs', () => {
     // 1. camelCase Client
     const mockCamelClient = {
       store: new Map<string, string>(),
-      GET: vi.fn().mockImplementation(async (k) => mockCamelClient.store.get(k) || null),
-      SET: vi.fn().mockImplementation(async (k, v) => { mockCamelClient.store.set(k, v); }),
+      GET: vi
+        .fn()
+        .mockImplementation(async (k) => mockCamelClient.store.get(k) || null),
+      SET: vi.fn().mockImplementation(async (k, v) => {
+        mockCamelClient.store.set(k, v);
+      }),
       DEL: vi.fn().mockResolvedValue(1),
       sAdd: vi.fn().mockResolvedValue(1),
       sRem: vi.fn().mockResolvedValue(1),
@@ -2681,15 +2853,36 @@ describe('Axiomify Distributed Jobs', () => {
       zAdd: vi.fn().mockResolvedValue(1),
       zRem: vi.fn().mockResolvedValue(1),
       zRangeByScore: vi.fn().mockResolvedValue(['job-camel']),
-      mGet: vi.fn().mockResolvedValue([JSON.stringify({
-        id: 'job-camel', queue: 'camel-q', name: 'n', status: 'pending', priority: 0, runAt: Date.now(), attempts: 0, maxAttempts: 1
-      })]),
+      mGet: vi.fn().mockResolvedValue([
+        JSON.stringify({
+          id: 'job-camel',
+          queue: 'camel-q',
+          name: 'n',
+          status: 'pending',
+          priority: 0,
+          runAt: Date.now(),
+          attempts: 0,
+          maxAttempts: 1,
+        }),
+      ]),
       scan: vi.fn().mockResolvedValue(['0']), // undefined result[1] to cover L492 fallback
-      eval: vi.fn().mockResolvedValue(JSON.stringify({ id: 'job-camel', status: 'running' }))
+      eval: vi
+        .fn()
+        .mockResolvedValue(
+          JSON.stringify({ id: 'job-camel', status: 'running' }),
+        ),
     };
     const storageCamel = new RedisJobStorage(mockCamelClient as any);
     await storageCamel.save({
-      id: 'job-camel', queue: 'camel-q', name: 'n', status: 'pending', priority: 0, runAt: Date.now(), attempts: 0, maxAttempts: 1, payload: {}
+      id: 'job-camel',
+      queue: 'camel-q',
+      name: 'n',
+      status: 'pending',
+      priority: 0,
+      runAt: Date.now(),
+      attempts: 0,
+      maxAttempts: 1,
+      payload: {},
     });
     // Call acquireNext to trigger zRangeByScore
     await storageCamel.acquireNext('camel-q', 1000);
@@ -2702,8 +2895,12 @@ describe('Axiomify Distributed Jobs', () => {
     // 2. UPPERCASE Client
     const mockUpperClient = {
       store: new Map<string, string>(),
-      GET: vi.fn().mockImplementation(async (k) => mockUpperClient.store.get(k) || null),
-      SET: vi.fn().mockImplementation(async (k, v) => { mockUpperClient.store.set(k, v); }),
+      GET: vi
+        .fn()
+        .mockImplementation(async (k) => mockUpperClient.store.get(k) || null),
+      SET: vi.fn().mockImplementation(async (k, v) => {
+        mockUpperClient.store.set(k, v);
+      }),
       DEL: vi.fn().mockResolvedValue(1),
       SADD: vi.fn().mockResolvedValue(1),
       SREM: vi.fn().mockResolvedValue(1),
@@ -2711,15 +2908,36 @@ describe('Axiomify Distributed Jobs', () => {
       ZADD: vi.fn().mockResolvedValue(1),
       ZREM: vi.fn().mockResolvedValue(1),
       ZRANGEBYSCORE: vi.fn().mockResolvedValue(['job-upper']),
-      MGET: vi.fn().mockResolvedValue([JSON.stringify({
-        id: 'job-upper', queue: 'upper-q', name: 'n', status: 'pending', priority: 0, runAt: Date.now(), attempts: 0, maxAttempts: 1
-      })]),
+      MGET: vi.fn().mockResolvedValue([
+        JSON.stringify({
+          id: 'job-upper',
+          queue: 'upper-q',
+          name: 'n',
+          status: 'pending',
+          priority: 0,
+          runAt: Date.now(),
+          attempts: 0,
+          maxAttempts: 1,
+        }),
+      ]),
       SCAN: vi.fn().mockResolvedValue({ cursor: '0' }), // undefined keys to cover L496 fallback
-      EVAL: vi.fn().mockResolvedValue(JSON.stringify({ id: 'job-upper', status: 'running' }))
+      EVAL: vi
+        .fn()
+        .mockResolvedValue(
+          JSON.stringify({ id: 'job-upper', status: 'running' }),
+        ),
     };
     const storageUpper = new RedisJobStorage(mockUpperClient as any);
     await storageUpper.save({
-      id: 'job-upper', queue: 'upper-q', name: 'n', status: 'pending', priority: 0, runAt: Date.now(), attempts: 0, maxAttempts: 1, payload: {}
+      id: 'job-upper',
+      queue: 'upper-q',
+      name: 'n',
+      status: 'pending',
+      priority: 0,
+      runAt: Date.now(),
+      attempts: 0,
+      maxAttempts: 1,
+      payload: {},
     });
     // Call acquireNext to trigger ZRANGEBYSCORE
     await storageUpper.acquireNext('upper-q', 1000);
@@ -2733,21 +2951,28 @@ describe('Axiomify Distributed Jobs', () => {
     const mockRedisCorrupt = {
       zsets: new Map<string, Map<string, number>>(),
       store: new Map<string, string>(),
-      zrangebyscore: async function() {
+      zrangebyscore: async function () {
         return ['job-null', 'job-corrupt', 'job-valid'];
       },
-      mget: async function() {
+      mget: async function () {
         return [
           null, // covers falsy raw check
           '{invalid-json', // covers JSON parse catch block
           JSON.stringify({
-            id: 'job-valid', queue: 'test-q', name: 'n', status: 'pending', priority: 10, runAt: Date.now() - 100, attempts: 0, maxAttempts: 1
-          })
+            id: 'job-valid',
+            queue: 'test-q',
+            name: 'n',
+            status: 'pending',
+            priority: 10,
+            runAt: Date.now() - 100,
+            attempts: 0,
+            maxAttempts: 1,
+          }),
         ];
       },
-      eval: async function() {
+      eval: async function () {
         return JSON.stringify({ id: 'job-valid', status: 'running' });
-      }
+      },
     };
     const storageCorrupt = new RedisJobStorage(mockRedisCorrupt as any);
     const acquiredCorrupt = await storageCorrupt.acquireNext('test-q', 1000);
@@ -2755,14 +2980,14 @@ describe('Axiomify Distributed Jobs', () => {
 
     // 4. Test acquireCronLock result permutations (true, 1) in RedisJobStorage
     const mockCronClient = {
-      set: vi.fn().mockResolvedValue(true) // returns boolean true
+      set: vi.fn().mockResolvedValue(true), // returns boolean true
     };
     const storageCron = new RedisJobStorage(mockCronClient as any);
     const resCron1 = await storageCron.acquireCronLock('cron-key-1', 1000);
     expect(resCron1).toBe(true);
 
     const mockCronClient2 = {
-      set: vi.fn().mockResolvedValue(1) // returns number 1
+      set: vi.fn().mockResolvedValue(1), // returns number 1
     };
     const storageCron2 = new RedisJobStorage(mockCronClient2 as any);
     const resCron2 = await storageCron2.acquireCronLock('cron-key-2', 1000);
@@ -2772,18 +2997,20 @@ describe('Axiomify Distributed Jobs', () => {
   it('should handle non-string/falsy payloads and lowercase maxattempts in SQLJobStorage', async () => {
     // 1. Non-string payload & non-string traceContext in acquireNext
     const mockPg1 = {
-      query: async () => [{
-        id: 'sql-obj-payload',
-        queue: 'q',
-        name: 'n',
-        payload: { foo: 'bar' },
-        status: 'running',
-        priority: 0,
-        runAt: Date.now(),
-        attempts: 0,
-        maxAttempts: 3,
-        traceContext: { traceparent: 'tc-val' }
-      }]
+      query: async () => [
+        {
+          id: 'sql-obj-payload',
+          queue: 'q',
+          name: 'n',
+          payload: { foo: 'bar' },
+          status: 'running',
+          priority: 0,
+          runAt: Date.now(),
+          attempts: 0,
+          maxAttempts: 3,
+          traceContext: { traceparent: 'tc-val' },
+        },
+      ],
     };
     const storage1 = new SQLJobStorage(mockPg1);
     const acquired1 = await storage1.acquireNext('q', 5000);
@@ -2792,18 +3019,20 @@ describe('Axiomify Distributed Jobs', () => {
 
     // 2. Falsy payload in acquireNext
     const mockPg2 = {
-      query: async () => [{
-        id: 'sql-falsy-payload',
-        queue: 'q',
-        name: 'n',
-        payload: null,
-        status: 'running',
-        priority: 0,
-        runAt: Date.now(),
-        attempts: 0,
-        maxAttempts: 3,
-        traceContext: null
-      }]
+      query: async () => [
+        {
+          id: 'sql-falsy-payload',
+          queue: 'q',
+          name: 'n',
+          payload: null,
+          status: 'running',
+          priority: 0,
+          runAt: Date.now(),
+          attempts: 0,
+          maxAttempts: 3,
+          traceContext: null,
+        },
+      ],
     };
     const storage2 = new SQLJobStorage(mockPg2);
     const acquired2 = await storage2.acquireNext('q', 5000);
@@ -2819,11 +3048,11 @@ describe('Axiomify Distributed Jobs', () => {
         }
         mockPg3.queries.push(sql);
         return [];
-      }
+      },
     };
     const storage3 = new SQLJobStorage(mockPg3);
     await storage3.fail('job-no-attempts', 'err', 1000);
-    expect(mockPg3.queries[0]).toContain("attempts = $1");
+    expect(mockPg3.queries[0]).toContain('attempts = $1');
 
     // 4. Lowercase maxattempts in fail
     const mockPg4 = {
@@ -2834,15 +3063,15 @@ describe('Axiomify Distributed Jobs', () => {
         }
         mockPg4.queries.push(sql);
         return [];
-      }
+      },
     };
     const storage4 = new SQLJobStorage(mockPg4);
     await storage4.fail('job-lowercase-maxattempts', 'err', 1000);
-    expect(mockPg4.queries[0]).toContain("attempts = $1");
+    expect(mockPg4.queries[0]).toContain('attempts = $1');
 
     // 5. Null rows in SQLJobStorage.getJobs
     const mockPg5 = {
-      $queryRawUnsafe: async () => null as any
+      $queryRawUnsafe: async () => null as any,
     };
     const storage5 = new SQLJobStorage(mockPg5);
     const jobs5 = await storage5.getJobs();
@@ -2850,40 +3079,44 @@ describe('Axiomify Distributed Jobs', () => {
 
     // 6. Non-string payload & traceContext in getJobs
     const mockPg6 = {
-      query: async () => [{
-        id: 'sql-jobs-obj',
-        queue: 'q',
-        name: 'n',
-        payload: { x: 1 },
-        status: 'pending',
-        priority: 0,
-        runAt: Date.now(),
-        attempts: 0,
-        maxAttempts: 3,
-        traceContext: { traceparent: 'tc-val-jobs' }
-      }, {
-        id: 'sql-jobs-falsy',
-        queue: 'q',
-        name: 'n',
-        payload: { x: 1 }, // truthy object, no _traceContext (covers L347 index 1 fallback)
-        status: 'pending',
-        priority: 0,
-        runAt: Date.now(),
-        attempts: 0,
-        maxAttempts: 3,
-        traceContext: null
-      }, {
-        id: 'sql-jobs-primitive',
-        queue: 'q',
-        name: 'n',
-        payload: '"primitive-payload"',
-        status: 'pending',
-        priority: 0,
-        runAt: Date.now(),
-        attempts: 0,
-        maxAttempts: 3,
-        traceContext: null
-      }]
+      query: async () => [
+        {
+          id: 'sql-jobs-obj',
+          queue: 'q',
+          name: 'n',
+          payload: { x: 1 },
+          status: 'pending',
+          priority: 0,
+          runAt: Date.now(),
+          attempts: 0,
+          maxAttempts: 3,
+          traceContext: { traceparent: 'tc-val-jobs' },
+        },
+        {
+          id: 'sql-jobs-falsy',
+          queue: 'q',
+          name: 'n',
+          payload: { x: 1 }, // truthy object, no _traceContext (covers L347 index 1 fallback)
+          status: 'pending',
+          priority: 0,
+          runAt: Date.now(),
+          attempts: 0,
+          maxAttempts: 3,
+          traceContext: null,
+        },
+        {
+          id: 'sql-jobs-primitive',
+          queue: 'q',
+          name: 'n',
+          payload: '"primitive-payload"',
+          status: 'pending',
+          priority: 0,
+          runAt: Date.now(),
+          attempts: 0,
+          maxAttempts: 3,
+          traceContext: null,
+        },
+      ],
     };
     const storage6 = new SQLJobStorage(mockPg6);
     const jobs6 = await storage6.getJobs('q');

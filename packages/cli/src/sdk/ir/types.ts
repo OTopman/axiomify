@@ -34,23 +34,11 @@ export type IRScalar =
 
 /** Transport protocol for an endpoint. */
 export type IRTransport =
-  | 'rest'
-  | 'graphql'
-  | 'websocket'
-  | 'sse'
-  | 'grpc'
-  | 'socket.io'
-  | 'event';
+  'rest' | 'graphql' | 'websocket' | 'sse' | 'grpc' | 'socket.io' | 'event';
 
 /** HTTP methods. */
 export type IRHttpMethod =
-  | 'GET'
-  | 'POST'
-  | 'PUT'
-  | 'PATCH'
-  | 'DELETE'
-  | 'OPTIONS'
-  | 'HEAD';
+  'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
 
 /** GraphQL operation types. */
 export type IRGraphQLOperation = 'query' | 'mutation' | 'subscription';

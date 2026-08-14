@@ -22,6 +22,7 @@ import {
 } from './contracts';
 import { handlePostDebugFrames, handlePostDebugSource } from './debugger';
 import { handleGetErrors } from './errors';
+import { handleGetEvents } from './events';
 import {
   handleExportHtml,
   handleExportMarkdown,
@@ -60,6 +61,7 @@ import {
 } from './sdk-impact';
 import { handleGetSecurityReport, handlePostRunProbes } from './security';
 import { handleGetSystem } from './system';
+import { handleGetPrivacy, handlePostPrivacy } from './privacy';
 import { handleGetWsAnalytics } from './ws-analytics';
 import { handleGetWsRoutes } from './ws-tester';
 import { handleGetJobs } from './jobs';
@@ -69,6 +71,8 @@ import {
   handlePostOtlpLogs,
   handleGetOtlpTraces,
   handleDeleteOtlpTraces,
+  handleGetOtlpMetrics,
+  handleDeleteOtlpMetrics,
 } from './otlp';
 
 export interface StudioApiContext {
@@ -127,6 +131,14 @@ export function registerStudioApi(
     handleGetSystem(req, res);
   });
 
+  router.get('/__studio/api/privacy', (req, res) => {
+    handleGetPrivacy(req, res);
+  });
+
+  router.post('/__studio/api/privacy', (req, res) => {
+    handlePostPrivacy(req, res);
+  });
+
   router.get('/__studio/api/metrics', (req, res) => {
     handleGetAppMetrics(req, res, ctx.getApp());
   });
@@ -141,6 +153,10 @@ export function registerStudioApi(
 
   router.get('/__studio/api/errors', (req, res) => {
     handleGetErrors(req, res);
+  });
+
+  router.get('/__studio/api/events', (req, res) => {
+    handleGetEvents(req, res);
   });
 
   router.get('/__studio/api/ws-analytics', (req, res) => {
@@ -305,6 +321,14 @@ export function registerStudioApi(
 
   router.get('/__studio/api/otlp/traces', (req, res) => {
     handleGetOtlpTraces(req, res);
+  });
+
+  router.get('/__studio/api/otlp/metrics', (req, res) => {
+    handleGetOtlpMetrics(req, res);
+  });
+
+  router.on('DELETE', '/__studio/api/otlp/metrics', (req, res) => {
+    handleDeleteOtlpMetrics(req, res);
   });
 
   router.on('DELETE', '/__studio/api/otlp/traces', (req, res) => {

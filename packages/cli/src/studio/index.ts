@@ -23,6 +23,7 @@ import {
   setOnContractsUpdated,
 } from './api/contracts';
 import { instrumentErrorObservatory } from './api/errors';
+import { instrumentEventRecording } from './api/events';
 import { instrumentLogs, setOnLogsUpdated } from './api/logs';
 import { setOnPerfUpdated } from './api/perf';
 import { setOnRecorderUpdated } from './api/recorder';
@@ -40,12 +41,15 @@ import { createStudioServer } from './server/http-server';
 import { StudioRouter } from './server/router';
 import { StudioWsServer } from './server/ws-server';
 import { StudioSyncEngine } from './sync';
+import { setAppBaseUrl } from './api/ws-tester';
 
 export interface StudioOptions {
   /** Port to listen on. Default: 4399. */
   port?: number;
   /** Whether to auto-open the browser. Default: true. */
   open?: boolean;
+  /** URL of the separately running API server used by SDK Playground. */
+  appUrl?: string;
 }
 
 const DEFAULT_PORT = 4399;
@@ -57,6 +61,7 @@ export async function startStudio(
   const port = options.port ?? DEFAULT_PORT;
   const autoOpen = options.open !== false;
   const studioToken = randomBytes(16).toString('hex');
+  if (options.appUrl) setAppBaseUrl(options.appUrl);
 
   // Set environment variables for native OpenTelemetry auto-export to discover Studio
   process.env.AXIOMIFY_STUDIO = 'true';
@@ -81,6 +86,7 @@ export async function startStudio(
     cleanup = loaded.cleanup;
     loadedExports = loaded.exports;
     instrumentErrorObservatory(app);
+    instrumentEventRecording(app);
     // Scan module exports for RoomManager instances after app loading
     instrumentWsAnalytics(app, loaded.exports);
   } catch (err) {
@@ -232,6 +238,7 @@ export async function startStudio(
       discovery = newDiscovery;
       currentApp = newApp;
       instrumentErrorObservatory(newApp);
+      instrumentEventRecording(newApp);
       // Re-instrument WS analytics with new exports
       instrumentWsAnalytics(newApp, newExports);
       instrumentRequestReplay(newApp);

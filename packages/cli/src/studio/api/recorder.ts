@@ -12,6 +12,12 @@
  */
 import type { ServerResponse } from 'node:http';
 import { sendJson } from '../server/http-server';
+import {
+  redactForStudio,
+  redactTextForStudio,
+  sanitizeRecordedBody,
+  sanitizeRecordedHeaders,
+} from './privacy';
 
 function safeStringify(val: any, space?: number): string {
   return JSON.stringify(
@@ -43,6 +49,8 @@ export interface RecordedResponse {
   durationMs: number;
   timestamp: string;
   timeline?: TimelineEntry[];
+  /** Structured events emitted by an SSE response. */
+  sseEvents?: Array<{ data: unknown; event?: string }>;
 }
 
 export interface RecordedSessionError {
@@ -112,13 +120,24 @@ function evictIfNeeded<T>(arr: T[]): void {
 // ─── Write API ────────────────────────────────────────────────────────────────
 
 export function recordRequest(entry: Omit<RecordedRequest, 'id'>): void {
-  requests.push({ id: `req-${++entryCount}`, ...entry });
+  requests.push({
+    id: `req-${++entryCount}`,
+    ...entry,
+    headers: sanitizeRecordedHeaders(entry.headers),
+    query: redactForStudio(entry.query) as Record<string, string>,
+    body: sanitizeRecordedBody(entry.body),
+  });
   evictIfNeeded(requests);
   notifyRecorderUpdated();
 }
 
 export function recordResponse(entry: Omit<RecordedResponse, 'id'>): void {
-  responses.push({ id: `res-${++entryCount}`, ...entry });
+  responses.push({
+    id: `res-${++entryCount}`,
+    ...entry,
+    headers: sanitizeRecordedHeaders(entry.headers),
+    body: sanitizeRecordedBody(entry.body),
+  });
   evictIfNeeded(responses);
   notifyRecorderUpdated();
 }
@@ -126,19 +145,32 @@ export function recordResponse(entry: Omit<RecordedResponse, 'id'>): void {
 export function recordSessionError(
   entry: Omit<RecordedSessionError, 'id'>,
 ): void {
-  errors.push({ id: `serr-${++entryCount}`, ...entry });
+  errors.push({
+    id: `serr-${++entryCount}`,
+    ...entry,
+    message: redactTextForStudio(entry.message),
+    stack: redactTextForStudio(entry.stack),
+  });
   evictIfNeeded(errors);
   notifyRecorderUpdated();
 }
 
 export function recordEvent(entry: Omit<RecordedEvent, 'id'>): void {
-  events.push({ id: `evt-${++entryCount}`, ...entry });
+  events.push({
+    id: `evt-${++entryCount}`,
+    ...entry,
+    payload: sanitizeRecordedBody(entry.payload),
+  });
   evictIfNeeded(events);
   notifyRecorderUpdated();
 }
 
 export function recordQuery(entry: Omit<RecordedQuery, 'id'>): void {
-  queries.push({ id: `qry-${++entryCount}`, ...entry });
+  queries.push({
+    id: `qry-${++entryCount}`,
+    ...entry,
+    query: redactTextForStudio(entry.query),
+  });
   evictIfNeeded(queries);
   notifyRecorderUpdated();
 }

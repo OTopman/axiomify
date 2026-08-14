@@ -34,7 +34,7 @@ Point your Prometheus scrape config at `http://localhost:3000/metrics`.
 | `requireToken`            | `string`                               | —            | Require `X-Metrics-Token` header to match this value (compared in constant time).       |
 | `allowlist`               | `string[]`                             | —            | Allow only these IPv4 addresses or CIDR ranges.                                         |
 | `wsManager`               | `{ getStats(): {...} }`                | —            | Optional WebSocket manager. When set, WebSocket connection/room metrics are exported.   |
-| `allowPublicInProduction` | `boolean`                              | `false`      | When `NODE_ENV === 'production'` and no `protect` is set, allow unauthenticated access.  |
+| `allowPublicInProduction` | `boolean`                              | `false`      | When `NODE_ENV === 'production'` and no `protect` is set, allow unauthenticated access. |
 
 If none of `protect`, `requireToken`, or `allowlist` are set, a startup warning is emitted:
 

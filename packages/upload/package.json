@@ -16,11 +16,12 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup"
+    "build": "tsup",
+    "test": "vitest run tests --config ../../vitest.config.mts"
   },
   "dependencies": {
     "busboy": "1.6.0",
-    "@axiomify/core": "*"
+    "@axiomify/core": "^7.0.0"
   },
   "devDependencies": {
     "@types/busboy": "1.5.4"

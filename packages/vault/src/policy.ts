@@ -17,7 +17,10 @@ export class SecretPolicyEngine {
   private defaultDeny: boolean;
   private warnedNoPolicy = false;
 
-  constructor(policyData?: VaultPolicy, options: SecretPolicyEngineOptions = {}) {
+  constructor(
+    policyData?: VaultPolicy,
+    options: SecretPolicyEngineOptions = {},
+  ) {
     if (policyData) {
       this.policy = policyData;
     }

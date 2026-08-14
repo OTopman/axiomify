@@ -87,14 +87,14 @@ Accept-Ranges: bytes
 
 Supported forms:
 
-| Range header      | Response                                                             |
-| ----------------- | -------------------------------------------------------------------- |
-| `bytes=0-499`     | `206` — first 500 bytes (`end` clamped to the last byte of the file). |
-| `bytes=500-`      | `206` — from offset 500 to end of file.                               |
-| `bytes=-500`      | `206` — final 500 bytes (clamped to the whole file when longer).      |
-| `bytes=0-1,5-9`   | `200` — multi-range is not emitted; the full file is served instead.  |
-| `bytes=99999-` (past EOF), `bytes=-0` | `416` with `Content-Range: bytes */<size>`.       |
-| malformed / non-`bytes` unit | Header ignored — full `200` response.                      |
+| Range header                          | Response                                                              |
+| ------------------------------------- | --------------------------------------------------------------------- |
+| `bytes=0-499`                         | `206` — first 500 bytes (`end` clamped to the last byte of the file). |
+| `bytes=500-`                          | `206` — from offset 500 to end of file.                               |
+| `bytes=-500`                          | `206` — final 500 bytes (clamped to the whole file when longer).      |
+| `bytes=0-1,5-9`                       | `200` — multi-range is not emitted; the full file is served instead.  |
+| `bytes=99999-` (past EOF), `bytes=-0` | `416` with `Content-Range: bytes */<size>`.                           |
+| malformed / non-`bytes` unit          | Header ignored — full `200` response.                                 |
 
 The byte slice is streamed directly via `createReadStream(path, { start, end })`
 — a range request never reads the whole file.

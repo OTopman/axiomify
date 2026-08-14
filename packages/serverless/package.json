@@ -16,10 +16,11 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup"
+    "build": "tsup",
+    "test": "vitest run tests --config ../../vitest.config.mts"
   },
   "dependencies": {
-    "@axiomify/core": "*"
+    "@axiomify/core": "^7.0.0"
   },
   "keywords": [
     "axiomify",
@@ -54,6 +55,6 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=20.0.0 <23.0.0"
+    "node": ">=20.0.0"
   }
 }

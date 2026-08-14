@@ -8,6 +8,85 @@ describe('OpenApiGenerator', () => {
     info: { title: 'Test API', version: '1.0.0' },
   };
 
+  it('excludes routes whose schema explicitly opts out of OpenAPI', () => {
+    const mockApp = {
+      registeredRoutes: [
+        {
+          method: 'GET',
+          path: '/public',
+          schema: { openapi: true },
+          handler: () => {},
+        },
+        {
+          method: 'GET',
+          path: '/internal/health',
+          schema: { openapi: false },
+          handler: () => {},
+        },
+      ],
+    } as unknown as Axiomify;
+
+    const spec = new OpenApiGenerator(mockApp, mockOptions).generate() as any;
+    expect(spec.paths['/public']).toBeDefined();
+    expect(spec.paths['/internal/health']).toBeUndefined();
+  });
+
+  it('exports transform input schemas and records a warning instead of failing', () => {
+    const mockApp = {
+      registeredRoutes: [
+        {
+          method: 'POST',
+          path: '/users',
+          schema: {
+            body: z.object({
+              email: z
+                .string()
+                .transform((value) => value.trim().toLowerCase()),
+            }),
+          },
+          handler: () => {},
+        },
+      ],
+    } as unknown as Axiomify;
+
+    const spec = new OpenApiGenerator(mockApp, mockOptions).generate() as any;
+    expect(
+      spec.paths['/users'].post.requestBody.content['application/json'].schema
+        .properties.email.type,
+    ).toBe('string');
+    expect(spec['x-axiomify-warnings']).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'unrepresentable-zod-schema' }),
+      ]),
+    );
+  });
+
+  it('reports Swagger security configuration mistakes in the generated spec', () => {
+    const mockApp = {
+      registeredRoutes: [
+        {
+          method: 'GET',
+          path: '/protected',
+          schema: { security: [{ bearerAuth: [] }] },
+          handler: () => {},
+        },
+      ],
+    } as unknown as Axiomify;
+    const spec = new OpenApiGenerator(mockApp, {
+      ...mockOptions,
+      components: {
+        securitySchemas: { bearerAuth: { type: 'http', scheme: 'bearer' } },
+      },
+    }).generate() as any;
+
+    expect(spec['x-axiomify-warnings']).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'security-scheme-typo' }),
+        expect.objectContaining({ code: 'orphaned-security-scheme' }),
+      ]),
+    );
+  });
+
   it('wraps non-object body schema under "payload" when files are also defined', () => {
     const mockApp = {
       registeredRoutes: [
@@ -583,6 +662,43 @@ describe('OpenApiGenerator — `meta:` field removed in 6.0', () => {
 });
 
 describe('OpenApiGenerator — additional coverage', () => {
+  it('falls back to an empty schema when Zod input export fails', () => {
+    const schema = {
+      toJSONSchema(options?: Record<string, unknown>) {
+        if (options?.io === 'input') throw new Error('input export failed');
+        return { type: 'object' };
+      },
+    };
+    const app = {
+      registeredRoutes: [
+        {
+          method: 'POST',
+          path: '/broken-schema',
+          schema: { body: schema },
+          handler: () => {},
+        },
+      ],
+    } as unknown as Axiomify;
+    const spec = new OpenApiGenerator(app, {
+      info: { title: 'T', version: '1' },
+    }).generate() as any;
+    expect(
+      spec.paths['/broken-schema'].post.requestBody.content['application/json']
+        .schema,
+    ).toEqual({});
+  });
+
+  it('deduplicates identical generation warnings', () => {
+    const generator = new OpenApiGenerator(
+      { registeredRoutes: [] } as unknown as Axiomify,
+      { info: { title: 'T', version: '1' } },
+    );
+    const warn = (generator as any).warn.bind(generator);
+    warn('orphaned-security-scheme', 'missing', '/security/0');
+    warn('orphaned-security-scheme', 'missing', '/security/0');
+    expect(generator.getWarnings()).toHaveLength(1);
+  });
+
   it('synthesises operationId with "All" when path contains wildcard segment *', () => {
     const { Axiomify } = require('@axiomify/core');
     const app = new Axiomify();

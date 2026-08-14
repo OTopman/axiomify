@@ -13,7 +13,7 @@ import { pipeline } from 'stream/promises';
 
 declare module '@axiomify/core' {
   interface AxiomifyRequest<Body, Query, Params> {
-    files?: Record<string, UploadedFile>;
+    files?: Record<string, UploadedFile | UploadedFile[]>;
     uploadedFiles: string[];
     cleanup(): Promise<void>;
   }
@@ -226,6 +226,19 @@ export function useUpload(
         };
       }
 
+      // IncomingMessage emits `aborted` when the client disconnects before
+      // completing the request. Fetch-style adapters expose the same signal
+      // through AbortSignal. Cleanup is idempotent, so either source is safe.
+      const cleanupOnDisconnect = () => {
+        void mutableReq.cleanup();
+      };
+      if (typeof req.stream?.once === 'function') {
+        req.stream.once('aborted', cleanupOnDisconnect);
+      }
+      req.signal?.addEventListener('abort', cleanupOnDisconnect, {
+        once: true,
+      });
+
       if (!mutableReq.body) mutableReq.body = {};
       mutableReq.files = {};
 
@@ -323,13 +336,22 @@ export function useUpload(
 
               let byteCount = 0;
 
-              mutableReq.files[fieldname] = {
+              const uploadedFile: UploadedFile = {
                 originalName: info.filename,
                 savedName: finalName,
                 path: savePath,
                 size: 0,
                 mimetype: info.mimeType,
               };
+              const existing = mutableReq.files[fieldname] as
+                UploadedFile | UploadedFile[] | undefined;
+              if (existing === undefined) {
+                mutableReq.files[fieldname] = uploadedFile;
+              } else if (Array.isArray(existing)) {
+                existing.push(uploadedFile);
+              } else {
+                mutableReq.files[fieldname] = [existing, uploadedFile];
+              }
 
               // Authoritative per-field size enforcement: abort as soon as the
               // field's own limit is crossed (the catch block unlinks the
@@ -346,12 +368,14 @@ export function useUpload(
                 }
               });
 
+              // Track the path before streaming begins so an aborted request
+              // can remove a partially written file, not only completed ones.
+              mutableReq.uploadedFiles.push(savePath);
               await pipeline(
                 file,
                 createWriteStream(savePath, { flags: 'wx' }),
               );
-              mutableReq.files[fieldname].size = byteCount;
-              mutableReq.uploadedFiles.push(savePath);
+              uploadedFile.size = byteCount;
 
               if (config.validateContent !== false) {
                 await validateFileContent(savePath, config.accept);
@@ -411,9 +435,9 @@ export function useUpload(
       }
       if (req.files) {
         await Promise.allSettled(
-          Object.values(req.files).map((file) =>
-            unlink(file.path).catch(() => {}),
-          ),
+          Object.values(req.files)
+            .flatMap((file) => (Array.isArray(file) ? file : [file]))
+            .map((file) => unlink(file.path).catch(() => {})),
         );
       }
     },

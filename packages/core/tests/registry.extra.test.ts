@@ -119,6 +119,25 @@ describe('RouteRegistry — extended coverage', () => {
     expect(spanEnd).toHaveBeenCalled();
   });
 
+  it('does not apply a zero-millisecond timeout merely because telemetry is enabled', async () => {
+    const startSpan = vi.fn(() => ({ end: vi.fn() }));
+    const app = new Axiomify({ telemetry: { startSpan } });
+    app.route({
+      method: 'GET',
+      path: '/traced-async',
+      handler: async (_r, res) => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        res.send({ ok: true });
+      },
+    });
+
+    const req = makeReq({ path: '/traced-async' });
+    const res = makeRes();
+    await app.handle(req, res);
+    expect(res.status).not.toHaveBeenCalledWith(408);
+    expect(res.send).toHaveBeenCalled();
+  });
+
   it('registerWs: tracks ws route and compiles message schema', async () => {
     const { z } = await import('zod');
     const app = new Axiomify();

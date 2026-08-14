@@ -46,14 +46,79 @@ function makeRes(): any {
 }
 
 describe('group-scoped hooks (encapsulation)', () => {
+  it('group.use applies middleware only to routes in its scope', async () => {
+    const app = new Axiomify();
+    const scopedPlugin = vi.fn();
+
+    app.route({
+      method: 'GET',
+      path: '/public',
+      handler: (_r, res) => res.send('ok'),
+    });
+    app.group('/private', (group) => {
+      group.use(scopedPlugin);
+      group.route({
+        method: 'GET',
+        path: '/profile',
+        handler: (_r, res) => res.send('ok'),
+      });
+      group.group('/admin', (admin) => {
+        admin.route({
+          method: 'GET',
+          path: '/users',
+          handler: (_r, res) => res.send('ok'),
+        });
+      });
+    });
+
+    await app.handle(makeReq({ path: '/public' }), makeRes());
+    expect(scopedPlugin).not.toHaveBeenCalled();
+
+    await app.handle(makeReq({ path: '/private/profile' }), makeRes());
+    await app.handle(makeReq({ path: '/private/admin/users' }), makeRes());
+    expect(scopedPlugin).toHaveBeenCalledTimes(2);
+  });
+
+  it('group.use does not retroactively change routes already declared in a scope', async () => {
+    const app = new Axiomify();
+    const scopedPlugin = vi.fn();
+
+    app.group('/api', (group) => {
+      group.route({
+        method: 'GET',
+        path: '/before',
+        handler: (_r, res) => res.send('ok'),
+      });
+      group.use(scopedPlugin);
+      group.route({
+        method: 'GET',
+        path: '/after',
+        handler: (_r, res) => res.send('ok'),
+      });
+    });
+
+    await app.handle(makeReq({ path: '/api/before' }), makeRes());
+    expect(scopedPlugin).not.toHaveBeenCalled();
+    await app.handle(makeReq({ path: '/api/after' }), makeRes());
+    expect(scopedPlugin).toHaveBeenCalledTimes(1);
+  });
+
   it('onPreHandler fires only for routes inside the group', async () => {
     const app = new Axiomify();
     const scoped = vi.fn();
 
-    app.route({ method: 'GET', path: '/public', handler: (_r, res) => res.send('ok') });
+    app.route({
+      method: 'GET',
+      path: '/public',
+      handler: (_r, res) => res.send('ok'),
+    });
     app.group('/admin', (g) => {
       g.addHook('onPreHandler', scoped);
-      g.route({ method: 'GET', path: '/users', handler: (_r, res) => res.send('ok') });
+      g.route({
+        method: 'GET',
+        path: '/users',
+        handler: (_r, res) => res.send('ok'),
+      });
     });
 
     await app.handle(makeReq({ path: '/public' }), makeRes());
@@ -69,10 +134,18 @@ describe('group-scoped hooks (encapsulation)', () => {
     const app = new Axiomify();
     const scoped = vi.fn();
 
-    app.route({ method: 'GET', path: '/out', handler: (_r, res) => res.send('ok') });
+    app.route({
+      method: 'GET',
+      path: '/out',
+      handler: (_r, res) => res.send('ok'),
+    });
     app.group('/in', (g) => {
       g.addHook('onPostHandler', scoped);
-      g.route({ method: 'GET', path: '/a', handler: (_r, res) => res.send('ok') });
+      g.route({
+        method: 'GET',
+        path: '/a',
+        handler: (_r, res) => res.send('ok'),
+      });
     });
 
     await app.handle(makeReq({ path: '/out' }), makeRes());
@@ -89,9 +162,17 @@ describe('group-scoped hooks (encapsulation)', () => {
       api.addHook('onPreHandler', parentHook);
       api.group('/v1', (v1) => {
         v1.addHook('onPreHandler', childHook);
-        v1.route({ method: 'GET', path: '/users', handler: (_r, res) => res.send('ok') });
+        v1.route({
+          method: 'GET',
+          path: '/users',
+          handler: (_r, res) => res.send('ok'),
+        });
       });
-      api.route({ method: 'GET', path: '/status', handler: (_r, res) => res.send('ok') });
+      api.route({
+        method: 'GET',
+        path: '/status',
+        handler: (_r, res) => res.send('ok'),
+      });
     });
 
     await app.handle(makeReq({ path: '/api/v1/users' }), makeRes());
@@ -108,10 +189,18 @@ describe('group-scoped hooks (encapsulation)', () => {
     const app = new Axiomify();
     const scoped = vi.fn();
 
-    app.route({ method: 'GET', path: '/other', handler: (_r, res) => res.send('ok') });
+    app.route({
+      method: 'GET',
+      path: '/other',
+      handler: (_r, res) => res.send('ok'),
+    });
     app.group('/api', (g) => {
       g.addHook('onRequest', scoped);
-      g.route({ method: 'GET', path: '/x', handler: (_r, res) => res.send('ok') });
+      g.route({
+        method: 'GET',
+        path: '/x',
+        handler: (_r, res) => res.send('ok'),
+      });
     });
 
     await app.handle(makeReq({ path: '/other' }), makeRes());
@@ -124,10 +213,18 @@ describe('group-scoped hooks (encapsulation)', () => {
     const app = new Axiomify();
     const scoped = vi.fn();
 
-    app.route({ method: 'GET', path: '/apiv2/x', handler: (_r, res) => res.send('ok') });
+    app.route({
+      method: 'GET',
+      path: '/apiv2/x',
+      handler: (_r, res) => res.send('ok'),
+    });
     app.group('/api', (g) => {
       g.addHook('onRequest', scoped);
-      g.route({ method: 'GET', path: '/x', handler: (_r, res) => res.send('ok') });
+      g.route({
+        method: 'GET',
+        path: '/x',
+        handler: (_r, res) => res.send('ok'),
+      });
     });
 
     // /apiv2 must NOT match the /api group prefix.
@@ -141,9 +238,17 @@ describe('group-scoped hooks (encapsulation)', () => {
 
     app.group('/tenants/:tenantId', (g) => {
       g.addHook('onRequest', scoped);
-      g.route({ method: 'GET', path: '/info', handler: (_r, res) => res.send('ok') });
+      g.route({
+        method: 'GET',
+        path: '/info',
+        handler: (_r, res) => res.send('ok'),
+      });
     });
-    app.route({ method: 'GET', path: '/tenants', handler: (_r, res) => res.send('ok') });
+    app.route({
+      method: 'GET',
+      path: '/tenants',
+      handler: (_r, res) => res.send('ok'),
+    });
 
     await app.handle(makeReq({ path: '/tenants/acme/info' }), makeRes());
     expect(scoped).toHaveBeenCalledTimes(1);
@@ -186,10 +291,18 @@ describe('group-scoped hooks (encapsulation)', () => {
     const app = new Axiomify();
     const scoped = vi.fn();
 
-    app.route({ method: 'GET', path: '/a', handler: (_r, res) => res.send('ok') });
+    app.route({
+      method: 'GET',
+      path: '/a',
+      handler: (_r, res) => res.send('ok'),
+    });
     app.group('/api', (g) => {
       g.addHook('onClose', scoped);
-      g.route({ method: 'GET', path: '/a', handler: (_r, res) => res.send('ok') });
+      g.route({
+        method: 'GET',
+        path: '/a',
+        handler: (_r, res) => res.send('ok'),
+      });
     });
 
     await app.handle(makeReq({ path: '/a' }), makeRes());
@@ -204,7 +317,11 @@ describe('group-scoped hooks (encapsulation)', () => {
 
     app.addHook('onPreHandler', globalHook);
     app.group('/api', (g) => {
-      g.route({ method: 'GET', path: '/x', handler: (_r, res) => res.send('ok') });
+      g.route({
+        method: 'GET',
+        path: '/x',
+        handler: (_r, res) => res.send('ok'),
+      });
     });
 
     await app.handle(makeReq({ path: '/api/x' }), makeRes());
@@ -224,9 +341,22 @@ describe('group-scoped hooks (encapsulation)', () => {
     const scoped = vi.fn();
     app.group('/', (g) => {
       g.addHook('onRequest', scoped);
-      g.route({ method: 'GET', path: '/x', handler: (_r, res) => res.send('ok') });
+      g.route({
+        method: 'GET',
+        path: '/x',
+        handler: (_r, res) => res.send('ok'),
+      });
     });
     await app.handle(makeReq({ path: '/x' }), makeRes());
     expect(scoped).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires a callback for nested route groups', () => {
+    const app = new Axiomify();
+    app.group('/api', (group) => {
+      expect(() => (group as any).group('/v1')).toThrow(
+        'A route group callback is required.',
+      );
+    });
   });
 });

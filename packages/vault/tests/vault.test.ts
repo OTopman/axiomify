@@ -49,7 +49,10 @@ describe('Axiomify Vault', () => {
   let testRoot: string;
 
   beforeEach(() => {
-    testRoot = join(__dirname, `test-vault-env-${Math.random().toString(36).slice(2)}`);
+    testRoot = join(
+      __dirname,
+      `test-vault-env-${Math.random().toString(36).slice(2)}`,
+    );
     if (existsSync(testRoot)) {
       rmSync(testRoot, { recursive: true, force: true });
     }
@@ -752,8 +755,12 @@ describe('Axiomify Vault', () => {
       projectRoot: testRoot,
     });
 
-    const stdoutSpy = vi.spyOn(process.stdout, '_write').mockImplementation((chunk, enc, cb) => cb());
-    const stderrSpy = vi.spyOn(process.stderr, '_write').mockImplementation((chunk, enc, cb) => cb());
+    const stdoutSpy = vi
+      .spyOn(process.stdout, '_write')
+      .mockImplementation((chunk, enc, cb) => cb());
+    const stderrSpy = vi
+      .spyOn(process.stderr, '_write')
+      .mockImplementation((chunk, enc, cb) => cb());
 
     try {
       // 1. Force activePlaintextSecrets.size === 0 (via unregistering)
@@ -1013,7 +1020,6 @@ describe('Axiomify Vault', () => {
         expect(process.env.DATABASE_URL).toBe('db-conn-string');
         expect(process.env.STRIPE_SECRET).toBe('••••••••');
       });
-
     } finally {
       restoreProcessEnv();
     }

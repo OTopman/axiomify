@@ -56,8 +56,8 @@ app.route({
 
 ## Options — `useUpload(app, options?)`
 
-| Option        | Default | Description                                                                    |
-| ------------- | ------- | ------------------------------------------------------------------------------ |
+| Option        | Default | Description                                                                   |
+| ------------- | ------- | ----------------------------------------------------------------------------- |
 | `autoCleanup` | `false` | Automatically delete all uploaded temporary files after the handler finishes. |
 
 All request-level multipart limits are derived from the per-field `files` schema, not
@@ -67,18 +67,18 @@ are fixed at 100 text fields and 64 KiB per field value.
 
 ## Per-field `files` schema
 
-Each field in `schema.files` is configured with the following properties. `accept` and
-`maxSize` are required; the rest are optional.
+Each field in `schema.files` is configured with the following properties. `accept`,
+`maxSize`, and `autoSaveTo` are required; the rest are optional.
 
-| Property               | Required | Default        | Description                                                                                  |
-| ---------------------- | -------- | -------------- | -------------------------------------------------------------------------------------------- |
-| `accept`               | yes      | —              | MIME type allowlist (exact types or `type/*` wildcards).                                     |
-| `maxSize`              | yes      | —              | Max size in bytes per file, enforced on the stream.                                          |
-| `autoSaveTo`           | yes      | —              | Directory to save files to (created recursively if missing).                                 |
-| `maxFiles`             | no       | `1`            | Max number of files accepted for this field.                                                 |
-| `preserveOriginalName` | no       | `false`        | Keep the (sanitized) original filename instead of generating a random UUID name.             |
-| `rename`               | no       | —              | `(originalName, mimetype) => string \| Promise<string>` to compute the saved filename.       |
-| `validateContent`      | no       | `true`         | Verify the saved file's magic bytes against `accept`. Set `false` to skip content sniffing.  |
+| Property               | Required | Default | Description                                                                                 |
+| ---------------------- | -------- | ------- | ------------------------------------------------------------------------------------------- |
+| `accept`               | yes      | —       | MIME type allowlist (exact types or `type/*` wildcards).                                    |
+| `maxSize`              | yes      | —       | Max size in bytes per file, enforced on the stream.                                         |
+| `autoSaveTo`           | yes      | —       | Directory to save files to (created recursively if missing).                                |
+| `maxFiles`             | no       | `1`     | Max number of files accepted for this field.                                                |
+| `preserveOriginalName` | no       | `false` | Keep the (sanitized) original filename instead of generating a random UUID name.            |
+| `rename`               | no       | —       | `(originalName, mimetype) => string \| Promise<string>` to compute the saved filename.      |
+| `validateContent`      | no       | `true`  | Verify the saved file's magic bytes against `accept`. Set `false` to skip content sniffing. |
 
 ```typescript
 schema: {

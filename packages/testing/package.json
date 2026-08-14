@@ -16,10 +16,11 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup"
+    "build": "tsup",
+    "test": "vitest run tests --config ../../vitest.config.mts"
   },
   "dependencies": {
-    "@axiomify/core": "*"
+    "@axiomify/core": "^7.0.0"
   },
   "peerDependencies": {
     "zod": ">=3.20 <5"

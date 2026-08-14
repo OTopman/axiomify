@@ -17,7 +17,11 @@ function jwkOf(
   kid: string,
   extra: Record<string, unknown> = {},
 ): Record<string, unknown> {
-  return { ...(key.publicKey.export({ format: 'jwk' }) as object), kid, ...extra };
+  return {
+    ...(key.publicKey.export({ format: 'jwk' }) as object),
+    kid,
+    ...extra,
+  };
 }
 
 function jsonResponse(body: unknown, status = 200) {
@@ -52,7 +56,12 @@ describe('JwksClient', () => {
 
     const token = signJwt(
       { sub: 'user-1' },
-      { algorithm: 'RS256', privateKey: rsaA.privateKey, expiresIn: 60, keyid: 'kid-a' },
+      {
+        algorithm: 'RS256',
+        privateKey: rsaA.privateKey,
+        expiresIn: 60,
+        keyid: 'kid-a',
+      },
     );
     const claims = await verifyJwt(token, {
       algorithms: ['RS256'],
@@ -68,7 +77,12 @@ describe('JwksClient', () => {
     // EC key resolves with EC requirement
     const ecToken = signJwt(
       { sub: 'ec' },
-      { algorithm: 'ES256', privateKey: p256.privateKey, expiresIn: 60, keyid: 'kid-ec' },
+      {
+        algorithm: 'ES256',
+        privateKey: p256.privateKey,
+        expiresIn: 60,
+        keyid: 'kid-ec',
+      },
     );
     await expect(
       verifyJwt(ecToken, { algorithms: ['ES256'], keyResolver: client }),
@@ -150,7 +164,11 @@ describe('JwksClient', () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
         keys: [
-          { kty: 'oct', kid: 'evil-hmac', k: Buffer.from('x'.repeat(32)).toString('base64url') },
+          {
+            kty: 'oct',
+            kid: 'evil-hmac',
+            k: Buffer.from('x'.repeat(32)).toString('base64url'),
+          },
           jwkOf(rsaA, 'enc-key', { use: 'enc' }),
           jwkOf(rsaB, 'no-verify', { key_ops: ['encrypt'] }),
           { ...(rsaB.publicKey.export({ format: 'jwk' }) as object) }, // no kid
@@ -209,7 +227,10 @@ describe('JwksClient', () => {
   it('rejects with a 503-mapped JwksFetchError on transport and format failures', async () => {
     const client = new JwksClient({ url: JWKS_URL });
 
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({}, 500)));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({}, 500)),
+    );
     await expect(client.getKey('kid-a', 'RS256')).rejects.toBeInstanceOf(
       JwksFetchError,
     );
@@ -243,7 +264,10 @@ describe('JwksClient', () => {
       /invalid JSON/,
     );
 
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ nokeys: true })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ nokeys: true })),
+    );
     client.clearCache();
     await expect(client.getKey('kid-a', 'RS256')).rejects.toThrow(
       /no "keys" array/,
@@ -303,19 +327,35 @@ describe('createAuthPlugin — jwks wiring', () => {
 
     const good = signJwt(
       { sub: 'jwks-user' },
-      { algorithm: 'RS256', privateKey: rsaA.privateKey, expiresIn: 60, keyid: 'kid-a' },
+      {
+        algorithm: 'RS256',
+        privateKey: rsaA.privateKey,
+        expiresIn: 60,
+        keyid: 'kid-a',
+      },
     );
-    const req: any = { headers: { authorization: `Bearer ${good}` }, state: {} };
+    const req: any = {
+      headers: { authorization: `Bearer ${good}` },
+      state: {},
+    };
     await plugin(req, mockRes());
     expect(req.state.user.sub).toBe('jwks-user');
 
     // Same kid, different (attacker) private key → 401.
     const rogue = signJwt(
       { sub: 'attacker' },
-      { algorithm: 'RS256', privateKey: rsaB.privateKey, expiresIn: 60, keyid: 'kid-a' },
+      {
+        algorithm: 'RS256',
+        privateKey: rsaB.privateKey,
+        expiresIn: 60,
+        keyid: 'kid-a',
+      },
     );
     const res = mockRes();
-    await plugin({ headers: { authorization: `Bearer ${rogue}` }, state: {} } as any, res);
+    await plugin(
+      { headers: { authorization: `Bearer ${rogue}` }, state: {} } as any,
+      res,
+    );
     expect(res.status).toHaveBeenCalledWith(401);
   });
 
@@ -328,9 +368,17 @@ describe('createAuthPlugin — jwks wiring', () => {
     const plugin = createAuthPlugin({ jwks: client, algorithms: ['RS256'] });
     const token = signJwt(
       { sub: 'x' },
-      { algorithm: 'RS256', privateKey: rsaA.privateKey, expiresIn: 60, keyid: 'kid-a' },
+      {
+        algorithm: 'RS256',
+        privateKey: rsaA.privateKey,
+        expiresIn: 60,
+        keyid: 'kid-a',
+      },
     );
-    const req: any = { headers: { authorization: `Bearer ${token}` }, state: {} };
+    const req: any = {
+      headers: { authorization: `Bearer ${token}` },
+      state: {},
+    };
     await plugin(req, mockRes());
     expect(req.state.user.sub).toBe('x');
 
@@ -340,11 +388,19 @@ describe('createAuthPlugin — jwks wiring', () => {
   });
 
   it('surfaces JWKS outages as 503, not 401', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({}, 502)));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({}, 502)),
+    );
     const plugin = createAuthPlugin({ jwks: { url: JWKS_URL } });
     const token = signJwt(
       { sub: 'x' },
-      { algorithm: 'RS256', privateKey: rsaA.privateKey, expiresIn: 60, keyid: 'kid-a' },
+      {
+        algorithm: 'RS256',
+        privateKey: rsaA.privateKey,
+        expiresIn: 60,
+        keyid: 'kid-a',
+      },
     );
     await expect(
       plugin(

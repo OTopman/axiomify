@@ -129,9 +129,7 @@ export class TestClient {
       }
       if (pairs.length > 0) {
         const existing = headers['cookie'];
-        const prefix = Array.isArray(existing)
-          ? existing.join('; ')
-          : existing;
+        const prefix = Array.isArray(existing) ? existing.join('; ') : existing;
         headers['cookie'] = prefix
           ? `${prefix}; ${pairs.join('; ')}`
           : pairs.join('; ');
@@ -245,10 +243,7 @@ export class TestClient {
     return this.inject({ ...options, method: 'HEAD', url });
   }
 
-  options(
-    url: string,
-    options: InjectVerbOptions = {},
-  ): Promise<TestResponse> {
+  options(url: string, options: InjectVerbOptions = {}): Promise<TestResponse> {
     return this.inject({ ...options, method: 'OPTIONS', url });
   }
 }

@@ -175,9 +175,7 @@ const adapter = new NativeAdapter(app, {
   // On macOS / Windows, this is REQUIRED for listenClustered():
   // allowUserspaceProxy: true,
 });
-adapter.listenClustered({
-  /* ... */
-});
+adapter.listenClustered({/* ... */});
 ```
 
 On non-Linux without the flag, `listenClustered()` throws at the call
