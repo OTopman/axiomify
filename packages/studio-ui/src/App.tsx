@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { DiscoveryData, FindingItem } from './types';
 import { apiFetch, getToken, removeToken, setToken } from './utils/api';
+import { STUDIO_VERSION } from './version';
 
 // Components
 import { Dashboard } from './components/Dashboard';
@@ -621,7 +622,7 @@ function App() {
         <div className="sidebar-brand">
           <div className="header-logo-icon">A</div>
           <span>Axiomify Studio</span>
-          <span className="header-badge">v1</span>
+          <span className="header-badge">v{STUDIO_VERSION}</span>
         </div>
 
         <div className="sidebar-section">Inspect</div>

@@ -15,6 +15,8 @@ describe('CLI command entry points', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
     await runDoctor();
-    expect(process.exit).toHaveBeenCalledTimes(1);
+    const nodeMajor = Number.parseInt(process.versions.node, 10);
+    const supported = nodeMajor === 22 || nodeMajor === 24;
+    expect(process.exit).toHaveBeenCalledTimes(supported ? 0 : 1);
   });
 });
