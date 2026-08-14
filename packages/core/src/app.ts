@@ -9,6 +9,7 @@ import {
 import { HookHandlerMap, HookManager } from './lifecycle';
 import { RouteRegistry } from './registry';
 import { makeSerialize } from './serialize';
+import { RequestStateImpl } from './state';
 import type {
   AppConfigurator,
   AppContext,
@@ -71,6 +72,31 @@ function buildPrefixMatcher(prefix: string): RegExp {
 // allocation overhead disappears.
 const _REQUEST_ID_PID = process.pid.toString(36);
 let _REQUEST_ID_COUNTER = 0;
+
+/**
+ * Adapters and in-memory tools occasionally construct request objects rather
+ * than receiving one from the native adapter. Keep those legacy request
+ * shapes compatible with the public RequestState contract before hooks or
+ * route handlers can access them.
+ */
+function ensureRequestState(req: AxiomifyRequest): void {
+  const existing = req.state as any;
+  if (
+    existing &&
+    typeof existing.get === 'function' &&
+    typeof existing.set === 'function'
+  ) {
+    return;
+  }
+
+  const state = new RequestStateImpl();
+  if (existing && typeof existing === 'object') {
+    for (const [key, value] of Object.entries(existing)) {
+      state.set(key, value);
+    }
+  }
+  (req as any).state = state;
+}
 
 export class Axiomify {
   public readonly hooks: HookManager;
@@ -537,7 +563,10 @@ export class Axiomify {
     callback: (group: RouteGroup) => void,
     ancestorMembers: WeakSet<object>[],
   ): void {
-    const inheritedPlugins = options.plugins ?? [];
+    // This list is intentionally local to the group closure. `group.use()`
+    // can extend it for routes registered later in the scope without changing
+    // a parent's middleware or leaking into sibling groups.
+    let scopedPlugins = [...(options.plugins ?? [])];
     // Routes registered through THIS group (and its children). WeakSet is
     // safe here because the registry holds strong references to every
     // registered definition for the app's lifetime.
@@ -547,11 +576,15 @@ export class Axiomify {
     let matcher: RegExp | null = null;
 
     const groupProxy: RouteGroup = {
+      use: (plugin: RouteMiddleware): RouteGroup => {
+        scopedPlugins = [...scopedPlugins, plugin];
+        return groupProxy;
+      },
       route: <S extends RouteSchema>(def: RouteDefinition<S>) => {
         const finalDef = {
           ...def,
           path: joinRoutePath(prefix, def.path),
-          plugins: mergePlugins(inheritedPlugins, def.plugins),
+          plugins: mergePlugins(scopedPlugins, def.plugins),
         };
         // Register membership BEFORE this.route(): the registry stores the
         // exact object, and dispatch compares by identity.
@@ -563,7 +596,7 @@ export class Axiomify {
         this.ws<S, M>({
           ...def,
           path: joinRoutePath(prefix, def.path),
-          plugins: mergePlugins(inheritedPlugins, def.plugins),
+          plugins: mergePlugins(scopedPlugins, def.plugins),
         });
         return groupProxy;
       },
@@ -576,11 +609,12 @@ export class Axiomify {
           typeof subOptionsOrCallback === 'function'
             ? subOptionsOrCallback
             : subMaybeCallback;
-        if (!subCallback) throw new Error('A route group callback is required.');
+        if (!subCallback)
+          throw new Error('A route group callback is required.');
 
         this._createGroup(
           joinRoutePath(prefix, subPrefix),
-          { plugins: mergePlugins(inheritedPlugins, subOptions.plugins) },
+          { plugins: mergePlugins(scopedPlugins, subOptions.plugins) },
           subCallback,
           allScopes,
         );
@@ -679,6 +713,7 @@ export class Axiomify {
     req: AxiomifyRequest,
     res: AxiomifyResponse,
   ): Promise<void> {
+    ensureRequestState(req);
     return this.dispatcher.handle(req, res);
   }
 
@@ -723,6 +758,7 @@ export class Axiomify {
           'This API is reserved for adapter packages.',
       );
     }
+    ensureRequestState(req);
     return this.dispatcher.handleMatchedRoute(req, res, route, params);
   }
 }

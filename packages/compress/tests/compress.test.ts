@@ -117,7 +117,9 @@ function decompress(payload: Buffer, encoding: CompressEncoding): Buffer {
 function collect(readable: Readable): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    readable.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+    readable.on('data', (c) =>
+      chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)),
+    );
     readable.on('end', () => resolve(Buffer.concat(chunks)));
     readable.on('error', reject);
   });
@@ -258,7 +260,10 @@ describe('useCompress — round-trips', () => {
         res.sendRaw(html, 'text/html; charset=utf-8');
       },
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'gzip' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'gzip' },
+    });
     const { res, headers, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -275,7 +280,10 @@ describe('useCompress — round-trips', () => {
         res.sendRaw(buf, 'application/json');
       },
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'br' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'br' },
+    });
     const { res, headers, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -291,7 +299,10 @@ describe('useCompress — round-trips', () => {
         res.stream(Readable.from(chunks), 'text/plain; charset=utf-8');
       },
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'gzip' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'gzip' },
+    });
     const { res, headers, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -313,7 +324,10 @@ describe('useCompress — round-trips', () => {
         },
       },
     );
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'gzip' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'gzip' },
+    });
     const { res, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -333,7 +347,10 @@ describe('useCompress — round-trips', () => {
         },
       },
     );
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'br' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'br' },
+    });
     const { res, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -348,7 +365,10 @@ describe('useCompress — guards', () => {
         res.send({ tiny: true });
       },
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'gzip' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'gzip' },
+    });
     const { res, headers, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -378,12 +398,17 @@ describe('useCompress — guards', () => {
         },
       },
     );
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'gzip' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'gzip' },
+    });
     const { res, headers, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
     expect(headers['Content-Encoding']).toBe('gzip');
-    expect(zlib.gunzipSync(captured.payload).toString()).toBe('0123456789ABCDEF');
+    expect(zlib.gunzipSync(captured.payload).toString()).toBe(
+      '0123456789ABCDEF',
+    );
   });
 
   it('MIME filter: non-allowlisted types pass through without Vary', async () => {
@@ -393,7 +418,10 @@ describe('useCompress — guards', () => {
         res.sendRaw(png, 'image/png');
       },
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'br' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'br' },
+    });
     const { res, headers, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -412,7 +440,10 @@ describe('useCompress — guards', () => {
         },
       },
     );
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'gzip' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'gzip' },
+    });
     const { res, headers, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -425,7 +456,10 @@ describe('useCompress — guards', () => {
         res.stream(Readable.from([BIG]), 'text/event-stream');
       },
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'gzip' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'gzip' },
+    });
     const { res, headers, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -440,7 +474,10 @@ describe('useCompress — guards', () => {
         res.send({ blob: BIG });
       },
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'br' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'br' },
+    });
     const { res, headers, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -455,7 +492,10 @@ describe('useCompress — guards', () => {
         res.sendRaw(BIG, 'text/plain');
       },
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'br' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'br' },
+    });
     const { res, headers, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -471,7 +511,10 @@ describe('useCompress — guards', () => {
         res.stream(Readable.from([BIG]), 'text/plain');
       },
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'gzip' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'gzip' },
+    });
     const { res, headers, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -511,7 +554,10 @@ describe('useCompress — guards', () => {
         res.sendRaw('third', 'text/plain');
       },
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'gzip' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'gzip' },
+    });
     const { res, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -529,7 +575,10 @@ describe('useCompress — guards', () => {
         res.stream(Readable.from(['nope']), 'text/plain');
       },
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'br' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'br' },
+    });
     const { res, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -543,7 +592,10 @@ describe('useCompress — guards', () => {
         res.sendRaw(12345 as any, 'text/plain');
       },
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'gzip' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'gzip' },
+    });
     const { res, headers, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -572,7 +624,10 @@ describe('useCompress — Vary header', () => {
         res.send({ blob: BIG });
       },
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'gzip' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'gzip' },
+    });
     const { res, headers, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -586,7 +641,10 @@ describe('useCompress — Vary header', () => {
         res.send({ blob: BIG });
       },
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'gzip' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'gzip' },
+    });
     const { res, headers, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -600,7 +658,10 @@ describe('useCompress — Vary header', () => {
         res.send({ blob: BIG });
       },
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'gzip' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'gzip' },
+    });
     const { res, headers, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -613,7 +674,10 @@ describe('disableCompression', () => {
     const app = makeApp(undefined, {
       plugins: [disableCompression],
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'br' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'br' },
+    });
     const { res, headers, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;
@@ -649,9 +713,9 @@ describe('disableCompression', () => {
 describe('useCompress — options validation & zstd feature detection', () => {
   it('throws on unknown encodings', () => {
     const app = new Axiomify();
-    expect(() =>
-      useCompress(app, { encodings: ['snappy' as any] }),
-    ).toThrow(/Unknown encoding "snappy"/);
+    expect(() => useCompress(app, { encodings: ['snappy' as any] })).toThrow(
+      /Unknown encoding "snappy"/,
+    );
   });
 
   it('drops zstd with a warning when the runtime lacks it', async () => {
@@ -706,7 +770,10 @@ describe('useCompress — options validation & zstd feature detection', () => {
       path: '/data',
       handler: async (_req: any, res: any) => res.send({ blob: BIG }),
     });
-    const req = makeReq({ path: '/data', headers: { 'accept-encoding': 'gzip' } });
+    const req = makeReq({
+      path: '/data',
+      headers: { 'accept-encoding': 'gzip' },
+    });
     const { res, captured, emitted } = makeRes();
     await app.handle(req, res);
     await emitted;

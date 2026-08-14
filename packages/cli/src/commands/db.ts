@@ -149,7 +149,9 @@ export async function loadManifestFallback(
  * CLI works when the package is absent), fall back to the built-in JSON
  * reader. Returns null when no manifest exists.
  */
-export async function loadManifest(cwd: string): Promise<LoadedManifest | null> {
+export async function loadManifest(
+  cwd: string,
+): Promise<LoadedManifest | null> {
   let dbPkg: any;
   try {
     dbPkg = await import('@axiomify/db');
@@ -214,7 +216,9 @@ export async function runDbAction(
 
   if (!manifest) {
     console.error(
-      pc.red(`✗ No ${MANIFEST_JSON} or ${MANIFEST_MJS} manifest found in ${cwd}.`) +
+      pc.red(
+        `✗ No ${MANIFEST_JSON} or ${MANIFEST_MJS} manifest found in ${cwd}.`,
+      ) +
         `\n\n  Create ${pc.cyan(MANIFEST_JSON)} to declare your database workflow:\n\n` +
         SUGGESTED_MANIFEST.replace(/^/gm, '  ') +
         '\n',
@@ -244,9 +248,7 @@ export async function runDbAction(
   }
 
   if (typeof cmd === 'string') {
-    console.log(
-      `${symbols.arrow} ${pc.bold(`db ${action}`)}: ${pc.cyan(cmd)}`,
-    );
+    console.log(`${symbols.arrow} ${pc.bold(`db ${action}`)}: ${pc.cyan(cmd)}`);
     const code = await runShell(cmd, cwd);
     if (code === 0) {
       console.log(`${symbols.ok} db ${action} completed`);
@@ -306,7 +308,9 @@ export async function detectOrms(cwd: string): Promise<OrmHint[]> {
     /* unreadable cwd — no hints */
   }
 
-  const drizzleConfig = entries.find((f) => /^drizzle\.config\.[cm]?[jt]s$/.test(f));
+  const drizzleConfig = entries.find((f) =>
+    /^drizzle\.config\.[cm]?[jt]s$/.test(f),
+  );
   if (drizzleConfig) {
     hints.push({
       orm: 'drizzle',
@@ -390,9 +394,7 @@ export async function dbStatus(opts: DbCmdOptions = {}): Promise<number> {
       `  Suggested ${pc.cyan(MANIFEST_JSON)} for ${pc.bold(first.orm)}:`,
     );
     console.log();
-    console.log(
-      JSON.stringify(suggested, null, 2).replace(/^/gm, '  '),
-    );
+    console.log(JSON.stringify(suggested, null, 2).replace(/^/gm, '  '));
   } else {
     console.log();
     console.log(`  Create ${pc.cyan(MANIFEST_JSON)} to declare your workflow:`);

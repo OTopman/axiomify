@@ -75,7 +75,9 @@ describe('parseApiKey / generateApiKey / hashApiKeySecret', () => {
     expect(h1).not.toBe(h2);
 
     const hexSalt = '0123456789abcdef0123456789abcdef';
-    expect(hashApiKeySecret('abc', hexSalt)).toBe(hashApiKeySecret('abc', hexSalt));
+    expect(hashApiKeySecret('abc', hexSalt)).toBe(
+      hashApiKeySecret('abc', hexSalt),
+    );
   });
 
   it('hashApiKeySecretPbkdf2 generates valid pbkdf2 format string and authenticates', () => {
@@ -85,13 +87,17 @@ describe('parseApiKey / generateApiKey / hashApiKeySecret', () => {
     expect(hashApiKeySecretPbkdf2('mysecret', { salt })).toBe(pbkdf2Hash);
 
     const defaultOptHash = hashApiKeySecretPbkdf2('mysecret');
-    expect(defaultOptHash).toMatch(/^pbkdf2:sha256:10000:[0-9a-f]{32}:[0-9a-f]{64}$/);
+    expect(defaultOptHash).toMatch(
+      /^pbkdf2:sha256:10000:[0-9a-f]{32}:[0-9a-f]{64}$/,
+    );
   });
 
   it('rejects keys with invalid iteration count in PBKDF2 format', async () => {
     const plugin = createApiKeyPlugin({
       keys: {
-        baditer: { hashedKey: 'pbkdf2$0$0123456789abcdef0123456789abcdef$1234' },
+        baditer: {
+          hashedKey: 'pbkdf2$0$0123456789abcdef0123456789abcdef$1234',
+        },
       },
     });
     const req = makeReq('ax_baditer_secret');
@@ -142,7 +148,10 @@ describe('createApiKeyPlugin — static keys map', () => {
     const res = makeRes();
     await plugin.requireApiKey()(makeReq('ax_svc1_wrong-secret'), res);
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.send).toHaveBeenCalledWith(null, expect.stringMatching(/Invalid/));
+    expect(res.send).toHaveBeenCalledWith(
+      null,
+      expect.stringMatching(/Invalid/),
+    );
   });
 
   it('rejects an unknown id with 401', async () => {
@@ -155,7 +164,10 @@ describe('createApiKeyPlugin — static keys map', () => {
     const res = makeRes();
     await plugin.requireApiKey()(makeReq(), res);
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.send).toHaveBeenCalledWith(null, expect.stringMatching(/Missing/));
+    expect(res.send).toHaveBeenCalledWith(
+      null,
+      expect.stringMatching(/Missing/),
+    );
   });
 
   it('rejects a malformed key with 401', async () => {
@@ -279,9 +291,9 @@ describe('createApiKeyPlugin — configuration validation', () => {
   });
 
   it('rejects records without a valid hashedKey', () => {
-    expect(() =>
-      createApiKeyPlugin({ keys: { cfg: {} as never } }),
-    ).toThrow(/must include a "hashedKey"/);
+    expect(() => createApiKeyPlugin({ keys: { cfg: {} as never } })).toThrow(
+      /must include a "hashedKey"/,
+    );
     expect(() =>
       createApiKeyPlugin({ keys: { cfg: { hashedKey: 'not-hex' } } }),
     ).toThrow(/64-char hex/);

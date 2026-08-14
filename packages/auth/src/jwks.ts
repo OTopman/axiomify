@@ -108,7 +108,8 @@ export class JwksClient implements KeyResolver {
     }
 
     const now = Date.now();
-    const cacheFresh = this.fetchedAt !== 0 && now - this.fetchedAt < this.cacheTtlMs;
+    const cacheFresh =
+      this.fetchedAt !== 0 && now - this.fetchedAt < this.cacheTtlMs;
 
     if (!cacheFresh) {
       await this.refresh();
@@ -189,7 +190,9 @@ export class JwksClient implements KeyResolver {
     try {
       body = await response.json();
     } catch {
-      throw new JwksFetchError(`JWKS endpoint ${this.url} returned invalid JSON`);
+      throw new JwksFetchError(
+        `JWKS endpoint ${this.url} returned invalid JSON`,
+      );
     }
     const jwks = body as { keys?: JsonWebKey[] };
     if (!Array.isArray(jwks?.keys)) {
@@ -205,10 +208,7 @@ export class JwksClient implements KeyResolver {
       // compromised JWKS can never smuggle in an HS* secret.
       if (jwk?.kty !== 'RSA' && jwk?.kty !== 'EC') continue;
       if (jwk.use !== undefined && jwk.use !== 'sig') continue;
-      if (
-        Array.isArray(jwk.key_ops) &&
-        !jwk.key_ops.includes('verify')
-      ) {
+      if (Array.isArray(jwk.key_ops) && !jwk.key_ops.includes('verify')) {
         continue;
       }
       if (typeof jwk.kid !== 'string' || jwk.kid.length === 0) continue;

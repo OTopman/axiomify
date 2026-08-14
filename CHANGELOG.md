@@ -1,10 +1,59 @@
 # Changelog
 
+## 7.1.0
+
+### Compatibility and migration notes
+
+- **Node.js:** Node 20 is no longer supported. Use an active Node 22 or Node 24
+  release; native prebuilt verification and CI now target those release lines.
+- **Uploads:** repeated files submitted under one field now produce an array
+  instead of replacing the previous file. Code that reads `req.files[field]`
+  must handle `UploadedFile | UploadedFile[]`.
+
+### Features
+
+- Add `@axiomify/observability` plus cache, compression, database, session, and
+  testing packages with Redis integrations, request injection, transactions,
+  signed sessions, and HTTP cache controls.
+- Expand authentication with PBKDF2 API keys, asymmetric JWT algorithms,
+  remote JWKS verification, OAuth 2.0/OIDC discovery, and PKCE.
+- Add cookies, group-scoped hooks, deprecation helpers, safer dispatch, and
+  corrected defaulted optional-field validation to core.
+- Add native HTTP/2 with ALPN fallback, request timeouts, response hardening,
+  RFC 9110 range responses, and Redis-backed cross-process WebSocket rooms.
+- Add database manifest commands, OpenAPI 3.1 validation, route snapshots and
+  diffs, improved SDK generation, diagnostics, and smaller CLI artifacts.
+- Expand Studio with request collections, multipart testing, traffic replay,
+  profiling, tracing, logs, metrics, jobs, WebSocket tooling, privacy controls,
+  OTLP retention, and current release versioning.
+
+### Correctness and security
+
+- Isolate SDK caches and in-flight GET deduplication by effective request
+  headers so authorization and tenant contexts cannot share responses.
+- Add serverless cookie and SSE parity, streaming cleanup, and correct HEAD and
+  null-body response handling.
+- Report unrepresentable Zod schemas and invalid OpenAPI security references.
+- Reserve pending job acquisitions to prevent workers exceeding configured
+  concurrency.
+- Preserve repeated uploads and clean partial files when requests abort.
+- Reject stale Studio bundles and return a real 404 for missing assets instead
+  of serving HTML with a JavaScript MIME mismatch.
+
+### Tooling and documentation
+
+- Add starters, recipes, API-versioning and contract-testing guides, package
+  documentation, community templates, portable repository checks, CodeQL and
+  release hardening, provenance, dependency policy, and strict coverage gates.
+- Remove tracked Playground scratch output and generated example SDK artifacts;
+  these outputs are regenerated when needed.
+
 ## 7.0.1
 
 ### 🩹 Maintenance & Bug Fixes
 
 #### `@axiomify/helmet` & `@axiomify/core`
+
 - **Security & Header Configuration.** Updated header stripping rules to support customizable `removeHeaders` and `removePoweredBy` opt-out flags for custom proxy deployment compatibility.
 - **Documentation & Verification.** Updated package guides, test suite assertions, and security audit documentation.
 
@@ -13,50 +62,63 @@
 ### ✨ New Features
 
 #### `@axiomify/core` — Cookies & Encapsulation
+
 - **First-class cookie support.** `req.cookies` (lazy-parsed), `res.cookie()` / `res.clearCookie()` (multiple `Set-Cookie` lines per RFC 6265), plus exported primitives: `parseCookieHeader`, `serializeCookie` (secure-by-default: `HttpOnly; SameSite=Lax; Path=/`; header-injection rejection), and HMAC-SHA256 signing via `signCookieValue` / `unsignCookieValue` (Express-compatible `s:<value>.<sig>` format, secret-rotation arrays, constant-time comparison). Implemented across the native, serverless and HTTP/2 adapters.
-- **Group-scoped hooks (encapsulation).** `group.addHook()` registers hooks that never fire outside the group: `onPreHandler`/`onPostHandler` scope *exactly* to routes registered through the group (including nested groups); `onRequest`/`onError`/`onClose` scope by path prefix with segment-boundary matching and `:param` support. Parent-group hooks apply to nested-group routes; global hooks are unaffected.
+- **Group-scoped hooks (encapsulation).** `group.addHook()` registers hooks that never fire outside the group: `onPreHandler`/`onPostHandler` scope _exactly_ to routes registered through the group (including nested groups); `onRequest`/`onError`/`onClose` scope by path prefix with segment-boundary matching and `:param` support. Parent-group hooks apply to nested-group routes; global hooks are unaffected.
 
 #### `@axiomify/testing` (New Package)
+
 - Inject-style test client — no sockets, no adapter: `createTestClient(app).inject()` plus verb shorthands, production-identical serializer envelopes, cookie round-trips (multiple `Set-Cookie`), streaming and SSE capture, timeout guard, and `expectValidResponse()` for asserting responses against the route's Zod `schema.response`.
 
 #### `@axiomify/compress` (New Package)
+
 - HTTP response compression on `node:zlib` (zero deps): brotli/gzip/deflate with full q-value negotiation (zstd feature-detected), async compression off the event loop, streaming support, MIME/threshold/`no-transform` guards, dedup-safe `Vary: Accept-Encoding`, and a `disableCompression` per-route escape hatch. 206/`Content-Range` responses are never compressed so Range offsets stay correct.
 
 #### `@axiomify/cache` (New Package)
+
 - Always-on ETag/`If-None-Match` conditional GET for dynamic responses (RFC 9110 weak comparison; 304s skip body and store writes) plus an opt-in shared response cache (`cached()` middleware or route prefixes) with stale-while-revalidate (single refresh claimant, everyone else gets `X-Cache: STALE`), `cacheControl()`/`noCache` helpers, LRU memory store (entry + byte bounds) and BYO-client Redis store, and a DI invalidation API (`app.resolve('cache')`).
 
 #### `@axiomify/session` (New Package)
+
 - Signed cookie sessions on core's new cookie layer: Proxy-based dirty tracking (nested plain objects/arrays included), eager cookie emission (headers are still writable), `destroy()`/`regenerate()` (fixation defence)/`touch()`/`save()`, rolling + `saveUninitialized` semantics, ≥32-byte secret enforcement with rotation support, `secure: 'auto'`, and Memory/Redis (BYO client) stores behind a `SessionStore` interface.
 
 #### `@axiomify/db` (New Package)
+
 - Client-agnostic database integration: `createDatabaseModule()` registers a stable Proxy handle in DI synchronously while the client factory connects asynchronously (`await db.ready` before `listen()`); duck-typed detection and derived connect/disconnect/health behavior for Prisma, Drizzle, pg, mysql2 and better-sqlite3; `withTransaction()` per-family transaction semantics; `dbHealthChecks()` composition with `app.healthCheck()`; `dbShutdown()` for graceful teardown; and the `axiomify.db.json`/`.mjs` manifest (`defineDbConfig`/`loadDbConfig`) consumed by the CLI.
 
 #### `@axiomify/auth` — RS/ES JWT, JWKS, API keys, OAuth 2.0/OIDC
+
 - **Asymmetric JWT**: RS256/384/512 and ES256/384 via `node:crypto` (ES* in raw `r||s` per JWT spec), wired into the existing `createAuthPlugin` (`secret | publicKey | jwks` — exactly one), with per-instance algorithm allowlists, unconditional `alg:none` rejection, and algorithm-confusion defence in both directions.
 - **`JwksClient`**: kid-cached JWKS fetching (10 min TTL, 30 s unknown-kid cooldown, bounded key count, in-flight dedupe); JWKS outages surface as 503, never 401.
 - **API keys**: `createApiKeyPlugin` — `ax_<id>_<secret>` format, sha256-only storage, constant-time comparison without id-enumeration timing oracles, scopes, static map or async lookup.
 - **OAuth 2.0 / OIDC**: `createOAuthPlugin` (google/github/auth0/generic OIDC with discovery) — Authorization Code + PKCE (S256 only), signed one-shot state cookie, ID-token verification through `JwksClient` (iss/aud/exp/nonce).
 
 #### `@axiomify/ws` — Cross-Process Rooms
+
 - `WsBroker` interface + `RedisWsBroker` (BYO ioredis or node-redis v4 clients) and `MemoryWsBroker` so rooms, broadcasts and presence work across `listenClustered()` workers: refcounted per-room channel subscriptions, echo-loop-free envelope forwarding (self-node drop), base64 binary transport, `getGlobalPresence()` over a control channel (250 ms best-effort window), and broker failures that never break local delivery (`getStats().brokerDropped`).
 
 #### `@axiomify/native` — HTTP/2
+
 - `Http2Adapter` on `node:http2` (the uWS bindings expose no h2 API): ALPN `h2` + `http/1.1` fallback on one port, opt-in `h2c` for local/testing, full request/response contract parity (cookies, SSE, streaming with backpressure, HEAD/null-body handling, header-injection guards, trustProxy semantics) and graceful GOAWAY shutdown. uWS remains the HTTP/1.1 throughput path — the tradeoff is documented.
 
 #### `@axiomify/cli` — Contract Governance & Database Commands
+
 - **`axiomify routes --snapshot [file]` / `--diff <baseline>`**: byte-deterministic route-surface snapshots (`{ version: 1, routes: [...] }` with sha256 schema hashes) and CI-ready diffing — removed routes / method changes / body-query-params schema changes are BREAKING (exit 1), response changes warn (`--strict-response` upgrades), `--allow-breaking` overrides. `routes --json` now emits the versioned surface (old bare-array baselines still accepted by `--diff`).
 - **`axiomify openapi --validate`**: validates generated specs against the vendored official OAS 3.1 JSON Schema (Ajv 2020-12) plus semantic lints — missing response descriptions, duplicate parameters/operationIds, path-template ↔ parameter mismatches, orphaned security-scheme references. JSON-pointer locations, `--json` output, exit 1 on errors.
 - **`axiomify db migrate|seed|generate|status`**: runs commands from the `axiomify.db.json`/`.mjs` manifest (`@axiomify/db` contract; built-in JSON fallback so the CLI stands alone), `--dry-run`, exit-code propagation, and ORM detection hints (Prisma/Drizzle/Knex) when no manifest exists. Only manifest-declared commands are ever executed.
 
 #### `@axiomify/static` — Range Requests
+
 - RFC 9110 single-range support: `Accept-Ranges: bytes`, 206 + `Content-Range` streamed slices, 416 for unsatisfiable ranges, `If-Range` (ETag and HTTP-date validators), multi-range/malformed fallback to full 200.
 
 ### 🩹 Bug Fixes
 
 #### `@axiomify/core`
+
 - **Request validators now compile Zod schemas with `io: 'input'`.** Previously `z.toJSONSchema()`'s default (`io: 'output'`) marked `.default()` fields as `required`, so the AJV fast-rejection path returned 400 for bodies that omitted a defaulted field — exactly the case defaults exist for. Response validators keep output semantics.
 
 ### 📝 Documentation
+
 - New package docs for testing, compress, cache, session and db; HTTP/2, Range and cross-process-scaling sections for native, static and ws; cookie + encapsulation sections for core; RS/ES/JWKS/API-key/OAuth sections for auth.
 
 ---
@@ -66,34 +128,42 @@
 ### ✨ New Features
 
 #### `@axiomify/core`
+
 - Add public, type-safe `.resolve()` API to `Axiomify` class to retrieve registered DI services cleanly.
 - Hardened `lockRoutes()` and `handleMatchedRoute()` internal APIs to enforce strict object identity matching on `ADAPTER_LOCK_TOKEN`, preventing potential caller frame/stack-based security bypasses.
 - Integrate request-time environment isolation helper `vaultScope` (re-exported as `ctx.vault.scope` in modules) into standard request dispatcher contexts.
 
 #### `@axiomify/jobs` (New Package)
+
 - Introduce a resilient, type-safe distributed queue and Saga transaction workflow coordination engine with background workers and native Studio console integration.
 
 #### `@axiomify/vault` (New Package)
+
 - Introduce a secure environment and configuration vault with envelope encryption, ABAC module policies, standard stream redaction, and git-guard checks.
 
 #### `@axiomify/logger`
+
 - Expand logger configuration with granular opt-in options: `includeParams`, `includeQuery`, `includeBody`, `includeResponseHeaders`, and `includeState`.
 - Add custom fallback serializer for `BigInt` properties to prevent runtime crashes during JSON logging of numeric identifiers.
 
 #### `@axiomify/native`
+
 - Hardened internal APIs (`lockRoutes`, `getRawServer`, `registerShutdownCallback`) via strict `ADAPTER_LOCK_TOKEN` object checks.
 - Optimized payload size limit rejection execution path.
 - Added a pre-built cached `504 Gateway Timeout` response wrapper for faster timeout responses.
 
 #### Axiomify Studio (`@axiomify/studio-ui`)
+
 - Add **Execution Profiler** (`ProfilerPanel` component) to visual dashboard, rendering interactive flame timeline graphs to debug hook cascades, route durations, and DB queries.
 
 ### 🩹 Bug Fixes
 
 #### `@axiomify/cli`
+
 - Minor robustness fix in Studio API package resolution error handling.
 
 ### 📝 Documentation
+
 - Align and update core concepts, WebSockets, jobs, vault, and CLI package documentation to reflect recent features (type coercion, sanitize options, cron scheduling, and `vaultScope`).
 - Replace `packages/studio-ui/README.md` boilerplate with a real overview.
 - Update `MODIFICATION_GUIDE.md` logger update details.
@@ -105,10 +175,13 @@
 ### 🩹 Bug Fixes
 
 #### `@axiomify/cli`
+
 - Fix missing response body formatting (`[Empty Response Body]`) on status codes `>= 400` in the Request Tester by executing the application response serializer inside the mock dispatcher.
 
 #### `@axiomify/studio-ui`
+
 - Change Request Tester replay execution history to be sorted in descending chronological order (newest first).
+
 ---
 
 ## 6.3.1
@@ -116,7 +189,9 @@
 ### 🩹 Bug Fixes
 
 #### `@axiomify/core`
+
 - Fix AJV validation failing with additional properties on default schemas by dynamically adjusting the `additionalProperties` mapping to match Zod's default/strict object semantics.
+
 ---
 
 ## 6.3.0
@@ -124,6 +199,7 @@
 ### ✨ New Features
 
 #### Axiomify Studio Control Plane
+
 - **Axiomify Studio Server (`@axiomify/cli`)**: Integrated an embedded HTTP/WS control-plane server via `axiomify studio <entry>` to inspect, test, and profile local running applications.
 - **Embedded Studio UI (`@axiomify/studio-ui`)**: Created a beautiful, rich developer console featuring:
   - **Analytics Panel**: Unified WebSocket and HTTP traffic metrics with real-time rolling SVG sparkline charts, active connection monitoring, and websocket room statistics.
@@ -131,9 +207,11 @@
   - **OpenAPI Analyzer**: Browse, mock-test, and run a quality/conformance audit on API routes.
   - **Error Logs Observatory**: Real-time high-performance log-streaming monitor.
   - **Endpoint Request Tester & Recorder**: Execute HTTP/WS requests and record sequences for automated integration test generation.
+
 * **WebSocket dynamic telemetry**: Added live telemetry instrumentation within `@axiomify/ws` (measuring `messagesReceived` and `messagesSent`) and integrated room presence statistics within `@axiomify/metrics`.
 
 #### `@axiomify/core` — Type Coercion in Validation Pipeline
+
 - **Automatic type coercion for query, params, and body.** Schemas declaring `z.number()` or `z.boolean()` no longer reject valid string representations from the HTTP transport layer. The framework now coerces castable values before validation and only throws `ValidationError` when coercion is impossible.
 
   Previously, a query parameter like `?limit=5` with schema `z.object({ limit: z.number() })` threw a `ValidationError` because AJV (configured with `coerceTypes: false`) rejected the string `"5"` before Zod could parse it.
@@ -146,70 +224,87 @@
   - `null` / `undefined` values are passed through unchanged
 
   **Per-source coercion strategy:**
-  | Source | Strategy |
-  |---|---|
+
+  | Source             | Strategy                                                                             |
+  | ------------------ | ------------------------------------------------------------------------------------ |
   | `query` / `params` | Pre-coerce → Zod-only validation (AJV bypassed — these are always strings from HTTP) |
-  | `body` | Pre-coerce → AJV fast-rejection → Zod parse |
-  | `response` | No coercion (handler data, not HTTP input) |
+  | `body`             | Pre-coerce → AJV fast-rejection → Zod parse                                          |
+  | `response`         | No coercion (handler data, not HTTP input)                                           |
 
   No code changes required — existing schemas work as-is. Users who already used `z.coerce.number()` as a workaround can optionally simplify to `z.number()`.
 
 ### 🔒 Security & Correctness Fixes
-* **Static Server Directory Escape (CWE-22)**: Hardened path checks in `@axiomify/static` to prevent relative directory traversal escapes via URL manipulation.
-* **Playground VM Escape Mitigation**: Sandboxed code execution in the Studio playground by executing script code in isolated, low-privilege child processes instead of insecure `node:vm` instances.
-* **Process Exit Signal Cleanup**: Removed signal listener leaks in `@axiomify/native` by cleanly removing process event listeners on exit/close.
-* **Telemetry Discovery Fix**: Fixed a bug in `@axiomify/ws` where WebSocket managers were not visible to telemetry scanners by attaching the room manager reference dynamically to the route definition object.
+
+- **Static Server Directory Escape (CWE-22)**: Hardened path checks in `@axiomify/static` to prevent relative directory traversal escapes via URL manipulation.
+- **Playground VM Escape Mitigation**: Sandboxed code execution in the Studio playground by executing script code in isolated, low-privilege child processes instead of insecure `node:vm` instances.
+- **Process Exit Signal Cleanup**: Removed signal listener leaks in `@axiomify/native` by cleanly removing process event listeners on exit/close.
+- **Telemetry Discovery Fix**: Fixed a bug in `@axiomify/ws` where WebSocket managers were not visible to telemetry scanners by attaching the room manager reference dynamically to the route definition object.
 
 ## 6.2.0
- 
+
 ### ✨ New Features
- 
+
 #### `@axiomify/core` — Route Safety, DI Hardening & Error Masking
- 
+
 - **Route conflict detection** (`routeConflict: 'throw' | 'warn'`): parametrized path conflicts are now detected at route registration time. Defaults to `'throw'` — surfacing bugs at startup instead of silently misbehaving at runtime. Pass `'warn'` to restore previous permissive behavior while you resolve conflicts.
 - **Strict schema guard** (`strictSchema: boolean`): throws `AxiomifyError` when a typed handler is registered without a Zod schema. Per-route `@axiomify-ignore-schema` inline override supported.
 - **`setNotFoundHandler()` / `setMethodNotAllowedHandler()`**: first-class APIs on both `Axiomify` and `NativeAdapter` with full `onRequest` / `onClose` hook lifecycle integration.
 - **`forceProvide()`**: test-only escape hatch for overriding sealed DI services without restarting the app instance.
+
 #### `@axiomify/ws` — Room Authorization & Message Sanitization
- 
+
 - **`beforeJoin` hook** (`WsRoomOptions.beforeJoin`): async per-join authorization callback. Return `false` or throw to reject with `ROOM_JOIN_FORBIDDEN` (distinct from `JOIN_FAILED` which covers join-limit exhaustion).
 - **`allowlist` pattern** (`WsRoomOptions.allowlist`): `RegExp` applied when no `beforeJoin` is registered. Default-deny posture — rooms not matching the pattern are rejected outright.
 - **`sanitize` option** (`WsRoomOptions.sanitize`): opt-in sanitization of incoming WebSocket messages for XSS, prototype pollution, and null-byte payloads via `@axiomify/security`. Individually configurable per protection type.
+
 #### `@axiomify/upload` — Automatic Temp-File Cleanup
- 
+
 - **`useUpload(app, { autoCleanup: true })`**: registers an `onPostHandler` hook that deletes all temp files written during the request after the handler completes. Prevents disk accumulation on busy servers.
 - **`req.cleanup()`**: explicit async cleanup callable from handlers or error hooks. Idempotent — safe to call multiple times.
 - **`req.uploadedFiles: string[]`**: typed array tracking all temp paths written in the current request lifecycle.
+
 #### `@axiomify/cli` — AsyncAPI SDK Ingestion
- 
+
 - **`axiomify sdk generate`** now accepts AsyncAPI 2.x specs as input. Format is auto-detected by the presence of the `asyncapi` key in the parsed spec — no new flags required. Diff, validate, and migrate sub-commands updated to handle AsyncAPI-sourced IR.
+
 ---
- 
+
 ### 🔒 Security & Correctness Fixes
- 
+
 #### `@axiomify/core`
+
 - **DI container sealed after `bootstrap()`**: calling `provide()` post-bootstrap now throws `AxiomifyError`. Duplicate token registration also throws. Both were previously silent data hazards.
 - **Production error masking**: non-validation errors in `NODE_ENV=production` are now returned as `{ error: 'Internal Server Error', code: 'INTERNAL_ERROR' }` — DB schema details and stack traces are never sent to clients. `ValidationError` responses retain structured field-level detail.
 - **`req.state` immutability**: `RequestStateImpl` enforces write-once semantics via a proxy wrapper. The `user` credential object is frozen on assignment — mutations after auth throw at runtime.
 - `RequestDispatcher` now appends `OPTIONS` to the `Allow` header on 405 responses.
 - `NativeAdapter` constructor logger assignment order corrected — logger is available before any adapter lifecycle events fire.
+
 #### `@axiomify/auth`
+
 - HS256 secret minimum enforced at 32 bytes (256 bits) per RFC 7518 §3.2, measured as UTF-8 encoded byte length (not character count). Secrets below this threshold throw at plugin registration instead of silently failing at token verification time.
+
 #### `@axiomify/security`
+
 - NoSQL injection pattern set extended with `$elemMatch`, `$slice`, `$pull`, and `$lookup` MongoDB operators.
 - `replaceUntilStable()` iteration capped at 10 to prevent O(n²) ReDoS from adversarial nested bypass payloads.
 - `prototypePollutionProtection` now documents in JSDoc that `__proto__`, `prototype`, and `constructor` keys are silently stripped from request body, query, and params.
+
 #### `@axiomify/native`
+
 - `trustProxy: true` without a `proxyIpValidator` now emits a startup warning instead of silently trusting all forwarded IPs — prevents IP spoofing via unvalidated `X-Forwarded-For` headers.
+
 #### `@axiomify/ws`
+
 - Client tracking migrated to module-scoped `WeakMap` structures — eliminates `any` casts and prevents state collision between concurrent clients.
 - Room auth teardown correctly calls `.close()` — eliminates open-handle warnings in CI.
+
 ---
- 
+
 ### 🏗️ Infrastructure
- 
+
 - npm package provenance enabled on all published packages — releases are now signed with OIDC-attested GitHub Actions build provenance.
 - ESLint and Prettier configurations codified at repo root.
+
 ---
 
 ## [6.1.0]

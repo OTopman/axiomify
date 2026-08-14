@@ -14,7 +14,8 @@ function stubContext(overrides: Partial<AppContext> = {}): AppContext {
     provide: (token: string | symbol, value: unknown) => {
       services.set(token, value);
     },
-    resolve: ((token: string | symbol) => services.get(token)) as AppContext['resolve'],
+    resolve: ((token: string | symbol) =>
+      services.get(token)) as AppContext['resolve'],
     vault: { scope: (_name, fn) => fn() },
     ...overrides,
   } as AppContext;
@@ -126,7 +127,7 @@ describe('createDatabaseModule', () => {
   });
 
   it('runs the client factory inside the configured vault scope', async () => {
-    const scope = vi.fn(<T,>(_name: string, fn: () => T): T => fn());
+    const scope = vi.fn(<T>(_name: string, fn: () => T): T => fn());
     const db = createDatabaseModule({
       client: async () => fakeDrizzle(),
       vaultScope: 'database',
@@ -158,10 +159,13 @@ describe('createDatabaseModule', () => {
 
   it('rejects duplicate DI tokens across modules', () => {
     const app = new Axiomify();
-    app.use(createDatabaseModule({ name: 'dup', client: () => fakePrisma() }).module);
+    app.use(
+      createDatabaseModule({ name: 'dup', client: () => fakePrisma() }).module,
+    );
     expect(() =>
       app.use(
-        createDatabaseModule({ name: 'dup', client: () => fakePrisma() }).module,
+        createDatabaseModule({ name: 'dup', client: () => fakePrisma() })
+          .module,
       ),
     ).toThrow(/already registered/);
   });
@@ -243,6 +247,21 @@ describe('createDatabaseModule', () => {
     await expect(db.disconnect()).resolves.toBeUndefined();
   });
 
+  it('disconnect during a failing boot resolves without disconnecting', async () => {
+    let rejectFactory!: (error: Error) => void;
+    const db = createDatabaseModule({
+      client: () =>
+        new Promise((_, reject) => {
+          rejectFactory = reject;
+        }),
+    });
+    db.module.register(new Axiomify(), stubContext());
+    const closing = db.disconnect();
+    rejectFactory(new Error('boot failed'));
+    await expect(closing).resolves.toBeUndefined();
+    await expect(db.ready).rejects.toThrow('boot failed');
+  });
+
   it('disconnect before registration marks the handle disconnected', async () => {
     const factory = vi.fn(() => fakePrisma());
     const db = createDatabaseModule({ client: factory });
@@ -289,9 +308,9 @@ describe('DatabaseHandle.healthCheck', () => {
   });
 
   it('resolves false when the probe returns false or throws', async () => {
-    await expect(
-      (await readyHandle(() => false)).healthCheck(),
-    ).resolves.toBe(false);
+    await expect((await readyHandle(() => false)).healthCheck()).resolves.toBe(
+      false,
+    );
     await expect(
       (
         await readyHandle(() => Promise.reject(new Error('down')))

@@ -1,9 +1,57 @@
 import { describe, expect, it } from 'vitest';
 import { CompilerPipeline } from '../../src/sdk/compiler/pipeline';
 import { TsClientEmitter } from '../../src/sdk/generator/targets/typescript/client-emitter';
+import { JsClientEmitter } from '../../src/sdk/generator/targets/javascript/client-emitter';
 import { ingestAsyncApi } from '../../src/sdk/ingest/asyncapi';
 
 describe('AsyncAPI Ingestion & Client Generation', () => {
+  it('emits declared header parameters in TypeScript and JavaScript requests', () => {
+    const schema: any = {
+      endpoints: [
+        {
+          operationId: 'getTenant',
+          transport: 'rest',
+          method: 'GET',
+          path: '/tenant',
+          pathParams: [],
+          queryParams: [],
+          headerParams: [
+            {
+              name: 'traceId',
+              location: 'header',
+              required: false,
+              type: { inline: { kind: 'scalar', scalar: 'string' } },
+            },
+            {
+              name: 'X-Tenant',
+              location: 'header',
+              required: true,
+              type: { inline: { kind: 'scalar', scalar: 'string' } },
+            },
+          ],
+          responses: {},
+          security: [],
+        },
+      ],
+      events: [],
+    };
+
+    const typescript = new TsClientEmitter(schema).emitAll();
+    expect(typescript).toContain(
+      "...(request['X-Tenant'] !== undefined ? { 'X-Tenant': String(request['X-Tenant']) } : {})",
+    );
+    expect(typescript).toContain(
+      "...(request.traceId !== undefined ? { 'traceId': String(request.traceId) } : {})",
+    );
+    const javascript = new JsClientEmitter(schema).emitAll();
+    expect(javascript).toContain(
+      "...(request['X-Tenant'] !== undefined ? { 'X-Tenant': String(request['X-Tenant']) } : {})",
+    );
+    expect(javascript).toContain(
+      "...(request.traceId !== undefined ? { 'traceId': String(request.traceId) } : {})",
+    );
+  });
+
   it('should ingest a valid AsyncAPI spec and compile into event IR', async () => {
     const rawAsyncApi = {
       asyncapi: '2.4.0',

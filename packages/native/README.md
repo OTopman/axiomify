@@ -13,7 +13,7 @@ uWebSockets.js adapter for Axiomify. Highest-throughput transport: 73,000–84,0
 npm install @axiomify/native @axiomify/core zod
 ```
 
-Requires Node.js ≥ 20, < 23 (uWS pre-compiled binary).
+Requires Node.js 22 or 24 (uWS pre-compiled binary).
 
 ## Quick example
 

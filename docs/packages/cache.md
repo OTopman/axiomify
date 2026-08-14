@@ -10,32 +10,32 @@ npm install @axiomify/cache
 
 ## Exports
 
-| Export                        | Kind                             | Description                                                       |
-| ----------------------------- | -------------------------------- | ------------------------------------------------------------------ |
-| `useCache`                    | `(app, options?) => CacheApi`    | Register the caching hook; returns the invalidation API.           |
-| `createCacheModule`           | `(options?) => AppModule`        | Same, packaged as a module; provides `CacheApi` in DI as `'cache'`. |
-| `cached`                      | `(options?) => RouteMiddleware`  | Opt a route into the shared response cache.                         |
-| `cacheControl` / `noCache`    | `RouteMiddleware`                | Set `Cache-Control` per route.                                      |
-| `buildCacheControl`           | `(options) => string`            | Build (and validate) a `Cache-Control` value directly.              |
-| `computeEtag` / `parseIfNoneMatch` / `ifNoneMatchMatches` | —    | ETag primitives (RFC 9110 weak comparison).                         |
-| `buildCacheKey` / `requestCacheKey` / `pathKeyPrefix` / `normalizeQuery` / `getRequestHeader` / `KEY_SEPARATOR` | — | Cache-key primitives. |
-| `MemoryCacheStore` / `RedisCacheStore` | classes                 | First-party stores.                                                 |
-| `CACHE_STATE_KEY`             | `string`                         | `req.state` key of the `cached()` marker.                           |
-| Types                         | —                                | `CacheOptions`, `CachedOptions`, `CacheApi`, `CacheStore`, `CacheEntry`, `EtagMode`, `XCacheValue`, `MemoryCacheStoreOptions`, `RedisCacheClient`, `RedisCacheStoreOptions`. |
+| Export                                                                                                          | Kind                            | Description                                                                                                                                                                  |
+| --------------------------------------------------------------------------------------------------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useCache`                                                                                                      | `(app, options?) => CacheApi`   | Register the caching hook; returns the invalidation API.                                                                                                                     |
+| `createCacheModule`                                                                                             | `(options?) => AppModule`       | Same, packaged as a module; provides `CacheApi` in DI as `'cache'`.                                                                                                          |
+| `cached`                                                                                                        | `(options?) => RouteMiddleware` | Opt a route into the shared response cache.                                                                                                                                  |
+| `cacheControl` / `noCache`                                                                                      | `RouteMiddleware`               | Set `Cache-Control` per route.                                                                                                                                               |
+| `buildCacheControl`                                                                                             | `(options) => string`           | Build (and validate) a `Cache-Control` value directly.                                                                                                                       |
+| `computeEtag` / `parseIfNoneMatch` / `ifNoneMatchMatches`                                                       | —                               | ETag primitives (RFC 9110 weak comparison).                                                                                                                                  |
+| `buildCacheKey` / `requestCacheKey` / `pathKeyPrefix` / `normalizeQuery` / `getRequestHeader` / `KEY_SEPARATOR` | —                               | Cache-key primitives.                                                                                                                                                        |
+| `MemoryCacheStore` / `RedisCacheStore`                                                                          | classes                         | First-party stores.                                                                                                                                                          |
+| `CACHE_STATE_KEY`                                                                                               | `string`                        | `req.state` key of the `cached()` marker.                                                                                                                                    |
+| Types                                                                                                           | —                               | `CacheOptions`, `CachedOptions`, `CacheApi`, `CacheStore`, `CacheEntry`, `EtagMode`, `XCacheValue`, `MemoryCacheStoreOptions`, `RedisCacheClient`, `RedisCacheStoreOptions`. |
 
 ## Options (`CacheOptions`)
 
-| Option                 | Type                          | Default                  | Description                                                                                    |
-| ---------------------- | ----------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------ |
-| `store`                | `CacheStore`                  | `new MemoryCacheStore()` | Backend.                                                                                        |
-| `defaultTtl`           | `number` (s)                  | `30`                     | Freshness for entries without their own `cached({ ttl })`.                                       |
-| `staleWhileRevalidate` | `number` (s)                  | `0`                      | Global SWR grace; `cached({ swr })` overrides per route.                                          |
-| `etag`                 | `'weak' \| 'strong' \| false` | `'weak'`                 | ETag emission + conditional-GET. Weak is safe with serializers that embed request-derived fields. |
-| `routes`               | `string[]`                    | `[]`                     | Prefixes opted into the shared cache globally; `'/'` = all. Segment-boundary matching (`/api` matches `/api/x`, never `/apix`). |
-| `varyHeaders`          | `string[]`                    | `[]`                     | Folded into the **primary key** — multi-variant caching (one entry per value combination).        |
+| Option                 | Type                          | Default                  | Description                                                                                                                                 |
+| ---------------------- | ----------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `store`                | `CacheStore`                  | `new MemoryCacheStore()` | Backend.                                                                                                                                    |
+| `defaultTtl`           | `number` (s)                  | `30`                     | Freshness for entries without their own `cached({ ttl })`.                                                                                  |
+| `staleWhileRevalidate` | `number` (s)                  | `0`                      | Global SWR grace; `cached({ swr })` overrides per route.                                                                                    |
+| `etag`                 | `'weak' \| 'strong' \| false` | `'weak'`                 | ETag emission + conditional-GET. Weak is safe with serializers that embed request-derived fields.                                           |
+| `routes`               | `string[]`                    | `[]`                     | Prefixes opted into the shared cache globally; `'/'` = all. Segment-boundary matching (`/api` matches `/api/x`, never `/apix`).             |
+| `varyHeaders`          | `string[]`                    | `[]`                     | Folded into the **primary key** — multi-variant caching (one entry per value combination).                                                  |
 | `cachePrivate`         | `boolean`                     | `false`                  | Allow caching credentialed requests / `private` responses. Only when the key captures the variance (e.g. `varyHeaders: ['Authorization']`). |
-| `cacheableStatuses`    | `number[]`                    | `[200, 203, 301, 404]`   | Statuses eligible for the shared cache.                                                          |
-| `refreshLockTtl`       | `number` (s)                  | `30`                     | Lifetime of the SWR refresh claim; a dead revalidator's claim expires and the next staleness-discoverer takes over. |
+| `cacheableStatuses`    | `number[]`                    | `[200, 203, 301, 404]`   | Statuses eligible for the shared cache.                                                                                                     |
+| `refreshLockTtl`       | `number` (s)                  | `30`                     | Lifetime of the SWR refresh claim; a dead revalidator's claim expires and the next staleness-discoverer takes over.                         |
 
 ## Conditional GET (always on)
 
@@ -68,7 +68,7 @@ Primary key: `method NUL path NUL normalizedQuery [NUL name:value …]` — NUL-
 For a request whose entry has `age = now - storedAt`:
 
 1. `age ≤ ttl` → served immediately, `X-Cache: HIT` (a matching `If-None-Match` against the stored ETag yields `304`).
-2. `ttl < age ≤ ttl + swr` → the request tries to claim the refresh flag. **Exactly one** claimant per `refreshLockTtl` window wins (via `store.acquireRefreshLock` — atomic fleet-wide with Redis — or a per-process in-memory flag otherwise) and falls through to the handler; its response replaces the entry and is delivered to that client with `X-Cache: EXPIRED`. All other requests get the stale entry instantly with `X-Cache: STALE`. The refresh is *not* a background fetch — the revalidating client waits for the handler. The claim is released after the fresh write (or on a 304 short-circuit); if the lock backend errors, the request serves stale rather than stampeding.
+2. `ttl < age ≤ ttl + swr` → the request tries to claim the refresh flag. **Exactly one** claimant per `refreshLockTtl` window wins (via `store.acquireRefreshLock` — atomic fleet-wide with Redis — or a per-process in-memory flag otherwise) and falls through to the handler; its response replaces the entry and is delivered to that client with `X-Cache: EXPIRED`. All other requests get the stale entry instantly with `X-Cache: STALE`. The refresh is _not_ a background fetch — the revalidating client waits for the handler. The claim is released after the fresh write (or on a 304 short-circuit); if the lock backend errors, the request serves stale rather than stampeding.
 3. `age > ttl + swr` → plain miss (`X-Cache: MISS`; backend expiry usually removed the entry already).
 
 Stores receive `ttl + swr` seconds as backend expiry, so stale-but-servable entries survive the whole window; freshness is always judged from `storedAt`/`ttlMs`/`swrMs`, never backend expiry.
@@ -83,12 +83,12 @@ Stores receive `ttl + swr` seconds as backend expiry, so stale-but-servable entr
 
 ## Invalidation (`CacheApi` / `'cache'` DI service)
 
-| Method                          | Description                                                                                              |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------|
+| Method                                  | Description                                                                                                                                                                                                     |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `invalidate(path, { method?, query? })` | Delete the entry for an exact path (+ optional query object). Without `method`, both GET and HEAD keys are removed. With global `varyHeaders` configured the key can't be reconstructed — use `invalidatePath`. |
-| `invalidatePath(path, method?)` | Delete every entry for a path — all query and vary variants. Requires `store.deleteByPrefix()` (both first-party stores implement it; throws otherwise). |
-| `clear()`                       | Drop everything.                                                                                          |
-| `store`                         | The underlying `CacheStore` (escape hatch).                                                               |
+| `invalidatePath(path, method?)`         | Delete every entry for a path — all query and vary variants. Requires `store.deleteByPrefix()` (both first-party stores implement it; throws otherwise).                                                        |
+| `clear()`                               | Drop everything.                                                                                                                                                                                                |
+| `store`                                 | The underlying `CacheStore` (escape hatch).                                                                                                                                                                     |
 
 ## Stores
 

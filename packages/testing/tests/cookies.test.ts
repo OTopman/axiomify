@@ -59,13 +59,11 @@ describe('response cookies', () => {
       method: 'GET',
       path: '/login',
       handler: async (_req, res) => {
-        res
-          .cookie!('sid', 'top secret', {
-            maxAge: 3600,
-            sameSite: 'strict',
-            secure: true,
-          })
-          .cookie!('pref', 'blue', { httpOnly: false });
+        res.cookie!('sid', 'top secret', {
+          maxAge: 3600,
+          sameSite: 'strict',
+          secure: true,
+        }).cookie!('pref', 'blue', { httpOnly: false });
         res.send({ ok: true });
       },
     });

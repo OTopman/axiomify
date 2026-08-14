@@ -9,11 +9,14 @@
  * GET  /__studio/api/export/markdown   — downloadable Markdown report
  */
 import type { ServerResponse } from 'node:http';
+import pkg from '../../../package.json';
 import type { StudioDiscoveryResult } from '../discovery/types';
 import { getContractResults, type ContractTestResult } from './contracts';
 import { getRouteLatenciesMap } from './perf';
 import { computeQualityScore, type QualityReport } from './quality';
 import { getSecurityFindings, type SecurityFinding } from './security';
+
+const STUDIO_VERSION = pkg.version;
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -210,7 +213,7 @@ function buildHtmlReport(
     }
 
     <div class="footer">
-      Axiomify Studio v1.0 • Report generated automatically
+      Axiomify Studio v${STUDIO_VERSION} • Report generated automatically
     </div>
   </div>
 </body>
@@ -314,7 +317,7 @@ function buildMarkdownReport(
     }
   }
 
-  md += `---\n\n_Axiomify Studio v1.0 • Report generated automatically_\n`;
+  md += `---\n\n_Axiomify Studio v${STUDIO_VERSION} • Report generated automatically_\n`;
   return md;
 }
 

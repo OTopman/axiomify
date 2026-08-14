@@ -25,14 +25,7 @@ import {
 } from 'node:crypto';
 
 export type JwtAlgorithm =
-  | 'HS256'
-  | 'HS384'
-  | 'HS512'
-  | 'RS256'
-  | 'RS384'
-  | 'RS512'
-  | 'ES256'
-  | 'ES384';
+  'HS256' | 'HS384' | 'HS512' | 'RS256' | 'RS384' | 'RS512' | 'ES256' | 'ES384';
 
 export type KeyInput = string | Buffer | KeyObject;
 
@@ -393,9 +386,7 @@ function verifySignature(
 ): boolean {
   const spec = ALGORITHMS[alg];
   if (spec.family === 'hmac') {
-    const expected = createHmac(spec.hash, resolved.key)
-      .update(data)
-      .digest();
+    const expected = createHmac(spec.hash, resolved.key).update(data).digest();
     return (
       expected.length === signature.length &&
       timingSafeEqual(expected, signature)
@@ -420,10 +411,7 @@ function toStringArray(value: string | string[]): string[] {
   return Array.isArray(value) ? value : [value];
 }
 
-function validateClaims(
-  payload: JwtClaims,
-  options: VerifyJwtOptions,
-): void {
+function validateClaims(payload: JwtClaims, options: VerifyJwtOptions): void {
   const nowMs = options.currentDate?.getTime() ?? Date.now();
   const now = nowMs / 1000;
   const tolerance = options.clockTolerance ?? 0;

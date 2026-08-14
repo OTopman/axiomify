@@ -132,6 +132,38 @@ describe('Studio Contract Testing Center', () => {
       expect(result.violations[0]).toContain('response/id');
     });
 
+    it('validates standard OpenAPI email formats', async () => {
+      const mockApp = {
+        handle: vi.fn((_req, res) => {
+          res.status(200).send({ email: 'not-an-email' });
+        }),
+      };
+      const route = {
+        method: 'GET',
+        path: '/api/profile',
+        isWs: false,
+        validation: [],
+        tags: [],
+        deprecated: false,
+        pluginCount: 0,
+        hasResponseSchema: true,
+      };
+      const schema = {
+        routeId: 'GET:/api/profile',
+        method: 'GET',
+        path: '/api/profile',
+        response: {
+          type: 'object',
+          properties: { email: { type: 'string', format: 'email' } },
+          required: ['email'],
+        },
+      };
+
+      const result = await runContractTest(mockApp, route, schema);
+      expect(result.passed).toBe(false);
+      expect(result.violations[0]).toContain('response/email');
+    });
+
     it('should gracefully handle 401/403 auth blockages', async () => {
       const mockApp = {
         handle: vi.fn((req, res) => {
@@ -203,7 +235,9 @@ describe('Studio Contract Testing Center', () => {
       const result = await runContractTest(mockApp, route, schema);
       expect(result.passed).toBe(true);
       expect(result.status).toBe('passed');
-      expect(result.violations[0]).toContain('Request returned success status 200');
+      expect(result.violations[0]).toContain(
+        'Request returned success status 200',
+      );
     });
 
     it('should fail when only request schema exists and response is unsuccessful (non-2xx)', async () => {
@@ -240,7 +274,9 @@ describe('Studio Contract Testing Center', () => {
       const result = await runContractTest(mockApp, route, schema);
       expect(result.passed).toBe(false);
       expect(result.status).toBe('failed');
-      expect(result.violations[0]).toContain('Response returned status code 500');
+      expect(result.violations[0]).toContain(
+        'Response returned status code 500',
+      );
     });
   });
 });

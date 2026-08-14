@@ -62,6 +62,28 @@ function makeAxiomifyReq(overrides: any = {}): any {
 }
 
 describe('Dispatcher — extended coverage', () => {
+  it.each(['sseInit', 'sseSend'] as const)(
+    'returns a framework error instead of silently dropping unsupported %s calls',
+    async (method) => {
+      const app = new Axiomify();
+      app.route({
+        method: 'GET',
+        path: '/unsupported-sse',
+        schema: { response: z.object({ ok: z.boolean() }) },
+        handler: async (_req, res) => {
+          if (method === 'sseInit') res.sseInit?.();
+          else res.sseSend?.({ ok: true });
+        },
+      });
+      const [res] = makeAxiomifyResPair();
+
+      await app.handle(makeAxiomifyReq({ path: '/unsupported-sse' }), res);
+
+      expect(res[method]).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(500);
+    },
+  );
+
   it('HEAD request: sends no body but includes headers', async () => {
     const app = new Axiomify();
     app.route({
@@ -600,7 +622,7 @@ describe('Dispatcher — ValidatingResponse and error dev stack', () => {
       expect(
         member in captured,
         `ValidatingResponse is missing a forwarder for "${member}" — ` +
-          'add one alongside updating this test\'s REFERENCE_MEMBERS list.',
+          "add one alongside updating this test's REFERENCE_MEMBERS list.",
       ).toBe(true);
       expect(typeof captured[member]).toBe(typeof inner[member]);
     }

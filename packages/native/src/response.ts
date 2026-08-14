@@ -5,17 +5,19 @@ import type {
   HttpMethod,
   ResponseCapabilities,
   SerializerInput,
-} from "@axiomify/core";
-import { serializeCookie } from "@axiomify/core";
-import type { HttpResponse as UWSResponse } from "uWebSockets.js";
-import { ErrorCache, statusLine } from "./error-cache";
-import { HEADER_INJECTION_PATTERN } from "./headers";
-import type { NativeRequest } from "./request";
+} from '@axiomify/core';
+import { serializeCookie } from '@axiomify/core';
+import type { HttpResponse as UWSResponse } from 'uWebSockets.js';
+import { ErrorCache, statusLine } from './error-cache';
+import { HEADER_INJECTION_PATTERN } from './headers';
+import type { NativeRequest } from './request';
 
 const NATIVE_CAPABILITIES: ResponseCapabilities = {
   sse: true,
   streaming: true,
 };
+
+const BODYLESS_STATUS_CODES = new Set([204, 205, 304]);
 
 /**
  * `AxiomifyResponse` implementation backed by uWebSockets.js.
@@ -77,7 +79,7 @@ export class NativeResponse implements AxiomifyResponse {
     method: HttpMethod,
     serialize: (input: SerializerInput) => unknown,
     errorCache: ErrorCache,
-    onHeadersSent?: () => void
+    onHeadersSent?: () => void,
   ) {
     this.raw = res;
     this._app = app;
@@ -117,7 +119,7 @@ export class NativeResponse implements AxiomifyResponse {
       throw new Error(
         `[Axiomify/native] header() rejected CR/LF in name or value ` +
           `(response splitting prevention). Strip control characters before ` +
-          `passing user-controlled data to res.header().`
+          `passing user-controlled data to res.header().`,
       );
     }
     this._headers[key] = value;
@@ -142,9 +144,9 @@ export class NativeResponse implements AxiomifyResponse {
 
   clearCookie(
     name: string,
-    options?: Pick<CookieOptions, "domain" | "path" | "secure" | "sameSite">
+    options?: Pick<CookieOptions, 'domain' | 'path' | 'secure' | 'sameSite'>,
   ): this {
-    return this.cookie(name, "", {
+    return this.cookie(name, '', {
       ...options,
       expires: new Date(0),
       maxAge: 0,
@@ -154,7 +156,20 @@ export class NativeResponse implements AxiomifyResponse {
   private _writeCookies(): void {
     if (this._cookies === null) return;
     for (let i = 0; i < this._cookies.length; i++) {
-      this.raw.writeHeader("Set-Cookie", this._cookies[i]);
+      this.raw.writeHeader('Set-Cookie', this._cookies[i]);
+    }
+  }
+
+  private _mustSuppressBody(): boolean {
+    return (
+      this._method === 'HEAD' || BODYLESS_STATUS_CODES.has(this.statusCode)
+    );
+  }
+
+  private _removeHeaderCaseInsensitive(name: string): void {
+    const lower = name.toLowerCase();
+    for (const key of Object.keys(this._headers)) {
+      if (key.toLowerCase() === lower) delete this._headers[key];
     }
   }
 
@@ -182,58 +197,72 @@ export class NativeResponse implements AxiomifyResponse {
 
     this.raw.cork(() => {
       this.raw.writeStatus(sl);
-      this.raw.writeHeader("Content-Type", "application/json");
+      this.raw.writeHeader('Content-Type', 'application/json');
       for (const k in headers) {
         this.raw.writeHeader(k, headers[k]);
       }
       this._writeCookies();
-      // HEAD responses: send headers only, no body.
-      this.raw.end(this._method === "HEAD" ? "" : body);
+      this.raw.end(this._mustSuppressBody() ? '' : body);
     });
   }
 
-  sendRaw(payload: unknown, contentType = "text/plain"): void {
+  sendRaw(payload: unknown, contentType = 'text/plain'): void {
     if (this.headersSent || this.aborted) return;
     if (HEADER_INJECTION_PATTERN.test(contentType)) {
       throw new Error(
-        `[Axiomify/native] sendRaw() rejected CR/LF in contentType (response splitting prevention).`
+        `[Axiomify/native] sendRaw() rejected CR/LF in contentType (response splitting prevention).`,
       );
     }
     this.headersSent = true;
     this._onHeadersSent?.();
 
     const body =
-      typeof payload === "string"
+      typeof payload === 'string'
         ? payload
         : Buffer.isBuffer(payload)
-        ? payload
-        : String(payload);
+          ? payload
+          : String(payload);
     const sl = statusLine(this.statusCode);
     const headers = this._headers;
 
     this.raw.cork(() => {
       this.raw.writeStatus(sl);
-      this.raw.writeHeader("Content-Type", contentType);
+      this.raw.writeHeader('Content-Type', contentType);
       for (const k in headers) {
         this.raw.writeHeader(k, headers[k]);
       }
       this._writeCookies();
-      this.raw.end(body as string);
+      this.raw.end(this._mustSuppressBody() ? '' : (body as string));
     });
   }
 
   stream(
-    readable: import("stream").Readable,
-    contentType = "application/octet-stream"
+    readable: import('stream').Readable,
+    contentType = 'application/octet-stream',
   ): void {
     if (this.headersSent || this.aborted) return;
     if (HEADER_INJECTION_PATTERN.test(contentType)) {
       throw new Error(
-        `[Axiomify/native] stream() rejected CR/LF in contentType (response splitting prevention).`
+        `[Axiomify/native] stream() rejected CR/LF in contentType (response splitting prevention).`,
       );
     }
     this.headersSent = true;
     this._onHeadersSent?.();
+
+    if (this._mustSuppressBody()) {
+      this._removeHeaderCaseInsensitive('content-length');
+      this.raw.cork(() => {
+        this.raw.writeStatus(statusLine(this.statusCode));
+        this.raw.writeHeader('Content-Type', contentType);
+        for (const key in this._headers)
+          this.raw.writeHeader(key, this._headers[key]);
+        this._writeCookies();
+        this.raw.end('');
+      });
+      readable.destroy();
+      return;
+    }
+
     this.isStreaming = true;
 
     const sl = statusLine(this.statusCode);
@@ -241,8 +270,12 @@ export class NativeResponse implements AxiomifyResponse {
 
     this.raw.cork(() => {
       this.raw.writeStatus(sl);
-      this.raw.writeHeader("Content-Type", contentType);
-      this.raw.writeHeader("Transfer-Encoding", "chunked");
+      this.raw.writeHeader('Content-Type', contentType);
+      // A response cannot have both Content-Length and Transfer-Encoding.
+      // Streaming uses chunked framing, so discard a user/plugin-supplied
+      // length before serialising headers.
+      this._removeHeaderCaseInsensitive('content-length');
+      this.raw.writeHeader('Transfer-Encoding', 'chunked');
       for (const k in headers) {
         this.raw.writeHeader(k, headers[k]);
       }
@@ -272,8 +305,8 @@ export class NativeResponse implements AxiomifyResponse {
         const ok = res.write(
           chunk.buffer.slice(
             chunk.byteOffset,
-            chunk.byteOffset + chunk.byteLength
-          ) as ArrayBuffer
+            chunk.byteOffset + chunk.byteLength,
+          ) as ArrayBuffer,
         );
         if (!ok) {
           readable.pause();
@@ -294,7 +327,7 @@ export class NativeResponse implements AxiomifyResponse {
       return true;
     };
 
-    readable.on("data", (chunk: Buffer | string) => {
+    readable.on('data', (chunk: Buffer | string) => {
       const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       if (pendingBytes + buf.byteLength > PENDING_BYTE_CAP) {
         // Source is producing faster than the client can drain. Better to
@@ -302,8 +335,8 @@ export class NativeResponse implements AxiomifyResponse {
         readable.destroy(
           new Error(
             `[Axiomify/native] response stream exceeded pending-bytes cap ` +
-              `(${PENDING_BYTE_CAP}). Client is too slow or not consuming.`
-          )
+              `(${PENDING_BYTE_CAP}). Client is too slow or not consuming.`,
+          ),
         );
         return;
       }
@@ -312,7 +345,7 @@ export class NativeResponse implements AxiomifyResponse {
       flush();
     });
 
-    readable.on("end", () => {
+    readable.on('end', () => {
       if (self.aborted) return;
       if (flush()) res.end();
       else {
@@ -326,7 +359,7 @@ export class NativeResponse implements AxiomifyResponse {
       }
     });
 
-    readable.on("error", () => {
+    readable.on('error', () => {
       if (!self.aborted) res.end();
     });
 
@@ -336,9 +369,9 @@ export class NativeResponse implements AxiomifyResponse {
       const abortListener = () => {
         readable.destroy();
       };
-      this._req.signal.addEventListener("abort", abortListener);
-      readable.on("close", () => {
-        this._req.signal.removeEventListener("abort", abortListener);
+      this._req.signal.addEventListener('abort', abortListener);
+      readable.on('close', () => {
+        this._req.signal.removeEventListener('abort', abortListener);
         self.onStreamClose?.();
       });
     }
@@ -354,9 +387,9 @@ export class NativeResponse implements AxiomifyResponse {
 
     this.raw.cork(() => {
       this.raw.writeStatus(sl);
-      this.raw.writeHeader("Content-Type", "text/event-stream");
-      this.raw.writeHeader("Cache-Control", "no-cache");
-      this.raw.writeHeader("Connection", "keep-alive");
+      this.raw.writeHeader('Content-Type', 'text/event-stream');
+      this.raw.writeHeader('Cache-Control', 'no-cache');
+      this.raw.writeHeader('Connection', 'keep-alive');
       for (const k in headers) {
         this.raw.writeHeader(k, headers[k]);
       }
@@ -365,9 +398,9 @@ export class NativeResponse implements AxiomifyResponse {
 
     if (sseHeartbeatMs) {
       const interval = setInterval(() => {
-        this.sseSend(null, "ping");
+        this.sseSend(null, 'ping');
       }, sseHeartbeatMs);
-      this._req.signal.addEventListener("abort", () => clearInterval(interval));
+      this._req.signal.addEventListener('abort', () => clearInterval(interval));
     }
 
     // Support onClose hooks similar to streams
@@ -375,7 +408,7 @@ export class NativeResponse implements AxiomifyResponse {
     const abortListener = () => {
       this.onStreamClose?.();
     };
-    this._req.signal.addEventListener("abort", abortListener);
+    this._req.signal.addEventListener('abort', abortListener);
   }
 
   private _flushSse(): boolean {
@@ -410,19 +443,19 @@ export class NativeResponse implements AxiomifyResponse {
     // a fresh string per concat, which is O(n²) for large multi-line data.
     const parts: string[] = [];
     if (event) {
-      parts.push("event: ", event, "\n");
+      parts.push('event: ', event, '\n');
     }
     if (data !== undefined && data !== null) {
-      const serialized = typeof data === "string" ? data : JSON.stringify(data);
+      const serialized = typeof data === 'string' ? data : JSON.stringify(data);
       // SSE field framing: every line of `data` becomes its own `data: ...`
       // line. `split('\n')` then re-emit is correct per the EventSource spec.
-      const lines = serialized.split("\n");
+      const lines = serialized.split('\n');
       for (const line of lines) {
-        parts.push("data: ", line, "\n");
+        parts.push('data: ', line, '\n');
       }
     }
-    parts.push("\n");
-    const payload = parts.join("");
+    parts.push('\n');
+    const payload = parts.join('');
 
     if (
       this._pendingSseBytes + payload.length >

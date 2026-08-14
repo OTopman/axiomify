@@ -12,6 +12,7 @@ import { CompilerPipeline } from '../../sdk/compiler/pipeline';
 import { GeneratorRegistry } from '../../sdk/generator';
 import { ingestAxiomifyApp } from '../../sdk/ingest';
 import { sendJson } from '../server/http-server';
+import { getAppBaseUrl } from './ws-tester';
 
 const execPromise = promisify(exec);
 
@@ -33,6 +34,7 @@ function readBody(req: IncomingMessage): Promise<string> {
 export async function getPlaygroundSdk(
   app: any,
   target: string = 'typescript',
+  appBaseUrl: string = getAppBaseUrl(),
 ) {
   const ingestion = ingestAxiomifyApp(app, {
     title: 'PlaygroundClient',
@@ -76,7 +78,7 @@ export async function getPlaygroundSdk(
     starterCode = `import { ApiClient } from './sdk';
 
 const client = new ApiClient({
-  baseUrl: 'http://localhost:3000', // Points to the running app
+  baseUrl: '${appBaseUrl}', // Change this to the running API application's URL
 });
 
 (async () => {
@@ -102,7 +104,7 @@ const client = new ApiClient({
 from client import ApiClient
 
 async def main():
-    client = ApiClient(base_url="http://localhost:3000")
+    client = ApiClient(base_url="${appBaseUrl}")
     try:
     ${exampleMethod}
     except Exception as e:
@@ -122,7 +124,7 @@ if __name__ == "__main__":
     starterCode = `import 'lib/client.dart';
 
 void main() async {
-  final client = ApiClient(baseUrl: 'http://localhost:3000');
+    final client = ApiClient(baseUrl: '${appBaseUrl}');
   try {
   ${exampleMethod}
   } catch (e) {
@@ -135,6 +137,7 @@ void main() async {
   return {
     files: files.map((f) => ({ path: f.path, content: f.content })),
     starterCode,
+    appBaseUrl,
   };
 }
 
@@ -146,7 +149,7 @@ export async function handleGetPlaygroundSdk(
   try {
     const parsedUrl = new URL(req.url ?? '', 'http://localhost');
     const target = parsedUrl.searchParams.get('target') || 'typescript';
-    const result = await getPlaygroundSdk(app, target);
+    const result = await getPlaygroundSdk(app, target, getAppBaseUrl());
     sendJson(res, result);
   } catch (err: any) {
     sendJson(res, { error: err.message || 'Failed to generate SDK' }, 500);

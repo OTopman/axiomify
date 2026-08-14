@@ -45,6 +45,31 @@ useOpenAPI(app, {
 });
 ```
 
+## Hiding internal endpoints
+
+Routes are included in the generated specification by default. Set
+`schema.openapi` to `false` to omit an internal endpoint from both
+`openapi.json` and Swagger UI. `openapi: true` explicitly includes a route.
+
+```typescript
+app.route({
+  method: 'GET',
+  path: '/internal/health',
+  schema: { openapi: false },
+  handler: async (_req, res) => res.send({ ok: true }),
+});
+```
+
+## Zod transforms and diagnostics
+
+OpenAPI describes the API input/output contract, not arbitrary runtime code.
+When a Zod schema uses `.transform()` or another unrepresentable feature,
+Axiomify exports the input-side shape, widens only the unrepresentable part,
+and adds an `x-axiomify-warnings` entry instead of failing generation. Run
+`axiomify openapi --validate` in CI to surface these warnings and configuration
+mistakes such as `components.securitySchemas` (the correct property is
+`components.securitySchemes`).
+
 ## Production access (secure by default)
 
 The docs UI and `openapi.json` spec are **denied in production by default**. When `NODE_ENV=production` and no `protect` callback is provided, requests are refused (and a warning is logged at startup). To expose docs in production you must opt in explicitly with one of:

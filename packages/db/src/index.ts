@@ -8,7 +8,11 @@
 export { detectClientKind, deriveBehavior } from './detect';
 export type { ClientKind, DerivedBehavior } from './detect';
 
-export { createDatabaseModule, HEALTH_CHECK_TIMEOUT_MS, withTimeout } from './module';
+export {
+  createDatabaseModule,
+  HEALTH_CHECK_TIMEOUT_MS,
+  withTimeout,
+} from './module';
 export type { DatabaseHandle, DatabaseModuleOptions } from './module';
 
 export { dbHealthChecks, dbShutdown } from './health';

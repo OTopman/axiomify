@@ -120,6 +120,22 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
   let cachedSpec: any = null;
   let cachedSpecJson: string | null = null;
   let emittedPublicDocsWarning = false;
+  let emittedGenerationWarningKey = '';
+
+  const generateSpec = () => {
+    const spec = generator.generate();
+    const warnings = generator.getWarnings();
+    const warningKey = JSON.stringify(warnings);
+    if (warningKey !== emittedGenerationWarningKey) {
+      emittedGenerationWarningKey = warningKey;
+      for (const warning of warnings) {
+        console.warn(
+          `[axiomify/openapi] ${warning.location}: ${warning.message}`,
+        );
+      }
+    }
+    return spec;
+  };
 
   if (options.autoInferResponses) {
     // Capture inferred response schemas via an onPostHandler hook instead of
@@ -136,7 +152,7 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
       const payload = (res as any).payload;
       if (payload === undefined) return;
 
-      if (!cachedSpec) cachedSpec = generator.generate();
+      if (!cachedSpec) cachedSpec = generateSpec();
 
       const path = (generator as any).formatPath(match.route.path);
       const method = match.route.method.toLowerCase();
@@ -195,7 +211,7 @@ export function useOpenAPI(app: Axiomify, options: SwaggerPluginOptions): void {
     path: specPath,
     handler: async (req, res) => {
       if (!(await guard(req))) return res.status(403).send(null, 'Forbidden');
-      if (!cachedSpec) cachedSpec = generator.generate();
+      if (!cachedSpec) cachedSpec = generateSpec();
       if (!cachedSpecJson) cachedSpecJson = JSON.stringify(cachedSpec);
       res.status(200).sendRaw(cachedSpecJson, 'application/json');
     },

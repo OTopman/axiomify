@@ -132,6 +132,84 @@ describe('useUpload Plugin', () => {
     expect(mockReq.files.avatar.savedName).not.toBe('profile.png');
     expect(mockReq.files.avatar.path.endsWith('.png')).toBe(true);
   });
+
+  it('accumulates multiple files submitted under the same field', async () => {
+    const mockApp = { addHook: vi.fn() } as any;
+    useUpload(mockApp);
+    const onPreHandler = mockApp.addHook.mock.calls[0][1];
+    const mockMatch = {
+      route: {
+        schema: {
+          files: {
+            attachments: {
+              accept: ['image/png'],
+              maxSize: 5000,
+              maxFiles: 2,
+              autoSaveTo: '/tmp',
+            },
+          },
+        },
+      },
+    } as any;
+    const mockReq = {
+      headers: { 'content-type': 'multipart/form-data; boundary=test' },
+      stream: { pipe: vi.fn(), once: vi.fn() },
+    } as any;
+
+    const handlerPromise = onPreHandler(mockReq, {} as any, mockMatch);
+    for (const filename of ['first.png', 'second.png']) {
+      busboyHandlers['file'](
+        'attachments',
+        { on: vi.fn(), resume: vi.fn() },
+        { filename, mimeType: 'image/png' },
+      );
+    }
+    busboyHandlers['finish']();
+    await handlerPromise;
+
+    expect(mockReq.files.attachments).toHaveLength(2);
+    expect(
+      mockReq.files.attachments.map((file: any) => file.originalName),
+    ).toEqual(['first.png', 'second.png']);
+  });
+
+  it('cleans up uploaded files when the request stream is aborted', async () => {
+    const mockApp = { addHook: vi.fn() } as any;
+    useUpload(mockApp);
+    const onPreHandler = mockApp.addHook.mock.calls[0][1];
+    let onAborted: (() => void) | undefined;
+    const mockReq = {
+      headers: { 'content-type': 'multipart/form-data; boundary=test' },
+      stream: {
+        pipe: vi.fn(),
+        once: vi.fn((event: string, handler: () => void) => {
+          if (event === 'aborted') onAborted = handler;
+        }),
+      },
+    } as any;
+    const mockMatch = {
+      route: {
+        schema: {
+          files: {
+            avatar: {
+              accept: ['image/png'],
+              maxSize: 5000,
+              autoSaveTo: '/tmp',
+            },
+          },
+        },
+      },
+    } as any;
+
+    const handlerPromise = onPreHandler(mockReq, {} as any, mockMatch);
+    mockReq.uploadedFiles.push('/tmp/partial.png');
+    onAborted?.();
+    await vi.waitFor(() =>
+      expect(unlink).toHaveBeenCalledWith('/tmp/partial.png'),
+    );
+    busboyHandlers['finish']();
+    await handlerPromise;
+  });
 });
 
 // ─── Rejection path tests ─────────────────────────────────────────────────────

@@ -16,10 +16,11 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup"
+    "build": "tsup",
+    "test": "vitest run tests --config ../../vitest.config.mts"
   },
   "dependencies": {
-    "@axiomify/core": "*"
+    "@axiomify/core": "^7.0.0"
   },
   "peerDependencies": {
     "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#624987739d4da0acb628aaf2a10fc43e7ce27c5c"
@@ -67,6 +68,6 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=20.0.0 <23.0.0"
+    "node": ">=22.0.0 <23.0.0 || >=24.0.0 <25.0.0"
   }
 }

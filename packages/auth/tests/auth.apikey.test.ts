@@ -36,13 +36,17 @@ describe('API key primitives', () => {
 
   it('generateApiKey accepts a custom id but rejects underscores', () => {
     expect(generateApiKey('svc1').apiKey.startsWith('ax_svc1_')).toBe(true);
-    expect(() => generateApiKey('has_underscore')).toThrow(/must not contain "_"/);
+    expect(() => generateApiKey('has_underscore')).toThrow(
+      /must not contain "_"/,
+    );
   });
 
   it('hashApiKeySecret is deterministic given the same salt', () => {
     const salt = Buffer.alloc(16, 1);
     expect(hashApiKeySecret('abc', salt)).toBe(hashApiKeySecret('abc', salt));
-    expect(hashApiKeySecret('abc', salt)).not.toBe(hashApiKeySecret('abd', salt));
+    expect(hashApiKeySecret('abc', salt)).not.toBe(
+      hashApiKeySecret('abd', salt),
+    );
   });
 
   it.each([
@@ -68,7 +72,9 @@ describe('API key primitives', () => {
 
 describe('createApiKeyPlugin — configuration', () => {
   it('requires exactly one of keys/lookup', () => {
-    expect(() => createApiKeyPlugin({} as any)).toThrow(/requires `keys` or `lookup`/);
+    expect(() => createApiKeyPlugin({} as any)).toThrow(
+      /requires `keys` or `lookup`/,
+    );
     expect(() =>
       createApiKeyPlugin({ keys: {}, lookup: async () => null }),
     ).toThrow(/not both/);
@@ -76,23 +82,23 @@ describe('createApiKeyPlugin — configuration', () => {
 
   it('rejects ids with underscores and malformed hashedKey records', () => {
     expect(() =>
-      createApiKeyPlugin({ keys: { bad_id: { hashedKey: hashApiKeySecret('x') } } }),
+      createApiKeyPlugin({
+        keys: { bad_id: { hashedKey: hashApiKeySecret('x') } },
+      }),
     ).toThrow(/must not contain "_"/);
     expect(() =>
       createApiKeyPlugin({ keys: { id1: { hashedKey: 'not-hex' } } }),
     ).toThrow(/64-char hex SHA-256/);
-    expect(() =>
-      createApiKeyPlugin({ keys: { id1: {} as any } }),
-    ).toThrow(/must include a "hashedKey"/);
+    expect(() => createApiKeyPlugin({ keys: { id1: {} as any } })).toThrow(
+      /must include a "hashedKey"/,
+    );
   });
 
   it('accepts plaintext secrets but logs a warning', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
       createApiKeyPlugin({ keys: { dev: 'plaintext-secret' } });
-      expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining('PLAINTEXT'),
-      );
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('PLAINTEXT'));
     } finally {
       warn.mockRestore();
     }
@@ -103,7 +109,11 @@ describe('requireApiKey — static keys', () => {
   const generated = generateApiKey('svc');
   const plugin = createApiKeyPlugin({
     keys: {
-      svc: { hashedKey: generated.hashedKey, scopes: ['read', 'write'], meta: { tier: 'gold' } },
+      svc: {
+        hashedKey: generated.hashedKey,
+        scopes: ['read', 'write'],
+        meta: { tier: 'gold' },
+      },
     },
   });
 
@@ -127,8 +137,14 @@ describe('requireApiKey — static keys', () => {
       state: { set: vi.fn((k: string, v: unknown) => (bag[k] = v)) },
     };
     await plugin.requireApiKey()(req, mockRes());
-    expect(req.state.set).toHaveBeenCalledWith('user', expect.objectContaining({ id: 'svc' }));
-    expect(req.state.set).toHaveBeenCalledWith('apiKey', expect.objectContaining({ id: 'svc' }));
+    expect(req.state.set).toHaveBeenCalledWith(
+      'user',
+      expect.objectContaining({ id: 'svc' }),
+    );
+    expect(req.state.set).toHaveBeenCalledWith(
+      'apiKey',
+      expect.objectContaining({ id: 'svc' }),
+    );
   });
 
   it('401s on missing, malformed, unknown-id and wrong-secret keys with uniform messaging', async () => {
@@ -148,7 +164,9 @@ describe('requireApiKey — static keys', () => {
     await plugin.requireApiKey()(reqWithKey('ax_nobody_x1234'), resUnknown);
     const resWrong = mockRes();
     await plugin.requireApiKey()(reqWithKey('ax_svc_x1234'), resWrong);
-    expect(resUnknown.send.mock.calls[0][1]).toBe(resWrong.send.mock.calls[0][1]);
+    expect(resUnknown.send.mock.calls[0][1]).toBe(
+      resWrong.send.mock.calls[0][1],
+    );
   });
 
   it('enforces scopes: 403 when missing, 200-path when granted', async () => {
@@ -157,7 +175,10 @@ describe('requireApiKey — static keys', () => {
     expect(ok.status).not.toHaveBeenCalled();
 
     const forbidden = mockRes();
-    await plugin.requireApiKey(['admin'])(reqWithKey(generated.apiKey), forbidden);
+    await plugin.requireApiKey(['admin'])(
+      reqWithKey(generated.apiKey),
+      forbidden,
+    );
     expect(forbidden.status).toHaveBeenCalledWith(403);
     expect(forbidden.send).toHaveBeenCalledWith(
       null,
@@ -201,7 +222,11 @@ describe('requireApiKey — async lookup', () => {
   it('resolves records through the lookup and rejects unknown ids', async () => {
     const lookup = vi.fn(async (id: string) =>
       id === 'db1'
-        ? { hashedKey: generated.hashedKey, scopes: ['read'], meta: { org: 42 } }
+        ? {
+            hashedKey: generated.hashedKey,
+            scopes: ['read'],
+            meta: { org: 42 },
+          }
         : null,
     );
     const plugin = createApiKeyPlugin({ lookup });

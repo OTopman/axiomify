@@ -24,19 +24,19 @@ All protections are enabled by default, **except** `noSqlInjectionProtection`, w
 
 ## Options
 
-| Option                         | Type       | Default                       | Description                                                                                                |
-| ------------------------------ | ---------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `xssProtection`                | `boolean`  | `true`                        | Strip `<script>`, event handlers, `javascript:` from strings                                               |
-| `hppProtection`                | `boolean`  | `true`                        | Deduplicate repeated query params (last value wins)                                                        |
-| `prototypePollutionProtection` | `boolean`  | `true`                        | Remove `__proto__`, `constructor`, `prototype` keys                                                        |
-| `nullByteProtection`           | `boolean`  | `true`                        | Remove null bytes (`\0`) from strings                                                                      |
-| `botProtection`                | `boolean`  | `true`                        | Block known scanner/crawler User-Agent patterns                                                            |
-| ~~`sqlInjectionProtection`~~   | removed    | —                             | **Removed in v6.0** — TypeScript excess-property error. Use parameterised queries.                         |
+| Option                         | Type       | Default                       | Description                                                                                                                                     |
+| ------------------------------ | ---------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `xssProtection`                | `boolean`  | `true`                        | Strip `<script>`, event handlers, `javascript:` from strings                                                                                    |
+| `hppProtection`                | `boolean`  | `true`                        | Deduplicate repeated query params (last value wins)                                                                                             |
+| `prototypePollutionProtection` | `boolean`  | `true`                        | Remove `__proto__`, `constructor`, `prototype` keys                                                                                             |
+| `nullByteProtection`           | `boolean`  | `true`                        | Remove null bytes (`\0`) from strings                                                                                                           |
+| `botProtection`                | `boolean`  | `true`                        | Block known scanner/crawler User-Agent patterns                                                                                                 |
+| ~~`sqlInjectionProtection`~~   | removed    | —                             | **Removed in v6.0** — TypeScript excess-property error. Use parameterised queries.                                                              |
 | `noSqlInjectionProtection`     | `boolean`  | `false`                       | Heuristic NoSQL operator-key detection. **Opt-in** — supplementary defense for code without full Zod schema coverage; prefer schema validation. |
-| `maxBodySize`                  | `number`   | `1048576`                     | Reject requests where Content-Length exceeds this value                                                    |
-| `blockedUserAgentPatterns`     | `RegExp[]` | `DEFAULT_BLOCKED_UA_PATTERNS` | Override the User-Agent patterns blocked when `botProtection` is on.                                       |
-| `noSqlPatterns`                | `RegExp[]` | `DEFAULT_NOSQL_PATTERNS`      | Override the NoSQL operator patterns matched when `noSqlInjectionProtection` is on.                        |
-| `sanitizerMaxDepth`            | `number`   | `64`                          | Maximum object depth the body/query/params sanitizer recurses into.                                        |
+| `maxBodySize`                  | `number`   | `1048576`                     | Reject requests where Content-Length exceeds this value                                                                                         |
+| `blockedUserAgentPatterns`     | `RegExp[]` | `DEFAULT_BLOCKED_UA_PATTERNS` | Override the User-Agent patterns blocked when `botProtection` is on.                                                                            |
+| `noSqlPatterns`                | `RegExp[]` | `DEFAULT_NOSQL_PATTERNS`      | Override the NoSQL operator patterns matched when `noSqlInjectionProtection` is on.                                                             |
+| `sanitizerMaxDepth`            | `number`   | `64`                          | Maximum object depth the body/query/params sanitizer recurses into.                                                                             |
 
 ## Caveats
 

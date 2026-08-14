@@ -180,7 +180,11 @@ describe('JwksClient — key-set hygiene', () => {
   it('discards symmetric (oct) JWKs so a hostile JWKS cannot enable HS*', async () => {
     stubFetch(async () =>
       jwksResponse([
-        { kty: 'oct', k: Buffer.from('secret').toString('base64url'), kid: 'sym-1' },
+        {
+          kty: 'oct',
+          k: Buffer.from('secret').toString('base64url'),
+          kid: 'sym-1',
+        },
       ]),
     );
     const client = new JwksClient({ url: JWKS_URL });
@@ -198,7 +202,9 @@ describe('JwksClient — key-set hygiene', () => {
     );
     const client = new JwksClient({ url: JWKS_URL });
     await expect(client.getKey('rsa-1', 'RS256')).resolves.toBeDefined();
-    await expect(client.getKey('enc-key', 'RS256')).rejects.toThrow(/not found/);
+    await expect(client.getKey('enc-key', 'RS256')).rejects.toThrow(
+      /not found/,
+    );
     await expect(client.getKey('no-verify', 'RS256')).rejects.toThrow(
       /not found/,
     );

@@ -114,7 +114,18 @@ group — plugins registered inside a group cannot pollute the rest of the app:
 ```typescript
 app.group('/admin', (admin) => {
   admin.addHook('onPreHandler', auditAdminAccess); // admin routes only
-  admin.addHook('onError', reportAdminError);      // /admin/* errors only
+  admin.addHook('onError', reportAdminError); // /admin/* errors only
+  admin.route({ method: 'GET', path: '/users', handler: listUsers });
+});
+```
+
+Group middleware is equally scoped. `group.use()` affects routes registered
+after the call in that group and its nested groups, without leaking into
+siblings or the parent application:
+
+```typescript
+app.group('/admin', (admin) => {
+  admin.use(requireAdmin);
   admin.route({ method: 'GET', path: '/users', handler: listUsers });
 });
 ```

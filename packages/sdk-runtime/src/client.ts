@@ -22,8 +22,12 @@ export class BaseClient {
   }
 
   protected async request<T = unknown>(req: ClientRequest): Promise<T> {
-    const isGet = req.method === 'GET';
-    const cacheKey = `${req.method}:${req.path}:${JSON.stringify(req.query)}`;
+    // Resolve every request before looking in the cache. Cache entries must
+    // never cross an authorization, tenant, locale, or other header boundary.
+    const currentReq = await this.interceptors.runRequestInterceptors(req);
+    const headers = await this.createHeaders(currentReq);
+    const isGet = currentReq.method === 'GET';
+    const cacheKey = this.createCacheKey(currentReq, headers);
 
     // 1. Caching Check
     if (this.config.enableCache && isGet) {
@@ -37,7 +41,11 @@ export class BaseClient {
       if (inFlight) return inFlight as Promise<T>;
     }
 
-    const requestPromise = this.executeRequest<T>(req, cacheKey);
+    const requestPromise = this.executeRequest<T>(
+      currentReq,
+      headers,
+      cacheKey,
+    );
 
     if (isGet) {
       this.inFlightRequests.set(cacheKey, requestPromise);
@@ -55,71 +63,60 @@ export class BaseClient {
 
   private async executeRequest<T>(
     req: ClientRequest,
+    requestHeaders: Headers,
     cacheKey: string,
   ): Promise<T> {
     // 3. Circuit Breaker Wrapper
     return this.circuitBreaker.run(async () => {
-      // Execute standard request
-      // Run request interceptors
-      const currentReq = await this.interceptors.runRequestInterceptors(req);
-
       // Build url
-      const url = new URL(currentReq.path, this.config.baseUrl);
-      if (currentReq.query) {
-        for (const [key, value] of Object.entries(currentReq.query)) {
+      const url = new URL(req.path, this.config.baseUrl);
+      if (req.query) {
+        for (const [key, value] of Object.entries(req.query)) {
           if (value !== undefined && value !== null) {
             url.searchParams.append(key, String(value));
           }
         }
       }
 
-      const headers = new Headers(this.config.headers);
-      if (currentReq.headers) {
-        for (const [k, v] of Object.entries(currentReq.headers))
-          headers.set(k, v);
-      }
-
-      if (this.config.authProvider) {
-        const token = await this.config.authProvider.getToken();
-        if (token) headers.set('Authorization', token);
-      }
-
-      const fetchOpts: RequestInit = {
-        method: currentReq.method,
-        headers,
-      };
+      const headers = new Headers(requestHeaders);
+      const fetchOpts: RequestInit = { method: req.method, headers };
 
       // Handle body encoding (including binary & FormData)
-      if (currentReq.body !== undefined) {
-        if (isBinaryData(currentReq.body)) {
-          fetchOpts.body = currentReq.body as any;
+      if (req.body !== undefined) {
+        if (isBinaryData(req.body)) {
+          fetchOpts.body = req.body as any;
           headers.set('Content-Type', 'application/octet-stream');
         } else if (
           typeof FormData !== 'undefined' &&
-          currentReq.body instanceof FormData
+          req.body instanceof FormData
         ) {
-          fetchOpts.body = currentReq.body;
+          fetchOpts.body = req.body;
           // Fetch auto-sets Content-Type boundary for FormData
         } else {
-          fetchOpts.body = safeJsonStringify(currentReq.body);
+          fetchOpts.body = safeJsonStringify(req.body);
           headers.set('Content-Type', 'application/json');
         }
       }
 
       // Telemetry Hook: onBeforeRequest
       if (this.config.telemetry?.onBeforeRequest) {
-        await this.config.telemetry.onBeforeRequest(currentReq);
+        await this.config.telemetry.onBeforeRequest(req);
       }
 
       const fetchImpl = this.config.fetch || globalThis.fetch;
 
       const execRequest = async () => {
+        const attemptHeaders = new Headers(headers);
+        const attemptOpts: RequestInit = {
+          ...fetchOpts,
+          headers: attemptHeaders,
+        };
         let abortController: AbortController | undefined;
         let timeoutId: any;
 
         if (this.config.timeoutMs) {
           abortController = new AbortController();
-          fetchOpts.signal = abortController.signal;
+          attemptOpts.signal = abortController.signal;
           timeoutId = setTimeout(
             () => abortController?.abort(),
             this.config.timeoutMs,
@@ -127,7 +124,7 @@ export class BaseClient {
         }
 
         try {
-          const rawResponse = await fetchImpl(url.toString(), fetchOpts);
+          const rawResponse = await fetchImpl(url.toString(), attemptOpts);
 
           let data: any = null;
           if (rawResponse.status !== 204) {
@@ -143,7 +140,7 @@ export class BaseClient {
             data,
             status: rawResponse.status,
             headers: rawResponse.headers,
-            request: currentReq,
+            request: req,
           };
 
           // Run response interceptors
@@ -163,7 +160,7 @@ export class BaseClient {
           }
 
           // Cache caching candidate
-          if (this.config.enableCache && currentReq.method === 'GET') {
+          if (this.config.enableCache && req.method === 'GET') {
             this.cache.set(cacheKey, res);
           }
 
@@ -182,5 +179,29 @@ export class BaseClient {
 
       return withRetry(execRequest, this.config.retryConfig);
     });
+  }
+
+  private async createHeaders(req: ClientRequest): Promise<Headers> {
+    const headers = new Headers(this.config.headers);
+    if (req.headers) {
+      for (const [key, value] of Object.entries(req.headers)) {
+        headers.set(key, value);
+      }
+    }
+    if (this.config.authProvider) {
+      const token = await this.config.authProvider.getToken();
+      if (token) headers.set('Authorization', token);
+    }
+    return headers;
+  }
+
+  private createCacheKey(req: ClientRequest, headers: Headers): string {
+    const query = Object.entries(req.query ?? {}).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+    const headerValues = Array.from(headers.entries()).sort(([a], [b]) =>
+      a.localeCompare(b),
+    );
+    return JSON.stringify([req.method, req.path, query, headerValues]);
   }
 }

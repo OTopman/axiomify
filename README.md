@@ -29,41 +29,41 @@ Axiomify is an ultra high-performance Node.js framework built exclusively on `uW
 
 ### Runtime & adapters
 
-| Package                                        | Description                                                                                             |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Package                                        | Description                                                                                                                                                       |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`@axiomify/native`](packages/native/)         | Production `uWebSockets.js` adapter — HTTP + native WebSocket, SSE, graceful shutdown, SO_REUSEPORT clustering; plus `Http2Adapter` (node:http2, ALPN h2/http1.1) |
-| [`@axiomify/serverless`](packages/serverless/) | Web-standard `Request`/`Response` adapter for serverless/edge runtimes (bounded body size, opt-in proxy trust) |
+| [`@axiomify/serverless`](packages/serverless/) | Web-standard `Request`/`Response` adapter for serverless/edge runtimes (bounded body size, opt-in proxy trust)                                                    |
 
 ### Background jobs
 
-| Package                            | Description                                                                                     |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------- |
-| [`@axiomify/jobs`](packages/jobs/) | Distributed job scheduler — retries, DLQ, cron schedules, saga coordination, pluggable storage  |
+| Package                            | Description                                                                                    |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------- |
+| [`@axiomify/jobs`](packages/jobs/) | Distributed job scheduler — retries, DLQ, cron schedules, saga coordination, pluggable storage |
 
 ### Data
 
-| Package                          | Description                                                                                                     |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| [`@axiomify/db`](packages/db/)   | Client-agnostic database integration — Prisma/Drizzle/pg/mysql2/better-sqlite3 via DI, health checks, shutdown  |
+| Package                        | Description                                                                                                    |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| [`@axiomify/db`](packages/db/) | Client-agnostic database integration — Prisma/Drizzle/pg/mysql2/better-sqlite3 via DI, health checks, shutdown |
 
 ### Testing
 
-| Package                                    | Description                                                                                      |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| [`@axiomify/testing`](packages/testing/)   | Inject-style test client — no sockets, typed responses, Zod response-schema assertions            |
+| Package                                  | Description                                                                            |
+| ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| [`@axiomify/testing`](packages/testing/) | Inject-style test client — no sockets, typed responses, Zod response-schema assertions |
 
 ### Security
 
-| Package                                          | Description                                                                                                                                        |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@axiomify/auth`](packages/auth/)               | JWT (HS/RS/ES + JWKS), refresh rotation, revocation via `TokenStore`, API keys, OAuth 2.0/OIDC with PKCE                                           |
-| [`@axiomify/session`](packages/session/)         | Signed cookie sessions — pluggable stores (memory shipped, Redis BYO), rolling expiry, ID regeneration                                             |
-| [`@axiomify/cors`](packages/cors/)               | CORS with strict preflight, `Vary` management, startup validation                                                                                  |
-| [`@axiomify/helmet`](packages/helmet/)           | 15 security headers (CSP, HSTS, COEP, COOP, CORP, …)                                                                                               |
-| [`@axiomify/rate-limit`](packages/rate-limit/)   | Sliding-window rate limiting + EVALSHA caching + ioredis/redis@4                                                                                   |
-| [`@axiomify/security`](packages/security/)       | XSS sanitisation, HPP normalisation, prototype-pollution + null-byte filtering, bot UA detection; opt-in narrow Mongo-operator detector            |
-| [`@axiomify/fingerprint`](packages/fingerprint/) | Server-side request fingerprinting with confidence scoring                                                                                         |
-| [`@axiomify/vault`](packages/vault/)             | Secure environment configuration vault: envelope encryption, process.env masking, Zod schema validation, stream redaction                          |
+| Package                                          | Description                                                                                                                             |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@axiomify/auth`](packages/auth/)               | JWT (HS/RS/ES + JWKS), refresh rotation, revocation via `TokenStore`, API keys, OAuth 2.0/OIDC with PKCE                                |
+| [`@axiomify/session`](packages/session/)         | Signed cookie sessions — pluggable stores (memory shipped, Redis BYO), rolling expiry, ID regeneration                                  |
+| [`@axiomify/cors`](packages/cors/)               | CORS with strict preflight, `Vary` management, startup validation                                                                       |
+| [`@axiomify/helmet`](packages/helmet/)           | 15 security headers (CSP, HSTS, COEP, COOP, CORP, …)                                                                                    |
+| [`@axiomify/rate-limit`](packages/rate-limit/)   | Sliding-window rate limiting + EVALSHA caching + ioredis/redis@4                                                                        |
+| [`@axiomify/security`](packages/security/)       | XSS sanitisation, HPP normalisation, prototype-pollution + null-byte filtering, bot UA detection; opt-in narrow Mongo-operator detector |
+| [`@axiomify/fingerprint`](packages/fingerprint/) | Server-side request fingerprinting with confidence scoring                                                                              |
+| [`@axiomify/vault`](packages/vault/)             | Secure environment configuration vault: envelope encryption, process.env masking, Zod schema validation, stream redaction               |
 
 ### Content & I/O
 
@@ -79,11 +79,12 @@ Axiomify is an ultra high-performance Node.js framework built exclusively on `uW
 
 ### Observability
 
-| Package                                  | Description                                                           |
-| ---------------------------------------- | --------------------------------------------------------------------- |
-| [`@axiomify/openapi`](packages/openapi/) | OpenAPI 3.0 from Zod schemas — Zod v4 native via `z.toJSONSchema()`   |
-| [`@axiomify/logger`](packages/logger/)   | Structured logging with recursive PII masking                         |
-| [`@axiomify/metrics`](packages/metrics/) | Prometheus metrics — bounded cardinality, WebSocket stats integration |
+| Package                                              | Description                                                           |
+| ---------------------------------------------------- | --------------------------------------------------------------------- |
+| [`@axiomify/openapi`](packages/openapi/)             | OpenAPI 3.0 from Zod schemas — Zod v4 native via `z.toJSONSchema()`   |
+| [`@axiomify/logger`](packages/logger/)               | Structured logging with recursive PII masking                         |
+| [`@axiomify/metrics`](packages/metrics/)             | Prometheus metrics — bounded cardinality, WebSocket stats integration |
+| [`@axiomify/observability`](packages/observability/) | Trace-context propagation and `Server-Timing` instrumentation         |
 
 ### Clients & SDK
 
@@ -285,7 +286,7 @@ useOpenAPI(app, {
 // Swagger UI at /docs, spec at /docs/openapi.json
 ```
 
-Uses `z.toJSONSchema()` (Zod v4 built-in, emits JSON Schema 2020-12). No third-party schema bridge needed. Per-route docs live on `route.openapi` and mirror the [OAS 3.0.3 Operation Object](https://spec.openapis.org/oas/v3.0.3#operation-object) verbatim — see [docs/[./packages/openapi.md](./packages/openapi.md)](docs/packages/openapi.md).
+Uses `z.toJSONSchema()` (Zod v4 built-in, emits JSON Schema 2020-12). No third-party schema bridge needed. Per-route docs live on `route.openapi` and mirror the [OAS 3.0.3 Operation Object](https://spec.openapis.org/oas/v3.0.3#operation-object) verbatim — see the [OpenAPI package guide](docs/packages/openapi.md).
 
 ---
 
@@ -389,7 +390,7 @@ In CI:
 - run: npx axiomify routes --json > routes.json # API surface snapshot
 ```
 
-Full reference: [docs/[./packages/cli.md](./packages/cli.md)](docs/packages/cli.md).
+Full reference: [CLI package guide](docs/packages/cli.md).
 
 ---
 
@@ -468,17 +469,22 @@ Quick reference:
 
 ## Documentation
 
-|                                                      |                                             |
-| ---------------------------------------------------- | ------------------------------------------- |
-| [Getting started](docs/getting-started.md)           | Install, first route, first adapter         |
-| [Core concepts](docs/core-concepts.md)               | Routing, validation, hooks, serialiser      |
-| [Plugins & hooks](docs/plugins-and-hooks.md)         | Writing plugins, hook execution order       |
-| [Production checklist](docs/production-checklist.md) | Security, clustering, health checks         |
-| [Examples](examples/)                                | Runnable servers showing the full ecosystem |
+|                                                      |                                                |
+| ---------------------------------------------------- | ---------------------------------------------- |
+| [Getting started](docs/getting-started.md)           | Install, first route, first adapter            |
+| [Core concepts](docs/core-concepts.md)               | Routing, validation, hooks, serialiser         |
+| [Contract testing](docs/contract-testing.md)         | Response assertions and CI compatibility       |
+| [API versioning](docs/api-versioning.md)             | Deprecation headers and compatibility gates    |
+| [Plugins & hooks](docs/plugins-and-hooks.md)         | Writing plugins, hook execution order          |
+| [Production checklist](docs/production-checklist.md) | Security, clustering, health checks            |
+| [Examples](examples/)                                | Runnable servers showing the full ecosystem    |
+| [Starter kits](starters/)                            | Deployable, focused production starting points |
+| [Community recipes](docs/recipes/)                   | Production patterns maintained with users      |
+| [Community guide](COMMUNITY.md)                      | Discussions, issues, and contribution path     |
 
 ### Package docs
 
-[core](docs/packages/core.md) · [native](docs/packages/native.md) (HTTP + WebSocket adapter) · [serverless](docs/packages/serverless.md) · [auth](docs/packages/auth.md) · [cors](docs/packages/cors.md) · [rate-limit](docs/packages/rate-limit.md) · [vault](docs/packages/vault.md) · [openapi](docs/packages/openapi.md) · [security](docs/packages/security.md) · [static](docs/packages/static.md) · [upload](docs/packages/upload.md) · [helmet](docs/packages/helmet.md) · [logger](docs/packages/logger.md) · [metrics](docs/packages/metrics.md) · [fingerprint](docs/packages/fingerprint.md) · [graphql](docs/packages/graphql.md) · [ws](docs/packages/ws.md) · [socket.io](docs/packages/socket.io.md) · [jobs](docs/packages/jobs.md) · [sdk-runtime](docs/packages/sdk-runtime.md) · [cli](docs/packages/cli.md)
+[core](docs/packages/core.md) · [native](docs/packages/native.md) (HTTP + WebSocket adapter) · [serverless](docs/packages/serverless.md) · [auth](docs/packages/auth.md) · [cors](docs/packages/cors.md) · [rate-limit](docs/packages/rate-limit.md) · [vault](docs/packages/vault.md) · [openapi](docs/packages/openapi.md) · [security](docs/packages/security.md) · [static](docs/packages/static.md) · [upload](docs/packages/upload.md) · [helmet](docs/packages/helmet.md) · [logger](docs/packages/logger.md) · [metrics](docs/packages/metrics.md) · [observability](docs/packages/observability.md) · [fingerprint](docs/packages/fingerprint.md) · [graphql](docs/packages/graphql.md) · [ws](docs/packages/ws.md) · [socket.io](docs/packages/socket.io.md) · [jobs](docs/packages/jobs.md) · [sdk-runtime](docs/packages/sdk-runtime.md) · [cli](docs/packages/cli.md)
 
 ---
 

@@ -20,7 +20,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@axiomify/core": "*"
+    "@axiomify/core": "^7.0.0"
   },
   "keywords": [
     "axiomify",

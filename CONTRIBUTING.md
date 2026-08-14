@@ -5,8 +5,6 @@
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-
-
 Thanks for contributing. Follow the rules or expect rejection.
 
 ---
@@ -29,9 +27,11 @@ npm install
 ```
 
 ## 🧪 Testing
+
 ```bash
 npm run test
 ```
+
 All features must include tests.
 
 ### Redis integration tests
@@ -62,13 +62,16 @@ The protocol client used by these tests
 suite doesn't require adding a Redis client as a real dependency.
 
 ## 🚫 Hard Rules
+
 - Any usage of any will be rejected
 - PRs without tests will not be reviewed
 - Breaking changes without discussion will be closed
 - Poor structure = rejection
 
 ## 📝 Commit Convention
+
 Use Conventional Commits:
+
 ```text
 feat: add plugin system
 fix: resolve type inference issue
@@ -76,11 +79,13 @@ refactor: improve IR pipeline
 ```
 
 Breaking change:
+
 ```
 feat!: remove legacy API
 ```
 
 ## 🚀 PR Process
+
 - Create feature branch
 - Write tests
 - Ensure lint + tests pass

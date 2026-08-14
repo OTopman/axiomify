@@ -302,9 +302,7 @@ describe('createTestClient — request/response round-trips', () => {
 
     const res = await createTestClient(app).get('/inject');
     expect(res.statusCode).toBe(500);
-    expect(res.json<{ message: string }>().message).toMatch(
-      /rejected CR\/LF/,
-    );
+    expect(res.json<{ message: string }>().message).toMatch(/rejected CR\/LF/);
   });
 
   it('getHeader/removeHeader are case-insensitive on the test response', async () => {
@@ -453,7 +451,12 @@ describe('createTestClient — request construction', () => {
     await createTestClient(app, { ip: '10.0.0.9' }).get('/ip');
     await base.withIp('192.168.1.1').get('/ip');
     await base.get('/ip', { ip: '203.0.113.7' });
-    expect(ips).toEqual(['127.0.0.1', '10.0.0.9', '192.168.1.1', '203.0.113.7']);
+    expect(ips).toEqual([
+      '127.0.0.1',
+      '10.0.0.9',
+      '192.168.1.1',
+      '203.0.113.7',
+    ]);
   });
 
   it('withState pre-populates write-once request state before dispatch', async () => {

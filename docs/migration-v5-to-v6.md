@@ -166,9 +166,7 @@ useOpenAPI(app, { info, prefix: '/docs' }); // v6
 
 ```ts
 useSecurity(app, { sqlInjectionProtection: true }); // v5 warned — now removed
-useSecurity(app, {
-  /* other valid options */
-}); // v6
+useSecurity(app, {/* other valid options */}); // v6
 const user = await db.query('SELECT * FROM users WHERE id = $1', [
   req.params.id,
 ]);

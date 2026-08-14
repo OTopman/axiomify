@@ -2,11 +2,11 @@
 
 ## Supported Versions
 
-| Version | Supported |
-| ------- | --------- |
-| 6.x     | ✅ Latest stable; active security maintenance |
-| 5.x     | ⚠️ Security fixes for 6 months after the 6.0 release; no new features |
-| < 5.0   | ❌ Unsupported |
+| Version | Supported                                                             |
+| ------- | --------------------------------------------------------------------- |
+| 7.x     | ✅ Latest stable; active security maintenance                         |
+| 6.x     | ⚠️ Security fixes for 6 months after the 7.0 release; no new features |
+| < 6.0   | ❌ Unsupported                                                        |
 
 ## Reporting a Vulnerability
 
@@ -27,7 +27,7 @@ Deploying Axiomify to production safely requires these constraints. Each one clo
 ```typescript
 createAuthPlugin({
   secret: process.env.JWT_SECRET!,
-  algorithms: ['HS256'],     // never rely on jsonwebtoken defaults
+  algorithms: ['HS256'], // never rely on jsonwebtoken defaults
 });
 ```
 
@@ -49,7 +49,8 @@ The framework throws in production (`NODE_ENV=production`) on secrets shorter th
 
 ```typescript
 useMetrics(app, {
-  protect: async (req) => req.headers['x-internal-key'] === process.env.METRICS_KEY,
+  protect: async (req) =>
+    req.headers['x-internal-key'] === process.env.METRICS_KEY,
 });
 ```
 
@@ -61,7 +62,7 @@ Body size enforcement happens on the actual uWS byte stream — **NOT** on the `
 
 ```typescript
 const adapter = new NativeAdapter(app, {
-  maxBodySize: 1_048_576,    // 1 MiB
+  maxBodySize: 1_048_576, // 1 MiB
   // ...
 });
 ```

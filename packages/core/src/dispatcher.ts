@@ -347,10 +347,26 @@ class ValidatingResponse implements AxiomifyResponse {
     return this.inner.capabilities ?? { sse: false, streaming: false };
   }
   sseInit(ms?: number): void {
-    this.inner.sseInit?.(ms);
+    if (
+      !this.inner.capabilities?.sse ||
+      typeof this.inner.sseInit !== 'function'
+    ) {
+      throw new Error(
+        '[Axiomify] The active adapter does not implement SSE responses.',
+      );
+    }
+    this.inner.sseInit(ms);
   }
   sseSend(data: any, event?: string): void {
-    this.inner.sseSend?.(data, event);
+    if (
+      !this.inner.capabilities?.sse ||
+      typeof this.inner.sseSend !== 'function'
+    ) {
+      throw new Error(
+        '[Axiomify] The active adapter does not implement SSE responses.',
+      );
+    }
+    this.inner.sseSend(data, event);
   }
   get statusCode(): number {
     return this.inner.statusCode;

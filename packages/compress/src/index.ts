@@ -213,9 +213,7 @@ function appendVary(res: AxiomifyResponse): void {
     .split(',')
     .map((e) => e.trim())
     .filter(Boolean);
-  if (
-    entries.some((e) => e.toLowerCase() === 'accept-encoding' || e === '*')
-  ) {
+  if (entries.some((e) => e.toLowerCase() === 'accept-encoding' || e === '*')) {
     return;
   }
   entries.push('Accept-Encoding');
@@ -248,7 +246,9 @@ function compressBuffer(
     case 'zstd':
       /* v8 ignore next 4 -- requires a Node build with zlib zstd support */
       if (!zstdAsync) {
-        return Promise.reject(new Error('zstd is not supported by this Node runtime'));
+        return Promise.reject(
+          new Error('zstd is not supported by this Node runtime'),
+        );
       }
       return zstdAsync(buf);
   }
@@ -355,7 +355,10 @@ export function useCompress(
       if (res.getHeader('Content-Encoding')) return true;
       if (res.statusCode === 206 || res.getHeader('Content-Range')) return true;
       const cacheControl = res.getHeader('Cache-Control');
-      if (cacheControl && /(?:^|,)\s*no-transform\s*(?:,|$)/i.test(cacheControl)) {
+      if (
+        cacheControl &&
+        /(?:^|,)\s*no-transform\s*(?:,|$)/i.test(cacheControl)
+      ) {
         return true;
       }
       return false;
@@ -446,13 +449,14 @@ export function useCompress(
         return originalSendRaw(payload, contentType);
       }
       appendVary(res);
-      const eligible =
-        typeof payload === 'string' || Buffer.isBuffer(payload);
+      const eligible = typeof payload === 'string' || Buffer.isBuffer(payload);
       if (!encoding || !eligible || req.method === 'HEAD') {
         return originalSendRaw(payload, contentType);
       }
       const buf =
-        typeof payload === 'string' ? Buffer.from(payload) : (payload as Buffer);
+        typeof payload === 'string'
+          ? Buffer.from(payload)
+          : (payload as Buffer);
       if (buf.byteLength < threshold) {
         return originalSendRaw(payload, contentType);
       }

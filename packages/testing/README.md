@@ -38,22 +38,24 @@ expect(res.data).toEqual({ id: 'usr_1' }); // raw value passed to res.send()
 
 `client.inject(options)` is the primitive; `get` / `post` / `put` / `patch` / `delete` / `head` / `options` are convenience wrappers that take `(url, options)`.
 
-| Option      | Type                               | Default       | Description                                                                                                    |
-| ----------- | ---------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------- |
-| `url`       | `string`                           | —             | Path with optional query string (`/users?limit=5`).                                                            |
-| `method`    | `HttpMethod`                       | `'GET'`       | Only on `inject()`.                                                                                             |
-| `query`     | `Record<string, value \| value[]>` | —             | Merged with the query string in `url`; arrays produce repeated keys.                                            |
-| `headers`   | `Record<string, string \| string[]>` | —          | Names are lowercased before dispatch.                                                                           |
-| `cookies`   | `Record<string, string>`           | —             | Serialized into the `Cookie` header (values URI-encoded when needed).                                           |
-| `body`      | `unknown`                          | —             | Objects/arrays are auto-JSON-encoded with `content-type: application/json`; strings and Buffers pass verbatim. |
-| `state`     | `Record<string, unknown>`          | —             | Pre-populated into `req.state` before dispatch (e.g. a fake authenticated user).                                |
-| `ip`        | `string`                           | `'127.0.0.1'` | What handlers see via `req.ip`.                                                                                 |
-| `timeoutMs` | `number`                           | `5000`        | Rejects with a helpful error if the handler never responds.                                                     |
+| Option      | Type                                 | Default       | Description                                                                                                    |
+| ----------- | ------------------------------------ | ------------- | -------------------------------------------------------------------------------------------------------------- |
+| `url`       | `string`                             | —             | Path with optional query string (`/users?limit=5`).                                                            |
+| `method`    | `HttpMethod`                         | `'GET'`       | Only on `inject()`.                                                                                            |
+| `query`     | `Record<string, value \| value[]>`   | —             | Merged with the query string in `url`; arrays produce repeated keys.                                           |
+| `headers`   | `Record<string, string \| string[]>` | —             | Names are lowercased before dispatch.                                                                          |
+| `cookies`   | `Record<string, string>`             | —             | Serialized into the `Cookie` header (values URI-encoded when needed).                                          |
+| `body`      | `unknown`                            | —             | Objects/arrays are auto-JSON-encoded with `content-type: application/json`; strings and Buffers pass verbatim. |
+| `state`     | `Record<string, unknown>`            | —             | Pre-populated into `req.state` before dispatch (e.g. a fake authenticated user).                               |
+| `ip`        | `string`                             | `'127.0.0.1'` | What handlers see via `req.ip`.                                                                                |
+| `timeoutMs` | `number`                             | `5000`        | Rejects with a helpful error if the handler never responds.                                                    |
 
 Per-client defaults via `createTestClient(app, { ip, state, timeoutMs })`, or chainably:
 
 ```typescript
-const asAdmin = client.withState('user', { id: 1, role: 'admin' }).withIp('10.0.0.7');
+const asAdmin = client
+  .withState('user', { id: 1, role: 'admin' })
+  .withIp('10.0.0.7');
 ```
 
 ## Reading responses

@@ -14,12 +14,7 @@
 
 /** The client families @axiomify/db knows how to drive out of the box. */
 export type ClientKind =
-  | 'prisma'
-  | 'drizzle'
-  | 'pg'
-  | 'mysql2'
-  | 'better-sqlite3'
-  | 'unknown';
+  'prisma' | 'drizzle' | 'pg' | 'mysql2' | 'better-sqlite3' | 'unknown';
 
 const isFn = (value: unknown): value is (...args: unknown[]) => unknown =>
   typeof value === 'function';
@@ -96,8 +91,7 @@ export function deriveBehavior(kind: ClientKind): DerivedBehavior {
       return {
         connect: (c) => c.$connect(),
         disconnect: (c) => c.$disconnect(),
-        healthCheck: (c) =>
-          isFn(c.$queryRaw) ? c.$queryRaw`SELECT 1` : true,
+        healthCheck: (c) => (isFn(c.$queryRaw) ? c.$queryRaw`SELECT 1` : true),
       };
     case 'pg':
     case 'mysql2':

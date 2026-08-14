@@ -74,6 +74,27 @@ describe('Axiomify app — extended coverage', () => {
     });
   });
 
+  it('promotes a legacy plain-object request state before hooks and handlers run', async () => {
+    const app = new Axiomify();
+    app.route({
+      method: 'GET',
+      path: '/state-contract',
+      handler: async (req, res) => {
+        req.state.set('handled', true);
+        res.send({ ok: true });
+      },
+    });
+    const req = makeReq({
+      path: '/state-contract',
+      state: { inherited: 'value' },
+    });
+
+    await app.handle(req, makeRes());
+
+    expect(req.state.get('inherited')).toBe('value');
+    expect(req.state.get('handled')).toBe(true);
+  });
+
   describe('setSerializer', () => {
     it('returns this for chaining', () => {
       const app = new Axiomify();

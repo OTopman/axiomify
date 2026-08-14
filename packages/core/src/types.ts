@@ -12,20 +12,10 @@ export interface FileConfig {
 }
 
 export type HttpMethod =
-  | 'GET'
-  | 'POST'
-  | 'PUT'
-  | 'PATCH'
-  | 'DELETE'
-  | 'OPTIONS'
-  | 'HEAD';
+  'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'OPTIONS' | 'HEAD';
 
 export type HookType =
-  | 'onRequest'
-  | 'onPreHandler'
-  | 'onPostHandler'
-  | 'onError'
-  | 'onClose';
+  'onRequest' | 'onPreHandler' | 'onPostHandler' | 'onError' | 'onClose';
 
 export interface SerializerInput {
   data: any;
@@ -195,6 +185,11 @@ export interface RouteSchema {
   message?: ZodTypeAny;
 
   // ── OpenAPI 3.1.0 Operation Object metadata ─────────────────────────────────
+  /**
+   * Include this route in generated OpenAPI documents. Defaults to `true`.
+   * Set to `false` for internal, operational, or otherwise undocumented routes.
+   */
+  openapi?: boolean;
   /** OAS §4.8.10.1 — grouping label(s). Swagger UI groups operations by tag. */
   tags?: string[];
   /** OAS §4.8.10.2 — short one-line title. Defaults to `${method} ${path}`. */
@@ -398,6 +393,12 @@ export interface RouteGroupOptions {
 }
 
 export interface RouteGroup {
+  /**
+   * Register route middleware for routes declared after this call within this
+   * group (and within nested groups). The middleware is never added to routes
+   * outside the group, which makes this the plugin-encapsulation primitive.
+   */
+  use(plugin: RouteMiddleware): this;
   route<S extends RouteSchema>(definition: RouteDefinition<S>): this;
   ws<S extends RouteSchema, M = any>(definition: WsRouteDefinition<S, M>): this;
   group(
