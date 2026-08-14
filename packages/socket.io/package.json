@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/socket.io",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "description": "Socket.IO bridge for @axiomify/native — attach Socket.IO to the same uWebSockets.js server that handles HTTP, so you only need one listener.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,8 +20,8 @@
     "test": "vitest run tests --config ../../vitest.config.mts"
   },
   "dependencies": {
-    "@axiomify/core": "^7.0.0",
-    "@axiomify/native": "^7.0.0"
+    "@axiomify/core": "^7.1.0",
+    "@axiomify/native": "^7.1.0"
   },
   "peerDependencies": {
     "socket.io": "^4.4.0"

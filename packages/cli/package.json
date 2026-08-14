@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/cli",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "description": "Official CLI for Axiomify — scaffold, dev, build, route inspection, OpenAPI generation, production-readiness checks, host diagnostics, codemod migrations.",
   "module": "./dist/index.mjs",
   "exports": {
@@ -23,7 +23,7 @@
     "coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@axiomify/core": "^7.0.0",
+    "@axiomify/core": "^7.1.0",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "commander": "12.1.0",
