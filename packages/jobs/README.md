@@ -30,7 +30,10 @@ _Note: `@axiomify/core` is required as a peer dependency._
 
 ### 1. Registering the Jobs Module
 
-Register the jobs module in your Axiomify container. The scheduler automatically starts processing loops on adapter start and terminates gracefully on app close.
+Register the jobs module in your Axiomify container, register handlers, then
+start its processing loop explicitly. The module terminates the scheduler
+gracefully when the app closes. Explicit startup keeps build-only commands such
+as route inspection and OpenAPI generation from launching background workers.
 
 ```typescript
 import { Axiomify } from '@axiomify/core';
@@ -46,6 +49,10 @@ app.use(
     pollIntervalMs: 1000,
   }),
 );
+
+const jobs = app.resolve('jobs');
+// Register handlers before starting the worker loop.
+jobs.start();
 ```
 
 ### 2. Registering and Enqueuing Tasks

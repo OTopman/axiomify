@@ -67,8 +67,8 @@ are fixed at 100 text fields and 64 KiB per field value.
 
 ## Per-field `files` schema
 
-Each field in `schema.files` is configured with the following properties. `accept` and
-`maxSize` are required; the rest are optional.
+Each field in `schema.files` is configured with the following properties. `accept`,
+`maxSize`, and `autoSaveTo` are required; the rest are optional.
 
 | Property               | Required | Default | Description                                                                                 |
 | ---------------------- | -------- | ------- | ------------------------------------------------------------------------------------------- |

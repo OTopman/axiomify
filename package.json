@@ -2,7 +2,7 @@
   "name": "axiomify-workspace",
   "description": "Zero-compromise Node.js framework with Radix routing, Zod-native validation, and a modular plugin ecosystem for building high-performance, type-safe APIs.",
   "private": true,
-  "version": "7.0.1",
+  "version": "7.1.0",
   "engines": {
     "node": ">=22.0.0 <23.0.0 || >=24.0.0 <25.0.0"
   },

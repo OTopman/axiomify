@@ -3,9 +3,14 @@
 [![npm version](https://img.shields.io/npm/v/@axiomify/serverless.svg)](https://npmjs.com/package/@axiomify/serverless)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-Platform-independent serverless adapter for Axiomify using standard Fetch API `Request` and `Response` objects (WinterCG compliant).
+Node-compatible serverless adapter for Axiomify using standard Fetch API
+`Request` and `Response` objects at its boundary.
 
-Runs on Cloudflare Workers, Vercel Edge, AWS Lambda (with HTTP/Fetch integration), Bun, Deno, and any other WinterCG environment.
+Runs on Node.js serverless platforms and edge runtimes that provide the Node
+compatibility APIs required by Axiomify (`node:async_hooks`, `node:crypto`,
+`node:path`, and `node:stream`). Cloudflare Workers, Vercel Edge, Bun, and Deno
+must have an appropriate Node compatibility mode; generic WinterCG support is
+not currently provided.
 
 ## Install
 
@@ -13,7 +18,7 @@ Runs on Cloudflare Workers, Vercel Edge, AWS Lambda (with HTTP/Fetch integration
 npm install @axiomify/serverless @axiomify/core zod
 ```
 
-## Quick Example (Cloudflare Workers / WinterCG)
+## Quick Example (Fetch handler with Node compatibility)
 
 ```typescript
 import { Axiomify } from '@axiomify/core';
