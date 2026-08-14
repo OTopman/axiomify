@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createServer } from 'node:http';
+import { Readable } from 'node:stream';
 import { StudioRouter } from '../../src/studio/server/router';
 import { createStudioServer } from '../../src/studio/server/http-server';
 import { registerStudioApi } from '../../src/studio/api';
@@ -480,6 +481,133 @@ describe('Studio Server & Router', () => {
         /^multipart\/form-data; boundary=/,
       );
       expect(formData.body.data.body).toBeUndefined();
+    } finally {
+      server.close();
+    }
+  });
+
+  it('should preserve Studio request state, cookies, uploads, streams, and SSE', async () => {
+    const app = new Axiomify();
+    app.route({
+      method: 'GET',
+      path: '/request-contract',
+      handler: async (req, res) => {
+        req.state.set('visited', true);
+        res
+          .cookie('session', 'studio value', { httpOnly: true })
+          .clearCookie('obsolete')
+          .send({
+            cookie: req.cookies.session,
+            state: req.state.get('visited'),
+          });
+      },
+    });
+    app.route({
+      method: 'GET',
+      path: '/stream',
+      handler: async (_req, res) => {
+        res.stream(
+          Readable.from(['first', Buffer.from('-second')]),
+          'text/plain',
+        );
+      },
+    });
+    app.route({
+      method: 'GET',
+      path: '/events',
+      handler: async (_req, res) => {
+        res.sseSend({ ready: true }, 'status');
+        res.sseSend('line one\nline two');
+      },
+    });
+    app.route({
+      method: 'POST',
+      path: '/upload-contract',
+      handler: async (req, res) => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of req.stream) chunks.push(Buffer.from(chunk));
+        res.send({
+          contentType: req.headers['content-type'],
+          raw: Buffer.concat(chunks).toString('utf8'),
+        });
+      },
+    });
+
+    const router = new StudioRouter();
+    registerStudioApi(router, {
+      getDiscovery: () => ({}) as any,
+      getApp: () => app,
+    });
+    const server = createStudioServer({ port: 0, router, indexHtml: 'index' });
+
+    try {
+      await new Promise<void>((resolve) =>
+        server.listen(0, '127.0.0.1', resolve),
+      );
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      const request = async (payload: Record<string, unknown>) => {
+        const response = await fetch(
+          `http://127.0.0.1:${port}/__studio/api/request`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          },
+        );
+        expect(response.status).toBe(200);
+        return response.json();
+      };
+
+      const contract = await request({
+        method: 'GET',
+        path: '/request-contract',
+        headers: { cookie: ['session=abc%20123'] },
+      });
+      expect(contract.body.data).toEqual({ cookie: 'abc 123', state: true });
+      expect(contract.headers['set-cookie']).toContain(
+        'session=studio%20value',
+      );
+      expect(contract.headers['set-cookie']).toContain('obsolete=');
+
+      const streamed = await request({ method: 'GET', path: '/stream' });
+      expect(streamed).toMatchObject({
+        body: 'first-second',
+        headers: {
+          'content-type': 'text/plain',
+          'transfer-encoding': 'chunked',
+        },
+      });
+
+      const events = await request({ method: 'GET', path: '/events' });
+      expect(events.body).toBe(
+        'event: status\ndata: {"ready":true}\n\ndata: line one\ndata: line two\n\n',
+      );
+
+      const upload = await request({
+        method: 'POST',
+        path: '/upload-contract',
+        bodyMode: 'form-data',
+        body: { title: 'Draft' },
+        files: [
+          null,
+          { field: 'ignored' },
+          {
+            field: 'attachment\r\n"',
+            name: 'note\n".txt',
+            type: 'text/plain\r\nx-injected: true',
+            contentBase64: Buffer.from('file contents').toString('base64'),
+          },
+        ],
+      });
+      expect(upload.body.data.contentType).toMatch(
+        /^multipart\/form-data; boundary=/,
+      );
+      expect(upload.body.data.raw).toContain('name="title"');
+      expect(upload.body.data.raw).toContain('Draft');
+      expect(upload.body.data.raw).toContain('filename="note.txt"');
+      expect(upload.body.data.raw).toContain('file contents');
+      expect(upload.body.data.raw).not.toContain('\r\nx-injected: true');
     } finally {
       server.close();
     }
