@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { Readable } from 'node:stream';
 import {
+  getStudioPrivacyOptions,
+  handleGetPrivacy,
+  handlePostPrivacy,
   redactForStudio,
   redactTextForStudio,
   sanitizeRecordedBody,
@@ -15,6 +19,18 @@ import {
 } from '../../src/studio/api/recorder';
 
 describe('Studio recorder privacy', () => {
+  function responseCapture() {
+    const result: { status?: number; body?: any } = {};
+    const res: any = {
+      writeHead(status: number) {
+        result.status = status;
+      },
+      end(body: string) {
+        result.body = JSON.parse(body);
+      },
+    };
+    return { res, result };
+  }
   afterEach(() => {
     setStudioPrivacyOptions({ includeBodies: true, sensitiveKeys: [] });
   });
@@ -125,5 +141,35 @@ describe('Studio recorder privacy', () => {
     session.errors.length = 0;
     session.events.length = 0;
     session.queries.length = 0;
+  });
+
+  it('serves and validates privacy configuration endpoints', async () => {
+    const get = responseCapture();
+    handleGetPrivacy({} as any, get.res);
+    expect(get.result).toMatchObject({ status: 200 });
+    expect(get.result.body).toEqual(getStudioPrivacyOptions());
+
+    const post = responseCapture();
+    await handlePostPrivacy(
+      Readable.from([
+        Buffer.from(
+          JSON.stringify({ includeBodies: false, sensitiveKeys: ['account'] }),
+        ),
+      ]) as any,
+      post.res,
+    );
+    expect(post.result).toMatchObject({
+      status: 200,
+      body: { includeBodies: false, sensitiveKeys: ['account'] },
+    });
+
+    for (const body of ['{"sensitiveKeys":"invalid"}', '{invalid']) {
+      const invalid = responseCapture();
+      await handlePostPrivacy(
+        Readable.from([Buffer.from(body)]) as any,
+        invalid.res,
+      );
+      expect(invalid.result.status).toBe(400);
+    }
   });
 });
