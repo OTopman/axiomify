@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/db",
-  "version": "7.0.0",
+  "version": "7.0.1",
   "description": "Database integration for Axiomify — register any client (Prisma, Drizzle, pg, mysql2, better-sqlite3) through DI with health checks, graceful shutdown and vault-scoped credentials.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

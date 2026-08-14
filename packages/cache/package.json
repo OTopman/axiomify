@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/cache",
-  "version": "7.0.0",
+  "version": "7.0.1",
   "description": "Response caching for Axiomify — ETag/conditional GET for dynamic responses, Cache-Control helpers, pluggable memory/Redis stores, stale-while-revalidate.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

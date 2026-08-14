@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/openapi",
-  "version": "7.0.0",
+  "version": "7.0.1",
   "description": "OpenAPI 3.0.3 generator + Swagger UI for Axiomify — Zod-v4-native via `z.toJSONSchema()`, 100% Operation Object coverage.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
