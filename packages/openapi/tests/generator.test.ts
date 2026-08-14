@@ -700,7 +700,6 @@ describe('OpenApiGenerator — additional coverage', () => {
   });
 
   it('synthesises operationId with "All" when path contains wildcard segment *', () => {
-    const { Axiomify } = require('@axiomify/core');
     const app = new Axiomify();
     app.route({
       method: 'GET',
@@ -715,7 +714,6 @@ describe('OpenApiGenerator — additional coverage', () => {
   });
 
   it('generates binary format with max size description for upload files with config.maxSize', () => {
-    const { Axiomify } = require('@axiomify/core');
     const app = new Axiomify();
     app.route({
       method: 'POST',
@@ -739,7 +737,6 @@ describe('OpenApiGenerator — additional coverage', () => {
   });
 
   it('generates schema description, route tags, and file details without maxSize', () => {
-    const { Axiomify } = require('@axiomify/core');
     const app = new Axiomify();
     app.route({
       method: 'POST',
