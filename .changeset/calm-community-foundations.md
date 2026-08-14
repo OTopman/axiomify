@@ -41,6 +41,8 @@ Deliver the Axiomify 7.1 feature and release-readiness update across the workspa
 - Improve OpenAPI generation, serverless adapters, SDK runtime behavior, static delivery, background jobs, logging, caching, compression, and supporting framework plugins.
 - Preserve every file submitted to a multi-file upload field, expose repeated files as arrays, and clean partial uploads when request streams abort.
 - Clarify explicit jobs-worker startup and accurately document the Node compatibility requirements of the Fetch-based serverless adapter.
+- Source the Studio report version from the CLI package instead of displaying a stale hard-coded v1.0, and make documentation-link and package-policy validation portable in CI environments without ripgrep.
+- Encode Playground base URLs with JSON string serialization so quotes, backslashes, and control characters cannot produce malformed or injectable generated code.
 - Add starters, recipes, examples, migration guidance, package documentation, API-versioning and contract-testing guides, and community contribution templates.
 - Harden CI, CodeQL, release provenance, dependency policy, package validation, documentation-link checks, package-size limits, supported Node.js 22/24 verification, and strict test coverage gates.
 - Align internal dependency ranges and coordinated Changesets behavior so peer updates remain on the 7.x release line and publish consistently as 7.1.0.

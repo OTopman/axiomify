@@ -1,18 +1,20 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 const root = JSON.parse(readFileSync('package.json', 'utf8'));
-const manifests = execFileSync('rg', [
-  '--files',
-  'packages',
-  '-g',
-  'package.json',
-])
-  .toString()
-  .trim()
-  .split('\n')
-  .filter(Boolean);
+const manifests = readdirSync('packages', { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => join('packages', entry.name, 'package.json'))
+  .filter((file) => {
+    try {
+      readFileSync(file);
+      return true;
+    } catch {
+      return false;
+    }
+  })
+  .sort();
 const failures = [];
 
 for (const file of manifests) {

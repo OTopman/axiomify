@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StudioDiscoveryResult } from '../../src/studio/discovery/types';
+import pkg from '../../package.json';
 
 // We can import the internal builders from export.ts by casting the module or exporting them.
 // Let's check: since we exported the HTTP handlers, can we also export the builders, or do we test via handler mock?
@@ -104,6 +105,8 @@ describe('Studio Report Exporter', () => {
     expect(responseHtml).toContain('Axiomify Studio Report');
     expect(responseHtml).toContain('HTTP Routes');
     expect(responseHtml).toContain('WebSocket Routes');
+    expect(responseHtml).toContain(`Axiomify Studio v${pkg.version}`);
+    expect(responseHtml).not.toContain('Axiomify Studio v1.0');
   });
 
   it('should generate Markdown report with correct Content-Type', () => {
@@ -134,5 +137,7 @@ describe('Studio Report Exporter', () => {
     expect(contentDisposition).toContain('attachment');
     expect(responseMd).toContain('# ✨ Axiomify Studio Report');
     expect(responseMd).toContain('## 📊 Discovery Summary');
+    expect(responseMd).toContain(`Axiomify Studio v${pkg.version}`);
+    expect(responseMd).not.toContain('Axiomify Studio v1.0');
   });
 });

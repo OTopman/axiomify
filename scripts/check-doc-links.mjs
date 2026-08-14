@@ -1,19 +1,33 @@
 #!/usr/bin/env node
-import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 
-const files = execFileSync('rg', [
-  '--files',
-  '-g',
-  '*.md',
-  '-g',
-  '!node_modules',
-])
-  .toString()
-  .trim()
-  .split('\n')
-  .filter(Boolean);
+const root = process.cwd();
+const ignoredDirectories = new Set([
+  '.git',
+  'coverage',
+  'dist',
+  'node_modules',
+  'ui-dist',
+]);
+
+function markdownFiles(directory) {
+  const files = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      if (!ignoredDirectories.has(entry.name)) {
+        files.push(...markdownFiles(join(directory, entry.name)));
+      }
+      continue;
+    }
+    if (entry.isFile() && entry.name.endsWith('.md')) {
+      files.push(relative(root, join(directory, entry.name)));
+    }
+  }
+  return files;
+}
+
+const files = markdownFiles(root).sort();
 const failures = [];
 
 for (const file of files) {

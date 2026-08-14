@@ -3,6 +3,7 @@ import {
   extractPlaygroundOperations,
   getPlaygroundCompletionQuery,
   getPlaygroundPropertyCompletionContext,
+  replacePlaygroundBaseUrl,
 } from '../src/utils/playground-intellisense';
 
 describe('Playground SDK IntelliSense', () => {
@@ -66,5 +67,19 @@ describe('Playground SDK IntelliSense', () => {
         'await client.createUser({ body: { na',
       ),
     ).toBeNull();
+  });
+
+  it('encodes Playground base URLs as complete JavaScript string literals', () => {
+    const hostileUrl = String.raw`https://example.test/a\\'b"c` + '\nnext-line';
+    const existingUrl = String.raw`http://old.test/a\\"b`;
+    const updated = replacePlaygroundBaseUrl(
+      `const client = new Client({ baseUrl: ${JSON.stringify(existingUrl)} });`,
+      hostileUrl,
+    );
+
+    expect(updated).toContain(`baseUrl: ${JSON.stringify(hostileUrl)}`);
+    const literal = /baseUrl:\s*("(?:\\.|[^"\\])*")/.exec(updated)?.[1];
+    expect(literal).toBeDefined();
+    expect(JSON.parse(literal!)).toBe(hostileUrl);
   });
 });

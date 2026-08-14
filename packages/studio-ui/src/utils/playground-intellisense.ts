@@ -22,6 +22,21 @@ export interface PlaygroundPropertyCompletionContext {
   usedPropertyNames: string[];
 }
 
+const BASE_URL_LITERAL =
+  /baseUrl:\s*(?:"(?:\\[\s\S]|[^"\\\r\n])*"|'(?:\\[\s\S]|[^'\\\r\n])*')/;
+
+/**
+ * Replaces the Playground client base URL with a complete JavaScript string
+ * encoding. JSON.stringify handles quotes, backslashes, control characters,
+ * and line breaks without relying on a partial hand-written sanitizer.
+ */
+export function replacePlaygroundBaseUrl(
+  code: string,
+  nextUrl: string,
+): string {
+  return code.replace(BASE_URL_LITERAL, `baseUrl: ${JSON.stringify(nextUrl)}`);
+}
+
 /** Split a TypeScript comma-separated list without splitting nested types. */
 function splitTopLevel(source: string): string[] {
   const parts: string[] = [];

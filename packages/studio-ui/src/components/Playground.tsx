@@ -6,6 +6,7 @@ import {
   extractPlaygroundOperations,
   getPlaygroundCompletionQuery,
   getPlaygroundPropertyCompletionContext,
+  replacePlaygroundBaseUrl,
   playgroundRuntimeDeclarations,
 } from '../utils/playground-intellisense';
 
@@ -457,11 +458,9 @@ export * from './validators';`,
 
   const handleAppBaseUrlChange = (nextUrl: string) => {
     setAppBaseUrl(nextUrl);
-    const nextCode = (
-      editorRef.current ? editorRef.current.getValue() : code
-    ).replace(
-      /baseUrl:\s*(['"])[^'"\n]*\1/,
-      `baseUrl: '${nextUrl.replace(/'/g, "\\'")}'`,
+    const nextCode = replacePlaygroundBaseUrl(
+      editorRef.current ? editorRef.current.getValue() : code,
+      nextUrl,
     );
     if (editorRef.current) editorRef.current.setValue(nextCode);
     setCode(nextCode);
