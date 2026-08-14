@@ -23,7 +23,9 @@
     "coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@axiomify/core": "*",
+    "@axiomify/core": "^7.0.0",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "commander": "12.1.0",
     "enquirer": "^2.4.1",
     "esbuild": "^0.28.1",

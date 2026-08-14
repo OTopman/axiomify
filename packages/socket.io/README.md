@@ -98,5 +98,5 @@ complete API, production checklist, and a chat-with-auth example.
 - One bridge per adapter — use `io.of(name)` for namespaces.
 - No clustered transport included; use `@socket.io/redis-adapter` or
   `@socket.io/postgres-adapter` for multi-process deployments.
-- Node ≥ 20, < 23 (uWS prebuilt support; same constraint as
+- Node 22 or 24 (uWS prebuilt support; same constraint as
   `@axiomify/native`).

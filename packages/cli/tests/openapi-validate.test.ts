@@ -11,7 +11,10 @@ import { validateOpenApiDocument } from '../src/openapi/validate';
  */
 const validSpec = () =>
   JSON.parse(
-    readFileSync(path.join(__dirname, 'fixtures', 'openapi-valid.json'), 'utf8'),
+    readFileSync(
+      path.join(__dirname, 'fixtures', 'openapi-valid.json'),
+      'utf8',
+    ),
   );
 
 const codes = (findings: Array<{ code: string }>) =>
@@ -88,7 +91,9 @@ describe('openapi --validate: semantic lints', () => {
     const params = spec.paths['/users/{id}'].get.parameters;
     params.push(JSON.parse(JSON.stringify(params[0])));
     const report = await validateOpenApiDocument(spec);
-    const finding = report.findings.find((f) => f.code === 'duplicate-parameter')!;
+    const finding = report.findings.find(
+      (f) => f.code === 'duplicate-parameter',
+    )!;
     expect(finding).toBeDefined();
     expect(finding.severity).toBe('error');
     expect(finding.location).toBe('/paths/~1users~1{id}/get/parameters/1');
@@ -129,7 +134,9 @@ describe('openapi --validate: semantic lints', () => {
       },
     };
     const report = await validateOpenApiDocument(spec);
-    const finding = report.findings.find((f) => f.code === 'path-param-missing')!;
+    const finding = report.findings.find(
+      (f) => f.code === 'path-param-missing',
+    )!;
     expect(finding).toBeDefined();
     expect(finding.severity).toBe('error');
     expect(finding.message).toContain('{gadgetId}');
@@ -141,7 +148,9 @@ describe('openapi --validate: semantic lints', () => {
       { name: 'ghost', in: 'path', required: true, schema: { type: 'string' } },
     ];
     const report = await validateOpenApiDocument(spec);
-    const finding = report.findings.find((f) => f.code === 'path-param-unused')!;
+    const finding = report.findings.find(
+      (f) => f.code === 'path-param-unused',
+    )!;
     expect(finding).toBeDefined();
     expect(finding.severity).toBe('error');
     expect(finding.location).toBe('/paths/~1users/post/parameters/0');
@@ -171,6 +180,23 @@ describe('openapi --validate: semantic lints', () => {
     expect(orphans.some((f) => f.message.includes('"apiKey"'))).toBe(true);
   });
 
+  it('explains the securitySchemas typo and preserves generator warnings', async () => {
+    const spec = validSpec();
+    spec.components.securitySchemas = spec.components.securitySchemes;
+    delete spec.components.securitySchemes;
+    spec['x-axiomify-warnings'] = [
+      {
+        code: 'unrepresentable-zod-schema',
+        message: 'A transform was widened for OpenAPI.',
+        location: 'POST /users request body',
+      },
+    ];
+
+    const report = await validateOpenApiDocument(spec);
+    expect(codes(report.findings)).toContain('security-schemes-typo');
+    expect(codes(report.findings)).toContain('generator-warning');
+  });
+
   it('accepts security requirements that reference declared schemes', async () => {
     // The fixture's POST /users already uses [{ bearerAuth: [] }].
     const report = await validateOpenApiDocument(validSpec());
@@ -196,9 +222,7 @@ describe('openapi --validate: semantic lints', () => {
     const report = await validateOpenApiDocument(spec);
     const severities = report.findings.map((f) => f.severity);
     expect(severities).toEqual(
-      [...severities].sort((a, b) =>
-        a === b ? 0 : a === 'error' ? -1 : 1,
-      ),
+      [...severities].sort((a, b) => (a === b ? 0 : a === 'error' ? -1 : 1)),
     );
   });
 });

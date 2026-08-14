@@ -57,14 +57,15 @@ function sh(cmd) {
   return execSync(cmd, { stdio: 'inherit' });
 }
 
-console.log(`→ Publishing workspace at version ${version} (dist-tag=${distTag})`);
+console.log(
+  `→ Publishing workspace at version ${version} (dist-tag=${distTag})`,
+);
 
 // Publish every public workspace. `--workspaces` skips private packages
 // (the example app). `--access public` is required for scoped packages.
 // Provenance is only generated when running in supported CI environments (like GitHub Actions).
 const provenance = process.env.GITHUB_ACTIONS === 'true' ? ' --provenance' : '';
 sh(`npm publish --workspaces --tag ${distTag} --access public${provenance}`);
-
 
 // Single tag for the whole release. `git tag -f` is intentional: in the
 // rare case of a re-run after a partial publish failure, the tag may

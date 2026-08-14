@@ -13,10 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     # This job only reads source and uploads coverage — no write permissions needed.
     permissions:
-      contents: read   # checkout
+      contents: read # checkout
     strategy:
       matrix:
-        node-version: [22, 23, 24]
+        node-version: [22, 24]
     steps:
       - name: Checkout Code
         # Pin to SHA instead of floating tag to prevent supply-chain attacks.
@@ -38,11 +38,21 @@ jobs:
       - name: Security Audit
         run: npm audit --audit-level=high
 
+      - name: Lint, format, docs, and package policy
+        run: npm run check
+
       - name: Typecheck & Build
         run: npm run build
 
+      - name: Enforce published CLI size budget
+        run: npm run check:package-size
+
       - name: Run Tests & Coverage
         run: npm run coverage
+
+      - name: Report extended CLI and Studio coverage
+        if: matrix.node-version == 22
+        run: npm run coverage:extended
 
       - name: Upload Coverage to Codecov
         # Pin to SHA for supply-chain safety.

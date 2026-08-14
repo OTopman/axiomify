@@ -1,0 +1,17 @@
+# Create these labels once in the GitHub repository settings. This file is a
+# portable source of truth for maintainers and label-sync tooling.
+- name: good first issue
+  color: 7057ff
+  description: Small, well-scoped work with maintainer guidance available.
+- name: help wanted
+  color: 008672
+  description: Useful contribution welcome; implementation direction is known.
+- name: needs-triage
+  color: d4c5f9
+  description: Needs reproduction, scope confirmation, or owner assignment.
+- name: community-recipe
+  color: 0e8a16
+  description: A documented pattern suitable for the public recipes hub.
+- name: starter-kit
+  color: 1d76db
+  description: A production starter or improvement to one.

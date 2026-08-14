@@ -1,0 +1,43 @@
+name: Bug report
+description: Report a reproducible defect in an Axiomify package.
+title: "bug: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping make Axiomify more reliable. Please remove secrets, tokens, and personal data from examples.
+  - type: input
+    id: package
+    attributes:
+      label: Affected package and version
+      placeholder: "@axiomify/core@7.0.0"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include the smallest runnable code sample or repository.
+      render: ts
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour and logs
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime
+      options: ["Node.js 20", "Node.js 22", "Node.js 23", "Node.js 24", "Other"]
+    validations:
+      required: true

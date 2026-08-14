@@ -252,7 +252,9 @@ function makeNodeRedisFakeWithMarker() {
 
 describe('RedisSessionStore', () => {
   it('rejects clients missing required methods', () => {
-    expect(() => new RedisSessionStore(null as never)).toThrow(/get\/set\/del\/expire/);
+    expect(() => new RedisSessionStore(null as never)).toThrow(
+      /get\/set\/del\/expire/,
+    );
     expect(
       () => new RedisSessionStore({ get: async () => null } as never),
     ).toThrow(/get\/set\/del\/expire/);

@@ -1,6 +1,6 @@
 # @axiomify/cli
 
-[![npm version](https://img.shields.io/npm/v/@axiomify/cli.svg)](https://npmjs.com/package//@axiomify/cli)
+[![npm version](https://img.shields.io/npm/v/@axiomify/cli.svg)](https://npmjs.com/package/@axiomify/cli)
 [![codecov](https://codecov.io/github/otopman/axiomify/graph/badge.svg)](https://codecov.io/github/otopman/axiomify)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OTopman/axiomify/badge)](https://securityscorecards.dev/viewer/?uri=github.com/OTopman/axiomify)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
@@ -22,20 +22,20 @@ the same major as your `@axiomify/*` runtime packages.
 
 ## Commands at a glance
 
-| Command                     | Purpose                                          |
-| --------------------------- | ------------------------------------------------ |
-| `axiomify init [directory]` | Bootstrap a new project                          |
-| `axiomify dev [entry]`      | Hot-reload dev server (esbuild watch)            |
-| `axiomify build [entry]`    | Compile a production bundle to `dist/`           |
+| Command                     | Purpose                                                            |
+| --------------------------- | ------------------------------------------------------------------ |
+| `axiomify init [directory]` | Bootstrap a new project                                            |
+| `axiomify dev [entry]`      | Hot-reload dev server (esbuild watch)                              |
+| `axiomify build [entry]`    | Compile a production bundle to `dist/`                             |
 | `axiomify routes [entry]`   | Inspect every HTTP + WebSocket route (+ snapshot/diff the surface) |
-| `axiomify openapi [entry]`  | Generate the OpenAPI 3.1.0 spec (+ `--validate`) |
-| `axiomify check [entry]`    | Static production-readiness audit                |
-| `axiomify studio [entry]`   | Launch Axiomify Studio visual dashboard          |
-| `axiomify doctor`           | Diagnose the host environment                    |
-| `axiomify scaffold route`   | Generate a new route file under `src/routes/`    |
-| `axiomify migrate`          | Codemod: migrate a v5 project to v6              |
-| `axiomify db <subcommand>`  | Run the project's db workflow (migrate/seed/generate/status) |
-| `axiomify sdk <subcommand>` | Manage, generate, build, validate, and diff SDKs |
+| `axiomify openapi [entry]`  | Generate the OpenAPI 3.1.0 spec (+ `--validate`)                   |
+| `axiomify check [entry]`    | Static production-readiness audit                                  |
+| `axiomify studio [entry]`   | Launch Axiomify Studio visual dashboard                            |
+| `axiomify doctor`           | Diagnose the host environment                                      |
+| `axiomify scaffold route`   | Generate a new route file under `src/routes/`                      |
+| `axiomify migrate`          | Codemod: migrate a v5 project to v6                                |
+| `axiomify db <subcommand>`  | Run the project's db workflow (migrate/seed/generate/status)       |
+| `axiomify sdk <subcommand>` | Manage, generate, build, validate, and diff SDKs                   |
 
 `[entry]` defaults to `src/index.ts` everywhere it's accepted.
 
@@ -123,14 +123,14 @@ axiomify routes --diff main.json --json    # machine-readable, for CI
 Snapshot output is deterministic (byte-identical repeat runs), so
 baselines diff cleanly in git. `--diff` categorises every change:
 
-| Change                             | Severity                                      |
-| ---------------------------------- | --------------------------------------------- |
-| Route added                        | info                                          |
-| Route removed                      | **BREAKING**                                  |
-| Method changed (same path)         | **BREAKING**                                  |
-| `body`/`query`/`params` schema     | **BREAKING**                                  |
-| `response` schema                  | warning (`--strict-response` → **BREAKING**)  |
-| Newly deprecated                   | info                                          |
+| Change                         | Severity                                     |
+| ------------------------------ | -------------------------------------------- |
+| Route added                    | info                                         |
+| Route removed                  | **BREAKING**                                 |
+| Method changed (same path)     | **BREAKING**                                 |
+| `body`/`query`/`params` schema | **BREAKING**                                 |
+| `response` schema              | warning (`--strict-response` → **BREAKING**) |
+| Newly deprecated               | info                                         |
 
 Exit code 1 on any breaking change; `--allow-breaking` reports them but
 exits 0 (useful while a break is being intentionally shipped).
@@ -234,7 +234,9 @@ Launches Axiomify Studio — a premium visual developer dashboard that serves as
 - **OpenAPI Spec Viewer**: Render collapsible tree views of OpenAPI paths and operations.
 - **Lifecycle Hooks**: Review registered hook handlers across request lifecycle phases.
 - **Health Dashboard**: Inspect production-readiness finding audits (pass/warn/fail).
-- **Request Tester**: Construct and send test requests (GET, POST, etc.) directly against your in-memory Axiomify app instance, capturing response status, headers, and body.
+- **Request Tester**: Construct and send test requests directly against your in-memory Axiomify app instance, including cookies, Server-Sent Events, streams, and multipart file uploads.
+- **Session Recorder**: Inspect or export request sessions as JSON or HAR. Authorization, cookies, passwords, tokens, and configured sensitive fields are redacted before recorder and replay history storage; body capture can be disabled in Studio.
+- **OTLP Metrics**: Receive OTLP HTTP/JSON gauges, sums, histograms, exponential histograms, and summaries locally; inspect or clear them in Analytics—no hosted telemetry account required.
 
 The dashboard uses **Live Sync** (WebSockets) powered by esbuild's watch context to automatically re-compile and refresh the browser interface in real time as you edit your project files.
 

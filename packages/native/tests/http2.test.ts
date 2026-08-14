@@ -594,9 +594,7 @@ describe('Http2Adapter TLS + ALPN', () => {
           (res) => {
             let body = '';
             res.on('data', (c) => (body += c));
-            res.on('end', () =>
-              resolve({ status: res.statusCode ?? 0, body }),
-            );
+            res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
           },
         );
         req.on('error', reject);

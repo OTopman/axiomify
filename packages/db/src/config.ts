@@ -198,7 +198,9 @@ async function exists(file: string): Promise<boolean> {
  *  - the JSON is malformed or the module fails to import,
  *  - the config does not match schema v1.
  */
-export async function loadDbConfig(cwd: string): Promise<LoadedDbConfig | null> {
+export async function loadDbConfig(
+  cwd: string,
+): Promise<LoadedDbConfig | null> {
   if (typeof cwd !== 'string' || cwd === '') {
     throw new TypeError(
       '[@axiomify/db] loadDbConfig requires a directory path.',
@@ -206,7 +208,10 @@ export async function loadDbConfig(cwd: string): Promise<LoadedDbConfig | null> 
   }
   const jsonPath = path.resolve(cwd, DB_CONFIG_FILES[0]);
   const mjsPath = path.resolve(cwd, DB_CONFIG_FILES[1]);
-  const [hasJson, hasMjs] = await Promise.all([exists(jsonPath), exists(mjsPath)]);
+  const [hasJson, hasMjs] = await Promise.all([
+    exists(jsonPath),
+    exists(mjsPath),
+  ]);
 
   if (hasJson && hasMjs) {
     throw new Error(

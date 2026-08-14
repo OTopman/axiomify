@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Node.js **18, 20, 21, or 22** (uWebSockets.js pre-built binaries; Node 23+ not yet supported by uWS)
+- Node.js **22 or 24** (the native adapter ships uWebSockets.js prebuilts for supported even-numbered releases)
 - TypeScript 5+ (the workspace itself uses TypeScript 6.x; either works for consumers)
 
 ## Create a project
@@ -136,13 +136,13 @@ See [docs/packages/testing.md](./packages/testing.md).
 
 ## Common next steps
 
-| Need | Package |
-| ---- | ------- |
-| Sessions & sign-in flows | [`@axiomify/session`](./packages/session.md), [`@axiomify/auth`](./packages/auth.md) (JWT/JWKS, API keys, OAuth + PKCE) |
-| Smaller & faster responses | [`@axiomify/compress`](./packages/compress.md), [`@axiomify/cache`](./packages/cache.md) |
-| A database | [`@axiomify/db`](./packages/db.md) (Prisma, Drizzle, pg, mysql2, better-sqlite3) |
-| Real-time across workers | [`@axiomify/ws`](./packages/ws.md) with a `WsBroker` |
-| HTTP/2 | [`Http2Adapter`](./packages/native.md) in `@axiomify/native` |
+| Need                       | Package                                                                                                                 |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Sessions & sign-in flows   | [`@axiomify/session`](./packages/session.md), [`@axiomify/auth`](./packages/auth.md) (JWT/JWKS, API keys, OAuth + PKCE) |
+| Smaller & faster responses | [`@axiomify/compress`](./packages/compress.md), [`@axiomify/cache`](./packages/cache.md)                                |
+| A database                 | [`@axiomify/db`](./packages/db.md) (Prisma, Drizzle, pg, mysql2, better-sqlite3)                                        |
+| Real-time across workers   | [`@axiomify/ws`](./packages/ws.md) with a `WsBroker`                                                                    |
+| HTTP/2                     | [`Http2Adapter`](./packages/native.md) in `@axiomify/native`                                                            |
 
 ---
 

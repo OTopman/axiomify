@@ -16,7 +16,8 @@ const p384 = generateKeyPairSync('ec', { namedCurve: 'secp384r1' });
 
 const hsSecret = 'hs256-secret-that-is-at-least-32-bytes-long!!';
 
-const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+const b64 = (o: unknown) =>
+  Buffer.from(JSON.stringify(o)).toString('base64url');
 
 describe('signJwt/verifyJwt — RS*/ES* round-trips', () => {
   it.each(['RS256', 'RS384', 'RS512'] as const)(
@@ -106,7 +107,10 @@ describe('signJwt/verifyJwt — RS*/ES* round-trips', () => {
       { algorithm: 'RS256', privateKey: rsa.privateKey },
     );
     await expect(
-      verifyJwt(token, { algorithms: ['RS256'], publicKey: rsaOther.publicKey }),
+      verifyJwt(token, {
+        algorithms: ['RS256'],
+        publicKey: rsaOther.publicKey,
+      }),
     ).rejects.toThrow(/signature verification failed/);
   });
 
@@ -121,7 +125,10 @@ describe('signJwt/verifyJwt — RS*/ES* round-trips', () => {
 
   it('rejects ES256 with a P-384 key (curve mismatch) in both directions', async () => {
     expect(() =>
-      signJwt({ sub: 'x' }, { algorithm: 'ES256', privateKey: p384.privateKey }),
+      signJwt(
+        { sub: 'x' },
+        { algorithm: 'ES256', privateKey: p384.privateKey },
+      ),
     ).toThrow(/Curve mismatch/);
 
     const token = signJwt(
@@ -135,7 +142,10 @@ describe('signJwt/verifyJwt — RS*/ES* round-trips', () => {
 
   it('rejects RS256 with an EC key (key type mismatch)', () => {
     expect(() =>
-      signJwt({ sub: 'x' }, { algorithm: 'RS256', privateKey: p256.privateKey }),
+      signJwt(
+        { sub: 'x' },
+        { algorithm: 'RS256', privateKey: p256.privateKey },
+      ),
     ).toThrow(/requires an RSA key/);
   });
 });
@@ -272,9 +282,7 @@ describe('verifyJwt — exp/nbf/iat and clockTolerance matrix', () => {
 
   it('clockTolerance extends exp by exactly the leeway', async () => {
     await expect(at(EXP + 4, { clockTolerance: 5 })).resolves.toBeDefined();
-    await expect(at(EXP + 5, { clockTolerance: 5 })).rejects.toThrow(
-      /expired/,
-    );
+    await expect(at(EXP + 5, { clockTolerance: 5 })).rejects.toThrow(/expired/);
   });
 
   it('rejects with NotBeforeError before nbf', async () => {
@@ -407,9 +415,9 @@ describe('verifyJwt/decodeJwt — malformed token shapes', () => {
     expect(() => decodeJwt(`${notJson}.${notJson}.sig`)).toThrow(
       /not valid JSON/,
     );
-    expect(() => decodeJwt(`${b64({ alg: 'RS256' })}.${b64([1, 2])}.sig`)).toThrow(
-      /must be a JSON object/,
-    );
+    expect(() =>
+      decodeJwt(`${b64({ alg: 'RS256' })}.${b64([1, 2])}.sig`),
+    ).toThrow(/must be a JSON object/);
   });
 
   it('rejects a tampered payload (signature no longer matches)', async () => {
@@ -455,20 +463,35 @@ describe('verifyJwt/decodeJwt — malformed token shapes', () => {
   });
 
   it('rejects invalid key types and derives public key from private PEM for verification', async () => {
-    const pubPem = rsa.publicKey.export({ type: 'spki', format: 'pem' }) as string;
-    const privPem = rsa.privateKey.export({ type: 'pkcs8', format: 'pem' }) as string;
+    const pubPem = rsa.publicKey.export({
+      type: 'spki',
+      format: 'pem',
+    }) as string;
+    const privPem = rsa.privateKey.export({
+      type: 'pkcs8',
+      format: 'pem',
+    }) as string;
 
-    expect(() => signJwt({ sub: 'x' }, { algorithm: 'RS256', privateKey: pubPem })).toThrow(
-      /Signing requires a private key/,
+    expect(() =>
+      signJwt({ sub: 'x' }, { algorithm: 'RS256', privateKey: pubPem }),
+    ).toThrow(/Signing requires a private key/);
+
+    const token = signJwt(
+      { sub: 'x' },
+      { algorithm: 'RS256', privateKey: privPem },
     );
-
-    const token = signJwt({ sub: 'x' }, { algorithm: 'RS256', privateKey: privPem });
-    const payload = await verifyJwt(token, { algorithms: ['RS256'], publicKey: privPem });
+    const payload = await verifyJwt(token, {
+      algorithms: ['RS256'],
+      publicKey: privPem,
+    });
     expect(payload.sub).toBe('x');
 
-    const esToken = signJwt({ sub: 'x' }, { algorithm: 'ES256', privateKey: p256.privateKey });
-    await expect(verifyJwt(esToken, { algorithms: ['ES256'], publicKey: rsa.publicKey })).rejects.toThrow(
-      /requires an EC key, got rsa/,
+    const esToken = signJwt(
+      { sub: 'x' },
+      { algorithm: 'ES256', privateKey: p256.privateKey },
     );
+    await expect(
+      verifyJwt(esToken, { algorithms: ['ES256'], publicKey: rsa.publicKey }),
+    ).rejects.toThrow(/requires an EC key, got rsa/);
   });
 });

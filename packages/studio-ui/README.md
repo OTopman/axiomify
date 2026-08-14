@@ -10,6 +10,10 @@ This package contains the front-end source code for the **Axiomify Studio** dash
 - **Lifecycle Hooks**: Review registered hook handlers across request lifecycle phases.
 - **Health Dashboard**: Inspect production-readiness finding audits.
 - **Request Tester**: Interactive console with an embedded Monaco editor to construct, send, and analyze test HTTP requests against your live Axiomify application.
+- **Operational tooling**: Inspect logs, errors, metrics, traces, profiling,
+  performance, background jobs, contracts, SDK impact, and security findings.
+- **Traffic workflows**: Record and replay traffic, manage request collections
+  and environments, and inspect WebSocket activity.
 
 ## Tech Stack
 

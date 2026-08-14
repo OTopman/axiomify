@@ -27,13 +27,13 @@ Every response produced through `res.send()`, `res.sendRaw()` and `res.stream()`
 
 ## Options
 
-| Option              | Type                 | Default                                                                                | Description                                                                                    |
-| ------------------- | -------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `threshold`         | `number`             | `1024`                                                                                  | Minimum payload size in bytes before compression kicks in. Does not apply to streams.          |
-| `encodings`         | `CompressEncoding[]` | `['br', 'gzip', 'deflate']` (+ `'zstd'` when available)                                 | Server preference order of offered encodings.                                                  |
-| `compressibleTypes` | `string[]`           | `['text/*', 'application/json', 'application/javascript', 'image/svg+xml', 'application/xml']` | MIME allowlist. `type/*` entries match by prefix; parameters (`; charset=…`) are ignored.      |
-| `brotliOptions`     | `zlib.BrotliOptions` | `{}` (+ automatic `BROTLI_PARAM_SIZE_HINT` for buffers)                                 | Forwarded to zlib's brotli compressor.                                                         |
-| `gzipOptions`       | `zlib.ZlibOptions`   | `{}`                                                                                    | Forwarded to zlib's gzip **and** deflate compressors.                                          |
+| Option              | Type                 | Default                                                                                        | Description                                                                               |
+| ------------------- | -------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `threshold`         | `number`             | `1024`                                                                                         | Minimum payload size in bytes before compression kicks in. Does not apply to streams.     |
+| `encodings`         | `CompressEncoding[]` | `['br', 'gzip', 'deflate']` (+ `'zstd'` when available)                                        | Server preference order of offered encodings.                                             |
+| `compressibleTypes` | `string[]`           | `['text/*', 'application/json', 'application/javascript', 'image/svg+xml', 'application/xml']` | MIME allowlist. `type/*` entries match by prefix; parameters (`; charset=…`) are ignored. |
+| `brotliOptions`     | `zlib.BrotliOptions` | `{}` (+ automatic `BROTLI_PARAM_SIZE_HINT` for buffers)                                        | Forwarded to zlib's brotli compressor.                                                    |
+| `gzipOptions`       | `zlib.ZlibOptions`   | `{}`                                                                                           | Forwarded to zlib's gzip **and** deflate compressors.                                     |
 
 ## Opting a route out
 
@@ -55,5 +55,5 @@ app.route({
 - **Vary:** `Vary: Accept-Encoding` is appended (never duplicated) on every compressible response — even when the client did not accept an encoding — so shared caches never serve a compressed body to a client that cannot decode it.
 - **Skipped automatically:** responses with a pre-set `Content-Encoding`, `Cache-Control: no-transform`, `206`/`Content-Range` partial responses, `text/event-stream`, MIME types outside the allowlist, non-string/Buffer `sendRaw` payloads, and `HEAD` requests (headers still mirror GET, including `Vary`).
 - **Streams:** `res.stream()` bodies are piped through the matching zlib transform; `Content-Encoding` is set before headers flush and any stale `Content-Length` is removed. No size threshold applies since the total size is unknown.
-- **Double-send safety:** the wrapped `send`/`sendRaw`/`stream` latch as *sent* synchronously; a second send issued while compression is still in flight is dropped, matching adapter semantics.
+- **Double-send safety:** the wrapped `send`/`sendRaw`/`stream` latch as _sent_ synchronously; a second send issued while compression is still in flight is dropped, matching adapter semantics.
 - **Failure fallback:** if buffer compression ever fails, the identity payload is emitted with the original status code instead of erroring the response.

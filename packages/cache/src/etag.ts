@@ -25,7 +25,10 @@ export type EtagMode = 'strong' | 'weak';
  *                promises byte-for-byte equality, which custom serializers
  *                that embed timestamps or request-derived fields cannot keep.
  */
-export function computeEtag(body: string | Buffer, mode: EtagMode = 'weak'): string {
+export function computeEtag(
+  body: string | Buffer,
+  mode: EtagMode = 'weak',
+): string {
   const hash = createHash('sha1').update(body).digest('base64url').slice(0, 27);
   return mode === 'weak' ? `W/"${hash}"` : `"${hash}"`;
 }
@@ -90,7 +93,12 @@ export function parseIfNoneMatch(value: string): string[] {
     } else {
       // Lenient: unquoted token until the next comma or whitespace.
       let end = i;
-      while (end < len && value[end] !== ',' && value[end] !== ' ' && value[end] !== '\t') {
+      while (
+        end < len &&
+        value[end] !== ',' &&
+        value[end] !== ' ' &&
+        value[end] !== '\t'
+      ) {
         end++;
       }
       tags.push(value.slice(start, end));

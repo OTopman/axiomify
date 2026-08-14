@@ -1,0 +1,36 @@
+name: Feature proposal
+description: Propose an additive improvement with a clear community use case.
+title: "feat: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For early exploration, start a GitHub Discussion. Use this form when the request is concrete enough to track.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Who is blocked or slowed down today, and how?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API or behaviour
+      render: ts
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: true
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to help implement or test this.
+          required: false

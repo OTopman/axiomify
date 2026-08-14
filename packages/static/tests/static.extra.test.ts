@@ -172,6 +172,10 @@ describe('serveStatic — extended paths', () => {
       await route.handler(req, res);
       await new Promise((r) => setTimeout(r, 20));
       expect(streamCalled).toBe(true);
+      expect(res.headers['X-Content-Type-Options']).toBe('nosniff');
+      expect(res.headers['Content-Disposition']).toBe(
+        'attachment; filename="index.html"',
+      );
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

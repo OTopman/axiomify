@@ -9,21 +9,12 @@ export {
   requestCacheKey,
 } from './key';
 export { MemoryCacheStore } from './store';
-export type {
-  CacheEntry,
-  CacheStore,
-  MemoryCacheStoreOptions,
-} from './store';
+export type { CacheEntry, CacheStore, MemoryCacheStoreOptions } from './store';
 export { RedisCacheStore } from './redis';
 export type { RedisCacheClient, RedisCacheStoreOptions } from './redis';
 export { buildCacheControl, cacheControl, noCache } from './control';
 export type { CacheControlOptions } from './control';
-export {
-  CACHE_STATE_KEY,
-  cached,
-  createCacheModule,
-  useCache,
-} from './plugin';
+export { CACHE_STATE_KEY, cached, createCacheModule, useCache } from './plugin';
 export type {
   CacheApi,
   CacheOptions,

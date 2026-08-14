@@ -409,6 +409,27 @@ describe('ValidationCompiler — AJV transform path and Zod fallback', () => {
     expect((req.body as any).email).toBe('user@example.com');
   });
 
+  it('registers OpenAPI string formats without AJV warnings', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const compiler = new ValidationCompiler();
+    compiler.compile('POST:/email-format', {
+      body: z.object({ email: z.string().email() }),
+    });
+
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('unknown format "email" ignored'),
+    );
+
+    expect(() =>
+      compiler.execute(
+        'POST:/email-format',
+        makeReq({
+          body: { email: 'not-an-email' },
+        }),
+      ),
+    ).toThrow(ValidationError);
+  });
+
   it('surfaces Zod-only refine failures that AJV cannot express', () => {
     const compiler = new ValidationCompiler();
     // AJV sees it as valid (it's a string), Zod refine rejects it
@@ -838,20 +859,20 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
   describe('safeZodDef coverage extension', () => {
     it('handles non-object and empty/weird schemas in safeZodDef', () => {
       const compiler = new ValidationCompiler();
-      
+
       // 1. Trigger safeZodDef with a non-object schema
       compiler.compile('POST:/bad-schema-non-obj', {
-        body: null as any
+        body: null as any,
       });
-      
+
       // 2. Trigger safeZodDef with schema that has neither def nor _def
       const emptySchema = {
         parse: (x: any) => x,
         safeParse: (x: any) => ({ success: true, data: x }),
-        toJSONSchema: () => ({ type: 'object' })
+        toJSONSchema: () => ({ type: 'object' }),
       } as any;
       compiler.compile('POST:/bad-schema-empty', {
-        body: emptySchema
+        body: emptySchema,
       });
 
       // 3. Trigger safeZodDef where def/._def is not an object
@@ -859,43 +880,45 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
         def: 123,
         parse: (x: any) => x,
         safeParse: (x: any) => ({ success: true, data: x }),
-        toJSONSchema: () => ({ type: 'object' })
+        toJSONSchema: () => ({ type: 'object' }),
       } as any;
       compiler.compile('POST:/bad-schema-bad-def', {
-        body: badDefSchema
+        body: badDefSchema,
       });
 
       // 4. Trigger safeZodDef where unwrapZodSchema returns null (zodSchema unwraps ZodOptional with null innerType)
       const weirdSchema = {
         constructor: { name: 'ZodOptional' },
         def: {
-          inner: null
+          inner: null,
         },
         parse: (x: any) => x,
         safeParse: (x: any) => ({ success: true, data: x }),
         toJSONSchema: () => ({
           type: 'object',
           properties: { name: { type: 'string' } },
-          additionalProperties: false
-        })
+          additionalProperties: false,
+        }),
       } as any;
       compiler.compile('POST:/bad-schema-weird', {
-        body: weirdSchema
+        body: weirdSchema,
       });
 
       // Should not throw and successfully compile
       const req = makeReq({ body: {} });
-      expect(() => compiler.execute('POST:/bad-schema-empty', req)).not.toThrow();
+      expect(() =>
+        compiler.execute('POST:/bad-schema-empty', req),
+      ).not.toThrow();
     });
 
     it('handles malformed schemas to cover adjustAdditionalProperties guard clauses', () => {
       const compiler = new ValidationCompiler();
-      
+
       const malformedSchema = {
         constructor: { name: 'ZodObject' },
         shape: {
           name: z.string(),
-          age: 'not-an-object-zod' as any
+          age: 'not-an-object-zod' as any,
         },
         parse: (x: any) => x,
         safeParse: (x: any) => ({ success: true, data: x }),
@@ -903,30 +926,32 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
           type: 'object',
           properties: {
             name: 'not-an-object', // triggers !jsonSchema || typeof jsonSchema !== 'object' guard
-            age: { type: 'integer' } // triggers !zodSchema || typeof zodSchema !== 'object' guard
+            age: { type: 'integer' }, // triggers !zodSchema || typeof zodSchema !== 'object' guard
           },
-          additionalProperties: false
-        })
+          additionalProperties: false,
+        }),
       } as any;
-      
+
       compiler.compile('POST:/bad-schema-malformed', {
-        body: malformedSchema
+        body: malformedSchema,
       });
-      
+
       const req = makeReq({ body: { name: 'Alice', age: 25 } });
-      expect(() => compiler.execute('POST:/bad-schema-malformed', req)).not.toThrow();
+      expect(() =>
+        compiler.execute('POST:/bad-schema-malformed', req),
+      ).not.toThrow();
     });
 
     it('covers falsy and null-safe schema compilation paths for 100% patch coverage', () => {
       const compiler = new ValidationCompiler();
-      
+
       // 1. Falsy candidate in asZodV4 via response map with null schema
       compiler.compile('POST:/null-response', {
         response: {
-          200: null as any
-        }
+          200: null as any,
+        },
       });
-      
+
       // 2. Falsy schema in isZodObject (schema.properties contains null property schema)
       compiler.compile('POST:/null-property-schema', {
         body: {
@@ -935,45 +960,45 @@ describe('ValidationCompiler — schema edge cases and Zod fallback', () => {
           toJSONSchema: () => ({
             type: 'object',
             properties: {
-              field: null as any
-            }
-          })
-        } as any
+              field: null as any,
+            },
+          }),
+        } as any,
       });
-      
+
       // 3. Null unwrapped schema in adjustAdditionalProperties to cover optional chaining
       const nullUnwrappedSchemaAny = {
         _def: {
           typeName: 'ZodOptional',
-          inner: null
+          inner: null,
         },
         safeParse: (x: any) => ({ success: true, data: x }),
         parse: (x: any) => x,
         toJSONSchema: () => ({
           type: 'object',
-          anyOf: [{ type: 'string' }]
-        })
+          anyOf: [{ type: 'string' }],
+        }),
       } as any;
 
       compiler.compile('POST:/null-unwrapped-any', {
-        body: nullUnwrappedSchemaAny
+        body: nullUnwrappedSchemaAny,
       });
 
       const nullUnwrappedSchemaOne = {
         _def: {
           typeName: 'ZodOptional',
-          inner: null
+          inner: null,
         },
         safeParse: (x: any) => ({ success: true, data: x }),
         parse: (x: any) => x,
         toJSONSchema: () => ({
           type: 'object',
-          oneOf: [{ type: 'number' }]
-        })
+          oneOf: [{ type: 'number' }],
+        }),
       } as any;
 
       compiler.compile('POST:/null-unwrapped-one', {
-        body: nullUnwrappedSchemaOne
+        body: nullUnwrappedSchemaOne,
       });
     });
   });

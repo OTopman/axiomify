@@ -575,7 +575,11 @@ export class RoomManager extends TypedEmitter {
     try {
       const raw = Buffer.isBuffer(payload) ? payload.toString('utf8') : payload;
       const msg = JSON.parse(raw) as WsBrokerControlMessage;
-      if (!msg || typeof msg !== 'object' || typeof (msg as any).id !== 'string') {
+      if (
+        !msg ||
+        typeof msg !== 'object' ||
+        typeof (msg as any).id !== 'string'
+      ) {
         return;
       }
 
@@ -971,7 +975,10 @@ export class RoomManager extends TypedEmitter {
     // subscription; the last leave (room destroyed) tears it down.
     if (this._broker && room.size === 1) {
       Promise.resolve(
-        this._broker.subscribe(wsRoomChannel(roomName), this._onBrokerRoomMessage),
+        this._broker.subscribe(
+          wsRoomChannel(roomName),
+          this._onBrokerRoomMessage,
+        ),
       ).catch((err) => this._brokerFailure(err));
     }
 

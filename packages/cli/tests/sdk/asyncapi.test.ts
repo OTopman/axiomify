@@ -1,9 +1,43 @@
 import { describe, expect, it } from 'vitest';
 import { CompilerPipeline } from '../../src/sdk/compiler/pipeline';
 import { TsClientEmitter } from '../../src/sdk/generator/targets/typescript/client-emitter';
+import { JsClientEmitter } from '../../src/sdk/generator/targets/javascript/client-emitter';
 import { ingestAsyncApi } from '../../src/sdk/ingest/asyncapi';
 
 describe('AsyncAPI Ingestion & Client Generation', () => {
+  it('emits declared header parameters in TypeScript and JavaScript requests', () => {
+    const schema: any = {
+      endpoints: [
+        {
+          operationId: 'getTenant',
+          transport: 'rest',
+          method: 'GET',
+          path: '/tenant',
+          pathParams: [],
+          queryParams: [],
+          headerParams: [
+            {
+              name: 'X-Tenant',
+              location: 'header',
+              required: true,
+              type: { inline: { kind: 'scalar', scalar: 'string' } },
+            },
+          ],
+          responses: {},
+          security: [],
+        },
+      ],
+      events: [],
+    };
+
+    expect(new TsClientEmitter(schema).emitAll()).toContain(
+      "headers: { ...(request['X-Tenant'] !== undefined ? { 'X-Tenant': String(request['X-Tenant']) } : {}), }",
+    );
+    expect(new JsClientEmitter(schema).emitAll()).toContain(
+      "headers: { ...(request['X-Tenant'] !== undefined ? { 'X-Tenant': String(request['X-Tenant']) } : {}), }",
+    );
+  });
+
   it('should ingest a valid AsyncAPI spec and compile into event IR', async () => {
     const rawAsyncApi = {
       asyncapi: '2.4.0',

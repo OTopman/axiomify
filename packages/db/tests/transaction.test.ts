@@ -138,9 +138,9 @@ describe('withTransaction', () => {
 
   it('better-sqlite3: rejects async callbacks (sync-only engine)', async () => {
     const { db } = fakeBetterSqlite3();
-    await expect(
-      withTransaction(db, async () => 'nope'),
-    ).rejects.toThrow(/must not return a Promise/);
+    await expect(withTransaction(db, async () => 'nope')).rejects.toThrow(
+      /must not return a Promise/,
+    );
   });
 
   it('better-sqlite3: propagates callback errors (engine rolls back)', async () => {

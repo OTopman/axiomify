@@ -4,7 +4,7 @@
  * This is a Node-version / platform / dependency-shape sanity check. It
  * does NOT load the user's app. Run it on a freshly cloned repo or a CI
  * runner to confirm the environment can actually run Axiomify before
- * tracking down test failures that turn out to be a Node 23 + uWS
+ * tracking down test failures that turn out to be an unsupported Node + uWS
  * incompatibility.
  *
  * Output mirrors `axiomify check`: ✓ / ⚠ / ✗ rows with optional hints.
@@ -51,27 +51,18 @@ function probePort(port: number): Promise<'free' | 'busy' | 'denied'> {
 /**
  * Node version compatibility check.
  *
- * uWS publishes prebuilt binaries for Node 18, 20, 21, 22 (and previously
- * 16, but Axiomify requires ≥18). Node 23+ has no prebuilt yet — the
- * binding fails to load and the framework falls back to broken state.
+ * The pinned uWS release publishes prebuilts for the supported Node 22 and 24
+ * release lines. Odd-numbered releases are intentionally not production
+ * targets because their ABI is short-lived.
  */
 function checkNodeVersion(findings: Finding[]): void {
   const major = parseInt(process.versions.node.split('.')[0], 10);
-  if (major < 18) {
+  if (major !== 22 && major !== 24) {
     add(findings, {
       severity: 'fail',
       area: 'node',
-      message: `Node ${process.versions.node} is below the supported minimum`,
-      hint: 'Axiomify requires Node 18 or later. Upgrade via nvm: `nvm install 22 && nvm use 22`.',
-    });
-  } else if (major > 22) {
-    add(findings, {
-      severity: 'warn',
-      area: 'node',
-      message: `Node ${process.versions.node} — uWebSockets.js has no prebuilt binary for this version`,
-      hint:
-        'Tests and benchmarks that need a real uWS listener will skip; the framework still ' +
-        'builds. For a runnable production deploy, downgrade to Node 22 LTS.',
+      message: `Node ${process.versions.node} is not a supported native runtime`,
+      hint: 'Use Node 22 or 24 so the pinned uWebSockets.js package can load a prebuilt binary.',
     });
   } else {
     add(findings, {

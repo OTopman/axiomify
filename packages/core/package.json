@@ -16,10 +16,15 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup"
+    "build": "tsup",
+    "test": "vitest run tests --config ../../vitest.config.mts"
   },
   "peerDependencies": {
     "zod": ">=3.20 <5"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1"
   },
   "devDependencies": {
     "zod": "^4.0.0"
@@ -55,6 +60,6 @@
     "access": "public"
   },
   "engines": {
-    "node": ">=20.0.0 <23.0.0"
+    "node": ">=20.0.0"
   }
 }

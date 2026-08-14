@@ -87,7 +87,10 @@ export async function withTimeout<T>(
       promise,
       new Promise<never>((_, reject) => {
         timer = setTimeout(
-          () => reject(new Error(`[@axiomify/db] ${label} timed out after ${ms}ms`)),
+          () =>
+            reject(
+              new Error(`[@axiomify/db] ${label} timed out after ${ms}ms`),
+            ),
           ms,
         );
       }),

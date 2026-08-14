@@ -188,7 +188,9 @@ describe('createOAuthPlugin — callbackHandler happy path (github)', () => {
     const body = new URLSearchParams(tokenCall.init.body);
     expect(body.get('grant_type')).toBe('authorization_code');
     expect(body.get('code')).toBe('the-auth-code');
-    expect(body.get('redirect_uri')).toBe('https://app.example.com/auth/callback');
+    expect(body.get('redirect_uri')).toBe(
+      'https://app.example.com/auth/callback',
+    );
     expect(body.get('client_id')).toBe('gh-client-id');
     expect(body.get('client_secret')).toBe('gh-client-secret');
     expect(body.get('code_verifier')).toBe(payload.verifier);
@@ -263,7 +265,10 @@ describe('createOAuthPlugin — callbackHandler error paths', () => {
 
     const onError = vi.fn();
     await plugin.callbackHandler(vi.fn(), onError)(
-      makeReq({ code: 'c', state: payload.state }, `${COOKIE_NAME}=${tampered}`),
+      makeReq(
+        { code: 'c', state: payload.state },
+        `${COOKIE_NAME}=${tampered}`,
+      ),
       makeRes(),
     );
     expect((onError.mock.calls[0][2] as OAuthError).code).toBe(
@@ -400,7 +405,10 @@ describe('createOAuthPlugin — OIDC discovery', () => {
   });
 
   it('fails with discovery_failed (503) when the discovery endpoint errors', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({}, 500)));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({}, 500)),
+    );
     const plugin = createOAuthPlugin(oidcOptions);
     const err = await plugin
       .authorizeHandler(makeReq(), makeRes())
@@ -416,18 +424,18 @@ describe('createOAuthPlugin — OIDC discovery', () => {
       vi.fn(async () => jsonResponse({ issuer: 'https://id.example.com' })),
     );
     const plugin = createOAuthPlugin(oidcOptions);
-    await expect(
-      plugin.authorizeHandler(makeReq(), makeRes()),
-    ).rejects.toThrow(/missing required endpoints/);
+    await expect(plugin.authorizeHandler(makeReq(), makeRes())).rejects.toThrow(
+      /missing required endpoints/,
+    );
   });
 });
 
 describe('createOAuthPlugin — option validation', () => {
   it('requires provider, clientId, an absolute redirectUri and a long cookieSecret', () => {
     expect(() => createOAuthPlugin({} as never)).toThrow(/requires `provider`/);
-    expect(() =>
-      createOAuthPlugin({ ...githubOptions, clientId: '' }),
-    ).toThrow(/requires `clientId`/);
+    expect(() => createOAuthPlugin({ ...githubOptions, clientId: '' })).toThrow(
+      /requires `clientId`/,
+    );
     expect(() =>
       createOAuthPlugin({ ...githubOptions, redirectUri: '/callback' }),
     ).toThrow(/absolute `redirectUri`/);

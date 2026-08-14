@@ -219,8 +219,7 @@ export class Http2Request implements AxiomifyRequest {
     if (!this._id) {
       const raw = this.headers['x-request-id'];
       const upstream = Array.isArray(raw) ? raw[0] : raw;
-      this._id =
-        upstream ?? `${_h2PidHex}-${(++_h2ReqCounter).toString(36)}`;
+      this._id = upstream ?? `${_h2PidHex}-${(++_h2ReqCounter).toString(36)}`;
     }
     return this._id;
   }
@@ -520,9 +519,7 @@ export class Http2Response implements AxiomifyResponse {
         this.sseSend(null, 'ping');
       }, sseHeartbeatMs);
       // Cleared on client disconnect — never leaks past the request.
-      this._req.signal.addEventListener('abort', () =>
-        clearInterval(interval),
-      );
+      this._req.signal.addEventListener('abort', () => clearInterval(interval));
       this.raw.once('close', () => clearInterval(interval));
     }
 
@@ -572,8 +569,7 @@ export class Http2Response implements AxiomifyResponse {
       parts.push('event: ', event, '\n');
     }
     if (data !== undefined && data !== null) {
-      const serialized =
-        typeof data === 'string' ? data : JSON.stringify(data);
+      const serialized = typeof data === 'string' ? data : JSON.stringify(data);
       const lines = serialized.split('\n');
       for (const line of lines) {
         parts.push('data: ', line, '\n');
@@ -723,7 +719,8 @@ export class Http2Adapter {
     };
 
     const key =
-      tls.key ?? (tls.keyFile ? readPem(tls.keyFile, 'private key') : undefined);
+      tls.key ??
+      (tls.keyFile ? readPem(tls.keyFile, 'private key') : undefined);
     const cert =
       tls.cert ??
       (tls.certFile ? readPem(tls.certFile, 'certificate') : undefined);
@@ -1033,9 +1030,7 @@ export class Http2Adapter {
       this._listening = true;
       this._installCrashGuard();
       const addr = this._server.address();
-      callback?.(
-        typeof addr === 'object' && addr !== null ? addr.port : port,
-      );
+      callback?.(typeof addr === 'object' && addr !== null ? addr.port : port);
     });
   }
 

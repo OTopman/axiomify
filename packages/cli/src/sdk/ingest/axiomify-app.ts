@@ -93,8 +93,7 @@ function jsonSchemaToIRType(js: Record<string, unknown>, ctx: string): IRType {
   const jsType = js.type as string | undefined;
   const jsEnum = js.enum as (string | number)[] | undefined;
   const jsProps = js.properties as
-    | Record<string, Record<string, unknown>>
-    | undefined;
+    Record<string, Record<string, unknown>> | undefined;
   const jsItems = js.items as Record<string, unknown> | undefined;
   const jsRequired = js.required as string[] | undefined;
 

@@ -291,6 +291,17 @@ export class TsClientEmitter {
         reqOpts += `, body: request.body`;
       }
 
+      if (ep.headerParams.length > 0) {
+        reqOpts += `, headers: {`;
+        for (const header of ep.headerParams) {
+          const accessStr = isValidTSIdentifier(header.name)
+            ? `.${header.name}`
+            : `['${header.name}']`;
+          reqOpts += ` ...(request${accessStr} !== undefined ? { '${header.name}': String(request${accessStr}) } : {}),`;
+        }
+        reqOpts += ` }`;
+      }
+
       emitter.line(`return this.request<${resType}>({ ${reqOpts} });`);
     });
   }

@@ -158,6 +158,69 @@ describe('ServerlessAdapter', () => {
     expect(text).toBe('hello world');
   });
 
+  it('supports SSE framing and advertises the SSE capability', async () => {
+    const app = new Axiomify();
+    app.route({
+      method: 'GET',
+      path: '/events',
+      handler: async (_req, res) => {
+        expect(res.capabilities).toEqual({ sse: true, streaming: true });
+        res.sseInit!(10_000);
+        res.sseSend!({ count: 1 });
+        res.sseSend!('two\nlines', 'update');
+      },
+    });
+
+    const adapter = new ServerlessAdapter(app);
+    const response = await adapter.handle(
+      new Request('http://localhost/events'),
+    );
+    expect(response.headers.get('content-type')).toBe('text/event-stream');
+    expect(response.headers.get('cache-control')).toBe('no-cache');
+
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    while (!text.includes('data: lines\n\n')) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+    expect(text).toBe(
+      'data: {"count":1}\n\nevent: update\ndata: two\ndata: lines\n\n',
+    );
+    await reader.cancel();
+  });
+
+  it('suppresses raw and streamed bodies for HEAD and null-body statuses', async () => {
+    const app = new Axiomify();
+    app.route({
+      method: 'GET',
+      path: '/empty',
+      handler: async (_req, res) => {
+        res.status(204).sendRaw('must not be sent', 'text/plain');
+      },
+    });
+    app.route({
+      method: 'HEAD',
+      path: '/head-stream',
+      handler: async (_req, res) => {
+        res.stream(Readable.from(['must not be sent']), 'text/plain');
+      },
+    });
+    const adapter = new ServerlessAdapter(app);
+
+    const empty = await adapter.handle(new Request('http://localhost/empty'));
+    expect(empty.status).toBe(204);
+    expect(await empty.text()).toBe('');
+
+    const head = await adapter.handle(
+      new Request('http://localhost/head-stream', { method: 'HEAD' }),
+    );
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe('');
+  });
+
   it('rejects an over-limit body via declared Content-Length (fast path)', async () => {
     const app = new Axiomify();
     app.route({
@@ -221,7 +284,8 @@ describe('ServerlessAdapter', () => {
       method: 'POST',
       path: '/echo',
       schema: { body: z.object({ value: z.number() }) },
-      handler: async (req, res) => res.status(201).send({ echoed: req.body.value }),
+      handler: async (req, res) =>
+        res.status(201).send({ echoed: req.body.value }),
     });
 
     const adapter = new ServerlessAdapter(app, { maxBodySize: 1024 });

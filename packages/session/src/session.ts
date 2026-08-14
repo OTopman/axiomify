@@ -471,7 +471,7 @@ function validateSecrets(secret: string | string[] | undefined): string[] {
       throw new AxiomifyError(
         `[axiomify/session] Session secret is ${byteLength} bytes; at least ` +
           '32 bytes (256 bits) are required for HMAC-SHA256 signing. ' +
-          'Generate one with: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'base64\'))"',
+          "Generate one with: node -e \"console.log(require('crypto').randomBytes(48).toString('base64'))\"",
       );
     }
   }
@@ -633,8 +633,7 @@ async function persistSession(req: AxiomifyRequest): Promise<void> {
   ) as Session | undefined;
   if (!session) return;
   const internal = session[kInternal as unknown as string] as
-    | SessionInternal
-    | undefined;
+    SessionInternal | undefined;
   if (internal) await internal.persist();
 }
 

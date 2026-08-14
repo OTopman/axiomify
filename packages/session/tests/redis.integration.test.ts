@@ -64,7 +64,7 @@ describe.skipIf(!RUN)('RedisSessionStore (real Redis)', () => {
     expect(await store.get('sid-expiring')).toBeNull();
   }, 5_000);
 
-  it('two stores with different prefixes never see each other\'s sessions', async () => {
+  it("two stores with different prefixes never see each other's sessions", async () => {
     const otherPrefix = `axiomify:sess:other:${process.pid}:${Date.now()}:`;
     const other = new RedisSessionStore(client as any, { prefix: otherPrefix });
 

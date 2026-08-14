@@ -15,6 +15,7 @@ import { startStudio } from '../studio';
 export interface StudioCommandOptions {
   port?: string;
   open?: boolean;
+  appUrl?: string;
 }
 
 export async function runStudio(
@@ -28,8 +29,19 @@ export async function runStudio(
     process.exit(1);
   }
 
+  if (options.appUrl) {
+    try {
+      const url = new URL(options.appUrl);
+      if (!['http:', 'https:'].includes(url.protocol)) throw new Error();
+    } catch {
+      console.error('Invalid app URL. Use an http:// or https:// URL.');
+      process.exit(1);
+    }
+  }
+
   await startStudio(entry, {
     port,
     open: options.open,
+    appUrl: options.appUrl,
   });
 }

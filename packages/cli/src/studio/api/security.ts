@@ -1,4 +1,5 @@
 import type { ServerResponse } from 'node:http';
+import { RequestStateImpl } from '@axiomify/core';
 import type { StudioDiscoveryResult } from '../discovery/types';
 import { sendJson } from '../server/http-server';
 import { logCorrelationStorage } from './logs';
@@ -363,7 +364,7 @@ async function mockRequest(
         'content-type': 'application/json',
         ...headers,
       },
-      state: {},
+      state: new RequestStateImpl(),
       signal: { addEventListener: () => {} },
       on: (event: string, callback: any) => {
         if (event === 'data' && body) {

@@ -214,6 +214,13 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
               return res.status(404).send(null, 'File not found');
             res.header('Cache-Control', cacheControl);
             res.header('Content-Length', String(idxStat.size));
+            res.header('X-Content-Type-Options', 'nosniff');
+            if (forceDownload.has('.html')) {
+              res.header(
+                'Content-Disposition',
+                'attachment; filename="index.html"',
+              );
+            }
             res.stream(
               fs.createReadStream(indexPath),
               'text/html; charset=utf-8',
@@ -291,7 +298,10 @@ export function serveStatic(app: Axiomify, options: StaticOptions): void {
         }
 
         const stream = range
-          ? fs.createReadStream(realPath, { start: range.start, end: range.end })
+          ? fs.createReadStream(realPath, {
+              start: range.start,
+              end: range.end,
+            })
           : fs.createReadStream(realPath);
         res.stream(stream, contentType);
       } catch (err: any) {

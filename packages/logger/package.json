@@ -16,10 +16,11 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup"
+    "build": "tsup",
+    "test": "vitest run tests --config ../../vitest.config.mts"
   },
   "dependencies": {
-    "@axiomify/core": "*",
+    "@axiomify/core": "^7.0.0",
     "picocolors": "^1.1.1",
     "maskify-ts": "^4.0.0",
     "reflect-metadata": "^0.2.0"

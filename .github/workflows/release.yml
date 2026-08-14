@@ -19,9 +19,9 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     permissions:
-      contents: write       # create GitHub Releases, push version bump commits
-      pull-requests: write  # open/update the changesets "Version Packages" PR
-      id-token: write       # required for npm package provenance / signing
+      contents: write # create GitHub Releases, push version bump commits
+      pull-requests: write # open/update the changesets "Version Packages" PR
+      id-token: write # required for npm package provenance / signing
     steps:
       - name: Checkout Repo
         # Pin to SHA — equivalent to actions/checkout@v4.2.2
@@ -31,11 +31,10 @@ jobs:
 
       - name: Setup Node.js
         # Pin to SHA — equivalent to actions/setup-node@v4.1.0
-        # Node 20: highest version supported by uWebSockets.js (16/18/20 only).
-        # Node 22 prevents @axiomify/native from building correctly.
+        # Publish on the oldest native runtime supported by this release line.
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
           # registry-url writes an .npmrc that authenticates npm publish via
           # NODE_AUTH_TOKEN. Without this, npm publish is unauthenticated.
@@ -44,8 +43,17 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
+      - name: Verify release candidate
+        run: |
+          npm audit --audit-level=high
+          npm run check
+          npm run coverage
+
       - name: Build Packages
         run: npm run build
+
+      - name: Validate published package size
+        run: npm run check:package-size
 
       - name: Create Release PR or Publish
         id: changesets
@@ -60,8 +68,8 @@ jobs:
           # scripts/publish-workspace.mjs for the full rationale.
           publish: node scripts/publish-workspace.mjs
           version: npx changeset version
-          commit: "chore(release): version packages"
-          title: "chore(release): version packages"
+          commit: 'chore(release): version packages'
+          title: 'chore(release): version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # NPM_TOKEN: used by changesets/action for its own registry checks.
