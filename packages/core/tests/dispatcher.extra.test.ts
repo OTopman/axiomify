@@ -62,23 +62,27 @@ function makeAxiomifyReq(overrides: any = {}): any {
 }
 
 describe('Dispatcher — extended coverage', () => {
-  it('returns a framework error instead of silently dropping unsupported SSE calls', async () => {
-    const app = new Axiomify();
-    app.route({
-      method: 'GET',
-      path: '/unsupported-sse',
-      schema: { response: z.object({ ok: z.boolean() }) },
-      handler: async (_req, res) => {
-        res.sseInit?.();
-      },
-    });
-    const [res] = makeAxiomifyResPair();
+  it.each(['sseInit', 'sseSend'] as const)(
+    'returns a framework error instead of silently dropping unsupported %s calls',
+    async (method) => {
+      const app = new Axiomify();
+      app.route({
+        method: 'GET',
+        path: '/unsupported-sse',
+        schema: { response: z.object({ ok: z.boolean() }) },
+        handler: async (_req, res) => {
+          if (method === 'sseInit') res.sseInit?.();
+          else res.sseSend?.({ ok: true });
+        },
+      });
+      const [res] = makeAxiomifyResPair();
 
-    await app.handle(makeAxiomifyReq({ path: '/unsupported-sse' }), res);
+      await app.handle(makeAxiomifyReq({ path: '/unsupported-sse' }), res);
 
-    expect(res.sseInit).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(500);
-  });
+      expect(res[method]).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(500);
+    },
+  );
 
   it('HEAD request: sends no body but includes headers', async () => {
     const app = new Axiomify();

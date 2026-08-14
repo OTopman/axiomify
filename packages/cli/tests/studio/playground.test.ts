@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   getPlaygroundSdk,
+  handleGetPlaygroundSdk,
   handlePostPlaygroundExecute,
 } from '../../src/studio/api/playground';
 
@@ -32,6 +33,28 @@ describe('SDK Playground & Sandbox execution', () => {
     const clientFile = result.files.find((f) => f.path === 'client.ts');
     expect(clientFile).toBeDefined();
     expect(clientFile?.content).toContain('class ApiClient');
+  });
+
+  it('serves the generated SDK with the active application base URL', async () => {
+    let statusCode = 0;
+    let responseData: any;
+    const req = {
+      url: '/__studio/api/playground/sdk?target=typescript',
+    } as any;
+    const res = {
+      writeHead(code: number) {
+        statusCode = code;
+      },
+      end(data: string) {
+        responseData = JSON.parse(data);
+      },
+    } as any;
+
+    await handleGetPlaygroundSdk(req, res, mockApp);
+
+    expect(statusCode).toBe(200);
+    expect(responseData.appBaseUrl).toBe('http://localhost:3000');
+    expect(responseData.starterCode).toContain(responseData.appBaseUrl);
   });
 
   it('refuses to execute code unless AXIOMIFY_STUDIO_ALLOW_EXEC is set', async () => {

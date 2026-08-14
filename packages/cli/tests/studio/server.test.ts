@@ -64,6 +64,10 @@ describe('Studio Server & Router', () => {
     const path = await import('node:path');
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-bundle-'));
     try {
+      fs.mkdirSync(path.join(directory, 'index.html'));
+      expect(validateStudioBundle(directory)).toBe(false);
+      fs.rmdirSync(path.join(directory, 'index.html'));
+
       fs.writeFileSync(
         path.join(directory, 'index.html'),
         '<script type="module" src="/assets/app.js"></script><link rel="stylesheet" href="/assets/app.css">',
@@ -597,6 +601,13 @@ describe('Studio Server & Router', () => {
     });
     app.route({
       method: 'GET',
+      path: '/implicit-events',
+      handler: async (_req, res) => {
+        res.sseSend('ready');
+      },
+    });
+    app.route({
+      method: 'GET',
       path: '/stream-after-send',
       handler: async (_req, res) => {
         res.sendRaw('already sent');
@@ -692,6 +703,13 @@ describe('Studio Server & Router', () => {
       expect(events.body).toBe(
         'event: status\ndata: {"ready":true}\n\ndata: line one\ndata: line two\n\n',
       );
+
+      const implicitEvents = await request({
+        method: 'GET',
+        path: '/implicit-events',
+      });
+      expect(implicitEvents.body).toBe('data: ready\n\n');
+      expect(implicitEvents.headers['content-type']).toBe('text/event-stream');
 
       const upload = await request({
         method: 'POST',

@@ -17,6 +17,12 @@ describe('AsyncAPI Ingestion & Client Generation', () => {
           queryParams: [],
           headerParams: [
             {
+              name: 'traceId',
+              location: 'header',
+              required: false,
+              type: { inline: { kind: 'scalar', scalar: 'string' } },
+            },
+            {
               name: 'X-Tenant',
               location: 'header',
               required: true,
@@ -30,11 +36,19 @@ describe('AsyncAPI Ingestion & Client Generation', () => {
       events: [],
     };
 
-    expect(new TsClientEmitter(schema).emitAll()).toContain(
-      "headers: { ...(request['X-Tenant'] !== undefined ? { 'X-Tenant': String(request['X-Tenant']) } : {}), }",
+    const typescript = new TsClientEmitter(schema).emitAll();
+    expect(typescript).toContain(
+      "...(request['X-Tenant'] !== undefined ? { 'X-Tenant': String(request['X-Tenant']) } : {})",
     );
-    expect(new JsClientEmitter(schema).emitAll()).toContain(
-      "headers: { ...(request['X-Tenant'] !== undefined ? { 'X-Tenant': String(request['X-Tenant']) } : {}), }",
+    expect(typescript).toContain(
+      "...(request.traceId !== undefined ? { 'traceId': String(request.traceId) } : {})",
+    );
+    const javascript = new JsClientEmitter(schema).emitAll();
+    expect(javascript).toContain(
+      "...(request['X-Tenant'] !== undefined ? { 'X-Tenant': String(request['X-Tenant']) } : {})",
+    );
+    expect(javascript).toContain(
+      "...(request.traceId !== undefined ? { 'traceId': String(request.traceId) } : {})",
     );
   });
 
