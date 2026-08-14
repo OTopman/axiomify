@@ -22,6 +22,16 @@ export interface StudioTrace {
 }
 
 export const recordedSpans: StudioSpan[] = [];
+export interface StudioMetricPoint {
+  name: string;
+  type: 'gauge' | 'sum' | 'histogram' | 'exponentialHistogram' | 'summary';
+  value: number;
+  timestamp: string;
+  attributes: Record<string, unknown>;
+}
+
+/** Bounded, process-local OTLP metric store for the Studio Analytics view. */
+export const recordedMetrics: StudioMetricPoint[] = [];
 let onTracesUpdatedCallback: (() => void) | null = null;
 
 export function setOnTracesUpdated(cb: () => void): void {
@@ -145,10 +155,73 @@ export async function handlePostOtlpMetrics(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  // Read and return 200 OK since OTel metrics are parsed but we already collect native metrics.
   try {
-    await readBody(req);
-    sendJson(res, { success: true });
+    const bodyStr = await readBody(req);
+    if (!bodyStr) {
+      sendJson(res, { success: true, accepted: 0 });
+      return;
+    }
+    const payload = JSON.parse(bodyStr);
+    let accepted = 0;
+    for (const resourceMetric of payload.resourceMetrics ?? []) {
+      const resourceAttributes = parseAttributes(
+        resourceMetric.resource?.attributes ?? [],
+      );
+      for (const scopeMetric of resourceMetric.scopeMetrics ?? []) {
+        for (const metric of scopeMetric.metrics ?? []) {
+          const descriptor = metric.gauge
+            ? { type: 'gauge' as const, points: metric.gauge.dataPoints ?? [] }
+            : metric.sum
+              ? { type: 'sum' as const, points: metric.sum.dataPoints ?? [] }
+              : metric.histogram
+                ? {
+                    type: 'histogram' as const,
+                    points: metric.histogram.dataPoints ?? [],
+                  }
+                : metric.exponentialHistogram
+                  ? {
+                      type: 'exponentialHistogram' as const,
+                      points: metric.exponentialHistogram.dataPoints ?? [],
+                    }
+                  : metric.summary
+                    ? {
+                        type: 'summary' as const,
+                        points: metric.summary.dataPoints ?? [],
+                      }
+                    : null;
+          if (!descriptor) continue;
+          for (const point of descriptor.points) {
+            const rawValue =
+              descriptor.type === 'histogram' ||
+              descriptor.type === 'exponentialHistogram' ||
+              descriptor.type === 'summary'
+                ? (point.sum ?? point.count)
+                : (point.asDouble ?? point.asInt);
+            const value = Number(rawValue);
+            if (!Number.isFinite(value)) continue;
+            const nanos = point.timeUnixNano ?? point.startTimeUnixNano;
+            const timestamp = nanos
+              ? new Date(Number(BigInt(nanos) / 1000000n)).toISOString()
+              : new Date().toISOString();
+            recordedMetrics.push({
+              name: String(metric.name ?? 'unnamed_metric'),
+              type: descriptor.type,
+              value,
+              timestamp,
+              attributes: {
+                ...resourceAttributes,
+                ...parseAttributes(point.attributes ?? []),
+              },
+            });
+            accepted += 1;
+          }
+        }
+      }
+    }
+    if (recordedMetrics.length > 2_000) {
+      recordedMetrics.splice(0, recordedMetrics.length - 2_000);
+    }
+    sendJson(res, { success: true, accepted });
   } catch (err: any) {
     sendJson(
       res,
@@ -156,6 +229,23 @@ export async function handlePostOtlpMetrics(
       500,
     );
   }
+}
+
+/** GET /__studio/api/otlp/metrics */
+export function handleGetOtlpMetrics(
+  _req: IncomingMessage,
+  res: ServerResponse,
+): void {
+  sendJson(res, { metrics: recordedMetrics.slice().reverse() });
+}
+
+/** DELETE /__studio/api/otlp/metrics */
+export function handleDeleteOtlpMetrics(
+  _req: IncomingMessage,
+  res: ServerResponse,
+): void {
+  recordedMetrics.length = 0;
+  sendJson(res, { success: true });
 }
 
 /**

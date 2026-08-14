@@ -7,7 +7,13 @@
  *
  * `POST /__studio/api/request`
  */
-import { compiledStates, type Axiomify } from '@axiomify/core';
+import {
+  compiledStates,
+  parseCookieHeader,
+  RequestStateImpl,
+  serializeCookie,
+  type Axiomify,
+} from '@axiomify/core';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 import { readBody, sendJson } from '../server/http-server';
@@ -15,7 +21,12 @@ import { extractValidationErrors } from '../utils/validation-errors';
 import { recordLatency } from './perf';
 import { logCorrelationStorage } from './logs';
 import { recordRequest, recordResponse } from './recorder';
-import { notifyReplaysUpdated, requestHistory, saveHistory } from './replay';
+import {
+  notifyReplaysUpdated,
+  requestHistory,
+  sanitizeReplayItem,
+  saveHistory,
+} from './replay';
 
 /**
  * The Axiomify class has private `dispatcher` and `_services` fields that we
@@ -139,7 +150,7 @@ export async function handlePostRequest(
       return;
     }
 
-    const { method, path, headers, query, body } = payload;
+    const { method, path, headers, query, body, files, bodyMode } = payload;
 
     if (!path) {
       sendJson(res, { error: 'Missing "path" parameter' }, 400);
@@ -152,7 +163,7 @@ export async function handlePostRequest(
     const proxyStart = performance.now();
 
     // Store in request history for replay
-    const replayItem: any = {
+    const replayItem: any = sanitizeReplayItem({
       id: `replay-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       method: uppercaseMethod,
       path,
@@ -160,9 +171,7 @@ export async function handlePostRequest(
       query: query || {},
       body,
       timestamp: requestTimestamp,
-      status: undefined,
-      duration: undefined,
-    };
+    });
     requestHistory.push(replayItem);
     if (requestHistory.length > 50) {
       requestHistory.shift();
@@ -197,16 +206,96 @@ export async function handlePostRequest(
 
     const fullUrl = path + (queryString ? '?' + queryString : '');
 
-    // Setup mock stream for request
-    const bodyStr =
-      body !== undefined
-        ? typeof body === 'string'
-          ? body
-          : JSON.stringify(body, (_, v) =>
+    const effectiveHeaders: Record<string, string | string[]> = {
+      ...(headers || {}),
+    };
+    const setEffectiveHeader = (name: string, value: string) => {
+      for (const key of Object.keys(effectiveHeaders)) {
+        if (key.toLowerCase() === name.toLowerCase()) {
+          delete effectiveHeaders[key];
+        }
+      }
+      effectiveHeaders[name] = value;
+    };
+
+    // Build a genuine multipart body when form-data was selected (with or
+    // without files), so upload middleware sees the same bytes as production.
+    let streamBody: Buffer | string;
+    let requestBody = body;
+    const uploadedFiles = Array.isArray(files) ? files : [];
+    if (bodyMode === 'form-data' || uploadedFiles.length > 0) {
+      const boundary = `----axiomify-studio-${Math.random().toString(16).slice(2)}`;
+      const chunks: Buffer[] = [];
+      if (body && typeof body === 'object') {
+        for (const [key, value] of Object.entries(body)) {
+          chunks.push(
+            Buffer.from(
+              `--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${String(value)}\r\n`,
+            ),
+          );
+        }
+      }
+      for (const file of uploadedFiles) {
+        if (
+          !file ||
+          typeof file !== 'object' ||
+          typeof file.contentBase64 !== 'string'
+        )
+          continue;
+        const field = String(file.field || 'file').replace(/[\r\n"]/g, '');
+        const name = String(file.name || 'upload.bin').replace(/[\r\n"]/g, '');
+        const type = String(file.type || 'application/octet-stream').replace(
+          /[\r\n]/g,
+          '',
+        );
+        chunks.push(
+          Buffer.from(
+            `--${boundary}\r\nContent-Disposition: form-data; name="${field}"; filename="${name}"\r\nContent-Type: ${type}\r\n\r\n`,
+          ),
+        );
+        chunks.push(Buffer.from(file.contentBase64, 'base64'));
+        chunks.push(Buffer.from('\r\n'));
+      }
+      chunks.push(Buffer.from(`--${boundary}--\r\n`));
+      streamBody = Buffer.concat(chunks);
+      setEffectiveHeader(
+        'content-type',
+        `multipart/form-data; boundary=${boundary}`,
+      );
+      requestBody = undefined;
+    } else if (bodyMode === 'urlencoded') {
+      const params = new URLSearchParams();
+      if (body && typeof body === 'object') {
+        for (const [key, value] of Object.entries(body)) {
+          if (value !== undefined && value !== null) {
+            params.append(key, String(value));
+          }
+        }
+      }
+      streamBody = params.toString();
+      setEffectiveHeader('content-type', 'application/x-www-form-urlencoded');
+    } else if (bodyMode === 'text') {
+      streamBody = body === undefined ? '' : String(body);
+      setEffectiveHeader('content-type', 'text/plain; charset=utf-8');
+    } else if (bodyMode === 'json') {
+      streamBody =
+        body !== undefined
+          ? JSON.stringify(body, (_, v) =>
               typeof v === 'bigint' ? v.toString() : v,
             )
-        : '';
-    const mockStream = Readable.from(bodyStr ? [bodyStr] : []);
+          : '';
+      setEffectiveHeader('content-type', 'application/json');
+    } else {
+      streamBody =
+        body !== undefined
+          ? typeof body === 'string'
+            ? body
+            : JSON.stringify(body, (_, v) =>
+                typeof v === 'bigint' ? v.toString() : v,
+              )
+          : '';
+    }
+    const mockStream = Readable.from(streamBody.length > 0 ? [streamBody] : []);
 
     const mockReq: any = {
       id: `studio-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -214,19 +303,34 @@ export async function handlePostRequest(
       url: fullUrl,
       path,
       ip: '127.0.0.1',
-      headers: headers || {},
-      body: body,
+      headers: effectiveHeaders,
+      body: requestBody,
       query: query && typeof query === 'object' ? query : {},
       params: {},
-      state: {},
+      // Studio requests must honour the public RequestState contract. A plain
+      // object breaks any plugin that uses req.state.get()/set().
+      state: new RequestStateImpl(),
       raw: {},
       stream: mockStream,
     };
+    Object.defineProperty(mockReq, 'cookies', {
+      enumerable: true,
+      get: () => {
+        const cookie = mockReq.headers.cookie;
+        return parseCookieHeader(
+          Array.isArray(cookie) ? (cookie[0] ?? '') : (cookie ?? ''),
+        );
+      },
+    });
 
     let responseStatus = 200;
     const responseHeaders: Record<string, string> = {};
     let responseBody: any = null;
     let responseSent = false;
+    const setCookies: string[] = [];
+    const sseEvents: Array<{ data: unknown; event?: string }> = [];
+    let sseText = '';
+    let streamCompletion: Promise<void> | null = null;
 
     const mockRes: any = {
       status(code: number) {
@@ -266,13 +370,56 @@ export async function handlePostRequest(
         }
       },
       stream(_streamable: any, contentType?: string) {
+        if (responseSent) return;
         responseSent = true;
-        responseBody = '[Streamed Content]';
+        const chunks: Buffer[] = [];
         if (contentType) {
           responseHeaders['content-type'] = contentType;
         }
+        responseHeaders['transfer-encoding'] = 'chunked';
+        streamCompletion = new Promise((resolve) => {
+          _streamable.on('data', (chunk: Buffer | string) => {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          });
+          const finish = () => {
+            responseBody = Buffer.concat(chunks).toString('utf8');
+            resolve();
+          };
+          _streamable.once('end', finish);
+          _streamable.once('error', (error: Error) => {
+            responseHeaders['x-studio-stream-error'] = error.message;
+            finish();
+          });
+        });
       },
-      capabilities: { sse: false, streaming: false },
+      cookie(name: string, value: string, options?: any) {
+        setCookies.push(serializeCookie(name, value, options));
+        return this;
+      },
+      clearCookie(name: string, options?: any) {
+        return this.cookie(name, '', {
+          ...options,
+          expires: new Date(0),
+          maxAge: 0,
+        });
+      },
+      sseInit() {
+        if (responseSent) return;
+        responseSent = true;
+        responseHeaders['content-type'] = 'text/event-stream';
+        responseHeaders['cache-control'] = 'no-cache';
+        responseHeaders.connection = 'keep-alive';
+      },
+      sseSend(data: unknown, event?: string) {
+        if (!responseSent) this.sseInit();
+        sseEvents.push(event === undefined ? { data } : { data, event });
+        if (event) sseText += `event: ${event}\n`;
+        const value = typeof data === 'string' ? data : JSON.stringify(data);
+        for (const line of value.split('\n')) sseText += `data: ${line}\n`;
+        sseText += '\n';
+        responseBody = sseText;
+      },
+      capabilities: { sse: true, streaming: true },
       get statusCode() {
         return responseStatus;
       },
@@ -685,6 +832,7 @@ export async function handlePostRequest(
       await logCorrelationStorage.run(requestId, async () => {
         await studioApp.handle(mockReq, mockRes);
       });
+      if (streamCompletion) await streamCompletion;
     } finally {
       if (matchedRoute && originalState) {
         compiledStates.set(matchedRoute, originalState);
@@ -710,11 +858,14 @@ export async function handlePostRequest(
 
     // Push to recorder and perf observatory
     const proxyDuration = performance.now() - proxyStart;
+    if (setCookies.length > 0)
+      responseHeaders['set-cookie'] = setCookies.join(', ');
     recordResponse({
       requestId,
       status: responseStatus,
       headers: responseHeaders,
       body: responseBody,
+      sseEvents: sseEvents.length > 0 ? sseEvents : undefined,
       durationMs: Math.round(proxyDuration * 100) / 100,
       timestamp: new Date().toISOString(),
       timeline: mockReq._profile?.timeline,

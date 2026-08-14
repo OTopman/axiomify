@@ -414,6 +414,77 @@ describe('Studio Server & Router', () => {
     }
   });
 
+  it('should proxy text, URL-encoded, and form-data request body modes', async () => {
+    const app = new Axiomify();
+    app.route({
+      method: 'POST',
+      path: '/body-mode',
+      handler: async (req, res) => {
+        res.send({
+          body: req.body,
+          contentType: req.headers['content-type'],
+        });
+      },
+    });
+
+    const router = new StudioRouter();
+    registerStudioApi(router, {
+      getDiscovery: () => ({}) as any,
+      getApp: () => app,
+    });
+    const server = createStudioServer({ port: 0, router, indexHtml: 'index' });
+
+    try {
+      await new Promise<void>((resolve) =>
+        server.listen(0, '127.0.0.1', resolve),
+      );
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      const request = async (payload: any) => {
+        const response = await fetch(
+          `http://127.0.0.1:${port}/__studio/api/request`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              method: 'POST',
+              path: '/body-mode',
+              ...payload,
+            }),
+          },
+        );
+        return response.json();
+      };
+
+      const text = await request({ bodyMode: 'text', body: 'hello Studio' });
+      expect(text.body.data).toEqual({
+        body: 'hello Studio',
+        contentType: 'text/plain; charset=utf-8',
+      });
+
+      const encoded = await request({
+        bodyMode: 'urlencoded',
+        body: { page: '2', filter: 'new' },
+      });
+      expect(encoded.body.data).toEqual({
+        body: { page: '2', filter: 'new' },
+        contentType: 'application/x-www-form-urlencoded',
+      });
+
+      const formData = await request({
+        bodyMode: 'form-data',
+        body: { title: 'Draft' },
+      });
+      expect(formData).toMatchObject({ status: 200 });
+      expect(formData.body.data.contentType).toMatch(
+        /^multipart\/form-data; boundary=/,
+      );
+      expect(formData.body.data.body).toBeUndefined();
+    } finally {
+      server.close();
+    }
+  });
+
   it('should return profile timeline metadata when proxying requests', async () => {
     const app = new Axiomify();
     app.route({

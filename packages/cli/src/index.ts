@@ -221,6 +221,10 @@ program
   )
   .argument('[entry]', 'Entry file', 'src/index.ts')
   .option('-p, --port <port>', 'Port for the Studio server (default: 4399)')
+  .option(
+    '--app-url <url>',
+    'Base URL for Playground SDK requests (for example http://localhost:4000)',
+  )
   .option('--no-open', 'Do not auto-open the browser')
   .action((entry: string, options: StudioCommandOptions) =>
     runStudio(entry, options),

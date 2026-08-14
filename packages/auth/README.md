@@ -63,17 +63,17 @@ app.route({
 
 Exactly **one** of `secret`, `publicKey` or `jwks` must be provided.
 
-| Option           | Type                              | Description                                                                                                                            |
-| ---------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `secret`         | `string`                          | HS* shared secret. Minimum **32 bytes** (256 bits) per RFC 7518 §3.2. **Throws** for shorter values (in all environments).             |
-| `publicKey`      | `string \| KeyObject`             | RS256/RS384/RS512/ES256/ES384 verification key (PEM or `node:crypto` KeyObject). Default allowlist: `['RS256']`.                       |
-| `jwks`           | `JwksClient \| JwksClientOptions` | JWKS-backed verification (e.g. an OIDC provider): `{ url: 'https://issuer/.well-known/jwks.json' }`.                                   |
-| `algorithms`     | `Algorithm[]`                     | Accepted algorithms. Default: `['HS256']` with `secret`, `['RS256']` with `publicKey`/`jwks`. Never include `'none'`.                  |
-| `getToken`       | `(req) => string \| null`         | Custom token extractor. Default: `Authorization: Bearer <token>`.                                                                      |
-| `issuer`         | `string`                          | Validates the `iss` claim.                                                                                                             |
-| `audience`       | `string \| string[]`              | Validates the `aud` claim.                                                                                                             |
-| `clockTolerance` | `number`                          | Seconds of leeway for `exp`/`nbf` comparisons. Default `0`.                                                                            |
-| `store`          | `TokenStore`                      | **Access token revocation store.** When set, every request checks `store.exists(jti)`. Rejected if false.                              |
+| Option           | Type                              | Description                                                                                                                |
+| ---------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `secret`         | `string`                          | HS* shared secret. Minimum **32 bytes** (256 bits) per RFC 7518 §3.2. **Throws** for shorter values (in all environments). |
+| `publicKey`      | `string \| KeyObject`             | RS256/RS384/RS512/ES256/ES384 verification key (PEM or `node:crypto` KeyObject). Default allowlist: `['RS256']`.           |
+| `jwks`           | `JwksClient \| JwksClientOptions` | JWKS-backed verification (e.g. an OIDC provider): `{ url: 'https://issuer/.well-known/jwks.json' }`.                       |
+| `algorithms`     | `Algorithm[]`                     | Accepted algorithms. Default: `['HS256']` with `secret`, `['RS256']` with `publicKey`/`jwks`. Never include `'none'`.      |
+| `getToken`       | `(req) => string \| null`         | Custom token extractor. Default: `Authorization: Bearer <token>`.                                                          |
+| `issuer`         | `string`                          | Validates the `iss` claim.                                                                                                 |
+| `audience`       | `string \| string[]`              | Validates the `aud` claim.                                                                                                 |
+| `clockTolerance` | `number`                          | Seconds of leeway for `exp`/`nbf` comparisons. Default `0`.                                                                |
+| `store`          | `TokenStore`                      | **Access token revocation store.** When set, every request checks `store.exists(jti)`. Rejected if false.                  |
 
 HS* algorithms can never be combined with `publicKey`/`jwks`, and RS*/ES* can never be verified with `secret` — both directions of the classic JWT algorithm-confusion attack are rejected at plugin creation or verification time.
 
@@ -97,16 +97,16 @@ await tokenStore.revoke(jti);
 
 ### `createRefreshHandler(options)`
 
-| Option            | Type          | Description                                                                                                |
-| ----------------- | ------------- | ---------------------------------------------------------------------------------------------------------- |
-| `secret`          | `string`             | Access token secret. Minimum **32 bytes** (256 bits) per RFC 7518 §3.2.                                    |
-| `refreshSecret`   | `string`             | Separate secret for refresh tokens. Minimum **32 bytes** (256 bits).                                       |
-| `accessTokenTtl`  | `number`             | Access token TTL in seconds. Default: `900` (15 min).                                                      |
-| `refreshTokenTtl` | `number`             | Refresh token TTL in seconds. Default: `604800` (7 days).                                                  |
-| `store`           | `TokenStore`         | Refresh token revocation store. Strongly recommended. Without it, stolen refresh tokens cannot be revoked. |
-| `algorithms`      | `Algorithm[]`        | Algorithms. Default: `['HS256']`.                                                                          |
-| `issuer`          | `string`             | Validates the `iss` claim on refresh tokens and sets it on issued tokens.                                  |
-| `audience`        | `string \| string[]` | Validates the `aud` claim on refresh tokens and sets it on issued tokens.                                  |
+| Option            | Type                 | Description                                                                                                          |
+| ----------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `secret`          | `string`             | Access token secret. Minimum **32 bytes** (256 bits) per RFC 7518 §3.2.                                              |
+| `refreshSecret`   | `string`             | Separate secret for refresh tokens. Minimum **32 bytes** (256 bits).                                                 |
+| `accessTokenTtl`  | `number`             | Access token TTL in seconds. Default: `900` (15 min).                                                                |
+| `refreshTokenTtl` | `number`             | Refresh token TTL in seconds. Default: `604800` (7 days).                                                            |
+| `store`           | `TokenStore`         | Refresh token revocation store. Strongly recommended. Without it, stolen refresh tokens cannot be revoked.           |
+| `algorithms`      | `Algorithm[]`        | Algorithms. Default: `['HS256']`.                                                                                    |
+| `issuer`          | `string`             | Validates the `iss` claim on refresh tokens and sets it on issued tokens.                                            |
+| `audience`        | `string \| string[]` | Validates the `aud` claim on refresh tokens and sets it on issued tokens.                                            |
 | `rateLimitPlugin` | `RouteMiddleware`    | Optional rate-limit plugin reference for route wiring. Apply it on `/auth/refresh` via `plugins: [rateLimitPlugin]`. |
 
 ## TokenStore interface
@@ -167,7 +167,12 @@ dependencies). `signJwt`/`verifyJwt` support `HS256/HS384/HS512`,
 `r||s` format, never DER).
 
 ```typescript
-import { createAuthPlugin, signJwt, verifyJwt, JwksClient } from '@axiomify/auth';
+import {
+  createAuthPlugin,
+  signJwt,
+  verifyJwt,
+  JwksClient,
+} from '@axiomify/auth';
 
 // Verify with a local public key (PEM string or KeyObject)
 const requireAuth = createAuthPlugin({
@@ -187,7 +192,12 @@ const requireOidcAuth = createAuthPlugin({
 // Issue tokens yourself
 const token = signJwt(
   { sub: user.id },
-  { algorithm: 'RS256', privateKey: process.env.JWT_PRIVATE_KEY!, expiresIn: 900, keyid: 'key-1' },
+  {
+    algorithm: 'RS256',
+    privateKey: process.env.JWT_PRIVATE_KEY!,
+    expiresIn: 900,
+    keyid: 'key-1',
+  },
 );
 ```
 
@@ -212,14 +222,21 @@ stored; comparison is constant-time (`crypto.timingSafeEqual`), and unknown
 ids cost the same as wrong secrets (no enumeration timing oracle).
 
 ```typescript
-import { createApiKeyPlugin, generateApiKey, hashApiKeySecret, getApiKey } from '@axiomify/auth';
+import {
+  createApiKeyPlugin,
+  generateApiKey,
+  hashApiKeySecret,
+  getApiKey,
+} from '@axiomify/auth';
 
 // Generate a key: give `apiKey` to the caller ONCE, persist { id, hashedKey }
 const { apiKey, id, hashedKey } = generateApiKey();
 
 // Static keys (hashed)…
 const apiKeys = createApiKeyPlugin({
-  keys: { [id]: { hashedKey, scopes: ['read', 'write'], meta: { plan: 'pro' } } },
+  keys: {
+    [id]: { hashedKey, scopes: ['read', 'write'], meta: { plan: 'pro' } },
+  },
 });
 
 // …or a dynamic lookup (database) — errors here → 503, never 401
@@ -254,7 +271,11 @@ const google = createOAuthPlugin({
   cookieSecret: process.env.COOKIE_SECRET!, // ≥ 32 bytes, signs the state cookie
 });
 
-app.route({ method: 'GET', path: '/auth/google', handler: google.authorizeHandler });
+app.route({
+  method: 'GET',
+  path: '/auth/google',
+  handler: google.authorizeHandler,
+});
 app.route({
   method: 'GET',
   path: '/auth/google/callback',

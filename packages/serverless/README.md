@@ -46,10 +46,10 @@ export default {
 
 ## Options — `new ServerlessAdapter(app, options?)`
 
-| Option        | Default             | Description                                                                                                                                          |
-| ------------- | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `maxBodySize` | `1048576` (1 MiB)   | Maximum request body size in bytes. Requests exceeding this are rejected with `413 Payload Too Large` before parsing (checked against `Content-Length`, then re-checked against the actual bytes read). |
-| `trustProxy`  | `false`             | When `true`, derive the client IP from the `X-Forwarded-For` header. Only enable behind a trusted proxy — the header is client-spoofable. When `false`, `req.ip` is left empty. |
+| Option        | Default           | Description                                                                                                                                                                                             |
+| ------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `maxBodySize` | `1048576` (1 MiB) | Maximum request body size in bytes. Requests exceeding this are rejected with `413 Payload Too Large` before parsing (checked against `Content-Length`, then re-checked against the actual bytes read). |
+| `trustProxy`  | `false`           | When `true`, derive the client IP from the `X-Forwarded-For` header. Only enable behind a trusted proxy — the header is client-spoofable. When `false`, `req.ip` is left empty.                         |
 
 ```typescript
 const adapter = new ServerlessAdapter(app, {
@@ -59,6 +59,23 @@ const adapter = new ServerlessAdapter(app, {
 ```
 
 The request id is taken from the `X-Request-Id` header when present, otherwise generated with `crypto.randomUUID()`.
+
+## Server-Sent Events
+
+`res.sseInit()` and `res.sseSend()` are supported and return a standard
+streaming Fetch `Response`. The connection stays open until the client
+disconnects or cancels the response stream.
+
+```typescript
+app.route({
+  method: 'GET',
+  path: '/events',
+  handler: (_req, res) => {
+    res.sseInit(15_000);
+    res.sseSend({ ready: true }, 'status');
+  },
+});
+```
 
 ## AWS Lambda / Vercel Integration
 

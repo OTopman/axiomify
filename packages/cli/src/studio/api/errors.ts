@@ -3,6 +3,7 @@ import type { Axiomify } from '@axiomify/core';
 import { sendJson } from '../server/http-server';
 import { extractValidationErrors } from '../utils/validation-errors';
 import { recordSessionError } from './recorder';
+import { redactForStudio, redactTextForStudio } from './privacy';
 
 export interface RecordedError {
   id: string;
@@ -47,7 +48,7 @@ export function sanitizePayload(payload: any): any {
       }
     };
     mask(serialized);
-    return serialized;
+    return redactForStudio(serialized);
   } catch {
     return '[Unserializable Payload]';
   }
@@ -76,8 +77,8 @@ export function instrumentErrorObservatory(app: Axiomify): void {
       const entry = {
         id: `err-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         name: errName,
-        message: errMsg,
-        stack: errStack,
+        message: redactTextForStudio(errMsg),
+        stack: redactTextForStudio(errStack),
         method: reqMethod,
         path: reqPath,
         payload,

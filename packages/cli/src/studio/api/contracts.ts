@@ -1,4 +1,5 @@
 import type { ServerResponse } from 'node:http';
+import { RequestStateImpl } from '@axiomify/core';
 import type {
   DiscoveredRoute,
   DiscoveredSchema,
@@ -142,6 +143,13 @@ function validateResponse(
       strict: false,
       allErrors: true,
     });
+    // AJV keeps JSON Schema/OpenAPI formats in a separate package. Without
+    // this registration it logs "unknown format email ignored" and accepts
+    // invalid formatted values during contract checks.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const formatModule = require('ajv-formats');
+    const addFormats = formatModule.default ?? formatModule;
+    addFormats(ajv);
     const validate = ajv.compile(schema);
     const valid = validate(body);
     if (!valid) {
@@ -191,7 +199,7 @@ async function mockRequest(
         'content-type': 'application/json',
         ...headers,
       },
-      state: {},
+      state: new RequestStateImpl(),
       signal: { addEventListener: () => {} },
       on: (event: string, callback: any) => {
         if (event === 'data' && body) {
@@ -249,7 +257,10 @@ export async function runContractTest(
 ): Promise<ContractTestResult> {
   const routeId = `${route.method}:${route.path}`;
 
-  const hasRequestSchema = !!(schema && (schema.body || schema.query || schema.params));
+  const hasRequestSchema = !!(
+    schema &&
+    (schema.body || schema.query || schema.params)
+  );
   const hasResponseSchema = !!(schema && schema.response);
 
   if (!schema || (!hasRequestSchema && !hasResponseSchema)) {

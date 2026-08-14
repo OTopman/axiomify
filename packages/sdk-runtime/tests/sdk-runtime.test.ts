@@ -1098,6 +1098,50 @@ describe('@axiomify/sdk-runtime tests', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1); // Called only once!
     });
 
+    it('keeps cached and in-flight GETs isolated by effective request headers', async () => {
+      const headers = new Headers({ 'content-type': 'application/json' });
+      const mockFetch = vi
+        .fn()
+        .mockImplementation(async (_url: string, options: RequestInit) => ({
+          ok: true,
+          status: 200,
+          headers,
+          json: async () => ({
+            tenant: new Headers(options.headers).get('x-tenant'),
+          }),
+          text: async () => '',
+        }));
+      const client = new BaseClient({
+        baseUrl: 'https://api.test',
+        enableCache: true,
+        fetch: mockFetch,
+      });
+
+      const [tenantA, tenantB] = await Promise.all([
+        client['request']({
+          path: '/items',
+          method: 'GET',
+          headers: { 'x-tenant': 'a' },
+        }),
+        client['request']({
+          path: '/items',
+          method: 'GET',
+          headers: { 'x-tenant': 'b' },
+        }),
+      ]);
+
+      expect(tenantA).toEqual({ tenant: 'a' });
+      expect(tenantB).toEqual({ tenant: 'b' });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      await client['request']({
+        path: '/items',
+        method: 'GET',
+        headers: { 'x-tenant': 'a' },
+      });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
     it('should throw timeout error if timeoutMs is exceeded', async () => {
       // Mock fetch that hangs
       const mockFetch = vi.fn().mockImplementation(async (url, opts) => {

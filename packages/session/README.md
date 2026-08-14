@@ -28,8 +28,8 @@ app.route({
   path: '/login',
   handler: async (req, res) => {
     const session = getSession(req);
-    await session.regenerate();        // new ID on privilege change (fixation defence)
-    session.userId = user.id;          // plain assignment — persisted automatically
+    await session.regenerate(); // new ID on privilege change (fixation defence)
+    session.userId = user.id; // plain assignment — persisted automatically
     res.send({ ok: true });
   },
 });
@@ -37,16 +37,16 @@ app.route({
 
 ## Options
 
-| Option              | Type                 | Default                     | Description                                                                                                          |
-| ------------------- | -------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `secret`            | `string \| string[]` | — (required)                | HMAC-SHA256 signing secret(s). An array enables zero-downtime rotation: sign with `secret[0]`, verify against all. Every entry must be ≥ 32 bytes — throws at registration otherwise. |
-| `cookieName`        | `string`             | `'axiomify.sid'`            | Must be an RFC 6265 token (validated at boot).                                                                        |
-| `cookie`            | `SessionCookieOptions` | `{}`                      | Cookie attributes. Effective defaults: `HttpOnly; SameSite=Lax; Path=/`. `secure` also accepts `'auto'`. Omit `maxAge` for a browser-session cookie. |
-| `store`             | `SessionStore`       | `new MemorySessionStore()`  | Storage backend (warns at boot when the memory store is used with `NODE_ENV=production`).                             |
-| `rolling`           | `boolean`            | `false`                     | Re-issue the cookie and slide the store TTL on every request.                                                         |
-| `saveUninitialized` | `boolean`            | `false`                     | Persist brand-new sessions that were never written to. Off by default: read-only anonymous traffic produces no store write and no `Set-Cookie`. |
-| `idleTimeout`       | `number` (seconds)   | `cookie.maxAge`, else 86400 | Store TTL — a session not seen for this long expires.                                                                 |
-| `absoluteTimeout`   | `number` (seconds)   | —                           | Hard lifetime from session creation, enforced even under rolling expiry (limits the value of a stolen cookie).        |
+| Option              | Type                   | Default                     | Description                                                                                                                                                                           |
+| ------------------- | ---------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `secret`            | `string \| string[]`   | — (required)                | HMAC-SHA256 signing secret(s). An array enables zero-downtime rotation: sign with `secret[0]`, verify against all. Every entry must be ≥ 32 bytes — throws at registration otherwise. |
+| `cookieName`        | `string`               | `'axiomify.sid'`            | Must be an RFC 6265 token (validated at boot).                                                                                                                                        |
+| `cookie`            | `SessionCookieOptions` | `{}`                        | Cookie attributes. Effective defaults: `HttpOnly; SameSite=Lax; Path=/`. `secure` also accepts `'auto'`. Omit `maxAge` for a browser-session cookie.                                  |
+| `store`             | `SessionStore`         | `new MemorySessionStore()`  | Storage backend (warns at boot when the memory store is used with `NODE_ENV=production`).                                                                                             |
+| `rolling`           | `boolean`              | `false`                     | Re-issue the cookie and slide the store TTL on every request.                                                                                                                         |
+| `saveUninitialized` | `boolean`              | `false`                     | Persist brand-new sessions that were never written to. Off by default: read-only anonymous traffic produces no store write and no `Set-Cookie`.                                       |
+| `idleTimeout`       | `number` (seconds)     | `cookie.maxAge`, else 86400 | Store TTL — a session not seen for this long expires.                                                                                                                                 |
+| `absoluteTimeout`   | `number` (seconds)     | —                           | Hard lifetime from session creation, enforced even under rolling expiry (limits the value of a stolen cookie).                                                                        |
 
 `secure: 'auto'` sets the `Secure` flag per-request when `x-forwarded-proto` resolves to `https`. **Only use it behind a proxy that strips or overwrites that header** — a client talking directly to Node can forge it.
 

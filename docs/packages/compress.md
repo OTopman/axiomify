@@ -26,19 +26,23 @@ to every route — including responses produced by other plugins such as
 
 ## Options
 
-| Option              | Type                 | Default                                                                                        | Description                                                                               |
-| ------------------- | -------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `threshold`         | `number`             | `1024`                                                                                          | Minimum payload size (bytes) before compressing. Streams have no threshold.               |
-| `encodings`         | `CompressEncoding[]` | `['br', 'gzip', 'deflate']` (+ `'zstd'` when available)                                         | Server preference order of offered encodings.                                             |
-| `compressibleTypes` | `string[]`           | `['text/*', 'application/json', 'application/javascript', 'image/svg+xml', 'application/xml']`  | MIME allowlist. `type/*` matches by prefix; content-type parameters are ignored.          |
-| `brotliOptions`     | `zlib.BrotliOptions` | `{}`                                                                                            | Forwarded to brotli (buffer path adds `BROTLI_PARAM_SIZE_HINT` automatically).            |
-| `gzipOptions`       | `zlib.ZlibOptions`   | `{}`                                                                                            | Forwarded to gzip **and** deflate.                                                        |
+| Option              | Type                 | Default                                                                                        | Description                                                                      |
+| ------------------- | -------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `threshold`         | `number`             | `1024`                                                                                         | Minimum payload size (bytes) before compressing. Streams have no threshold.      |
+| `encodings`         | `CompressEncoding[]` | `['br', 'gzip', 'deflate']` (+ `'zstd'` when available)                                        | Server preference order of offered encodings.                                    |
+| `compressibleTypes` | `string[]`           | `['text/*', 'application/json', 'application/javascript', 'image/svg+xml', 'application/xml']` | MIME allowlist. `type/*` matches by prefix; content-type parameters are ignored. |
+| `brotliOptions`     | `zlib.BrotliOptions` | `{}`                                                                                           | Forwarded to brotli (buffer path adds `BROTLI_PARAM_SIZE_HINT` automatically).   |
+| `gzipOptions`       | `zlib.ZlibOptions`   | `{}`                                                                                           | Forwarded to gzip **and** deflate.                                               |
 
 ```typescript
 useCompress(app, {
   threshold: 2048,
-  encodings: ['br', 'gzip'],                    // never offer deflate
-  compressibleTypes: ['text/*', 'application/json', 'application/graphql-response+json'],
+  encodings: ['br', 'gzip'], // never offer deflate
+  compressibleTypes: [
+    'text/*',
+    'application/json',
+    'application/graphql-response+json',
+  ],
   brotliOptions: { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } },
   gzipOptions: { level: 6 },
 });
@@ -53,7 +57,7 @@ useCompress(app, {
 - `gzip;q=0` (or `*;q=0`) excludes an encoding.
 - An explicit `identity` with a higher q than every offered encoding selects
   identity — the response is sent uncompressed.
-- `identity;q=0, br` compresses with brotli. When *nothing* is acceptable the
+- `identity;q=0, br` compresses with brotli. When _nothing_ is acceptable the
   plugin still serves identity rather than failing the request with 406.
 - A missing `Accept-Encoding` header means identity.
 
@@ -101,7 +105,8 @@ app.route({
   method: 'GET',
   path: '/download/archive',
   plugins: [disableCompression],
-  handler: async (req, res) => res.stream(fs.createReadStream(archive), 'text/csv'),
+  handler: async (req, res) =>
+    res.stream(fs.createReadStream(archive), 'text/csv'),
 });
 ```
 
@@ -115,17 +120,17 @@ preserving the status code. The response envelope is byte-identical to the
 uncompressed path, including custom serializers set via `app.setSerializer()`.
 
 Compression of buffers is fully async (promisified zlib — no event-loop
-blocking). The wrapped `send`/`sendRaw`/`stream` latch as *sent* synchronously,
+blocking). The wrapped `send`/`sendRaw`/`stream` latch as _sent_ synchronously,
 so a double `res.send()` while compression is in flight is dropped exactly like
 the underlying adapter would drop it. If compression ever fails, the identity
 payload is emitted as a fallback.
 
 ## Exports
 
-| Export               | Kind              | Description                                    |
-| -------------------- | ----------------- | ---------------------------------------------- |
-| `useCompress`        | `(app, options?)` | Register the compression hook.                 |
-| `disableCompression` | `RouteMiddleware` | Per-route opt-out flag.                        |
-| `CompressOptions`    | type              | Plugin options.                                |
-| `CompressEncoding`   | type              | `'br' \| 'gzip' \| 'deflate' \| 'zstd'`.       |
-| `ZSTD_SUPPORTED`     | `boolean`         | Whether this runtime's zlib exposes zstd.      |
+| Export               | Kind              | Description                               |
+| -------------------- | ----------------- | ----------------------------------------- |
+| `useCompress`        | `(app, options?)` | Register the compression hook.            |
+| `disableCompression` | `RouteMiddleware` | Per-route opt-out flag.                   |
+| `CompressOptions`    | type              | Plugin options.                           |
+| `CompressEncoding`   | type              | `'br' \| 'gzip' \| 'deflate' \| 'zstd'`.  |
+| `ZSTD_SUPPORTED`     | `boolean`         | Whether this runtime's zlib exposes zstd. |

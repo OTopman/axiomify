@@ -24,8 +24,8 @@ import { PrismaClient } from '@prisma/client';
 const app = new Axiomify();
 const db = createDatabaseModule({ client: async () => new PrismaClient() });
 
-app.use(db.module);   // DI token 'db' is available immediately
-await db.ready;       // ⚠️ REQUIRED before listen() — see below
+app.use(db.module); // DI token 'db' is available immediately
+await db.ready; // ⚠️ REQUIRED before listen() — see below
 new NativeAdapter(app, { port: 3000 }).listen();
 ```
 
@@ -51,14 +51,14 @@ Always `await db.ready` before `listen()` (and before any startup code touches t
 
 `detectClientKind(client)` classifies a client by duck-typing its public surface — no `instanceof`, no driver dependency:
 
-| Kind             | Detected by                                              | connect default        | disconnect default        | health default              |
-| ---------------- | -------------------------------------------------------- | ---------------------- | ------------------------- | --------------------------- |
-| `prisma`         | `$connect()` + `$disconnect()`                           | `$connect()`           | `$disconnect()`           | `` $queryRaw`SELECT 1` ``   |
-| `pg`             | `query()` + `end()` + `connect()` (pg.Pool)              | `query('SELECT 1')`    | `end()`                   | `query('SELECT 1')`         |
-| `mysql2`         | `query()` + `end()`                                      | `query('SELECT 1')`    | `end()`                   | `query('SELECT 1')`         |
-| `better-sqlite3` | `prepare()` + `close()`                                  | no-op                  | `close()`                 | `prepare('SELECT 1').get()` |
-| `drizzle`        | `execute()`, or `transaction()`+`select()`, or `_.session` | no-op                | best-effort `$client.end()` | `execute('SELECT 1')`     |
-| `unknown`        | anything else                                            | no-op                  | best-effort `disconnect()`/`close()`/`end()` | always healthy — pass your own |
+| Kind             | Detected by                                                | connect default     | disconnect default                           | health default                 |
+| ---------------- | ---------------------------------------------------------- | ------------------- | -------------------------------------------- | ------------------------------ |
+| `prisma`         | `$connect()` + `$disconnect()`                             | `$connect()`        | `$disconnect()`                              | `` $queryRaw`SELECT 1` ``      |
+| `pg`             | `query()` + `end()` + `connect()` (pg.Pool)                | `query('SELECT 1')` | `end()`                                      | `query('SELECT 1')`            |
+| `mysql2`         | `query()` + `end()`                                        | `query('SELECT 1')` | `end()`                                      | `query('SELECT 1')`            |
+| `better-sqlite3` | `prepare()` + `close()`                                    | no-op               | `close()`                                    | `prepare('SELECT 1').get()`    |
+| `drizzle`        | `execute()`, or `transaction()`+`select()`, or `_.session` | no-op               | best-effort `$client.end()`                  | `execute('SELECT 1')`          |
+| `unknown`        | anything else                                              | no-op               | best-effort `disconnect()`/`close()`/`end()` | always healthy — pass your own |
 
 Explicit `connect` / `disconnect` / `healthCheck` options always override the derived defaults. Pools connect lazily, so pg/mysql2 get an eager `SELECT 1` at boot — bad credentials fail before `listen()`, not on the first request.
 

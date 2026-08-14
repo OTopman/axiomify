@@ -64,7 +64,7 @@ function makeRes(overrides: any = {}): any {
       res.rawBody = payload;
       res.rawContentType = contentType;
     },
-    stream() { },
+    stream() {},
     get headersSent() {
       return sent;
     },
@@ -330,7 +330,10 @@ describe('shared response cache', () => {
 
     const res = makeRes();
     await app.handle(
-      makeReq({ path: '/items', headers: { 'if-none-match': miss.headers.ETag } }),
+      makeReq({
+        path: '/items',
+        headers: { 'if-none-match': miss.headers.ETag },
+      }),
       res,
     );
     expect(res.statusCode).toBe(304);
@@ -758,7 +761,12 @@ describe('stale-while-revalidate', () => {
     vi.useFakeTimers();
     const app = new Axiomify();
     const store = new MemoryCacheStore();
-    useCache(app, { store, routes: ['/'], defaultTtl: 1, staleWhileRevalidate: 60 });
+    useCache(app, {
+      store,
+      routes: ['/'],
+      defaultTtl: 1,
+      staleWhileRevalidate: 60,
+    });
 
     let calls = 0;
     let block: Promise<void> | null = null;
@@ -820,7 +828,12 @@ describe('stale-while-revalidate', () => {
     vi.useFakeTimers();
     const app = new Axiomify();
     const store = new MemoryCacheStore();
-    useCache(app, { store, routes: ['/'], defaultTtl: 1, staleWhileRevalidate: 2 });
+    useCache(app, {
+      store,
+      routes: ['/'],
+      defaultTtl: 1,
+      staleWhileRevalidate: 2,
+    });
     let calls = 0;
     app.route({
       method: 'GET',
@@ -842,7 +855,12 @@ describe('stale-while-revalidate', () => {
     vi.useFakeTimers();
     const app = new Axiomify();
     const store = new MemoryCacheStore();
-    useCache(app, { store, routes: ['/'], defaultTtl: 1, staleWhileRevalidate: 60 });
+    useCache(app, {
+      store,
+      routes: ['/'],
+      defaultTtl: 1,
+      staleWhileRevalidate: 60,
+    });
     let fail = false;
     let calls = 0;
     app.route({
@@ -929,9 +947,9 @@ describe('invalidation', () => {
     const app = new Axiomify();
     const bare = {
       get: async () => undefined,
-      set: async () => { },
-      delete: async () => { },
-      clear: async () => { },
+      set: async () => {},
+      delete: async () => {},
+      clear: async () => {},
     };
     const api = useCache(app, { store: bare });
     await expect(api.invalidatePath('/x')).rejects.toThrow(/deleteByPrefix/);
@@ -985,9 +1003,18 @@ describe('createCacheModule', () => {
     const map = new Map<string, any>();
     const customStore: any = {
       get: (k: string) => Promise.resolve(map.get(k) ?? null),
-      set: (k: string, v: any) => { map.set(k, v); return Promise.resolve(); },
-      delete: (k: string) => { map.delete(k); return Promise.resolve(); },
-      clear: () => { map.clear(); return Promise.resolve(); },
+      set: (k: string, v: any) => {
+        map.set(k, v);
+        return Promise.resolve();
+      },
+      delete: (k: string) => {
+        map.delete(k);
+        return Promise.resolve();
+      },
+      clear: () => {
+        map.clear();
+        return Promise.resolve();
+      },
     };
 
     const app = new Axiomify();

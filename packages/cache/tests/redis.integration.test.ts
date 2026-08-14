@@ -71,7 +71,7 @@ describe.skipIf(!RUN)('RedisCacheStore (real Redis)', () => {
     expect(await store.get('to-delete')).toBeUndefined();
   });
 
-  it('clear() removes every entry under this store\'s prefix only', async () => {
+  it("clear() removes every entry under this store's prefix only", async () => {
     await store.set('x', entry(), 30);
     await store.set('y', entry(), 30);
 

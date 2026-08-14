@@ -90,13 +90,21 @@ describe('createOAuthPlugin — configuration', () => {
       redirectUri: 'https://app.example.com/cb',
       cookieSecret: COOKIE_SECRET,
     };
-    expect(() => createOAuthPlugin({ ...base, provider: undefined as any })).toThrow(/provider/);
-    expect(() => createOAuthPlugin({ ...base, clientId: '' })).toThrow(/clientId/);
-    expect(() => createOAuthPlugin({ ...base, redirectUri: '/relative' })).toThrow(/absolute `redirectUri`/);
-    expect(() => createOAuthPlugin({ ...base, cookieSecret: 'short' })).toThrow(/at least 32 bytes/);
     expect(() =>
-      createOAuthPlugin({ ...base, issuer: undefined }),
-    ).toThrow(/requires `issuer`.*or explicit `endpoints`/);
+      createOAuthPlugin({ ...base, provider: undefined as any }),
+    ).toThrow(/provider/);
+    expect(() => createOAuthPlugin({ ...base, clientId: '' })).toThrow(
+      /clientId/,
+    );
+    expect(() =>
+      createOAuthPlugin({ ...base, redirectUri: '/relative' }),
+    ).toThrow(/absolute `redirectUri`/);
+    expect(() => createOAuthPlugin({ ...base, cookieSecret: 'short' })).toThrow(
+      /at least 32 bytes/,
+    );
+    expect(() => createOAuthPlugin({ ...base, issuer: undefined })).toThrow(
+      /requires `issuer`.*or explicit `endpoints`/,
+    );
     expect(() =>
       createOAuthPlugin({
         ...base,
@@ -105,9 +113,10 @@ describe('createOAuthPlugin — configuration', () => {
       }),
     ).not.toThrow();
     expect(() =>
-      createOAuthPlugin({ ...base, callbackHandler: undefined } as any).callbackHandler(
-        undefined as any,
-      ),
+      createOAuthPlugin({
+        ...base,
+        callbackHandler: undefined,
+      } as any).callbackHandler(undefined as any),
     ).toThrow(/onSuccess/);
   });
 });
@@ -191,7 +200,10 @@ describe('authorizeHandler', () => {
   });
 
   it('surfaces discovery failures as OAuthError 503', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({}, 500)));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({}, 500)),
+    );
     const plugin = oidcPlugin();
     await expect(
       plugin.authorizeHandler({ headers: {}, state: {} } as any, mockRes()),
@@ -207,12 +219,14 @@ describe('callbackHandler — full mocked code flow', () => {
     return { cookieHeader: `axiomify_oauth=${raw}`, payload };
   }
 
-  function oidcFetchMock(overrides: {
-    idToken?: (nonce: string) => string;
-    tokenStatus?: number;
-    tokenBody?: Record<string, unknown>;
-    userinfoStatus?: number;
-  } = {}) {
+  function oidcFetchMock(
+    overrides: {
+      idToken?: (nonce: string) => string;
+      tokenStatus?: number;
+      tokenBody?: Record<string, unknown>;
+      userinfoStatus?: number;
+    } = {},
+  ) {
     const calls: { url: string; init?: RequestInit }[] = [];
     let latestNonce = '';
     const fetchMock = vi.fn(async (input: any, init?: RequestInit) => {
@@ -241,11 +255,17 @@ describe('callbackHandler — full mocked code flow', () => {
       }
       if (url === `${ISSUER}/jwks`) {
         return jsonResponse({
-          keys: [{ ...(rsa.publicKey.export({ format: 'jwk' }) as object), kid: 'op-key' }],
+          keys: [
+            {
+              ...(rsa.publicKey.export({ format: 'jwk' }) as object),
+              kid: 'op-key',
+            },
+          ],
         });
       }
       if (url === `${ISSUER}/userinfo`) {
-        if (overrides.userinfoStatus) return jsonResponse({}, overrides.userinfoStatus);
+        if (overrides.userinfoStatus)
+          return jsonResponse({}, overrides.userinfoStatus);
         return jsonResponse({ sub: 'user-1', email: 'jane@example.com' });
       }
       throw new Error(`unexpected fetch ${url}`);
@@ -284,7 +304,9 @@ describe('callbackHandler — full mocked code flow', () => {
       res.status(200).send({ ok: true });
     });
     const req: any = {
-      url: '/auth/callback?code=auth-code-1&state=' + encodeURIComponent(payload.state),
+      url:
+        '/auth/callback?code=auth-code-1&state=' +
+        encodeURIComponent(payload.state),
       query: { code: 'auth-code-1', state: payload.state },
       headers: { cookie: cookieHeader },
       state: {},
@@ -305,10 +327,15 @@ describe('callbackHandler — full mocked code flow', () => {
       iss: ISSUER,
       aud: 'client-1',
     });
-    expect(result.profile).toEqual({ sub: 'user-1', email: 'jane@example.com' });
+    expect(result.profile).toEqual({
+      sub: 'user-1',
+      email: 'jane@example.com',
+    });
 
     // Token-exchange request body carries the PKCE verifier and credentials.
-    const tokenCall = mock.calls.find((c) => c.url === `${ISSUER}/oauth/token`)!;
+    const tokenCall = mock.calls.find(
+      (c) => c.url === `${ISSUER}/oauth/token`,
+    )!;
     expect(tokenCall.init?.method).toBe('POST');
     expect(tokenCall.init?.headers).toMatchObject({
       'content-type': 'application/x-www-form-urlencoded',
@@ -317,14 +344,20 @@ describe('callbackHandler — full mocked code flow', () => {
     const body = new URLSearchParams(String(tokenCall.init?.body));
     expect(body.get('grant_type')).toBe('authorization_code');
     expect(body.get('code')).toBe('auth-code-1');
-    expect(body.get('redirect_uri')).toBe('https://app.example.com/auth/callback');
+    expect(body.get('redirect_uri')).toBe(
+      'https://app.example.com/auth/callback',
+    );
     expect(body.get('client_id')).toBe('client-1');
     expect(body.get('client_secret')).toBe('client-secret');
     expect(body.get('code_verifier')).toBe(payload.verifier);
 
     // Userinfo request is authenticated with the access token.
-    const userinfoCall = mock.calls.find((c) => c.url === `${ISSUER}/userinfo`)!;
-    expect((userinfoCall.init?.headers as any).authorization).toBe('Bearer at-123');
+    const userinfoCall = mock.calls.find(
+      (c) => c.url === `${ISSUER}/userinfo`,
+    )!;
+    expect((userinfoCall.init?.headers as any).authorization).toBe(
+      'Bearer at-123',
+    );
 
     // The one-shot state cookie is expired on the response.
     expect(res._headers['set-cookie']).toMatch(/axiomify_oauth=;/);
@@ -349,8 +382,13 @@ describe('callbackHandler — full mocked code flow', () => {
     );
     expect(onSuccess).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.send).toHaveBeenCalledWith(null, expect.stringContaining('state mismatch'));
-    expect(mock.calls.some((c) => c.url === `${ISSUER}/oauth/token`)).toBe(false);
+    expect(res.send).toHaveBeenCalledWith(
+      null,
+      expect.stringContaining('state mismatch'),
+    );
+    expect(mock.calls.some((c) => c.url === `${ISSUER}/oauth/token`)).toBe(
+      false,
+    );
   });
 
   it('rejects a tampered state cookie with 400', async () => {
@@ -384,7 +422,10 @@ describe('callbackHandler — full mocked code flow', () => {
     const handler = plugin.callbackHandler(vi.fn());
 
     const noCookie = mockRes();
-    await handler({ query: { code: 'c', state: 's' }, headers: {}, state: {} } as any, noCookie);
+    await handler(
+      { query: { code: 'c', state: 's' }, headers: {}, state: {} } as any,
+      noCookie,
+    );
     expect(noCookie.status).toHaveBeenCalledWith(400);
 
     const noParams = mockRes();
@@ -429,7 +470,10 @@ describe('callbackHandler — full mocked code flow', () => {
       res,
     );
     expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.send).toHaveBeenCalledWith(null, expect.stringContaining('expired'));
+    expect(res.send).toHaveBeenCalledWith(
+      null,
+      expect.stringContaining('expired'),
+    );
   });
 
   it('maps a 400 from the token endpoint to OAuthError token_exchange_failed (502) via onError', async () => {
@@ -498,10 +542,7 @@ describe('callbackHandler — full mocked code flow', () => {
         expiresIn: 300,
       },
     );
-    vi.stubGlobal(
-      'fetch',
-      oidcFetchMock({ idToken: () => forged }).fetchMock,
-    );
+    vi.stubGlobal('fetch', oidcFetchMock({ idToken: () => forged }).fetchMock);
 
     const onError = vi.fn();
     await plugin.callbackHandler(vi.fn(), onError)(
@@ -551,7 +592,11 @@ describe('callbackHandler — full mocked code flow', () => {
         const url = String(input);
         calls.push({ url, init });
         if (url === 'https://github.com/login/oauth/access_token') {
-          return jsonResponse({ access_token: 'gh-at', token_type: 'bearer', scope: 'read:user' });
+          return jsonResponse({
+            access_token: 'gh-at',
+            token_type: 'bearer',
+            scope: 'read:user',
+          });
         }
         if (url === 'https://api.github.com/user') {
           return jsonResponse({ id: 99, login: 'octocat' });
@@ -586,7 +631,9 @@ describe('callbackHandler — full mocked code flow', () => {
     expect(result.tokens.idToken).toBeUndefined();
     expect(result.profile).toEqual({ id: 99, login: 'octocat' });
 
-    const userCall = calls.find((c) => c.url === 'https://api.github.com/user')!;
+    const userCall = calls.find(
+      (c) => c.url === 'https://api.github.com/user',
+    )!;
     expect((userCall.init?.headers as any)['user-agent']).toBe('axiomify-auth');
   });
 

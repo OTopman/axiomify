@@ -228,17 +228,17 @@ export function createOAuthPlugin(options: OAuthPluginOptions): OAuthPlugin {
 
   const preset = PRESETS[options.provider];
   const needsDiscovery = !preset;
-  const issuer = options.issuer ? trimTrailingSlashes(options.issuer) : undefined;
+  const issuer = options.issuer
+    ? trimTrailingSlashes(options.issuer)
+    : undefined;
   if (needsDiscovery && !issuer && !options.endpoints?.authorizationEndpoint) {
     throw new Error(
       `[axiomify/auth] provider "${options.provider}" requires \`issuer\` (for OIDC discovery) or explicit \`endpoints\``,
     );
   }
   const isOidc = preset ? preset.oidc : true;
-  const scopes =
-    options.scopes ??
-    preset?.defaultScopes ??
-    ['openid', 'profile', 'email'];
+  const scopes = options.scopes ??
+    preset?.defaultScopes ?? ['openid', 'profile', 'email'];
   const cookieName = options.cookieName ?? 'axiomify_oauth';
   const stateTtl = options.stateTtlSeconds ?? 600;
   const timeoutMs = options.requestTimeoutMs ?? 10_000;
@@ -507,9 +507,7 @@ export function createOAuthPlugin(options: OAuthPluginOptions): OAuthPlugin {
     > | null;
     if (!response.ok || !json || typeof json.error === 'string') {
       const detail =
-        json && typeof json.error === 'string'
-          ? ` (${json.error})`
-          : '';
+        json && typeof json.error === 'string' ? ` (${json.error})` : '';
       throw new OAuthError(
         502,
         'token_exchange_failed',
@@ -525,8 +523,10 @@ export function createOAuthPlugin(options: OAuthPluginOptions): OAuthPlugin {
     }
     return {
       accessToken: json.access_token,
-      tokenType: typeof json.token_type === 'string' ? json.token_type : undefined,
-      expiresIn: typeof json.expires_in === 'number' ? json.expires_in : undefined,
+      tokenType:
+        typeof json.token_type === 'string' ? json.token_type : undefined,
+      expiresIn:
+        typeof json.expires_in === 'number' ? json.expires_in : undefined,
       refreshToken:
         typeof json.refresh_token === 'string' ? json.refresh_token : undefined,
       idToken: typeof json.id_token === 'string' ? json.id_token : undefined,

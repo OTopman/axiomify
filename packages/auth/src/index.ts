@@ -377,7 +377,9 @@ function setAuthUser(req: AxiomifyRequest, user: unknown): void {
  * node:crypto JWT engine in ./jwt and, optionally, a JWKS key resolver.
  */
 function createAsymmetricAuthPlugin(options: AuthOptions): RouteMiddleware {
-  const algorithms = validateAlgorithmAllowlist(options.algorithms ?? ['RS256']);
+  const algorithms = validateAlgorithmAllowlist(
+    options.algorithms ?? ['RS256'],
+  );
   if (algorithms.some((a) => a.startsWith('HS'))) {
     throw new Error(
       '[axiomify/auth] HS* algorithms cannot be allowlisted when verifying ' +

@@ -27,7 +27,11 @@ interface FakeWsClient {
   close: ReturnType<typeof vi.fn>;
   subscribe: ReturnType<typeof vi.fn>;
   unsubscribe: ReturnType<typeof vi.fn>;
-  publish: (topic: string, payload: string | Buffer, isBinary?: boolean) => void;
+  publish: (
+    topic: string,
+    payload: string | Buffer,
+    isBinary?: boolean,
+  ) => void;
   getBufferedAmount: () => number;
 }
 

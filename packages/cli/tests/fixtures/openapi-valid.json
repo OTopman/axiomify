@@ -34,19 +34,14 @@
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "id",
-                    "name"
-                  ],
+                  "required": ["id", "name"],
                   "additionalProperties": false
                 }
               }
             }
           }
         },
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       },
       "delete": {
         "summary": "DELETE /users/:id",
@@ -102,9 +97,7 @@
             }
           }
         },
-        "tags": [
-          "users"
-        ],
+        "tags": ["users"],
         "security": [
           {
             "bearerAuth": []
@@ -124,10 +117,7 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "name",
-                  "email"
-                ],
+                "required": ["name", "email"],
                 "additionalProperties": false
               }
             }

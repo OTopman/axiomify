@@ -11,18 +11,18 @@ npm install --save-dev @types/jsonwebtoken
 
 ## API
 
-| Export                          | Description                                                                                                   |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `createAuthPlugin(options)`     | Route plugin that validates Bearer JWT tokens                                                                 |
-| `createRefreshHandler(options)` | Route handler that rotates refresh tokens                                                                     |
-| `getAuthUser(req)`              | Returns the authenticated payload from `req.state.user` (set by `createAuthPlugin` after token verification). |
-| `MemoryTokenStore`              | In-process token store — **dev/single-process only**                                                          |
-| `signJwt(payload, options)`     | Sign a JWT with HS*/RS*/ES* via `node:crypto` (no jsonwebtoken dependency)                                     |
-| `verifyJwt(token, options)`     | Verify a JWT with a strict per-call algorithm allowlist and confusion defences                                 |
-| `JwksClient`                    | JWKS (RFC 7517) key resolver with kid-cache, rotation refetch and cooldown                                     |
-| `createApiKeyPlugin(options)`   | API-key authentication (`ax_<id>_<secret>`, sha256-hashed, constant-time)                                      |
-| `generateApiKey(id?)` / `hashApiKeySecret(secret)` / `getApiKey(req)` | API-key helpers                                                          |
-| `createOAuthPlugin(options)`    | OAuth 2.0 / OIDC Authorization Code flow with PKCE (S256)                                                      |
+| Export                                                                | Description                                                                                                   |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `createAuthPlugin(options)`                                           | Route plugin that validates Bearer JWT tokens                                                                 |
+| `createRefreshHandler(options)`                                       | Route handler that rotates refresh tokens                                                                     |
+| `getAuthUser(req)`                                                    | Returns the authenticated payload from `req.state.user` (set by `createAuthPlugin` after token verification). |
+| `MemoryTokenStore`                                                    | In-process token store — **dev/single-process only**                                                          |
+| `signJwt(payload, options)`                                           | Sign a JWT with HS*/RS*/ES* via `node:crypto` (no jsonwebtoken dependency)                                    |
+| `verifyJwt(token, options)`                                           | Verify a JWT with a strict per-call algorithm allowlist and confusion defences                                |
+| `JwksClient`                                                          | JWKS (RFC 7517) key resolver with kid-cache, rotation refetch and cooldown                                    |
+| `createApiKeyPlugin(options)`                                         | API-key authentication (`ax_<id>_<secret>`, sha256-hashed, constant-time)                                     |
+| `generateApiKey(id?)` / `hashApiKeySecret(secret)` / `getApiKey(req)` | API-key helpers                                                                                               |
+| `createOAuthPlugin(options)`                                          | OAuth 2.0 / OIDC Authorization Code flow with PKCE (S256)                                                     |
 
 ## Quick start
 
@@ -125,17 +125,17 @@ const redisTokenStore: TokenStore = {
 
 Exactly **one** of `secret`, `publicKey` or `jwks` must be provided.
 
-| Option           | Type                              | Default                 | Description                                                                                                                                                                                                                                      |
-| ---------------- | --------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `secret`         | `string`                          | one-of                  | HS* shared secret. Minimum **32 bytes** (256 bits, per RFC 7518 §3.2 for HS256). Validated at startup. Generate via `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`.                                               |
-| `publicKey`      | `string \| KeyObject`             | one-of                  | RS256/RS384/RS512/ES256/ES384 verification key — PEM string or `node:crypto` KeyObject.                                                                                                                                                          |
-| `jwks`           | `JwksClient \| JwksClientOptions` | one-of                  | JWKS-backed verification, e.g. `{ url: 'https://issuer/.well-known/jwks.json' }`.                                                                                                                                                                |
-| `algorithms`     | `Algorithm[]`                     | `['HS256']` / `['RS256']` | Accepted algorithms (`['HS256']` with `secret`, `['RS256']` with `publicKey`/`jwks`). The `'none'` algorithm is always blocked; HS* cannot be allowlisted alongside `publicKey`/`jwks`.                                                        |
-| `getToken`       | `(req) => string \| null`         | `Authorization: Bearer` | Custom token extractor.                                                                                                                                                                                                                          |
-| `issuer`         | `string`                          | —                       | Validates the `iss` claim.                                                                                                                                                                                                                       |
-| `audience`       | `string \| string[]`              | —                       | Validates the `aud` claim.                                                                                                                                                                                                                       |
-| `clockTolerance` | `number`                          | `0`                     | Seconds of leeway for `exp`/`nbf` comparisons.                                                                                                                                                                                                   |
-| `store`          | `TokenStore`                      | —                       | When set, checks `store.exists(jti)` on every request.                                                                                                                                                                                           |
+| Option           | Type                              | Default                   | Description                                                                                                                                                                                        |
+| ---------------- | --------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `secret`         | `string`                          | one-of                    | HS* shared secret. Minimum **32 bytes** (256 bits, per RFC 7518 §3.2 for HS256). Validated at startup. Generate via `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`. |
+| `publicKey`      | `string \| KeyObject`             | one-of                    | RS256/RS384/RS512/ES256/ES384 verification key — PEM string or `node:crypto` KeyObject.                                                                                                            |
+| `jwks`           | `JwksClient \| JwksClientOptions` | one-of                    | JWKS-backed verification, e.g. `{ url: 'https://issuer/.well-known/jwks.json' }`.                                                                                                                  |
+| `algorithms`     | `Algorithm[]`                     | `['HS256']` / `['RS256']` | Accepted algorithms (`['HS256']` with `secret`, `['RS256']` with `publicKey`/`jwks`). The `'none'` algorithm is always blocked; HS* cannot be allowlisted alongside `publicKey`/`jwks`.            |
+| `getToken`       | `(req) => string \| null`         | `Authorization: Bearer`   | Custom token extractor.                                                                                                                                                                            |
+| `issuer`         | `string`                          | —                         | Validates the `iss` claim.                                                                                                                                                                         |
+| `audience`       | `string \| string[]`              | —                         | Validates the `aud` claim.                                                                                                                                                                         |
+| `clockTolerance` | `number`                          | `0`                       | Seconds of leeway for `exp`/`nbf` comparisons.                                                                                                                                                     |
+| `store`          | `TokenStore`                      | —                         | When set, checks `store.exists(jti)` on every request.                                                                                                                                             |
 
 ## `createRefreshHandler` options
 
@@ -175,7 +175,12 @@ no new dependencies. ES* signatures use the JOSE raw `r||s` encoding
 (`dsaEncoding: 'ieee-p1363'`), never ASN.1/DER.
 
 ```typescript
-import { createAuthPlugin, signJwt, verifyJwt, JwksClient } from '@axiomify/auth';
+import {
+  createAuthPlugin,
+  signJwt,
+  verifyJwt,
+  JwksClient,
+} from '@axiomify/auth';
 
 // Local public key (PEM string or KeyObject)
 const requireAuth = createAuthPlugin({
@@ -214,13 +219,13 @@ const claims = await verifyJwt(token, {
 
 ### `JwksClient` options
 
-| Option             | Type     | Default   | Description                                                                        |
-| ------------------ | -------- | --------- | ---------------------------------------------------------------------------------- |
-| `url`              | `string` | required  | JWKS document URL.                                                                 |
-| `cacheTtlMs`       | `number` | `600000`  | Key-set cache lifetime (10 min).                                                   |
-| `cooldownMs`       | `number` | `30000`   | Minimum interval between unknown-`kid` refetches. **Hard floor: 30 s** (DoS guard). |
-| `maxKeys`          | `number` | `32`      | Maximum keys retained from the document (memory bound).                            |
-| `requestTimeoutMs` | `number` | `10000`   | Fetch timeout.                                                                     |
+| Option             | Type     | Default  | Description                                                                         |
+| ------------------ | -------- | -------- | ----------------------------------------------------------------------------------- |
+| `url`              | `string` | required | JWKS document URL.                                                                  |
+| `cacheTtlMs`       | `number` | `600000` | Key-set cache lifetime (10 min).                                                    |
+| `cooldownMs`       | `number` | `30000`  | Minimum interval between unknown-`kid` refetches. **Hard floor: 30 s** (DoS guard). |
+| `maxKeys`          | `number` | `32`     | Maximum keys retained from the document (memory bound).                             |
+| `requestTimeoutMs` | `number` | `10000`  | Fetch timeout.                                                                      |
 
 ### Security model
 
@@ -229,7 +234,7 @@ const claims = await verifyJwt(token, {
 - **Algorithm-confusion defence, both directions:** a public key or JWKS can never
   verify an HS* token (the classic public-PEM-as-HMAC-secret attack), and a
   symmetric secret can never verify an RS*/ES* token. Enforced at the allowlist
-  level *and* at the key-material level.
+  level _and_ at the key-material level.
 - Symmetric (`oct`) JWKs in a JWKS document are discarded; only RSA/EC `sig` keys
   with a `kid` are retained. A token without `kid` resolves only when exactly one
   compatible key exists.
@@ -243,14 +248,21 @@ fixed-length digests). Unknown ids run a dummy compare so key discovery
 cannot be timed.
 
 ```typescript
-import { createApiKeyPlugin, generateApiKey, hashApiKeySecret, getApiKey } from '@axiomify/auth';
+import {
+  createApiKeyPlugin,
+  generateApiKey,
+  hashApiKeySecret,
+  getApiKey,
+} from '@axiomify/auth';
 
 // Provisioning: give `apiKey` to the caller ONCE, persist { id, hashedKey }
 const { apiKey, id, hashedKey } = generateApiKey();
 
 const apiKeys = createApiKeyPlugin({
   // Static map (dev/small deployments)…
-  keys: { [id]: { hashedKey, scopes: ['read', 'write'], meta: { plan: 'pro' } } },
+  keys: {
+    [id]: { hashedKey, scopes: ['read', 'write'], meta: { plan: 'pro' } },
+  },
   // …OR a dynamic lookup — lookup errors → 503, never 401
   // lookup: async (id) => db.apiKeys.findById(id), // { hashedKey, scopes?, meta? } | null
 });
@@ -266,12 +278,12 @@ app.route({
 });
 ```
 
-| Option   | Type                                  | Default     | Description                                                                                    |
-| -------- | ------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------- |
+| Option   | Type                                   | Default     | Description                                                                                      |
+| -------- | -------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------ |
 | `keys`   | `Record<string, ApiKeyRecord\|string>` | one-of      | Static id → `{ hashedKey, scopes?, meta? }` map. Plaintext strings are hashed but log a warning. |
-| `lookup` | `(id) => Promise<ApiKeyRecord\|null>`  | one-of      | Dynamic resolver (database). Thrown errors surface as **503**.                                  |
-| `header` | `string`                              | `x-api-key` | Request header carrying the key.                                                                |
-| `scopes` | `string[]`                            | `[]`        | Default scopes required by `requireApiKey()` without arguments.                                 |
+| `lookup` | `(id) => Promise<ApiKeyRecord\|null>`  | one-of      | Dynamic resolver (database). Thrown errors surface as **503**.                                   |
+| `header` | `string`                               | `x-api-key` | Request header carrying the key.                                                                 |
+| `scopes` | `string[]`                             | `[]`        | Default scopes required by `requireApiKey()` without arguments.                                  |
 
 ## OAuth 2.0 / OIDC — Authorization Code + PKCE
 
@@ -286,7 +298,11 @@ const google = createOAuthPlugin({
   cookieSecret: process.env.COOKIE_SECRET!, // ≥ 32 bytes
 });
 
-app.route({ method: 'GET', path: '/auth/google', handler: google.authorizeHandler });
+app.route({
+  method: 'GET',
+  path: '/auth/google',
+  handler: google.authorizeHandler,
+});
 app.route({
   method: 'GET',
   path: '/auth/google/callback',
@@ -304,19 +320,19 @@ app.route({
 });
 ```
 
-| Option            | Type                          | Default            | Description                                                                                     |
-| ----------------- | ----------------------------- | ------------------ | ------------------------------------------------------------------------------------------------ |
-| `provider`        | `'google'\|'github'\|'auth0'\|'oidc'` | required   | `google`/`github` ship endpoint presets; `auth0`/`oidc` use OIDC discovery.                     |
-| `issuer`          | `string`                      | —                  | Required for `auth0`/`oidc` (unless full `endpoints` are given). Discovery document is cached 1 h. |
-| `endpoints`       | `Partial<OAuthEndpoints>`     | —                  | Manual overrides (`authorizationEndpoint`, `tokenEndpoint`, `userinfoEndpoint`, `jwksUri`, `issuer`). Win over presets/discovery. |
-| `clientId`        | `string`                      | required           | OAuth client id.                                                                                 |
-| `clientSecret`    | `string`                      | —                  | Optional for public PKCE-only clients.                                                           |
-| `redirectUri`     | `string`                      | required           | Absolute callback URL registered with the provider.                                             |
-| `scopes`          | `string[]`                    | provider default   | `openid profile email` (OIDC) / `read:user` (GitHub).                                           |
-| `cookieSecret`    | `string`                      | required           | ≥ 32 bytes; HMAC-signs the state cookie.                                                        |
-| `cookieName`      | `string`                      | `axiomify_oauth`   | State cookie name.                                                                              |
-| `stateTtlSeconds` | `number`                      | `600`              | Lifetime of a login attempt.                                                                    |
-| `verifyIdToken`   | `boolean`                     | `true`             | Verify ID tokens via JWKS. Disable only for providers without a published JWKS.                 |
+| Option            | Type                                  | Default          | Description                                                                                                                       |
+| ----------------- | ------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `provider`        | `'google'\|'github'\|'auth0'\|'oidc'` | required         | `google`/`github` ship endpoint presets; `auth0`/`oidc` use OIDC discovery.                                                       |
+| `issuer`          | `string`                              | —                | Required for `auth0`/`oidc` (unless full `endpoints` are given). Discovery document is cached 1 h.                                |
+| `endpoints`       | `Partial<OAuthEndpoints>`             | —                | Manual overrides (`authorizationEndpoint`, `tokenEndpoint`, `userinfoEndpoint`, `jwksUri`, `issuer`). Win over presets/discovery. |
+| `clientId`        | `string`                              | required         | OAuth client id.                                                                                                                  |
+| `clientSecret`    | `string`                              | —                | Optional for public PKCE-only clients.                                                                                            |
+| `redirectUri`     | `string`                              | required         | Absolute callback URL registered with the provider.                                                                               |
+| `scopes`          | `string[]`                            | provider default | `openid profile email` (OIDC) / `read:user` (GitHub).                                                                             |
+| `cookieSecret`    | `string`                              | required         | ≥ 32 bytes; HMAC-signs the state cookie.                                                                                          |
+| `cookieName`      | `string`                              | `axiomify_oauth` | State cookie name.                                                                                                                |
+| `stateTtlSeconds` | `number`                              | `600`            | Lifetime of a login attempt.                                                                                                      |
+| `verifyIdToken`   | `boolean`                             | `true`           | Verify ID tokens via JWKS. Disable only for providers without a published JWKS.                                                   |
 
 ### Flow security
 

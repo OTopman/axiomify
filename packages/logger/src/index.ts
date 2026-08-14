@@ -51,7 +51,10 @@ const SECRET_MASK = '••••••••';
  * Recursively masks values whose string form matches an obvious secret shape.
  * Best-effort only: complements, and does not replace, key-name masking.
  */
-function maskSecretShapes(value: unknown, seen = new WeakSet<object>()): unknown {
+function maskSecretShapes(
+  value: unknown,
+  seen = new WeakSet<object>(),
+): unknown {
   if (typeof value === 'string') {
     let out = value;
     for (const pattern of SECRET_VALUE_PATTERNS) {

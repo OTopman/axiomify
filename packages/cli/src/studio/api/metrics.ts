@@ -4,7 +4,7 @@
  * Serves live Prometheus metrics collected by @axiomify/metrics.
  * `GET /__studio/api/metrics`
  */
-import type { Axiomify } from '@axiomify/core';
+import { RequestStateImpl, type Axiomify } from '@axiomify/core';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { sendJson } from '../server/http-server';
 import { logCorrelationStorage } from './logs';
@@ -69,7 +69,7 @@ export async function handleGetAppMetrics(
     body: Record<string, never>;
     query: Record<string, never>;
     params: Record<string, never>;
-    state: Record<string, never>;
+    state: RequestStateImpl;
     raw: Record<string, never>;
   }
 
@@ -82,7 +82,9 @@ export async function handleGetAppMetrics(
     body: {},
     query: {},
     params: {},
-    state: {},
+    // Plugins may persist correlation and auth data through req.state.
+    // This fallback has to match a real Axiomify request, not a plain object.
+    state: new RequestStateImpl(),
     raw: {},
   };
 

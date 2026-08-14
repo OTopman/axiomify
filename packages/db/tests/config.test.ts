@@ -46,9 +46,9 @@ describe('defineDbConfig', () => {
   });
 
   it('rejects malformed commands', () => {
-    expect(() =>
-      defineDbConfig({ version: 1, commands: [] } as never),
-    ).toThrow(/"commands" must be an object/);
+    expect(() => defineDbConfig({ version: 1, commands: [] } as never)).toThrow(
+      /"commands" must be an object/,
+    );
     expect(() =>
       defineDbConfig({ version: 1, commands: { deploy: 'x' } } as never),
     ).toThrow(/unknown command "deploy".*migrate, seed, generate/);
@@ -75,7 +75,10 @@ describe('loadDbConfig', () => {
     const dir = await tempProject({
       'axiomify.db.json': JSON.stringify({
         version: 1,
-        commands: { migrate: 'prisma migrate deploy', generate: 'prisma generate' },
+        commands: {
+          migrate: 'prisma migrate deploy',
+          generate: 'prisma generate',
+        },
       }),
     });
     const loaded = await loadDbConfig(dir);
@@ -84,7 +87,10 @@ describe('loadDbConfig', () => {
       path: path.join(dir, 'axiomify.db.json'),
       config: {
         version: 1,
-        commands: { migrate: 'prisma migrate deploy', generate: 'prisma generate' },
+        commands: {
+          migrate: 'prisma migrate deploy',
+          generate: 'prisma generate',
+        },
       },
     });
   });
@@ -131,7 +137,9 @@ describe('loadDbConfig', () => {
 
   it('errors clearly on malformed JSON', async () => {
     const dir = await tempProject({ 'axiomify.db.json': '{ version: 1 ' });
-    await expect(loadDbConfig(dir)).rejects.toThrow(/Failed to parse .*axiomify\.db\.json/);
+    await expect(loadDbConfig(dir)).rejects.toThrow(
+      /Failed to parse .*axiomify\.db\.json/,
+    );
   });
 
   it('errors clearly on schema violations in JSON', async () => {
@@ -169,14 +177,16 @@ describe('loadDbConfig', () => {
 
   it('validates .mjs configs against the schema', async () => {
     const dir = await tempProject({
-      'axiomify.db.mjs': 'export default { version: 1, commands: { nuke: "rm -rf" } };',
+      'axiomify.db.mjs':
+        'export default { version: 1, commands: { nuke: "rm -rf" } };',
     });
     await expect(loadDbConfig(dir)).rejects.toThrow(/unknown command "nuke"/);
   });
 
   it('picks up manifest edits between loads (cache-busted import)', async () => {
     const dir = await tempProject({
-      'axiomify.db.mjs': 'export default { version: 1, commands: { seed: "one" } };',
+      'axiomify.db.mjs':
+        'export default { version: 1, commands: { seed: "one" } };',
     });
     const first = await loadDbConfig(dir);
     expect(first?.config.commands?.seed).toBe('one');

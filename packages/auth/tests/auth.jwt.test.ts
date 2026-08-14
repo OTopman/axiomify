@@ -146,9 +146,9 @@ describe('signJwt / verifyJwt round-trips', () => {
   });
 
   it('rejects HS256 signing with a short secret', () => {
-    expect(() =>
-      signJwt({}, { algorithm: 'HS256', secret: 'short' }),
-    ).toThrow(/at least 32 bytes/);
+    expect(() => signJwt({}, { algorithm: 'HS256', secret: 'short' })).toThrow(
+      /at least 32 bytes/,
+    );
   });
 
   it('rejects ES256 signing with a P-384 key (curve mismatch)', () => {
@@ -236,7 +236,9 @@ describe('verifyJwt — algorithm confusion defences', () => {
     );
     await expect(
       verifyJwt(token, { algorithms: ['HS256', 'RS256'], secret: HS_SECRET }),
-    ).rejects.toThrow(/cannot be allowlisted when.*verifying with a symmetric secret/s);
+    ).rejects.toThrow(
+      /cannot be allowlisted when.*verifying with a symmetric secret/s,
+    );
   });
 
   it('blocks the key-confusion attack: HS256 token "signed" with the public PEM as secret', async () => {
@@ -305,7 +307,11 @@ describe('verifyJwt — algorithm confusion defences', () => {
 
 describe('verifyJwt — exp/nbf/iat/aud/iss matrix', () => {
   const sign = (claims: Record<string, unknown>) =>
-    signJwt(claims, { algorithm: 'ES256', privateKey: p256.privateKey, noTimestamp: true });
+    signJwt(claims, {
+      algorithm: 'ES256',
+      privateKey: p256.privateKey,
+      noTimestamp: true,
+    });
   const verify = (token: string, extra: Record<string, unknown> = {}) =>
     verifyJwt(token, {
       algorithms: ['ES256'],
@@ -345,9 +351,7 @@ describe('verifyJwt — exp/nbf/iat/aud/iss matrix', () => {
     await expect(verify(old, { maxTokenAge: 60 })).rejects.toMatchObject({
       name: 'TokenExpiredError',
     });
-    await expect(
-      verify(old, { maxTokenAge: 7200 }),
-    ).resolves.toBeTruthy();
+    await expect(verify(old, { maxTokenAge: 7200 })).resolves.toBeTruthy();
     await expect(
       verify(sign({ exp: now + 60 }), { maxTokenAge: 60 }),
     ).rejects.toThrow(/missing "iat"/);
@@ -372,7 +376,9 @@ describe('verifyJwt — exp/nbf/iat/aud/iss matrix', () => {
       verify(token, { issuer: 'https://a.example.com' }),
     ).resolves.toBeTruthy();
     await expect(
-      verify(token, { issuer: ['https://b.example.com', 'https://a.example.com'] }),
+      verify(token, {
+        issuer: ['https://b.example.com', 'https://a.example.com'],
+      }),
     ).resolves.toBeTruthy();
     await expect(
       verify(token, { issuer: 'https://evil.example.com' }),
@@ -436,7 +442,10 @@ describe('createAuthPlugin — asymmetric wiring', () => {
         audience: 'api',
       },
     );
-    const req: any = { headers: { authorization: `Bearer ${token}` }, state: {} };
+    const req: any = {
+      headers: { authorization: `Bearer ${token}` },
+      state: {},
+    };
     const res = mockRes();
     await plugin(req, res);
     expect(res.status).not.toHaveBeenCalled();
@@ -455,7 +464,10 @@ describe('createAuthPlugin — asymmetric wiring', () => {
     );
     for (const token of [expired, foreign]) {
       const res = mockRes();
-      await plugin({ headers: { authorization: `Bearer ${token}` }, state: {} } as any, res);
+      await plugin(
+        { headers: { authorization: `Bearer ${token}` }, state: {} } as any,
+        res,
+      );
       expect(res.status).toHaveBeenCalledWith(401);
     }
   });
@@ -499,14 +511,20 @@ describe('createAuthPlugin — asymmetric wiring', () => {
     await store.save('live-jti', 60);
     const okRes = mockRes();
     await plugin(
-      { headers: { authorization: `Bearer ${make('live-jti')}` }, state: {} } as any,
+      {
+        headers: { authorization: `Bearer ${make('live-jti')}` },
+        state: {},
+      } as any,
       okRes,
     );
     expect(okRes.status).not.toHaveBeenCalled();
 
     const revokedRes = mockRes();
     await plugin(
-      { headers: { authorization: `Bearer ${make('dead-jti')}` }, state: {} } as any,
+      {
+        headers: { authorization: `Bearer ${make('dead-jti')}` },
+        state: {},
+      } as any,
       revokedRes,
     );
     expect(revokedRes.status).toHaveBeenCalledWith(401);
@@ -541,7 +559,12 @@ describe('createAuthPlugin — asymmetric wiring', () => {
     });
     const token = signJwt(
       { sub: 'x' },
-      { algorithm: 'RS256', privateKey: rsa.privateKey, expiresIn: 60, jwtid: 'j1' },
+      {
+        algorithm: 'RS256',
+        privateKey: rsa.privateKey,
+        expiresIn: 60,
+        jwtid: 'j1',
+      },
     );
     await expect(
       plugin(

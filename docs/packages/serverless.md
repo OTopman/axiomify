@@ -67,6 +67,23 @@ app.route({
 });
 ```
 
+## Server-Sent Events
+
+SSE is supported through the same `res.sseInit()` / `res.sseSend()` API as the
+native adapter. The returned Fetch response stays open until the client
+disconnects or cancels its stream.
+
+```typescript
+app.route({
+  method: 'GET',
+  path: '/events',
+  handler: (_req, res) => {
+    res.sseInit(15_000); // optional ping interval
+    res.sseSend({ ready: true }, 'status');
+  },
+});
+```
+
 ## Browser Compatibility
 
 This package (and `@axiomify/core`) depends on server-side capabilities (such as `node:async_hooks` for trace telemetry and `stream` for payload buffering). It **cannot** run inside client-side browsers.

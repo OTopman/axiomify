@@ -165,7 +165,8 @@ const DEFAULT_CACHEABLE_STATUSES = [200, 203, 301, 404];
 export type XCacheValue = 'HIT' | 'STALE' | 'MISS' | 'EXPIRED';
 
 function normalizePrefix(prefix: string): string {
-  const p = prefix.endsWith('/') && prefix !== '/' ? prefix.slice(0, -1) : prefix;
+  const p =
+    prefix.endsWith('/') && prefix !== '/' ? prefix.slice(0, -1) : prefix;
   return p === '' ? '/' : p;
 }
 
@@ -354,7 +355,9 @@ export function useCache(app: Axiomify, options: CacheOptions = {}): CacheApi {
 
     let finished = false;
 
-    const shouldStore = (status: number): { ttl: number; swr: number } | null => {
+    const shouldStore = (
+      status: number,
+    ): { ttl: number; swr: number } | null => {
       if (!reqEligible) return null;
       if (!cacheableStatuses.has(status)) return null;
       if (sawSetCookie || getHeaderCaseInsensitive('set-cookie') !== undefined)
@@ -502,10 +505,7 @@ export function useCache(app: Axiomify, options: CacheOptions = {}): CacheApi {
           ? payload
           : String(payload);
       finish(body, contentType ?? 'text/plain', () =>
-        originalSendRaw(
-          req.method === 'HEAD' ? '' : payload,
-          contentType,
-        ),
+        originalSendRaw(req.method === 'HEAD' ? '' : payload, contentType),
       );
     };
   };

@@ -20,14 +20,24 @@ type AjvClass = {
 };
 
 let Ajv2020: AjvClass | null = null;
+let addAjvFormats: ((ajv: unknown) => void) | null = null;
 try {
-  // ajv is a direct dependency of many Node.js projects; it ships 2020-12 in
-  // its dist directory since v8.6.0.
+  // AJV ships the 2020-12 dialect in its dist directory since v8.6.0.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const mod = require('ajv/dist/2020');
   Ajv2020 = mod.default ?? mod;
 } catch {
   /* fall back to Zod only */
+}
+try {
+  // JSON Schema formats are deliberately a separate AJV package. Registering
+  // them makes OpenAPI's standard `format: email`, `uuid`, `date-time`, etc.
+  // both validate correctly and compile without noisy unknown-format warnings.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const mod = require('ajv-formats');
+  addAjvFormats = mod.default ?? mod;
+} catch {
+  /* formats are optional only for the Zod-only fallback */
 }
 
 // Lazily constructed — one instance per process, shared across all routes.
@@ -42,6 +52,13 @@ function getAjv() {
       allErrors: true, // collect all field errors in a single pass
       coerceTypes: false, // never coerce — Zod handles type coercion in transforms
     });
+    // Keep validation functional if a consumer has an incompatible custom AJV
+    // implementation; production installs declare ajv-formats directly.
+    try {
+      addAjvFormats?.(_ajv);
+    } catch {
+      /* validation falls back to AJV's configured behaviour */
+    }
   }
   return _ajv;
 }
@@ -148,8 +165,7 @@ function preCoerce(
   // ── Object coercion (recurse into properties) ────────────────────────────
   if (typeof data === 'object') {
     const properties = jsonSchema.properties as
-      | Record<string, Record<string, unknown>>
-      | undefined;
+      Record<string, Record<string, unknown>> | undefined;
     if (properties) {
       const obj = data as Record<string, unknown>;
       for (const key of Object.keys(obj)) {

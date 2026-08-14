@@ -9,7 +9,9 @@
     "pids",
     "REUSEPORT",
     "simdjson",
-    "taskset"
+    "taskset",
+    "traceparent",
+    "tracestate"
   ],
   "typescript.tsdk": "node_modules/typescript/lib"
 }

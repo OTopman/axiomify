@@ -64,10 +64,12 @@ function makeRes(overrides: Record<string, unknown> = {}): MockRes {
     }),
     sendRaw: vi.fn(),
     stream: vi.fn(),
-    cookie: vi.fn((name: string, value: string, options?: Record<string, unknown>) => {
-      cookies.push({ name, value, options });
-      return res;
-    }),
+    cookie: vi.fn(
+      (name: string, value: string, options?: Record<string, unknown>) => {
+        cookies.push({ name, value, options });
+        return res;
+      },
+    ),
     clearCookie: vi.fn((name: string, options?: unknown) => {
       cleared.push({ name, options });
       return res;
@@ -85,7 +87,10 @@ function makeRes(overrides: Record<string, unknown> = {}): MockRes {
   return res as unknown as MockRes;
 }
 
-type Handler = (req: AxiomifyRequest, res: AxiomifyResponse) => void | Promise<void>;
+type Handler = (
+  req: AxiomifyRequest,
+  res: AxiomifyResponse,
+) => void | Promise<void>;
 
 function buildApp(
   opts: Partial<SessionOptions> = {},
@@ -135,7 +140,9 @@ describe('useSession — registration', () => {
   });
 
   it('throws when any rotation entry is shorter than 32 bytes', () => {
-    expect(() => buildApp({ secret: [SECRET, 'short'] })).toThrow(/at least 32 bytes/);
+    expect(() => buildApp({ secret: [SECRET, 'short'] })).toThrow(
+      /at least 32 bytes/,
+    );
   });
 
   it('counts secret length in UTF-8 bytes, not characters', () => {
@@ -167,7 +174,9 @@ describe('useSession — registration', () => {
     try {
       const mod = createSessionModule({ secret: SECRET });
       expect(mod.name).toBe('@axiomify/session');
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('MemorySessionStore'));
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('MemorySessionStore'),
+      );
     } finally {
       process.env.NODE_ENV = prev;
     }
@@ -198,7 +207,10 @@ describe('useSession — lifecycle', () => {
     expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
 
     const res2 = makeRes();
-    await app.handle(makeReq({ headers: { cookie: cookieHeaderFor(res1) } }), res2);
+    await app.handle(
+      makeReq({ headers: { cookie: cookieHeaderFor(res1) } }),
+      res2,
+    );
     expect(seen[1]).toEqual({ id, isNew: false, userId: 42 });
     // Read-only second request (no rolling): no new cookie.
     expect(res2.cookies).toHaveLength(0);
@@ -222,7 +234,9 @@ describe('useSession — lifecycle', () => {
 
     const res1 = makeRes();
     await app.handle(makeReq(), res1);
-    const signedCookie = res1.cookies.find((c) => c.name === COOKIE_NAME)!.value;
+    const signedCookie = res1.cookies.find(
+      (c) => c.name === COOKIE_NAME,
+    )!.value;
 
     const res2 = makeRes();
     await app.handle(
@@ -248,10 +262,13 @@ describe('useSession — lifecycle', () => {
   it('saveUninitialized=true: cookie is set eagerly in onRequest and the store is written', async () => {
     const store = new MemorySessionStore();
     let cookiesAtHandlerTime = -1;
-    const { app } = buildApp({ store, saveUninitialized: true }, async (req, res) => {
-      cookiesAtHandlerTime = (res as MockRes).cookies.length;
-      res.send({ ok: true });
-    });
+    const { app } = buildApp(
+      { store, saveUninitialized: true },
+      async (req, res) => {
+        cookiesAtHandlerTime = (res as MockRes).cookies.length;
+        res.send({ ok: true });
+      },
+    );
     const res = makeRes();
     await app.handle(makeReq(), res);
     expect(cookiesAtHandlerTime).toBe(1); // eager — before the handler ran
@@ -317,16 +334,23 @@ describe('useSession — lifecycle', () => {
 
   it('secret rotation: cookie signed with an old secret is accepted and re-signed with the primary', async () => {
     const store = new MemorySessionStore();
-    await store.set('rotated-id', { data: { userId: 9 }, createdAt: Date.now() }, 3600);
+    await store.set(
+      'rotated-id',
+      { data: { userId: 9 }, createdAt: Date.now() },
+      3600,
+    );
     const oldCookie = `${COOKIE_NAME}=${signCookieValue('rotated-id', OLD_SECRET)}`;
 
-    const { app } = buildApp({ store, secret: [SECRET, OLD_SECRET] }, async (req, res) => {
-      const s = getSession(req);
-      expect(s.isNew).toBe(false);
-      expect(s.userId).toBe(9);
-      s.lastSeen = 'now'; // dirty → cookie re-issued
-      res.send({});
-    });
+    const { app } = buildApp(
+      { store, secret: [SECRET, OLD_SECRET] },
+      async (req, res) => {
+        const s = getSession(req);
+        expect(s.isNew).toBe(false);
+        expect(s.userId).toBe(9);
+        s.lastSeen = 'now'; // dirty → cookie re-issued
+        res.send({});
+      },
+    );
     const res = makeRes();
     await app.handle(makeReq({ headers: { cookie: oldCookie } }), res);
     const reSigned = res.cookies.find((c) => c.name === COOKIE_NAME)!;
@@ -338,23 +362,34 @@ describe('useSession — lifecycle', () => {
   it('rolling=true: read-only request re-issues the cookie and slides the store TTL', async () => {
     const store = new MemorySessionStore();
     const touchSpy = vi.spyOn(store, 'touch');
-    const { app } = buildApp({ store, rolling: true, idleTimeout: 300 }, async (req, res) => {
-      getSession(req).userId = 1;
-      res.send({});
-    });
+    const { app } = buildApp(
+      { store, rolling: true, idleTimeout: 300 },
+      async (req, res) => {
+        getSession(req).userId = 1;
+        res.send({});
+      },
+    );
     const res1 = makeRes();
     await app.handle(makeReq(), res1);
 
     // Second request: reads only.
     const app2 = new Axiomify();
-    useSession(app2, { secret: SECRET, store, rolling: true, idleTimeout: 300 });
+    useSession(app2, {
+      secret: SECRET,
+      store,
+      rolling: true,
+      idleTimeout: 300,
+    });
     app2.route({
       method: 'GET',
       path: '/t',
       handler: async (_req, res) => res.send({}),
     });
     const res2 = makeRes();
-    await app2.handle(makeReq({ headers: { cookie: cookieHeaderFor(res1) } }), res2);
+    await app2.handle(
+      makeReq({ headers: { cookie: cookieHeaderFor(res1) } }),
+      res2,
+    );
     expect(res2.cookies.filter((c) => c.name === COOKIE_NAME)).toHaveLength(1);
     expect(touchSpy).toHaveBeenCalledWith(lastSessionId(res1), 300);
   });
@@ -372,9 +407,16 @@ describe('useSession — lifecycle', () => {
 
     const app2 = new Axiomify();
     useSession(app2, { secret: SECRET, store });
-    app2.route({ method: 'GET', path: '/t', handler: async (_r, res) => res.send({}) });
+    app2.route({
+      method: 'GET',
+      path: '/t',
+      handler: async (_r, res) => res.send({}),
+    });
     const res2 = makeRes();
-    await app2.handle(makeReq({ headers: { cookie: cookieHeaderFor(res1) } }), res2);
+    await app2.handle(
+      makeReq({ headers: { cookie: cookieHeaderFor(res1) } }),
+      res2,
+    );
     expect(res2.cookies).toHaveLength(0);
     expect(touchSpy).not.toHaveBeenCalled();
   });
@@ -402,7 +444,10 @@ describe('useSession — lifecycle', () => {
         res.send({});
       },
     });
-    await app2.handle(makeReq({ headers: { cookie: cookieHeaderFor(res1) } }), makeRes());
+    await app2.handle(
+      makeReq({ headers: { cookie: cookieHeaderFor(res1) } }),
+      makeRes(),
+    );
     expect(seen[0].isNew).toBe(true);
     expect(seen[0].userId).toBeUndefined();
   });
@@ -411,13 +456,20 @@ describe('useSession — lifecycle', () => {
     const store = new MemorySessionStore();
     const destroySpy = vi.spyOn(store, 'destroy');
     const twoHoursAgo = Date.now() - 2 * 3600 * 1000;
-    await store.set('old-one', { data: { userId: 3 }, createdAt: twoHoursAgo }, 86_400);
+    await store.set(
+      'old-one',
+      { data: { userId: 3 }, createdAt: twoHoursAgo },
+      86_400,
+    );
 
     const seen: Session[] = [];
-    const { app } = buildApp({ store, absoluteTimeout: 3600 }, async (req, res) => {
-      seen.push(getSession(req));
-      res.send({});
-    });
+    const { app } = buildApp(
+      { store, absoluteTimeout: 3600 },
+      async (req, res) => {
+        seen.push(getSession(req));
+        res.send({});
+      },
+    );
     const cookie = `${COOKIE_NAME}=${signCookieValue('old-one', SECRET)}`;
     await app.handle(makeReq({ headers: { cookie } }), makeRes());
     expect(seen[0].isNew).toBe(true);
@@ -454,7 +506,10 @@ describe('session object API', () => {
       },
     });
     const res2 = makeRes();
-    await app2.handle(makeReq({ headers: { cookie: cookieHeaderFor(res1) } }), res2);
+    await app2.handle(
+      makeReq({ headers: { cookie: cookieHeaderFor(res1) } }),
+      res2,
+    );
     expect(await store.get(id)).toBeNull();
     expect(res2.cleared).toContainEqual({
       name: COOKIE_NAME,
@@ -503,7 +558,10 @@ describe('session object API', () => {
       },
     });
     const res2 = makeRes();
-    await app2.handle(makeReq({ headers: { cookie: cookieHeaderFor(res1) } }), res2);
+    await app2.handle(
+      makeReq({ headers: { cookie: cookieHeaderFor(res1) } }),
+      res2,
+    );
 
     expect(newId).not.toBe(oldId);
     expect(lastSessionId(res2)).toBe(newId); // cookie updated before send
@@ -543,7 +601,10 @@ describe('session object API', () => {
         res.send({});
       },
     });
-    await app2.handle(makeReq({ headers: { cookie: cookieHeaderFor(res1) } }), makeRes());
+    await app2.handle(
+      makeReq({ headers: { cookie: cookieHeaderFor(res1) } }),
+      makeRes(),
+    );
     expect(touchSpy).toHaveBeenCalledWith(lastSessionId(res1), 120);
     expect(setSpy).not.toHaveBeenCalled();
   });
@@ -577,7 +638,14 @@ describe('session object API', () => {
   it('reserved keys cannot be assigned', async () => {
     const { app } = buildApp({}, async (req, res) => {
       const s = getSession(req);
-      for (const key of ['id', 'isNew', 'destroy', 'regenerate', 'touch', 'save']) {
+      for (const key of [
+        'id',
+        'isNew',
+        'destroy',
+        'regenerate',
+        'touch',
+        'save',
+      ]) {
         expect(() => {
           (s as Record<string, unknown>)[key] = 'x';
         }).toThrow(/reserved/);
@@ -630,7 +698,9 @@ describe('session object API', () => {
     const { app } = buildApp({}, async (req, res) => {
       const s = getSession(req);
       s.userId = 1; // property mutation on the stored object still works
-      expect(() => (req.state as RequestStateImpl).set('session', {})).toThrow(/immutable/);
+      expect(() => (req.state as RequestStateImpl).set('session', {})).toThrow(
+        /immutable/,
+      );
       res.send({});
     });
     await app.handle(makeReq({ state: new RequestStateImpl() }), makeRes());
@@ -643,7 +713,11 @@ describe('dirty tracking', () => {
 
   it('does not write the store when the session is only read', async () => {
     const store = new MemorySessionStore();
-    await store.set('sid-read', { data: { userId: 1 }, createdAt: Date.now() }, 3600);
+    await store.set(
+      'sid-read',
+      { data: { userId: 1 }, createdAt: Date.now() },
+      3600,
+    );
     const setSpy = vi.spyOn(store, 'set');
     const { app } = buildApp({ store }, async (req, res) => {
       const s = getSession(req);
@@ -676,7 +750,11 @@ describe('dirty tracking', () => {
 
   it('tracks nested array mutation (push)', async () => {
     const store = new MemorySessionStore();
-    await store.set('sid-arr', { data: { cart: ['a'] }, createdAt: Date.now() }, 3600);
+    await store.set(
+      'sid-arr',
+      { data: { cart: ['a'] }, createdAt: Date.now() },
+      3600,
+    );
     const { app } = buildApp({ store }, async (req, res) => {
       const s = getSession(req);
       (s.cart as string[]).push('b');
@@ -789,21 +867,30 @@ describe('secure: "auto"', () => {
   it('sets Secure when x-forwarded-proto is https', async () => {
     const { app } = secureApp();
     const res = makeRes();
-    await app.handle(makeReq({ headers: { 'x-forwarded-proto': 'https' } }), res);
+    await app.handle(
+      makeReq({ headers: { 'x-forwarded-proto': 'https' } }),
+      res,
+    );
     expect(res.cookies[0].options).toMatchObject({ secure: true });
   });
 
   it('uses the first hop of a comma-separated x-forwarded-proto', async () => {
     const { app } = secureApp();
     const res = makeRes();
-    await app.handle(makeReq({ headers: { 'x-forwarded-proto': 'https, http' } }), res);
+    await app.handle(
+      makeReq({ headers: { 'x-forwarded-proto': 'https, http' } }),
+      res,
+    );
     expect(res.cookies[0].options).toMatchObject({ secure: true });
   });
 
   it('handles array-valued x-forwarded-proto headers', async () => {
     const { app } = secureApp();
     const res = makeRes();
-    await app.handle(makeReq({ headers: { 'x-forwarded-proto': ['https'] } }), res);
+    await app.handle(
+      makeReq({ headers: { 'x-forwarded-proto': ['https'] } }),
+      res,
+    );
     expect(res.cookies[0].options).toMatchObject({ secure: true });
   });
 
@@ -863,8 +950,8 @@ describe('error-path persistence', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const store = new MemorySessionStore();
     vi.spyOn(store, 'get').mockRejectedValue(new Error('redis down'));
-    const handler = vi.fn(async (_req: AxiomifyRequest, res: AxiomifyResponse) =>
-      res.send({}),
+    const handler = vi.fn(
+      async (_req: AxiomifyRequest, res: AxiomifyResponse) => res.send({}),
     );
     const { app } = buildApp({ store }, handler);
     const cookie = `${COOKIE_NAME}=${signCookieValue('any-id', SECRET)}`;
@@ -881,7 +968,9 @@ describe('error-path persistence', () => {
       const user = s.user as Record<string, unknown>;
       delete user.age;
       expect(user.age).toBeUndefined();
-      expect(Object.getOwnPropertyDescriptor(s, 'nonExistentKey')).toBeUndefined();
+      expect(
+        Object.getOwnPropertyDescriptor(s, 'nonExistentKey'),
+      ).toBeUndefined();
       res.send({});
     });
     await app.handle(makeReq(), makeRes());

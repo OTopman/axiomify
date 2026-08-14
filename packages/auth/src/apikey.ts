@@ -69,10 +69,14 @@ const PBKDF2_KEYLEN = 32;
 const PBKDF2_DIGEST = 'sha256';
 
 const PBKDF2_FORMAT_DOLLAR = /^pbkdf2\$(\d+)\$([0-9a-f]+)\$([0-9a-f]+)$/i;
-const PBKDF2_FORMAT_COLON = /^pbkdf2:sha256:(\d+):([0-9a-f]{32}):([0-9a-f]{64})$/i;
+const PBKDF2_FORMAT_COLON =
+  /^pbkdf2:sha256:(\d+):([0-9a-f]{32}):([0-9a-f]{64})$/i;
 
 /** Hash an API-key secret with PBKDF2-HMAC-SHA256 (encoded as `pbkdf2$iter$saltHex$hashHex`). */
-export function hashApiKeySecret(secret: string, salt?: Buffer | string): string {
+export function hashApiKeySecret(
+  secret: string,
+  salt?: Buffer | string,
+): string {
   const saltBuf =
     salt === undefined
       ? randomBytes(PBKDF2_SALT_BYTES)
@@ -95,9 +99,16 @@ export function hashApiKeySecretPbkdf2(
   options?: { iterations?: number; salt?: string },
 ): string {
   const iterations = options?.iterations ?? PBKDF2_ITERATIONS;
-  const saltHex = options?.salt ?? randomBytes(PBKDF2_SALT_BYTES).toString('hex');
+  const saltHex =
+    options?.salt ?? randomBytes(PBKDF2_SALT_BYTES).toString('hex');
   const salt = Buffer.from(saltHex, 'hex');
-  const derived = pbkdf2Sync(secret, salt, iterations, PBKDF2_KEYLEN, PBKDF2_DIGEST).toString('hex');
+  const derived = pbkdf2Sync(
+    secret,
+    salt,
+    iterations,
+    PBKDF2_KEYLEN,
+    PBKDF2_DIGEST,
+  ).toString('hex');
   return `pbkdf2:sha256:${iterations}:${saltHex}:${derived}`;
 }
 
@@ -162,7 +173,13 @@ function secretMatches(secret: string, hashedKey: string): boolean {
   }
 
   // Dummy PBKDF2 pass for unknown or unsupported hash formats so lookups take constant time
-  pbkdf2Sync('axiomify-dummy', DUMMY_PBKDF2_SALT, 1, PBKDF2_KEYLEN, PBKDF2_DIGEST);
+  pbkdf2Sync(
+    'axiomify-dummy',
+    DUMMY_PBKDF2_SALT,
+    1,
+    PBKDF2_KEYLEN,
+    PBKDF2_DIGEST,
+  );
   return false;
 }
 

@@ -13,6 +13,7 @@ import { recordLatency, recordServiceLatency } from './perf';
 import { logCorrelationStorage } from './logs';
 import { recordRequest, recordResponse, recordQuery } from './recorder';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { PassThrough } from 'node:stream';
 
 export const requestContextStorage = new AsyncLocalStorage<any>();
 
@@ -104,6 +105,9 @@ export function instrumentTrafficProfiling(app: any): void {
         let responseStatus = 200;
         const responseHeaders: Record<string, string> = {};
         let responseBody: any = null;
+        const sseEvents: Array<{ data: unknown; event?: string }> = [];
+        let sseText = '';
+        let streamCompletion: Promise<void> | null = null;
 
         const originalStatus = res.status;
         res.status = function (...args: any[]) {
@@ -135,9 +139,59 @@ export function instrumentTrafficProfiling(app: any): void {
         const originalStream = res.stream;
         if (originalStream) {
           res.stream = function (...args: any[]) {
-            responseBody = '[Streamed Content]';
+            const source = args[0];
             if (args[1]) responseHeaders['content-type'] = args[1];
-            return originalStream.apply(this, args);
+            responseHeaders['transfer-encoding'] = 'chunked';
+            if (!source || typeof source.pipe !== 'function') {
+              responseBody = '[Unsupported streamed response]';
+              return originalStream.apply(this, args);
+            }
+
+            const tap = new PassThrough();
+            const chunks: Buffer[] = [];
+            streamCompletion = new Promise((resolve) => {
+              tap.on('data', (chunk: Buffer | string) => {
+                chunks.push(
+                  Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
+                );
+              });
+              const finish = () => {
+                responseBody = Buffer.concat(chunks).toString('utf8');
+                resolve();
+              };
+              tap.once('end', finish);
+              tap.once('error', (error: Error) => {
+                responseHeaders['x-studio-stream-error'] = error.message;
+                finish();
+              });
+            });
+            source.once?.('error', (error: Error) => tap.destroy(error));
+            source.pipe(tap);
+            return originalStream.apply(this, [tap, ...args.slice(1)]);
+          };
+        }
+
+        const originalSseInit = res.sseInit;
+        if (originalSseInit) {
+          res.sseInit = function (...args: any[]) {
+            responseHeaders['content-type'] = 'text/event-stream';
+            responseHeaders['cache-control'] = 'no-cache';
+            responseHeaders.connection = 'keep-alive';
+            return originalSseInit.apply(this, args);
+          };
+        }
+
+        const originalSseSend = res.sseSend;
+        if (originalSseSend) {
+          res.sseSend = function (data: unknown, event?: string) {
+            sseEvents.push(event === undefined ? { data } : { data, event });
+            if (event) sseText += `event: ${event}\n`;
+            const value =
+              typeof data === 'string' ? data : JSON.stringify(data);
+            for (const line of value.split('\n')) sseText += `data: ${line}\n`;
+            sseText += '\n';
+            responseBody = sseText;
+            return originalSseSend.apply(this, [data, event]);
           };
         }
 
@@ -145,6 +199,8 @@ export function instrumentTrafficProfiling(app: any): void {
           getStatus: () => responseStatus,
           getHeaders: () => responseHeaders,
           getBody: () => responseBody,
+          getSseEvents: () => sseEvents,
+          getStreamCompletion: () => streamCompletion,
         };
       }
     });
@@ -173,14 +229,26 @@ export function instrumentTrafficProfiling(app: any): void {
 
       // Record to session recorder
       if (req._capturedResponse) {
-        recordResponse({
-          requestId: req.id,
-          status: req._capturedResponse.getStatus(),
-          headers: req._capturedResponse.getHeaders(),
-          body: safeClone(req._capturedResponse.getBody()),
-          durationMs: Math.round(totalDuration * 100) / 100,
-          timestamp: new Date().toISOString(),
-        });
+        const recordCapturedResponse = () => {
+          recordResponse({
+            requestId: req.id,
+            status: req._capturedResponse.getStatus(),
+            headers: req._capturedResponse.getHeaders(),
+            body: safeClone(req._capturedResponse.getBody()),
+            sseEvents:
+              req._capturedResponse.getSseEvents().length > 0
+                ? req._capturedResponse.getSseEvents()
+                : undefined,
+            durationMs: Math.round(totalDuration * 100) / 100,
+            timestamp: new Date().toISOString(),
+          });
+        };
+        const completion = req._capturedResponse.getStreamCompletion();
+        if (completion) {
+          void completion.finally(recordCapturedResponse);
+        } else {
+          recordCapturedResponse();
+        }
       }
     });
 

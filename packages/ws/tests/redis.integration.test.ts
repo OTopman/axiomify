@@ -10,11 +10,7 @@
  * same-process EventEmitter.
  */
 import { afterAll, describe, expect, it, vi } from 'vitest';
-import {
-  RedisWsBroker,
-  RoomManager,
-  type WsBroker,
-} from '../src/index';
+import { RedisWsBroker, RoomManager, type WsBroker } from '../src/index';
 import { MiniRedis } from '../../../test-helpers/mini-redis';
 
 const RUN = !!process.env.REDIS_URL;
@@ -28,7 +24,11 @@ interface FakeWsClient {
   close: ReturnType<typeof vi.fn>;
   subscribe: ReturnType<typeof vi.fn>;
   unsubscribe: ReturnType<typeof vi.fn>;
-  publish: (topic: string, payload: string | Buffer, isBinary?: boolean) => void;
+  publish: (
+    topic: string,
+    payload: string | Buffer,
+    isBinary?: boolean,
+  ) => void;
   getBufferedAmount: () => number;
 }
 

@@ -38,17 +38,17 @@ Cache hits are served during `onRequest`, **before routing — the handler never
 
 ## Options
 
-| Option                 | Type                         | Default               | Description                                                                                                      |
-| ---------------------- | ---------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `store`                | `CacheStore`                 | `new MemoryCacheStore()` | Cache backend.                                                                                                  |
-| `defaultTtl`           | `number` (s)                 | `30`                  | Freshness lifetime for cached responses without their own `cached({ ttl })`.                                       |
-| `staleWhileRevalidate` | `number` (s)                 | `0`                   | Global SWR grace (see below). `0` = stale entries are plain misses.                                                |
-| `etag`                 | `'weak' \| 'strong' \| false`| `'weak'`              | ETag emission + conditional-GET handling. `'weak'` is safe with serializers that embed request-derived fields.     |
-| `routes`               | `string[]`                   | `[]`                  | Path prefixes opted into the shared cache globally (`'/'` = every route). Prefixes match on segment boundaries.    |
-| `varyHeaders`          | `string[]`                   | `[]`                  | Request headers folded into the primary cache key — each value combination is its own entry (multi-variant).       |
-| `cachePrivate`         | `boolean`                    | `false`               | Allow caching requests with `Authorization`/`Cookie` and `Cache-Control: private` responses. Only with a key that captures the per-user variance. |
-| `cacheableStatuses`    | `number[]`                   | `[200, 203, 301, 404]`| Statuses eligible for the shared cache.                                                                            |
-| `refreshLockTtl`       | `number` (s)                 | `30`                  | Lifetime of the SWR refresh claim (recovers from a revalidator that died mid-flight).                              |
+| Option                 | Type                          | Default                  | Description                                                                                                                                       |
+| ---------------------- | ----------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `store`                | `CacheStore`                  | `new MemoryCacheStore()` | Cache backend.                                                                                                                                    |
+| `defaultTtl`           | `number` (s)                  | `30`                     | Freshness lifetime for cached responses without their own `cached({ ttl })`.                                                                      |
+| `staleWhileRevalidate` | `number` (s)                  | `0`                      | Global SWR grace (see below). `0` = stale entries are plain misses.                                                                               |
+| `etag`                 | `'weak' \| 'strong' \| false` | `'weak'`                 | ETag emission + conditional-GET handling. `'weak'` is safe with serializers that embed request-derived fields.                                    |
+| `routes`               | `string[]`                    | `[]`                     | Path prefixes opted into the shared cache globally (`'/'` = every route). Prefixes match on segment boundaries.                                   |
+| `varyHeaders`          | `string[]`                    | `[]`                     | Request headers folded into the primary cache key — each value combination is its own entry (multi-variant).                                      |
+| `cachePrivate`         | `boolean`                     | `false`                  | Allow caching requests with `Authorization`/`Cookie` and `Cache-Control: private` responses. Only with a key that captures the per-user variance. |
+| `cacheableStatuses`    | `number[]`                    | `[200, 203, 301, 404]`   | Statuses eligible for the shared cache.                                                                                                           |
+| `refreshLockTtl`       | `number` (s)                  | `30`                     | Lifetime of the SWR refresh claim (recovers from a revalidator that died mid-flight).                                                             |
 
 ## Conditional GET (always on)
 
@@ -76,8 +76,14 @@ Keys are `method + path + normalized query` (sorted, so `?b=2&a=1` and `?a=1&b=2
 ```typescript
 import { cacheControl, noCache } from '@axiomify/cache';
 
-app.route({ method: 'GET', path: '/assets/logo',
-  plugins: [cacheControl({ scope: 'public', maxAge: 31536000, immutable: true })], handler });
+app.route({
+  method: 'GET',
+  path: '/assets/logo',
+  plugins: [
+    cacheControl({ scope: 'public', maxAge: 31536000, immutable: true }),
+  ],
+  handler,
+});
 
 app.route({ method: 'GET', path: '/me', plugins: [noCache], handler }); // no-store, no-cache, must-revalidate
 ```
@@ -93,8 +99,8 @@ app.use(createCacheModule({ defaultTtl: 60 }));
 const cache = app.resolve('cache');
 
 await cache.invalidate('/products', { query: { page: 1 } }); // exact path+query
-await cache.invalidatePath('/products');                     // all query/vary variants
-await cache.clear();                                         // everything
+await cache.invalidatePath('/products'); // all query/vary variants
+await cache.clear(); // everything
 ```
 
 ## Stores

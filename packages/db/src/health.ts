@@ -47,9 +47,7 @@ export function dbHealthChecks(
  * Prefer the `registerShutdown` option of `createDatabaseModule` if you want
  * each database to self-wire into your own shutdown registry instead.
  */
-export function dbShutdown(
-  ...handles: DatabaseHandle[]
-): () => Promise<void> {
+export function dbShutdown(...handles: DatabaseHandle[]): () => Promise<void> {
   if (handles.length === 0) {
     throw new Error(
       '[@axiomify/db] dbShutdown requires at least one database handle.',

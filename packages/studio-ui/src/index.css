@@ -180,6 +180,34 @@
   color: #fff !important;
   border-color: var(--accent) !important;
 }
+
+/* Monaco ships its own theme variables, but its suggestion widget can inherit
+   a transparent foreground inside Studio's dark panel stack. Keep SDK method
+   labels and their metadata readable regardless of the surrounding theme. */
+[data-theme="dark"] .monaco-editor .suggest-widget {
+  background: #171722 !important;
+  border: 1px solid #3a3a58 !important;
+  color: #f2f2fa !important;
+}
+[data-theme="dark"] .monaco-editor .suggest-widget .monaco-list-row,
+[data-theme="dark"] .monaco-editor .suggest-widget .monaco-icon-label,
+[data-theme="dark"] .monaco-editor .suggest-widget .monaco-icon-name-container,
+[data-theme="dark"] .monaco-editor .suggest-widget .label-name {
+  color: #f2f2fa !important;
+  opacity: 1 !important;
+}
+[data-theme="dark"] .monaco-editor .suggest-widget .label-description,
+[data-theme="dark"] .monaco-editor .suggest-widget .label-detail {
+  color: #b8b8cc !important;
+  opacity: 1 !important;
+}
+[data-theme="dark"] .monaco-editor .suggest-widget .monaco-highlighted-label .highlight {
+  color: #a99cff !important;
+}
+[data-theme="dark"] .monaco-editor .suggest-widget .monaco-list-row.focused,
+[data-theme="dark"] .monaco-editor .suggest-widget .monaco-list-row.focused.selected {
+  background: #343153 !important;
+}
 .timeline-row.clickable {
   cursor: pointer;
   border-radius: var(--radius-sm);
@@ -1446,4 +1474,3 @@ pre.schema-json {
   background: rgba(59, 130, 246, 0.1);
   color: var(--info);
 }
-

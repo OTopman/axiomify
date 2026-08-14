@@ -1,8 +1,4 @@
-import type {
-  AxiomifyRequest,
-  HttpMethod,
-  RequestState,
-} from '@axiomify/core';
+import type { AxiomifyRequest, HttpMethod, RequestState } from '@axiomify/core';
 import { parseCookieHeader, RequestStateImpl } from '@axiomify/core';
 import { Readable } from 'node:stream';
 

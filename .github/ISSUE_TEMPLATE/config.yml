@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and ideas
+    url: https://github.com/OTopman/axiomify/discussions
+    about: Ask for help, share what you built, or propose an idea before opening an issue.
+  - name: Security vulnerability
+    url: https://github.com/OTopman/axiomify/security/advisories/new
+    about: Please report security concerns privately under our security policy.

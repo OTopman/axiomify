@@ -27,7 +27,9 @@ export const Logs: React.FC<LogsProps> = ({
   const [logFilterLevel, setLogFilterLevel] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [showInternal, setShowInternal] = useState(false);
-  const [expandedStacks, setExpandedStacks] = useState<Record<string, boolean>>({});
+  const [expandedStacks, setExpandedStacks] = useState<Record<string, boolean>>(
+    {},
+  );
   const [isRegexSearch, setIsRegexSearch] = useState(false);
   const [timeFilterRange, setTimeFilterRange] = useState('ALL');
 
@@ -77,7 +79,10 @@ export const Logs: React.FC<LogsProps> = ({
     return lines.map((line, i) => {
       const trimmed = line.trim();
       if (!trimmed) return null;
-      const match = /(at\s+(?:[^\s()]+?\s+\()?)?([^\s()]+?):(\d+)(?::(\d+))?(\)?)/.exec(trimmed);
+      const match =
+        /(at\s+(?:[^\s()]+?\s+\()?)?([^\s()]+?):(\d+)(?::(\d+))?(\)?)/.exec(
+          trimmed,
+        );
       if (match) {
         const prefix = match[1] || 'at ';
         const filePath = match[2];
@@ -85,7 +90,10 @@ export const Logs: React.FC<LogsProps> = ({
         const colNum = match[4] || '';
         const suffix = match[5] || '';
 
-        if (filePath.includes('node:internal') || filePath.includes('node_modules')) {
+        if (
+          filePath.includes('node:internal') ||
+          filePath.includes('node_modules')
+        ) {
           return <div key={i}>{line}</div>;
         }
 
@@ -95,7 +103,12 @@ export const Logs: React.FC<LogsProps> = ({
             &nbsp;&nbsp;&nbsp;&nbsp;{prefix}
             <span
               onClick={() => onOpenSourceViewer(cleanPath, lineNum)}
-              style={{ color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline', fontWeight: 500 }}
+              style={{
+                color: 'var(--accent)',
+                cursor: 'pointer',
+                textDecoration: 'underline',
+                fontWeight: 500,
+              }}
             >
               {filePath}:{lineNum}
             </span>
@@ -111,7 +124,10 @@ export const Logs: React.FC<LogsProps> = ({
   const formatLogMessage = (msg: string) => {
     if (typeof msg !== 'string') return String(msg);
     const trimmed = msg.trim();
-    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    if (
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))
+    ) {
       try {
         const parsed = JSON.parse(trimmed);
         return <StructuredJsonViewer data={parsed} />;
@@ -122,51 +138,77 @@ export const Logs: React.FC<LogsProps> = ({
 
   // Filter list and reverse so that the newly added entry is at the top
   const filteredLogs = logsList
-    .filter(log => {
-      const matchesLevel = logFilterLevel === 'ALL' || log.level.toUpperCase() === logFilterLevel;
-      
+    .filter((log) => {
+      const matchesLevel =
+        logFilterLevel === 'ALL' || log.level.toUpperCase() === logFilterLevel;
+
       let matchesSearch = true;
       if (searchTerm.trim()) {
         if (isRegexSearch) {
           try {
             const regex = new RegExp(searchTerm, 'i');
-            matchesSearch = regex.test(log.message) || !!(log.stack && regex.test(log.stack));
+            matchesSearch =
+              regex.test(log.message) || !!(log.stack && regex.test(log.stack));
           } catch {
             const cleanSearch = searchTerm.toLowerCase().trim();
-            matchesSearch = log.message.toLowerCase().includes(cleanSearch) || 
+            matchesSearch =
+              log.message.toLowerCase().includes(cleanSearch) ||
               !!(log.stack && log.stack.toLowerCase().includes(cleanSearch));
           }
         } else {
           const cleanSearch = searchTerm.toLowerCase().trim();
-          matchesSearch = log.message.toLowerCase().includes(cleanSearch) || 
+          matchesSearch =
+            log.message.toLowerCase().includes(cleanSearch) ||
             !!(log.stack && log.stack.toLowerCase().includes(cleanSearch));
         }
       }
-      
+
       const matchesInternal = showInternal || !log.isInternal;
-      const matchesRequestId = !filterRequestId || log.requestId === filterRequestId;
+      const matchesRequestId =
+        !filterRequestId || log.requestId === filterRequestId;
 
       let matchesTime = true;
       if (timeFilterRange !== 'ALL') {
         const logTime = new Date(log.timestamp).getTime();
         const diffMs = Date.now() - logTime;
         if (timeFilterRange === '1M') matchesTime = diffMs <= 60 * 1000;
-        else if (timeFilterRange === '5M') matchesTime = diffMs <= 5 * 60 * 1000;
-        else if (timeFilterRange === '15M') matchesTime = diffMs <= 15 * 60 * 1000;
-        else if (timeFilterRange === '1H') matchesTime = diffMs <= 60 * 60 * 1000;
+        else if (timeFilterRange === '5M')
+          matchesTime = diffMs <= 5 * 60 * 1000;
+        else if (timeFilterRange === '15M')
+          matchesTime = diffMs <= 15 * 60 * 1000;
+        else if (timeFilterRange === '1H')
+          matchesTime = diffMs <= 60 * 60 * 1000;
       }
 
-      return matchesLevel && matchesSearch && matchesInternal && matchesRequestId && matchesTime;
+      return (
+        matchesLevel &&
+        matchesSearch &&
+        matchesInternal &&
+        matchesRequestId &&
+        matchesTime
+      );
     })
     .slice()
     .reverse();
 
   return (
     <div>
-      <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '12px' }}>
+      <div
+        className="panel-header"
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          width: '100%',
+          flexWrap: 'wrap',
+          gap: '12px',
+        }}
+      >
         <div>
           <div className="panel-title">Logs Observatory</div>
-          <div className="panel-subtitle">Real-time application console logs and framework diagnostics</div>
+          <div className="panel-subtitle">
+            Real-time application console logs and framework diagnostics
+          </div>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button className="btn btn-secondary" onClick={handleClearLogs}>
@@ -178,40 +220,107 @@ export const Logs: React.FC<LogsProps> = ({
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
-        <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', padding: '12px 16px', margin: 0 }}>
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginRight: '6px' }}>Filter Level:</span>
-            {['ALL', 'TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL'].map(level => (
-              <button
-                key={level}
-                className={`btn btn-secondary ${logFilterLevel === level ? 'active' : ''}`}
-                style={{ margin: 0, padding: '4px 8px', fontSize: '11px' }}
-                onClick={() => setLogFilterLevel(level)}
-              >
-                {level === 'ALL' ? 'All' : level.charAt(0) + level.slice(1).toLowerCase()}
-              </button>
-            ))}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '16px',
+          width: '100%',
+        }}
+      >
+        <div
+          className="card"
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '12px',
+            flexWrap: 'wrap',
+            padding: '12px 16px',
+            margin: 0,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              gap: '6px',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
+            <span
+              style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                color: 'var(--text-secondary)',
+                marginRight: '6px',
+              }}
+            >
+              Filter Level:
+            </span>
+            {['ALL', 'TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL'].map(
+              (level) => (
+                <button
+                  key={level}
+                  className={`btn btn-secondary ${logFilterLevel === level ? 'active' : ''}`}
+                  style={{ margin: 0, padding: '4px 8px', fontSize: '11px' }}
+                  onClick={() => setLogFilterLevel(level)}
+                >
+                  {level === 'ALL'
+                    ? 'All'
+                    : level.charAt(0) + level.slice(1).toLowerCase()}
+                </button>
+              ),
+            )}
 
             {filterRequestId && (
               <span
-                style={{ background: 'rgba(239, 68, 68, 0.08)', color: 'var(--error)', fontSize: '11px', padding: '4px 8px', borderRadius: 'var(--radius-sm)', fontWeight: 600, cursor: 'pointer', marginLeft: '6px' }}
+                style={{
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  color: 'var(--error)',
+                  fontSize: '11px',
+                  padding: '4px 8px',
+                  borderRadius: 'var(--radius-sm)',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  marginLeft: '6px',
+                }}
                 onClick={onClearRequestIdFilter}
               >
-                Clear Request ID Filter ({filterRequestId.substring(0, 10)}...) ✕
+                Clear Request ID Filter ({filterRequestId.substring(0, 10)}...)
+                ✕
               </span>
             )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexGrow: 1, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              flexGrow: 1,
+              justifyContent: 'flex-end',
+              flexWrap: 'wrap',
+            }}
+          >
             {/* Time range selector */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Time:</span>
+              <span
+                style={{ fontSize: '11px', color: 'var(--text-secondary)' }}
+              >
+                Time:
+              </span>
               <select
                 className="select-input"
-                style={{ margin: 0, padding: '4px 8px', fontSize: '11px', height: '28px', width: '110px' }}
+                style={{
+                  margin: 0,
+                  padding: '4px 8px',
+                  fontSize: '11px',
+                  height: '28px',
+                  width: '110px',
+                }}
                 value={timeFilterRange}
-                onChange={e => setTimeFilterRange(e.target.value)}
+                onChange={(e) => setTimeFilterRange(e.target.value)}
               >
                 <option value="ALL">All Time</option>
                 <option value="1M">Last 1 min</option>
@@ -221,29 +330,66 @@ export const Logs: React.FC<LogsProps> = ({
               </select>
             </div>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)' }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '11px',
+                cursor: 'pointer',
+                userSelect: 'none',
+                color: 'var(--text-secondary)',
+              }}
+            >
               <input
                 type="checkbox"
                 checked={showInternal}
-                onChange={e => setShowInternal(e.target.checked)}
+                onChange={(e) => setShowInternal(e.target.checked)}
               />
               Framework
             </label>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '260px' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                width: '260px',
+              }}
+            >
               <input
                 type="text"
                 className="text-input"
-                placeholder={isRegexSearch ? "Regex search..." : "Search logs..."}
+                placeholder={
+                  isRegexSearch ? 'Regex search...' : 'Search logs...'
+                }
                 value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                style={{ flexGrow: 1, margin: 0, padding: '6px 10px', fontSize: '12px', height: '28px', boxSizing: 'border-box' }}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{
+                  flexGrow: 1,
+                  margin: 0,
+                  padding: '6px 10px',
+                  fontSize: '12px',
+                  height: '28px',
+                  boxSizing: 'border-box',
+                }}
               />
-              <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', cursor: 'pointer', userSelect: 'none', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                  color: 'var(--text-secondary)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
                 <input
                   type="checkbox"
                   checked={isRegexSearch}
-                  onChange={e => setIsRegexSearch(e.target.checked)}
+                  onChange={(e) => setIsRegexSearch(e.target.checked)}
                 />
                 Regex
               </label>
@@ -253,17 +399,29 @@ export const Logs: React.FC<LogsProps> = ({
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {filteredLogs.length === 0 ? (
-            <div style={{ color: 'var(--text-muted)', fontSize: '12px', textAlign: 'center', padding: '24px', border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-secondary)' }}>
+            <div
+              style={{
+                color: 'var(--text-muted)',
+                fontSize: '12px',
+                textAlign: 'center',
+                padding: '24px',
+                border: '1px dashed var(--border)',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--bg-secondary)',
+              }}
+            >
               No logs match search/filters
             </div>
           ) : (
             // Output latest logs at the bottom
-            filteredLogs.map(log => {
+            filteredLogs.map((log) => {
               let levelBadgeClass = 'method-GET';
               if (log.level === 'warn') levelBadgeClass = 'method-PUT';
-              else if (log.level === 'error' || log.level === 'fatal') levelBadgeClass = 'method-DELETE';
+              else if (log.level === 'error' || log.level === 'fatal')
+                levelBadgeClass = 'method-DELETE';
               else if (log.level === 'info') levelBadgeClass = 'method-POST';
-              else if (log.level === 'debug' || log.level === 'trace') levelBadgeClass = 'method-OPTIONS';
+              else if (log.level === 'debug' || log.level === 'trace')
+                levelBadgeClass = 'method-OPTIONS';
 
               const hasStack = log.stack && log.stack.trim().length > 0;
               const isStackOpen = !!expandedStacks[log.id];
@@ -275,7 +433,17 @@ export const Logs: React.FC<LogsProps> = ({
                 const lineNum = Number(parts[1]) || 1;
                 sourceBadge = (
                   <span
-                    style={{ background: 'rgba(79, 70, 229, 0.08)', color: 'var(--accent)', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontFamily: 'var(--font-mono)', fontWeight: 500, cursor: 'pointer', textDecoration: 'underline' }}
+                    style={{
+                      background: 'rgba(79, 70, 229, 0.08)',
+                      color: 'var(--accent)',
+                      fontSize: '10px',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      fontFamily: 'var(--font-mono)',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                    }}
                     onClick={() => onOpenSourceViewer(pathStr, lineNum)}
                   >
                     📍 {log.source}
@@ -288,9 +456,21 @@ export const Logs: React.FC<LogsProps> = ({
                 // If clicked, we filter by this correlation request ID
                 requestIdBadge = (
                   <span
-                    style={{ background: 'rgba(16, 185, 129, 0.08)', color: 'var(--success)', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontFamily: 'var(--font-mono)', fontWeight: 600, cursor: 'pointer' }}
+                    style={{
+                      background: 'rgba(16, 185, 129, 0.08)',
+                      color: 'var(--success)',
+                      fontSize: '10px',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      fontFamily: 'var(--font-mono)',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
                     onClick={() => {
-                      const event = new CustomEvent('axiomify-filter-request-id', { detail: log.requestId });
+                      const event = new CustomEvent(
+                        'axiomify-filter-request-id',
+                        { detail: log.requestId },
+                      );
                       window.dispatchEvent(event);
                     }}
                   >
@@ -301,37 +481,114 @@ export const Logs: React.FC<LogsProps> = ({
 
               let messageColor = 'var(--text-primary)';
               if (log.level === 'warn') messageColor = 'var(--warning)';
-              else if (log.level === 'error' || log.level === 'fatal') messageColor = 'var(--error)';
-              else if (log.level === 'debug' || log.level === 'trace') messageColor = 'var(--text-secondary)';
+              else if (log.level === 'error' || log.level === 'fatal')
+                messageColor = 'var(--error)';
+              else if (log.level === 'debug' || log.level === 'trace')
+                messageColor = 'var(--text-secondary)';
 
               const dateObj = new Date(log.timestamp);
-              const formattedTime = dateObj.toLocaleTimeString() + '.' + String(dateObj.getMilliseconds()).padStart(3, '0');
+              const formattedTime =
+                dateObj.toLocaleTimeString() +
+                '.' +
+                String(dateObj.getMilliseconds()).padStart(3, '0');
 
               return (
-                <div key={log.id} className="card" style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '10px 14px', margin: 0, textAlign: 'left', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+                <div
+                  key={log.id}
+                  className="card"
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    padding: '10px 14px',
+                    margin: 0,
+                    textAlign: 'left',
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)',
+                  }}
+                >
                   {/* Log Metadata Header */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: '1px dashed var(--border)', paddingBottom: '6px', marginBottom: '2px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span className={`method-badge ${levelBadgeClass}`} style={{ fontSize: '9px', padding: '2px 6px', fontWeight: 700, minWidth: '48px', textAlign: 'center' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '8px',
+                      borderBottom: '1px dashed var(--border)',
+                      paddingBottom: '6px',
+                      marginBottom: '2px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <span
+                        className={`method-badge ${levelBadgeClass}`}
+                        style={{
+                          fontSize: '9px',
+                          padding: '2px 6px',
+                          fontWeight: 700,
+                          minWidth: '48px',
+                          textAlign: 'center',
+                        }}
+                      >
                         {log.level.toUpperCase()}
                       </span>
                       {log.isInternal && (
-                        <span style={{ background: 'rgba(245, 158, 11, 0.08)', color: 'var(--warning)', fontSize: '9px', padding: '2px 6px', borderRadius: '4px', fontWeight: 500 }}>
+                        <span
+                          style={{
+                            background: 'rgba(245, 158, 11, 0.08)',
+                            color: 'var(--warning)',
+                            fontSize: '9px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontWeight: 500,
+                          }}
+                        >
                           Framework
                         </span>
                       )}
                       {sourceBadge}
                       {requestIdBadge}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: 'var(--text-muted)',
+                          fontSize: '10px',
+                          fontFamily: 'var(--font-mono)',
+                        }}
+                      >
                         {formattedTime}
                       </span>
                       {hasStack && (
                         <button
                           className="btn btn-secondary"
-                          style={{ padding: '2px 6px', fontSize: '9px', borderRadius: 'var(--radius-sm)', margin: 0 }}
-                          onClick={() => setExpandedStacks(prev => ({ ...prev, [log.id]: !isStackOpen }))}
+                          style={{
+                            padding: '2px 6px',
+                            fontSize: '9px',
+                            borderRadius: 'var(--radius-sm)',
+                            margin: 0,
+                          }}
+                          onClick={() =>
+                            setExpandedStacks((prev) => ({
+                              ...prev,
+                              [log.id]: !isStackOpen,
+                            }))
+                          }
                         >
                           {isStackOpen ? 'Hide Stack' : 'Show Stack'}
                         </button>
@@ -340,13 +597,35 @@ export const Logs: React.FC<LogsProps> = ({
                   </div>
 
                   {/* Log Message Body */}
-                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 500, color: messageColor, wordBreak: 'break-all', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '12px',
+                      fontWeight: 500,
+                      color: messageColor,
+                      wordBreak: 'break-all',
+                      whiteSpace: 'pre-wrap',
+                      lineHeight: '1.4',
+                    }}
+                  >
                     {formatLogMessage(log.message)}
                   </div>
 
                   {hasStack && isStackOpen && (
                     <pre
-                      style={{ fontSize: '11px', marginTop: '4px', padding: '10px', background: 'var(--bg-primary)', border: '1px solid var(--border)', maxHeight: '250px', overflowY: 'auto', overflowX: 'auto', fontFamily: 'var(--font-mono)', textAlign: 'left', lineHeight: 1.5 }}
+                      style={{
+                        fontSize: '11px',
+                        marginTop: '4px',
+                        padding: '10px',
+                        background: 'var(--bg-primary)',
+                        border: '1px solid var(--border)',
+                        maxHeight: '250px',
+                        overflowY: 'auto',
+                        overflowX: 'auto',
+                        fontFamily: 'var(--font-mono)',
+                        textAlign: 'left',
+                        lineHeight: 1.5,
+                      }}
                     >
                       {formatStack(log.stack || '')}
                     </pre>
@@ -366,16 +645,38 @@ const StructuredJsonViewer: React.FC<{ data: any }> = ({ data }) => {
   const [open, setOpen] = useState(false);
 
   return (
-    <div style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', marginTop: '4px' }}>
+    <div
+      style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: '11px',
+        marginTop: '4px',
+      }}
+    >
       <div
-        style={{ cursor: 'pointer', color: 'var(--accent)', fontWeight: 600, textDecoration: 'underline' }}
+        style={{
+          cursor: 'pointer',
+          color: 'var(--accent)',
+          fontWeight: 600,
+          textDecoration: 'underline',
+        }}
         onClick={() => setOpen(!open)}
       >
         📦 Structured JSON Payload (click to toggle)
       </div>
       {open && (
         <pre
-          style={{ marginTop: '4px', padding: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '300px', overflowY: 'auto', color: 'var(--text-primary)' }}
+          style={{
+            marginTop: '4px',
+            padding: '8px',
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all',
+            maxHeight: '300px',
+            overflowY: 'auto',
+            color: 'var(--text-primary)',
+          }}
         >
           {JSON.stringify(data, null, 2)}
         </pre>

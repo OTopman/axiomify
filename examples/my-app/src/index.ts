@@ -1,55 +1,63 @@
-import { createAuthPlugin } from '@axiomify/auth';
-import { AppModule, Axiomify, z } from '@axiomify/core';
-import { useCors } from '@axiomify/cors';
-import { useFingerprint } from '@axiomify/fingerprint';
-import { useGraphQL } from '@axiomify/graphql';
-import { useHelmet } from '@axiomify/helmet';
-import { jobsModule, SagaCoordinator } from '@axiomify/jobs';
-import { useLogger } from '@axiomify/logger';
-import { useMetrics } from '@axiomify/metrics';
-import { useOpenAPI } from '@axiomify/openapi';
-import { createRateLimitPlugin } from '@axiomify/rate-limit';
-import { useSecurity } from '@axiomify/security';
-import { adaptAxiomifyPlugin, attachSocketIO } from '@axiomify/socket.io';
-import { serveStatic } from '@axiomify/static';
-import { useUpload } from '@axiomify/upload';
-import { vaultModule } from '@axiomify/vault';
-import { NativeAdapter } from '@axiomify/native';
-import { wsRooms } from '@axiomify/ws';
-import { randomUUID } from 'crypto';
-import { createReadStream, existsSync } from 'fs';
-import { GraphQLInt, GraphQLList, GraphQLObjectType, GraphQLSchema, GraphQLString } from 'graphql';
-import path from 'path';
+import { createAuthPlugin } from "@axiomify/auth";
+import { AppModule, Axiomify, z } from "@axiomify/core";
+import { useCors } from "@axiomify/cors";
+import { useFingerprint } from "@axiomify/fingerprint";
+import { useGraphQL } from "@axiomify/graphql";
+import { useHelmet } from "@axiomify/helmet";
+import { jobsModule, SagaCoordinator } from "@axiomify/jobs";
+import { useLogger } from "@axiomify/logger";
+import { useMetrics } from "@axiomify/metrics";
+import { NativeAdapter } from "@axiomify/native";
+import { Security, useOpenAPI } from "@axiomify/openapi";
+import { createRateLimitPlugin } from "@axiomify/rate-limit";
+import { useSecurity } from "@axiomify/security";
+import { adaptAxiomifyPlugin, attachSocketIO } from "@axiomify/socket.io";
+import { useUpload } from "@axiomify/upload";
+import { vaultModule } from "@axiomify/vault";
+import { wsRooms } from "@axiomify/ws";
+import { randomUUID } from "crypto";
+import { createReadStream, existsSync } from "fs";
+import {
+  GraphQLInt,
+  GraphQLList,
+  GraphQLObjectType,
+  GraphQLSchema,
+  GraphQLString,
+} from "graphql";
+import path from "path";
 
 export const app = new Axiomify();
 app.enableTracing();
 
 const room = wsRooms(app, {
-  path: '/ws',
+  path: "/ws",
   schema: z.object({
     action: z.string(),
     room: z.string().optional(),
     data: z.any().optional(),
   }),
   onConnect(client) {
-    client.join('lobby');
-    console.log('A client connected.');
+    client.join("lobby");
+    console.log("A client connected.");
   },
   onMessage(client, data) {
-    console.log('A client sent a message.', data);
+    console.log("A client sent a message.", data);
     console.log(client.rooms);
   },
 });
 
-function getRequiredEnv(name: string): string {
+function getRequiredEnv(name: string, defaultValue?: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`${name} env var is required`);
-  return value;
+  if (!value && !defaultValue) throw new Error(`${name} env var is required`);
+  return value ?? defaultValue!;
 }
 
 const requireAuth = createAuthPlugin({
   // Never hardcode signing secrets — load from the environment (or the vault).
-  secret: getRequiredEnv('JWT_SECRET'),
+  secret: getRequiredEnv(
+    "JWT_SECRET",
+    "5da92dd2f49ae6de8a3a79366c48ac115905a360b76102f35c9c6207dc025f7a"
+  ),
 });
 
 // Configure Rate Limiter (fingerprint-keyed)
@@ -57,13 +65,13 @@ const rateLimiter = createRateLimitPlugin({
   windowMs: 60000,
   max: 10,
   allowMemoryStoreInProduction: true,
-  keyGenerator: (req) => req.state.fingerprint ?? req.ip ?? 'unknown',
+  keyGenerator: (req) => req.state.fingerprint ?? req.ip ?? "unknown",
 });
 
 // Apply Security, Helmet, CORS, and Fingerprint globally
 useHelmet(app);
 useCors(app, {
-  origin: '*',
+  origin: "*",
   credentials: false,
 });
 useSecurity(app, {
@@ -72,12 +80,12 @@ useSecurity(app, {
   botProtection: false,
 });
 useFingerprint(app, {
-  algorithm: 'sha256',
+  algorithm: "sha256",
   trustProxyHeaders: true,
 });
 
 useMetrics(app, {
-  path: '/metrics',
+  path: "/metrics",
   wsManager: room,
 });
 
@@ -96,8 +104,8 @@ serveStatic(app, {
 
 export class UserService {
   private users = [
-    { id: 1, username: 'alice', role: 'admin' as const },
-    { id: 2, username: 'bob', role: 'user' as const },
+    { id: 1, username: "alice", role: "admin" as const },
+    { id: 2, username: "bob", role: "user" as const },
   ];
 
   public async getUsers() {
@@ -108,7 +116,7 @@ export class UserService {
     return this.users.find((u) => u.id === id);
   }
 
-  public async createUser(username: string, role: 'admin' | 'user') {
+  public async createUser(username: string, role: "admin" | "user") {
     const newUser = {
       id: this.users.length + 1,
       username,
@@ -119,48 +127,61 @@ export class UserService {
   }
 }
 
-declare module '@axiomify/core' {
+declare module "@axiomify/core" {
   interface AppServices {
     userService: UserService;
   }
 }
 
 // Enable vault module configuration
-app.use(vaultModule({
-  modules: {
-    services: { allow: ['JWT_SECRET'] },
-  },
-}));
+app.use(
+  vaultModule({
+    modules: {
+      services: { allow: ["JWT_SECRET"] },
+    },
+  })
+);
 
 // Enable distributed background jobs module
-app.use(jobsModule({
-  storage: 'memory',
-  pollIntervalMs: 500,
-  maxConcurrency: 3,
-}));
+app.use(
+  jobsModule({
+    storage: "memory",
+    pollIntervalMs: 500,
+    maxConcurrency: 3,
+  })
+);
 
 const servicesModule: AppModule = {
-  name: 'services',
-  dependencies: ['jobs'],
+  name: "services",
+  dependencies: ["jobs"],
   register: (_app, ctx) => {
-    ctx.provide('userService', new UserService());
+    ctx.provide("userService", new UserService());
 
     // Register Background Job Executors
-    const jobs = ctx.resolve('jobs');
-    jobs.register('send-welcome-email', async (payload: { email: string; name: string }) => {
-      console.log(`[Worker] Sending welcome email to ${payload.name} at ${payload.email}...`);
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      console.log(`[Worker] Welcome email sent successfully to ${payload.email}!`);
-    });
+    const jobs = ctx.resolve("jobs");
+    jobs.register(
+      "send-welcome-email",
+      async (payload: { email: string; name: string }) => {
+        console.log(
+          `[Worker] Sending welcome email to ${payload.name} at ${payload.email}...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        console.log(
+          `[Worker] Welcome email sent successfully to ${payload.email}!`
+        );
+      }
+    );
 
-    jobs.register('process-payment', async (payload: { amount: number }) => {
+    jobs.register("process-payment", async (payload: { amount: number }) => {
       console.log(`[Worker] Charging card for $${payload.amount}...`);
       await new Promise((resolve) => setTimeout(resolve, 200));
       console.log(`[Worker] Card charged successfully!`);
     });
 
-    jobs.register('refund-payment', async (payload: { amount: number }) => {
-      console.log(`[Compensation] Refunding card charge of $${payload.amount}...`);
+    jobs.register("refund-payment", async (payload: { amount: number }) => {
+      console.log(
+        `[Compensation] Refunding card charge of $${payload.amount}...`
+      );
       await new Promise((resolve) => setTimeout(resolve, 100));
       console.log(`[Compensation] Refund processed successfully.`);
     });
@@ -168,20 +189,20 @@ const servicesModule: AppModule = {
 };
 
 const usersModule: AppModule = {
-  name: 'users',
-  dependencies: ['services'],
+  name: "users",
+  dependencies: ["services"],
   register: (app, ctx) => {
-    const userService = ctx.resolve('userService');
+    const userService = ctx.resolve("userService");
 
     app.route({
-      method: 'GET',
-      path: '/api/users',
+      method: "GET",
+      path: "/api/users",
       schema: {
         response: z.array(
           z.object({
             id: z.number(),
             username: z.string(),
-            role: z.enum(['admin', 'user']),
+            role: z.enum(["admin", "user"]),
           })
         ),
       },
@@ -192,24 +213,30 @@ const usersModule: AppModule = {
     });
 
     app.route({
-      method: 'POST',
-      path: '/api/users',
+      method: "POST",
+      path: "/api/users",
       schema: {
         body: z.object({
-          username: z.string().min(3).describe('The new username'),
-          role: z.enum(['admin', 'user']).default('user').describe('The user role'),
+          username: z.string().min(3).describe("The new username"),
+          role: z
+            .enum(["admin", "user"])
+            .default("user")
+            .describe("The user role"),
         }),
       },
       handler: async (req, res) => {
-        const newUser = await userService.createUser(req.body.username, req.body.role);
-        res.status(201).send(newUser, 'User created successfully');
+        const newUser = await userService.createUser(
+          req.body.username,
+          req.body.role
+        );
+        res.status(201).send(newUser, "User created successfully");
       },
     });
 
     useUpload(app);
     app.route({
-      method: 'POST',
-      path: '/api/users/avatar',
+      method: "POST",
+      path: "/api/users/avatar",
       schema: {
         body: z.object({
           userId: z.string(),
@@ -217,10 +244,10 @@ const usersModule: AppModule = {
         files: {
           avatar: {
             maxSize: 5 * 1024 * 1024,
-            accept: ['image/png', 'image/jpeg'],
-            autoSaveTo: path.join(__dirname, '../uploads'),
+            accept: ["image/png", "image/jpeg"],
+            autoSaveTo: path.join(__dirname, "../uploads"),
             rename: (_originalName, mimetype) => {
-              const ext = mimetype === 'image/png' ? '.png' : '.jpg';
+              const ext = mimetype === "image/png" ? ".png" : ".jpg";
               return `avatar_${randomUUID()}${ext}`;
             },
           },
@@ -229,28 +256,28 @@ const usersModule: AppModule = {
       handler: async (req, res) => {
         const avatarData = req.files?.avatar;
         if (!avatarData) {
-          res.status(400).send(null, 'avatar file is required');
+          res.status(400).send(null, "avatar file is required");
           return;
         }
         res
           .status(201)
-          .send({ fileDetails: avatarData }, 'Avatar updated successfully');
+          .send({ fileDetails: avatarData }, "Avatar updated successfully");
       },
     });
 
     const schema = new GraphQLSchema({
       query: new GraphQLObjectType({
-        name: 'Query',
+        name: "Query",
         fields: {
           hello: {
             type: GraphQLString,
             resolve: (_root, _args, context) =>
-              `Hello, ${context.user?.name ?? 'stranger'}`,
+              `Hello, ${context.user?.name ?? "stranger"}`,
           },
           users: {
             type: new GraphQLList(
               new GraphQLObjectType({
-                name: 'User',
+                name: "User",
                 fields: {
                   id: { type: GraphQLInt },
                   username: { type: GraphQLString },
@@ -271,14 +298,14 @@ const usersModule: AppModule = {
 
 // Checkout Saga coordinator module
 const checkoutModule: AppModule = {
-  name: 'checkout',
-  dependencies: ['jobs'],
+  name: "checkout",
+  dependencies: ["jobs"],
   register: (app, ctx) => {
-    const jobs = ctx.resolve('jobs');
+    const jobs = ctx.resolve("jobs");
 
     app.route({
-      method: 'POST',
-      path: '/api/checkout',
+      method: "POST",
+      path: "/api/checkout",
       schema: {
         body: z.object({
           email: z.string().email(),
@@ -292,45 +319,51 @@ const checkoutModule: AppModule = {
         const { email, name, amount, simulateFailure } = req.body;
 
         saga.addStep(
-          'charge-payment',
+          "charge-payment",
           async () => {
             console.log(`[Saga] Charging payment of $${amount} for ${email}`);
-            await jobs.enqueue('process-payment', { amount });
+            await jobs.enqueue("process-payment", { amount });
             return { ok: true };
           },
           async () => {
-            console.log(`[Saga Rollback] Checkout failed, refunding payment of $${amount}`);
-            await jobs.enqueue('refund-payment', { amount });
+            console.log(
+              `[Saga Rollback] Checkout failed, refunding payment of $${amount}`
+            );
+            await jobs.enqueue("refund-payment", { amount });
           }
         );
 
         saga.addStep(
-          'create-profile',
+          "create-profile",
           async () => {
             console.log(`[Saga] Creating user profile for ${name}`);
             if (simulateFailure) {
-              throw new Error('Checkout simulation error: database write failed');
+              throw new Error(
+                "Checkout simulation error: database write failed"
+              );
             }
-            return { profileId: 'prof_' + randomUUID().substring(0, 8) };
+            return { profileId: "prof_" + randomUUID().substring(0, 8) };
           },
           async () => {
-            console.log(`[Saga Rollback] Checkout failed, reversing user profile changes`);
+            console.log(
+              `[Saga Rollback] Checkout failed, reversing user profile changes`
+            );
           }
         );
 
         const outcome = await saga.execute({ email, name });
 
         if (outcome.success) {
-          await jobs.enqueue('send-welcome-email', { email, name });
+          await jobs.enqueue("send-welcome-email", { email, name });
           res.status(200).send({
-            status: 'success',
-            message: 'Checkout successful, welcome email queued',
+            status: "success",
+            message: "Checkout successful, welcome email queued",
             outcome,
           });
         } else {
           res.status(500).send({
-            status: 'failed',
-            message: 'Checkout failed, compensating rollbacks queued',
+            status: "failed",
+            message: "Checkout failed, compensating rollbacks queued",
             error: outcome.error,
           });
         }
@@ -344,8 +377,8 @@ app.use(usersModule);
 app.use(checkoutModule);
 
 app.route({
-  method: 'GET',
-  path: '/api/secure-data',
+  method: "GET",
+  path: "/api/secure-data",
   plugins: [requireAuth, rateLimiter],
   handler: async (req, res) => {
     res.send({
@@ -357,8 +390,8 @@ app.route({
 });
 
 app.route({
-  method: 'GET',
-  path: '/protected/data',
+  method: "GET",
+  path: "/protected/data",
   plugins: [requireAuth],
   handler: async (req, res) => {
     res.send({ accessedBy: req.state.user?.id });
@@ -366,94 +399,107 @@ app.route({
 });
 
 app.route({
-  method: 'GET',
-  path: '/ping',
+  method: "GET",
+  path: "/ping",
   schema: {
     response: z.object({ message: z.string() }),
   },
   handler: async (_req, res) => {
-    res.status(200).send({ message: 'pong' });
+    res.status(200).send({ message: "pong" });
   },
 });
 
-app.group('/api', (admin) => {
+app.group("/api", (admin) => {
   admin.route({
-    path: '/login',
-    method: 'GET',
+    path: "/login",
+    method: "GET",
     handler: (_req, res) => {
-      res.status(200).send({ status: 'success' });
+      res.status(200).send({ status: "success" });
     },
   });
 });
 
 app.route({
-  method: 'GET',
-  path: '/download',
+  method: "GET",
+  path: "/download",
   handler: async (_req, res) => {
-    const filePath = path.join(process.cwd(), 'large-video.mp4');
+    const filePath = path.join(process.cwd(), "large-video.mp4");
     if (!existsSync(filePath)) {
-      res.status(404).send(null, 'File not found');
+      res.status(404).send(null, "File not found");
       return;
     }
     const fileStream = createReadStream(filePath);
-    fileStream.on('error', () =>
-      res.status(500).send(null, 'Failed to read file'),
+    fileStream.on("error", () =>
+      res.status(500).send(null, "Failed to read file")
     );
-    res.stream(fileStream, 'video/mp4');
+    res.stream(fileStream, "video/mp4");
   },
 });
 
 app.route({
-  method: 'GET',
-  path: '/live-feed',
+  method: "GET",
+  path: "/live-feed",
+  schema: {
+    security: Security.require('bearerAuth')
+  },
+  plugins: [requireAuth],
   handler: async (req, res) => {
     res.sseInit!();
     const interval = setInterval(() => {
-      res.sseSend!({ time: Date.now() }, 'tick');
+      res.sseSend!({ time: Date.now() }, "tick");
     }, 1000);
-    req.signal!.addEventListener('abort', () => clearInterval(interval));
+    req.signal!.addEventListener("abort", () => clearInterval(interval));
   },
 });
 
 useOpenAPI(app, {
-  prefix: '/docs',
-  info: { title: 'Axiomify Test API', version: '1.0.0' },
+  prefix: "/docs",
+  info: { title: "Axiomify Test API", version: "1.0.0" },
+  components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+      },
+    }, //Auth.schemes,
+  },
 });
 
 if (require.main === module) {
   app.build();
 
-  const adapter = new NativeAdapter(app, { port: 3000 });
+  const adapter = new NativeAdapter(app, { port: 3001 });
 
   // Attach Socket.IO
   attachSocketIO(adapter, {
-    cors: { origin: '*' },
+    cors: { origin: "*" },
   }).then((io) => {
     // Adapt the requireAuth middleware to authenticate socket connections
     io.use(adaptAxiomifyPlugin(requireAuth));
 
-    io.on('connection', (socket) => {
+    io.on("connection", (socket) => {
       console.log(`⚡ [Socket.IO] Client connected: ${socket.id}`);
       console.log(`👤 [Socket.IO] User metadata:`, socket.data.user);
 
-      socket.on('chat', (data) => {
+      socket.on("chat", (data) => {
         console.log(`💬 [Socket.IO] chat msg:`, data);
-        io.emit('chat', { sender: socket.id, message: data });
+        io.emit("chat", { sender: socket.id, message: data });
       });
 
-      socket.on('disconnect', () => {
+      socket.on("disconnect", () => {
         console.log(`🔌 [Socket.IO] Client disconnected: ${socket.id}`);
       });
     });
   });
 
   adapter.listen(() => {
-    console.log('🚀 Axiomify engine online on port 3000');
-    console.log('GraphQL ready at http://localhost:3000/graphql');
-    console.log('Playground at   http://localhost:3000/graphql/playground');
+    console.log("🚀 Axiomify engine online on port 3000");
+    console.log("GraphQL ready at http://localhost:3000/graphql");
+    console.log("Playground at   http://localhost:3000/graphql/playground");
 
     // Start the jobs scheduler using internal resolution
-    const jobs = app.resolve('jobs');
+    const jobs = app.resolve("jobs");
     if (jobs) {
       jobs.start();
     }

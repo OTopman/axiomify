@@ -118,20 +118,20 @@ const rooms = wsRooms(app, {
 
 The object returned by `wsRooms()`.
 
-| Method / Property       | Description                             |
-| ----------------------- | --------------------------------------- |
-| `room(name)`            | Get a room by name (or `undefined`)     |
-| `getOrCreateRoom(name)` | Get or create a room                    |
-| `roomNames`             | All active room names                   |
-| `roomCount`             | Number of active rooms                  |
-| `client(id)`            | Get a connected client by ID            |
-| `clientCount`           | Number of connected clients             |
-| `clientIds`             | All connected client IDs                |
-| `broadcastAll(data)`    | Broadcast to every connected client     |
+| Method / Property       | Description                                        |
+| ----------------------- | -------------------------------------------------- |
+| `room(name)`            | Get a room by name (or `undefined`)                |
+| `getOrCreateRoom(name)` | Get or create a room                               |
+| `roomNames`             | All active room names                              |
+| `roomCount`             | Number of active rooms                             |
+| `client(id)`            | Get a connected client by ID                       |
+| `clientCount`           | Number of connected clients                        |
+| `clientIds`             | All connected client IDs                           |
+| `broadcastAll(data)`    | Broadcast to every connected client                |
 | `getStats()`            | Snapshot of connections and per-room member counts |
-| `close()`               | Disconnect all clients, clear all rooms |
-| `on(event, handler)`    | Listen for room events                  |
-| `off(event, handler)`   | Remove an event listener                |
+| `close()`               | Disconnect all clients, clear all rooms            |
+| `on(event, handler)`    | Listen for room events                             |
+| `off(event, handler)`   | Remove an event listener                           |
 
 #### Events
 
@@ -391,5 +391,5 @@ production).
   deployments, use `@axiomify/socket.io` with a Redis adapter.
 - **Modern browsers only** — no HTTP long-polling fallback. Clients must
   support the WebSocket protocol.
-- **Node 20–22** — same constraint as `@axiomify/native` (uWS prebuilt
+- **Node 22 or 24** — same constraint as `@axiomify/native` (uWS prebuilt
   support).

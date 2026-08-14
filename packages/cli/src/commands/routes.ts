@@ -317,10 +317,7 @@ async function diffAgainstBaseline(
     );
     baseline = parseSurface(raw, opts.diff!);
   } catch (err) {
-    console.error(
-      pc.red('✗ Failed to load baseline:'),
-      (err as Error).message,
-    );
+    console.error(pc.red('✗ Failed to load baseline:'), (err as Error).message);
     process.exitCode = 1;
     return;
   }

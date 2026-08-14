@@ -1,0 +1,53 @@
+{
+  "name": "@axiomify/observability",
+  "version": "7.0.0",
+  "description": "Framework-native trace context and Server-Timing instrumentation for Axiomify.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "module": "./dist/index.mjs",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run tests --config ../../vitest.config.mts"
+  },
+  "dependencies": {
+    "@axiomify/core": "^7.0.0"
+  },
+  "keywords": [
+    "axiomify",
+    "observability",
+    "server-timing",
+    "trace-context",
+    "opentelemetry"
+  ],
+  "author": {
+    "name": "Topman",
+    "email": "okunlolatopman14@gmail.com",
+    "url": "https://github.com/OTopman"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/OTopman/axiomify/blob/main/docs/packages/observability.md",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OTopman/axiomify.git",
+    "directory": "packages/observability"
+  },
+  "bugs": {
+    "url": "https://github.com/OTopman/axiomify/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

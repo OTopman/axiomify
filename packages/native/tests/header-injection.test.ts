@@ -145,4 +145,18 @@ describe('NativeResponse.header() — header injection prevention', () => {
       res.stream(Readable.from([]), 'text/html\r\nSet-Cookie: pwned=1'),
     ).toThrow(/response splitting/i);
   });
+
+  it('suppresses bodies and content length for null-body status streams', async () => {
+    const { res, fakeRes } = await makeResponse();
+    const { Readable } = require('node:stream');
+    res.status(204).header('Content-Length', '4');
+    res.stream(Readable.from(['body']), 'text/plain');
+
+    expect(fakeRes.end).toHaveBeenCalledWith('');
+    expect(fakeRes.writeHeader).not.toHaveBeenCalledWith('Content-Length', '4');
+    expect(fakeRes.writeHeader).not.toHaveBeenCalledWith(
+      'Transfer-Encoding',
+      'chunked',
+    );
+  });
 });

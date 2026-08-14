@@ -15,20 +15,20 @@ same major version as the rest of your `@axiomify/*` packages — recommended.
 
 ## Commands
 
-| Command                                   | Purpose                                                                    |
-| ----------------------------------------- | -------------------------------------------------------------------------- |
-| `axiomify init [directory]`               | Bootstrap a new project                                                    |
-| `axiomify dev [entry]`                    | Dev server with hot-reload                                                 |
-| `axiomify build [entry]`                  | Compile a production bundle                                                |
-| `axiomify routes [entry]`                 | Inspect every registered HTTP + WebSocket route                            |
-| `axiomify openapi [entry]`                | Generate the OpenAPI spec to stdout or file                                |
-| `axiomify check [entry]`                  | Static production-readiness audit                                          |
-| `axiomify studio [entry]`                 | Launch Axiomify Studio visual dashboard                                    |
-| `axiomify doctor`                         | Diagnose the host environment                                              |
-| `axiomify scaffold route <method> <path>` | Generate a new route file under `src/routes/`                              |
-| `axiomify migrate`                        | v4 → v5 codemod (rename `meta`→`openapi`, `useSwagger`→`useOpenAPI`, etc.) |
+| Command                                   | Purpose                                                                          |
+| ----------------------------------------- | -------------------------------------------------------------------------------- |
+| `axiomify init [directory]`               | Bootstrap a new project                                                          |
+| `axiomify dev [entry]`                    | Dev server with hot-reload                                                       |
+| `axiomify build [entry]`                  | Compile a production bundle                                                      |
+| `axiomify routes [entry]`                 | Inspect every registered HTTP + WebSocket route                                  |
+| `axiomify openapi [entry]`                | Generate the OpenAPI spec to stdout or file                                      |
+| `axiomify check [entry]`                  | Static production-readiness audit                                                |
+| `axiomify studio [entry]`                 | Launch Axiomify Studio visual dashboard                                          |
+| `axiomify doctor`                         | Diagnose the host environment                                                    |
+| `axiomify scaffold route <method> <path>` | Generate a new route file under `src/routes/`                                    |
+| `axiomify migrate`                        | v4 → v5 codemod (rename `meta`→`openapi`, `useSwagger`→`useOpenAPI`, etc.)       |
 | `axiomify db <subcommand>`                | Run the project's database workflow (`migrate` / `seed` / `generate` / `status`) |
-| `axiomify sdk <subcommand>`               | Generate, validate, and diff multi-language type-safe SDKs                 |
+| `axiomify sdk <subcommand>`               | Generate, validate, and diff multi-language type-safe SDKs                       |
 
 `[entry]` defaults to `src/index.ts` in every command that takes one.
 
@@ -107,16 +107,16 @@ count, timeout, and deprecation marker:
 
 ### Flags
 
-| Flag                     | Description                                                                  |
-| ------------------------ | ---------------------------------------------------------------------------- |
+| Flag                     | Description                                                                 |
+| ------------------------ | --------------------------------------------------------------------------- |
 | `--json`                 | Emit the machine-readable route surface (see below) instead of the table    |
 | `--snapshot [file]`      | Write the route surface to a baseline file (default `routes-baseline.json`) |
 | `--diff <baseline>`      | Compare the current surface against a baseline; exit 1 on breaking changes  |
 | `--strict-response`      | With `--diff`: response-schema changes become breaking instead of warnings  |
 | `--allow-breaking`       | With `--diff`: report breaking changes but exit 0                           |
-| `-m, --method <list>`    | Comma-separated method filter: `--method GET,POST,WS`                        |
-| `-f, --filter <pattern>` | Path filter — substring match or glob with `*`: `--filter "/api/v1/*"`       |
-| `-s, --sort <by>`        | `path` (default) or `method`                                                 |
+| `-m, --method <list>`    | Comma-separated method filter: `--method GET,POST,WS`                       |
+| `-f, --filter <pattern>` | Path filter — substring match or glob with `*`: `--filter "/api/v1/*"`      |
+| `-s, --sort <by>`        | `path` (default) or `method`                                                |
 
 ### Route surface snapshot + diff
 
@@ -157,14 +157,14 @@ axiomify routes --diff routes-baseline.json --json   # for CI tooling
 
 `--diff` categorises every change:
 
-| Change                              | Severity                                     |
-| ----------------------------------- | -------------------------------------------- |
-| Route added                         | info                                         |
-| Route removed                       | **BREAKING**                                 |
-| Method changed (same path)          | **BREAKING**                                 |
-| `body` / `query` / `params` schema  | **BREAKING**                                 |
-| `response` schema                   | warning (`--strict-response` → **BREAKING**) |
-| Newly deprecated                    | info                                         |
+| Change                             | Severity                                     |
+| ---------------------------------- | -------------------------------------------- |
+| Route added                        | info                                         |
+| Route removed                      | **BREAKING**                                 |
+| Method changed (same path)         | **BREAKING**                                 |
+| `body` / `query` / `params` schema | **BREAKING**                                 |
+| `response` schema                  | warning (`--strict-response` → **BREAKING**) |
+| Newly deprecated                   | info                                         |
 
 **Exit code 1** on any breaking change; `--allow-breaking` still prints
 the report but exits 0. Baselines produced by older CLIs (bare `--json`
@@ -202,15 +202,15 @@ for client codegen (`openapi-typescript`, `openapi-generator`,
 
 ### Flags
 
-| Flag                       | Description                                                        |
-| -------------------------- | ------------------------------------------------------------------ |
-| `-o, --output <file>`      | Write to this file path instead of stdout                          |
-| `--format <fmt>`           | `json` (default) or `yaml`                                         |
-| `--minify`                 | Single-line JSON (ignored for yaml)                                |
-| `--title <title>`          | Override `info.title` in the generated spec                        |
-| `--spec-version <version>` | Override `info.version`                                            |
+| Flag                       | Description                                                          |
+| -------------------------- | -------------------------------------------------------------------- |
+| `-o, --output <file>`      | Write to this file path instead of stdout                            |
+| `--format <fmt>`           | `json` (default) or `yaml`                                           |
+| `--minify`                 | Single-line JSON (ignored for yaml)                                  |
+| `--title <title>`          | Override `info.title` in the generated spec                          |
+| `--spec-version <version>` | Override `info.version`                                              |
 | `--validate`               | Validate the generated spec instead of emitting it; exit 1 on errors |
-| `--json`                   | With `--validate`: emit `{ valid, findings }` JSON                 |
+| `--json`                   | With `--validate`: emit `{ valid, findings }` JSON                   |
 
 > `--spec-version` is named that way (rather than `--version`) to avoid
 > colliding with `commander`'s global `--version` flag.
@@ -242,15 +242,15 @@ Validates the generated document in two layers:
    `oas-version-unsupported` error rather than being mis-validated.
 2. **Semantic lints** beyond the schema's reach:
 
-   | Code                           | Severity | Catches                                                    |
-   | ------------------------------ | -------- | ---------------------------------------------------------- |
-   | `response-missing-description` | error    | Response objects without the required `description`        |
-   | `duplicate-parameter`          | error    | Duplicate parameter `name`+`in` pairs on an operation      |
-   | `duplicate-operation-id`       | error    | The same `operationId` used by two operations              |
-   | `path-param-missing`           | error    | Path template variable with no matching `in: path` param   |
-   | `path-param-unused`            | error    | `in: path` parameter with no matching template variable    |
-   | `orphaned-security-scheme`     | error    | Security requirement naming an undeclared securityScheme   |
-   | `empty-paths`                  | warn     | Document with no paths at all                              |
+   | Code                           | Severity | Catches                                                  |
+   | ------------------------------ | -------- | -------------------------------------------------------- |
+   | `response-missing-description` | error    | Response objects without the required `description`      |
+   | `duplicate-parameter`          | error    | Duplicate parameter `name`+`in` pairs on an operation    |
+   | `duplicate-operation-id`       | error    | The same `operationId` used by two operations            |
+   | `path-param-missing`           | error    | Path template variable with no matching `in: path` param |
+   | `path-param-unused`            | error    | `in: path` parameter with no matching template variable  |
+   | `orphaned-security-scheme`     | error    | Security requirement naming an undeclared securityScheme |
+   | `empty-paths`                  | warn     | Document with no paths at all                            |
 
 Every finding is `{ code, severity: "error" | "warn", location, message }`
 where `location` is a JSON pointer into the document (e.g.
@@ -300,7 +300,9 @@ Launches **Axiomify Studio** — a premium visual developer dashboard for inspec
 - **OpenAPI Spec Viewer**: Render collapsible tree views of OpenAPI paths and operations.
 - **Lifecycle Hooks**: Review registered hook handlers across request lifecycle phases.
 - **Health Dashboard**: Inspect production-readiness finding audits (pass/warn/fail).
-- **Request Tester**: Construct and send test requests (GET, POST, etc.) directly against your in-memory Axiomify app instance, capturing response status, headers, and body.
+- **Request Tester**: Construct and send test requests directly against your in-memory Axiomify app instance, including cookies, Server-Sent Events, streams, and multipart file uploads.
+- **Session Recorder**: Inspect or export request sessions as JSON or HAR. Authorization, cookies, passwords, tokens, and configured sensitive fields are redacted before recorder and replay history storage; body capture can be disabled in Studio.
+- **OTLP Metrics**: Receive OTLP HTTP/JSON gauges, sums, histograms, exponential histograms, and summaries locally; inspect or clear them in Analytics—no hosted telemetry account required.
 
 ### Live Sync
 
@@ -362,13 +364,13 @@ Automated v4 → v5 codemod. Recursively scans `.ts` / `.tsx` / `.js` /
 `.mjs` / `.cjs` files under `src/` (or `--dir`) and applies five
 mechanical renames:
 
-| Rule                 | What it does                                                              |
+| Rule | What it does |
 | -------------------- | ------------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------- | ------------------------------------------------ |
-| `meta-to-schema`     | Flags `meta: { ... }` with a TODO comment for manual merge into `schema:` | `meta: {` → `openapi: {` on route definitions |
-| `useSwagger-import`  | `useSwagger` → `useOpenAPI`                                               |
-| `routePrefix-option` | `routePrefix:` → `prefix:` inside `useOpenAPI()` calls                    |
-| `RouteMeta-type`     | `RouteMeta` type references → `RouteSchema`                               | `RouteMeta` type references → `RouteSchema`   | `RouteMeta` type references → `RouteSchema` | `RouteMeta` type references → `OpenApiOperation` |
-| `AppPlugin-type`     | `AppPlugin` type references → `AppConfigurator`                           |
+| `meta-to-schema` | Flags `meta: { ... }` with a TODO comment for manual merge into `schema:` | `meta: {` → `openapi: {` on route definitions |
+| `useSwagger-import` | `useSwagger` → `useOpenAPI` |
+| `routePrefix-option` | `routePrefix:` → `prefix:` inside `useOpenAPI()` calls |
+| `RouteMeta-type` | `RouteMeta` type references → `RouteSchema` | `RouteMeta` type references → `RouteSchema` | `RouteMeta` type references → `RouteSchema` | `RouteMeta` type references → `OpenApiOperation` |
+| `AppPlugin-type` | `AppPlugin` type references → `AppConfigurator` |
 
 **What it does NOT do** (flagged in the post-run hint for manual review):
 
@@ -399,7 +401,7 @@ failures that turn out to be Node-version mismatches.
 
 Checks:
 
-- Node version vs `uWebSockets.js` prebuilt support (18 / 20 / 21 / 22)
+- Node version vs `uWebSockets.js` prebuilt support (22 / 24)
 - Platform (Linux ✓; macOS / Windows need `allowUserspaceProxy` for clustering)
 - `@axiomify/*` workspace alignment (mixed versions warned)
 - `uWebSockets.js` native binding actually loads
