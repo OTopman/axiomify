@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/auth",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "description": "JWT authentication + refresh-token rotation with token revocation via `TokenStore` for Axiomify.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,7 +20,7 @@
     "test": "vitest run tests --config ../../vitest.config.mts"
   },
   "dependencies": {
-    "@axiomify/core": "^7.0.0",
+    "@axiomify/core": "^7.1.0",
     "jsonwebtoken": "9.0.3"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/metrics",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "description": "Prometheus metrics for Axiomify — bounded label cardinality, WebSocket stats, route-level latency histograms.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,7 +20,7 @@
     "test": "vitest run tests --config ../../vitest.config.mts"
   },
   "dependencies": {
-    "@axiomify/core": "^7.0.0"
+    "@axiomify/core": "^7.1.0"
   },
   "keywords": [
     "axiomify",
