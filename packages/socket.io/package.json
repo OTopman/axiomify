@@ -24,7 +24,7 @@
     "@axiomify/native": "^7.1.0"
   },
   "peerDependencies": {
-    "socket.io": "^4.4.0"
+    "socket.io": "^4.8.4"
   },
   "peerDependenciesMeta": {
     "socket.io": {
