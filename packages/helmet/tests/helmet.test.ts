@@ -25,6 +25,7 @@ describe('Helmet Plugin', () => {
       send: vi.fn(),
       header: vi.fn().mockReturnThis(),
       headersSent: false,
+      removeHeader: vi.fn().mockReturnThis(),
     } as any;
 
     await app.handle(mockReq, mockRes);
@@ -61,6 +62,7 @@ describe('Helmet Plugin', () => {
       send: vi.fn(),
       header: vi.fn().mockReturnThis(),
       headersSent: false,
+      removeHeader: vi.fn().mockReturnThis(),
     } as any;
 
     await app.handle(mockReq, mockRes);
@@ -91,6 +93,7 @@ describe('Helmet Plugin', () => {
       send: vi.fn(),
       header: vi.fn().mockReturnThis(),
       headersSent: false,
+      removeHeader: vi.fn().mockReturnThis(),
     } as any;
 
     await app.handle(mockReq, mockRes);
@@ -135,6 +138,7 @@ describe('useHelmet — HSTS object config and removePoweredBy:false', () => {
       error: vi.fn(),
       stream: vi.fn(),
       headersSent: false,
+      removeHeader: vi.fn().mockReturnThis(),
       statusCode: 200,
       raw: {},
       capabilities: { sse: false, streaming: false },
@@ -175,6 +179,7 @@ describe('useHelmet — HSTS object config and removePoweredBy:false', () => {
       error: vi.fn(),
       stream: vi.fn(),
       headersSent: false,
+      removeHeader: vi.fn().mockReturnThis(),
       statusCode: 200,
       raw: {},
       capabilities: { sse: false, streaming: false },

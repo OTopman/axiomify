@@ -19,30 +19,33 @@ Based on the audit, Axiomify is structurally sound, achieves its performance cla
 
 ## 3. Verified Feature-to-Implementation Matrix
 
-| Feature | Claimed | Implemented | Status/Notes |
-|---------|---------|-------------|--------------|
-| Native Routing | Yes | Yes | `uWebSockets.js` C++ router handles matching |
-| SO_REUSEPORT Clustering | Yes | Yes | Implemented in `@axiomify/native`, gracefully skips on MacOS/Windows |
-| Compiled Zod to AJV | Yes | Yes | Works as described. Fallbacks to Zod `safeParse` if AJV fails/missing. |
-| Zod v4 OpenAPI native | Yes | Yes | Uses `toJSONSchema` built-in, correctly structures OAS 3.1.0 |
-| Security (Sanitizer) | Yes | Yes | `__proto__`, `constructor`, `prototype` are properly sanitized. |
-| Static Path Traversal | Yes | Yes | Uses `realpath` + `startsWith` but edge cases in normalized path checking exist. |
+| Feature                 | Claimed | Implemented | Status/Notes                                                                     |
+| ----------------------- | ------- | ----------- | -------------------------------------------------------------------------------- |
+| Native Routing          | Yes     | Yes         | `uWebSockets.js` C++ router handles matching                                     |
+| SO_REUSEPORT Clustering | Yes     | Yes         | Implemented in `@axiomify/native`, gracefully skips on MacOS/Windows             |
+| Compiled Zod to AJV     | Yes     | Yes         | Works as described. Fallbacks to Zod `safeParse` if AJV fails/missing.           |
+| Zod v4 OpenAPI native   | Yes     | Yes         | Uses `toJSONSchema` built-in, correctly structures OAS 3.1.0                     |
+| Security (Sanitizer)    | Yes     | Yes         | `__proto__`, `constructor`, `prototype` are properly sanitized.                  |
+| Static Path Traversal   | Yes     | Yes         | Uses `realpath` + `startsWith` but edge cases in normalized path checking exist. |
 
 ## 4. Prioritized Findings
 
 ### Finding 1: Static File Path Traversal Edge Case (Security - Medium)
+
 - **File:** `packages/static/src/index.ts`
 - **Issue:** The static file server relies on `path.resolve(rootReal, normalizedPath)` and `realpathSafe(absolutePath)`. Then it checks if `realPath.startsWith(rootReal + path.sep)`. While `realpath` resolves symlinks and traversal, a malformed URI component might bypass `normalize` before resolution.
 - **Impact:** Potential restricted file access if Node's `path` and OS `realpath` disagree on weirdly encoded null bytes or slashes on specific OSes.
 - **Remediation:** Strictly validate the decoded URI string against a regex for `/` and alphanumeric characters before attempting path manipulation, rather than just stripping NULs and relying entirely on `realpath`.
 
 ### Finding 2: Unbounded Body Loading Memory Risk (Security/Stability - High)
+
 - **File:** `packages/native/src/http2.ts` / `packages/native/src/index.ts`
 - **Issue:** While `Content-Length` bounds are checked, if a client streams a massive chunked payload without a content-length, or an enormous valid content-length, the native adapter aggregates the chunks into JS memory (`Buffer.concat` equivalent in uWS data handler) before passing to the parser.
 - **Impact:** Memory exhaustion (OOM/DoS) on large uploads.
 - **Remediation:** Implement hard streaming limits within the `uWS.onData` handler to drop connections immediately when a streaming body exceeds `maxBodySize`.
 
 ### Finding 3: Zod Fallback Performance Cliff (Performance - Medium)
+
 - **File:** `packages/core/src/validation.ts`
 - **Issue:** If a Zod schema cannot be converted to JSON Schema (e.g. recursive schema or custom validations), it falls back to `safeParse` on every request. This introduces a silent ~400x performance cliff for that route.
 - **Impact:** Developers might unintentionally tank route throughput by using unsupported Zod operators.
@@ -58,30 +61,32 @@ Based on the audit, Axiomify is structurally sound, achieves its performance cla
 - **Benchmark:** `node benchmarks/smoke.mjs` -> Achieved 59,056 req/sec (p99 15ms) on autocannon (Single worker). Clustered would hit ~90k+.
 
 ## 6. Public API & Backward Compatibility
+
 The API is stable. Zod validation hooks and uWS native bindings are tightly integrated. Migrations from v4 to v5 introduced `uWS` natively and moved OpenAPI meta fields into `schema:`. No breaking API changes are recommended that would impact current consumers.
 
 ## 7. Prioritized Improvement Roadmap
 
 1. **Memory Bound Stream Limits (High Priority):**
-   - *Why:* Prevents Out-Of-Memory DoS on chunks.
-   - *Action:* Update `@axiomify/native` data handlers to enforce a hard byte-accumulator cap during `res.onData`, calling `res.close()` if breached.
-   - *Verification:* Write a test streaming an infinite chunked body without `Content-Length`.
+   - _Why:_ Prevents Out-Of-Memory DoS on chunks.
+   - _Action:_ Update `@axiomify/native` data handlers to enforce a hard byte-accumulator cap during `res.onData`, calling `res.close()` if breached.
+   - _Verification:_ Write a test streaming an infinite chunked body without `Content-Length`.
 
 2. **Strict Static Path Sanitization (Medium Priority):**
-   - *Why:* Belt-and-suspenders against traversal.
-   - *Action:* Enhance `packages/static/src/index.ts` to reject any `reqPath` containing `%2e` or URL encoded relative paths before `decodeURIComponent`.
-   - *Verification:* Add negative tests with URL-encoded traversal payloads in Vitest.
+   - _Why:_ Belt-and-suspenders against traversal.
+   - _Action:_ Enhance `packages/static/src/index.ts` to reject any `reqPath` containing `%2e` or URL encoded relative paths before `decodeURIComponent`.
+   - _Verification:_ Add negative tests with URL-encoded traversal payloads in Vitest.
 
 3. **Validation Fallback Warnings (Medium Priority):**
-   - *Why:* Performance transparency.
-   - *Action:* In `packages/core/src/validation.ts`, add a `console.warn` (or use internal logger) if `compile()` fails and resorts to pure `z.safeParse`.
-   - *Verification:* Observe startup logs when passing a recursive Zod schema.
+   - _Why:_ Performance transparency.
+   - _Action:_ In `packages/core/src/validation.ts`, add a `console.warn` (or use internal logger) if `compile()` fails and resorts to pure `z.safeParse`.
+   - _Verification:_ Observe startup logs when passing a recursive Zod schema.
 
 ## 8. Recommended First Implementation Task
 
 **Task:** Enforce strict byte-accumulation limits in the `uWebSockets.js` native request body handler (`packages/native/src/index.ts` and `http2.ts`) to prevent chunked payload OOM attacks.
 
 **Scope:**
+
 1. Modify `res.onData` closures to track `bytesRead`.
 2. Compare against `adapter.maxBodySize`.
 3. If exceeded, immediately drop the connection or respond `413 Payload Too Large`.
