@@ -271,13 +271,13 @@ async function runSandboxInternal(
 
   const responseObj = options.response
     ? {
-        status: options.response.status,
-        statusText: options.response.statusText,
-        headers: { ...options.response.headers },
-        responseTime: options.response.responseTime,
-        json: () => responseData,
-        text: () => responseText ?? JSON.stringify(responseData),
-      }
+      status: options.response.status,
+      statusText: options.response.statusText,
+      headers: { ...options.response.headers },
+      responseTime: options.response.responseTime,
+      json: () => responseData,
+      text: () => responseText ?? JSON.stringify(responseData),
+    }
     : undefined;
 
   const pendingPromises: Promise<any>[] = [];
@@ -357,24 +357,24 @@ async function runSandboxInternal(
     expect: axiomify.expect,
     response: responseObj
       ? {
-          code: responseObj.status,
-          status: responseObj.statusText,
-          responseTime: responseObj.responseTime,
-          headers: responseObj.headers,
-          json: responseObj.json,
-          text: responseObj.text,
-          to: {
-            have: {
-              status: (code: number) => {
-                if (responseObj.status !== code) {
-                  throw new Error(
-                    `expected response code ${responseObj.status} to be ${code}`,
-                  );
-                }
-              },
+        code: responseObj.status,
+        status: responseObj.statusText,
+        responseTime: responseObj.responseTime,
+        headers: responseObj.headers,
+        json: responseObj.json,
+        text: responseObj.text,
+        to: {
+          have: {
+            status: (code: number) => {
+              if (responseObj.status !== code) {
+                throw new Error(
+                  `expected response code ${responseObj.status} to be ${code}`,
+                );
+              }
             },
           },
-        }
+        },
+      }
       : undefined,
     environment: {
       get: axiomify.env.get,
@@ -487,22 +487,348 @@ export async function executeScriptSandbox(
         }
       };
 
+      const WORKER_SOURCE = `
+(function() {
+  function createExpectation(actual, isNot) {
+    if (isNot === undefined) isNot = false;
+    function fail(message) {
+      throw new Error(message);
+    }
+    const matchers = {
+      toBe(expected) {
+        const match = actual === expected;
+        if (isNot ? match : !match) {
+          fail("Expected " + JSON.stringify(actual) + (isNot ? " not to be " : " to be ") + JSON.stringify(expected));
+        }
+      },
+      toEqual(expected) {
+        const actualJson = JSON.stringify(actual);
+        const expectedJson = JSON.stringify(expected);
+        const match = actualJson === expectedJson;
+        if (isNot ? match : !match) {
+          fail("Expected " + actualJson + (isNot ? " not to equal " : " to equal ") + expectedJson);
+        }
+      },
+      toBeDefined() {
+        const match = actual !== undefined;
+        if (isNot ? match : !match) {
+          fail("Expected value " + (isNot ? "to be undefined" : "to be defined"));
+        }
+      },
+      toBeUndefined() {
+        const match = actual === undefined;
+        if (isNot ? match : !match) {
+          fail("Expected value " + (isNot ? "to be defined" : "to be undefined"));
+        }
+      },
+      toBeNull() {
+        const match = actual === null;
+        if (isNot ? match : !match) {
+          fail("Expected " + JSON.stringify(actual) + (isNot ? " not to be null" : " to be null"));
+        }
+      },
+      toBeTruthy() {
+        const match = Boolean(actual);
+        if (isNot ? match : !match) {
+          fail("Expected " + JSON.stringify(actual) + (isNot ? " to be falsy" : " to be truthy"));
+        }
+      },
+      toBeFalsy() {
+        const match = !actual;
+        if (isNot ? match : !match) {
+          fail("Expected " + JSON.stringify(actual) + (isNot ? " to be truthy" : " to be falsy"));
+        }
+      },
+      toBeGreaterThan(n) {
+        const match = typeof actual === "number" && actual > n;
+        if (isNot ? match : !match) {
+          fail("Expected " + actual + (isNot ? " not to be greater than " : " to be greater than ") + n);
+        }
+      },
+      toBeGreaterThanOrEqual(n) {
+        const match = typeof actual === "number" && actual >= n;
+        if (isNot ? match : !match) {
+          fail("Expected " + actual + (isNot ? " not to be greater than or equal to " : " to be greater than or equal to ") + n);
+        }
+      },
+      toBeLessThan(n) {
+        const match = typeof actual === "number" && actual < n;
+        if (isNot ? match : !match) {
+          fail("Expected " + actual + (isNot ? " not to be less than " : " to be less than ") + n);
+        }
+      },
+      toBeLessThanOrEqual(n) {
+        const match = typeof actual === "number" && actual <= n;
+        if (isNot ? match : !match) {
+          fail("Expected " + actual + (isNot ? " not to be less than or equal to " : " to be less than or equal to ") + n);
+        }
+      },
+      toContain(item) {
+        let match = false;
+        if (typeof actual === "string") {
+          match = actual.includes(String(item));
+        } else if (Array.isArray(actual)) {
+          match = actual.includes(item);
+        } else if (actual && typeof actual === "object") {
+          match = item in actual;
+        }
+        if (isNot ? match : !match) {
+          fail("Expected " + JSON.stringify(actual) + (isNot ? " not to contain " : " to contain ") + JSON.stringify(item));
+        }
+      },
+      toBeOneOf(array) {
+        const match = Array.isArray(array) && array.includes(actual);
+        if (isNot ? match : !match) {
+          fail("Expected " + JSON.stringify(actual) + (isNot ? " not to be one of " : " to be one of ") + JSON.stringify(array));
+        }
+      },
+      toHaveProperty(prop, value) {
+        const hasProp = actual && typeof actual === "object" && prop in actual;
+        const match = hasProp && (value === undefined || actual[prop] === value);
+        if (isNot ? match : !match) {
+          fail("Expected object " + (isNot ? "not to have property" : "to have property") + " \\"" + prop + "\\"" + (value !== undefined ? " with value " + JSON.stringify(value) : ""));
+        }
+      },
+      toThrow() {
+        if (typeof actual !== "function") {
+          fail("Expected a function to test throwing, got " + typeof actual);
+        }
+        let threw = false;
+        try {
+          actual();
+        } catch {
+          threw = true;
+        }
+        if (isNot ? threw : !threw) {
+          fail("Expected function " + (isNot ? "not to throw" : "to throw"));
+        }
+      },
+      toMatch(regex) {
+        const reg = typeof regex === "string" ? new RegExp(regex) : regex;
+        const match = reg.test(String(actual));
+        if (isNot ? match : !match) {
+          fail("Expected " + JSON.stringify(actual) + (isNot ? " not to match " : " to match ") + regex);
+        }
+      },
+    };
+
+    return Object.assign(matchers, {
+      get not() {
+        return createExpectation(actual, !isNot);
+      },
+    });
+  }
+
+  async function runSandbox(script, options) {
+    const startTime = Date.now();
+    const logs = [];
+    const tests = [];
+
+    const envMap = Object.assign({}, options.environment || {});
+    const mutatedEnv = {};
+
+    const requestClone = {
+      url: options.request.url,
+      method: options.request.method,
+      headers: Object.assign({}, options.request.headers),
+      body:
+        typeof options.request.body === "object" && options.request.body !== null
+          ? JSON.parse(JSON.stringify(options.request.body))
+          : options.request.body,
+      params: Object.assign({}, options.request.params),
+    };
+
+    let responseData = options.response?.data;
+    const responseText = options.response?.text;
+    if (options.response && responseData === undefined && responseText) {
       try {
-        const workerScript = `
-          ${createExpectation.toString()}
-          ${runSandboxInternal.toString()}
+        responseData = JSON.parse(responseText);
+      } catch {
+        responseData = null;
+      }
+    }
 
-          self.onmessage = async function(e) {
-            try {
-              const res = await runSandboxInternal(e.data.script, e.data.options);
-              self.postMessage({ type: 'result', result: res });
-            } catch (err) {
-              self.postMessage({ type: 'error', error: err?.message || String(err) });
-            }
-          };
-        `;
+    const responseObj = options.response
+      ? {
+          status: options.response.status,
+          statusText: options.response.statusText,
+          headers: Object.assign({}, options.response.headers),
+          responseTime: options.response.responseTime,
+          json: () => responseData,
+          text: () => (responseText !== undefined ? responseText : JSON.stringify(responseData)),
+        }
+      : undefined;
 
-        const blob = new Blob([workerScript], {
+    const pendingPromises = [];
+
+    const axiomify = {
+      request: requestClone,
+      response: responseObj,
+      env: {
+        get: (key) => envMap[key],
+        set: (key, value) => {
+          const valStr = String(value);
+          envMap[key] = valStr;
+          mutatedEnv[key] = valStr;
+        },
+        unset: (key) => {
+          delete envMap[key];
+          mutatedEnv[key] = "";
+        },
+        toObject: () => Object.assign({}, envMap),
+      },
+      test: (name, fn) => {
+        const testStart = Date.now();
+        try {
+          const res = fn();
+          if (res && typeof res.then === "function") {
+            pendingPromises.push(
+              res
+                .then(() => {
+                  tests.push({
+                    name,
+                    passed: true,
+                    durationMs: Date.now() - testStart,
+                  });
+                })
+                .catch((err) => {
+                  tests.push({
+                    name,
+                    passed: false,
+                    error: err?.message || String(err),
+                    durationMs: Date.now() - testStart,
+                  });
+                }),
+            );
+            return;
+          }
+          tests.push({
+            name,
+            passed: true,
+            durationMs: Date.now() - testStart,
+          });
+        } catch (err) {
+          tests.push({
+            name,
+            passed: false,
+            error: err?.message || String(err),
+            durationMs: Date.now() - testStart,
+          });
+        }
+      },
+      expect: (actual) => createExpectation(actual),
+      log: (...args) => {
+        logs.push(
+          args
+            .map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a)))
+            .join(" "),
+        );
+      },
+    };
+
+    const $ = axiomify;
+
+    const pm = {
+      test: axiomify.test,
+      expect: axiomify.expect,
+      response: responseObj
+        ? {
+            code: responseObj.status,
+            status: responseObj.statusText,
+            responseTime: responseObj.responseTime,
+            headers: responseObj.headers,
+            json: responseObj.json,
+            text: responseObj.text,
+            to: {
+              have: {
+                status: (code) => {
+                  if (responseObj.status !== code) {
+                    throw new Error(
+                      "expected response code " + responseObj.status + " to be " + code,
+                    );
+                  }
+                },
+              },
+            },
+          }
+        : undefined,
+      environment: {
+        get: axiomify.env.get,
+        set: axiomify.env.set,
+        unset: axiomify.env.unset,
+      },
+      variables: {
+        get: axiomify.env.get,
+        set: axiomify.env.set,
+      },
+    };
+
+    let scriptError;
+
+    try {
+      const shadowGlobals = [
+        "window",
+        "document",
+        "localStorage",
+        "sessionStorage",
+        "alert",
+        "confirm",
+        "prompt",
+        "process",
+        "require",
+        "importScripts",
+        "fetch",
+        "XMLHttpRequest",
+      ];
+
+      const shadowArgs = shadowGlobals.join(", ");
+      const shadowValues = shadowGlobals.map(() => undefined);
+
+      const wrappedCode =
+        '"use strict"; return (async function(' +
+        shadowArgs +
+        ") { " +
+        script +
+        " }).apply(undefined, arguments[3]);";
+
+      const runner = new Function("axiomify", "$", "pm", wrappedCode);
+
+      await runner.call(undefined, axiomify, $, pm, shadowValues);
+      if (pendingPromises.length > 0) {
+        await Promise.all(pendingPromises);
+      }
+    } catch (err) {
+      scriptError = err?.message || String(err);
+    }
+
+    const durationMs = Date.now() - startTime;
+    const allTestsPassed = tests.length === 0 || tests.every((t) => t.passed);
+    const success = !scriptError && allTestsPassed;
+
+    return {
+      success,
+      tests,
+      mutatedRequest: requestClone,
+      mutatedEnv,
+      logs,
+      error: scriptError,
+      durationMs,
+    };
+  }
+
+  self.onmessage = async function(e) {
+    try {
+      const res = await runSandbox(e.data.script, e.data.options);
+      self.postMessage({ type: "result", result: res });
+    } catch (err) {
+      self.postMessage({ type: "error", error: err?.message || String(err) });
+    }
+  };
+})();
+`;
+
+      try {
+        const blob = new Blob([WORKER_SOURCE], {
           type: 'application/javascript',
         });
         blobUrl = URL.createObjectURL(blob);
