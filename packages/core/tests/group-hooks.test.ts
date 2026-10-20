@@ -46,6 +46,24 @@ function makeRes(): any {
 }
 
 describe('group-scoped hooks (encapsulation)', () => {
+  it('inherits group middleware on WebSocket routes', () => {
+    const app = new Axiomify();
+    const parentPlugin = vi.fn();
+    const childPlugin = vi.fn();
+
+    app.group('/api', (api) => {
+      api.use(parentPlugin);
+      api.group('/chat', (chat) => {
+        chat.use(childPlugin);
+        chat.ws({ path: '/room', message: () => {} });
+      });
+    });
+
+    const route = app.registeredWsRoutes[0];
+    expect(route.path).toBe('/api/chat/room');
+    expect(route.plugins).toEqual([parentPlugin, childPlugin]);
+  });
+
   it('group.use applies middleware only to routes in its scope', async () => {
     const app = new Axiomify();
     const scopedPlugin = vi.fn();

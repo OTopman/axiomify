@@ -1,3 +1,15 @@
+import {
+  Box,
+  CheckSquare,
+  Compass,
+  Cpu,
+  Database,
+  Layers,
+  Play,
+  Radio,
+  Shield,
+  Sliders,
+} from 'lucide-react';
 import React, { useState } from 'react';
 import { DiscoveryData, RouteItem } from '../types';
 
@@ -5,7 +17,29 @@ interface DashboardProps {
   discovery: DiscoveryData;
   onQuickTest: (method: string, path: string) => void;
   onOpenWsTester: (path: string) => void;
+  onInspectCode?: (filePath: string, lineNumber: number) => Promise<void> | void;
 }
+
+const renderFlowCardIcon = (type: string) => {
+  switch (type) {
+    case 'route':
+      return <Compass size={15} style={{ color: 'var(--accent)' }} />;
+    case 'middleware':
+      return <Shield size={15} style={{ color: 'var(--method-head)' }} />;
+    case 'validation':
+      return <CheckSquare size={15} style={{ color: 'var(--warning)' }} />;
+    case 'controller':
+      return <Sliders size={15} style={{ color: 'var(--success)' }} />;
+    case 'service':
+      return <Layers size={15} style={{ color: 'var(--info)' }} />;
+    case 'repository':
+      return <Box size={15} style={{ color: 'var(--method-ws)' }} />;
+    case 'database':
+      return <Database size={15} style={{ color: 'var(--error)' }} />;
+    default:
+      return <Cpu size={15} style={{ color: 'var(--info)' }} />;
+  }
+};
 
 export const Dashboard: React.FC<DashboardProps> = ({
   discovery,
@@ -34,13 +68,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const controllerNode = archMap.find(
       (n) => n.id === `controller:${r.method}:${r.path}`,
     );
-    const depFlow: { name: string; type: string; icon: string }[] = [];
+    const depFlow: { name: string; type: string }[] = [];
 
-    depFlow.push({ name: `${r.method} ${r.path}`, type: 'route', icon: '🧭' });
+    depFlow.push({ name: `${r.method} ${r.path}`, type: 'route' });
 
     if (r.plugins && r.plugins.length > 0) {
       for (const p of r.plugins) {
-        depFlow.push({ name: p, type: 'middleware', icon: '🛡️' });
+        depFlow.push({ name: p, type: 'middleware' });
       }
     }
 
@@ -48,20 +82,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
       depFlow.push({
         name: r.validation.join(', '),
         type: 'validation',
-        icon: '📐',
       });
     }
 
     depFlow.push({
       name: r.operationId || 'Handler',
       type: 'controller',
-      icon: '⚙️',
     });
 
     if (controllerNode && controllerNode.dependencies) {
       for (const dep of controllerNode.dependencies) {
         const sToken = dep.split(':')[1] || dep;
-        depFlow.push({ name: sToken, type: 'service', icon: '🧩' });
+        depFlow.push({ name: sToken, type: 'service' });
 
         const sNode = archMap.find((n) => n.id === dep);
         if (sNode && sNode.dependencies) {
@@ -69,13 +101,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             const subToken = sDep.split(':')[1] || sDep;
             const subNode = archMap.find((n) => n.id === sDep);
             const subType = subNode ? subNode.type : 'service';
-            const subIcon =
-              subType === 'repository'
-                ? '📦'
-                : subType === 'database'
-                  ? '🛢️'
-                  : '🧩';
-            depFlow.push({ name: subToken, type: subType, icon: subIcon });
+            depFlow.push({ name: subToken, type: subType });
           }
         }
       }
@@ -161,7 +187,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {filteredRoutes.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-state-icon">🧭</div>
+          <Compass size={36} style={{ marginBottom: '12px', color: 'var(--text-muted)' }} />
           <div className="empty-state-message">No routes found</div>
         </div>
       ) : (
@@ -320,13 +346,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             padding: '4px 8px',
                             fontSize: '11px',
                             margin: 0,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
                           }}
                           onClick={(e) => {
                             e.stopPropagation();
                             onOpenWsTester(r.path);
                           }}
                         >
-                          Test WS
+                          <Radio size={11} /> Test WS
                         </button>
                       ) : (
                         <button
@@ -335,13 +364,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             padding: '4px 8px',
                             fontSize: '11px',
                             margin: 0,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
                           }}
                           onClick={(e) => {
                             e.stopPropagation();
                             onQuickTest(r.method, r.path);
                           }}
                         >
-                          ⚡ Test
+                          <Play size={11} /> Test
                         </button>
                       )}
                     </td>
@@ -472,9 +504,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                         minWidth: '180px',
                                       }}
                                     >
-                                      <span style={{ fontSize: '16px' }}>
-                                        {card.icon}
-                                      </span>
+                                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                                        {renderFlowCardIcon(card.type)}
+                                      </div>
                                       <div
                                         style={{
                                           display: 'flex',
@@ -533,9 +565,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               }}
                             >
                               {!routeSchema ||
-                              (!routeSchema.params &&
-                                !routeSchema.query &&
-                                !routeSchema.body) ? (
+                                (!routeSchema.params &&
+                                  !routeSchema.query &&
+                                  !routeSchema.body) ? (
                                 <div
                                   style={{
                                     color: 'var(--text-muted)',

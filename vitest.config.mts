@@ -22,6 +22,7 @@ const packages = [
   'logger',
   'metrics',
   'native',
+  'serverless',
   'observability',
   'openapi',
   'rate-limit',

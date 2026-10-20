@@ -1,4 +1,5 @@
 import Editor, { Monaco } from '@monaco-editor/react';
+import { Clock, Code2, Folder, Layers, RefreshCw, Sparkles, Terminal } from 'lucide-react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DiscoveryData } from '../types';
 import { apiFetch } from '../utils/api';
@@ -6,8 +7,8 @@ import {
   extractPlaygroundOperations,
   getPlaygroundCompletionQuery,
   getPlaygroundPropertyCompletionContext,
-  replacePlaygroundBaseUrl,
   playgroundRuntimeDeclarations,
+  replacePlaygroundBaseUrl,
 } from '../utils/playground-intellisense';
 
 interface PlaygroundProps {
@@ -287,7 +288,7 @@ export * from './validators';`,
                 },
               ],
             },
-            dispose: () => {},
+            dispose: () => { },
           };
         },
       }),
@@ -351,23 +352,23 @@ export * from './validators';`,
         : getPlaygroundCompletionQuery(prefix);
       const nextMenu: CompletionMenu | null = propertyContext
         ? {
-            kind: 'property',
-            query: propertyContext.query,
-            selectedIndex: 0,
-            left: 0,
-            top: 0,
-            operationName: propertyContext.operationName,
-            usedPropertyNames: propertyContext.usedPropertyNames,
-          }
+          kind: 'property',
+          query: propertyContext.query,
+          selectedIndex: 0,
+          left: 0,
+          top: 0,
+          operationName: propertyContext.operationName,
+          usedPropertyNames: propertyContext.usedPropertyNames,
+        }
         : methodQuery === null
           ? null
           : {
-              kind: 'method',
-              query: methodQuery,
-              selectedIndex: 0,
-              left: 0,
-              top: 0,
-            };
+            kind: 'method',
+            query: methodQuery,
+            selectedIndex: 0,
+            left: 0,
+            top: 0,
+          };
       const matches = getCompletionItems(nextMenu);
       if ((!force && !nextMenu) || matches.length === 0) {
         setCompletionMenu(null);
@@ -400,13 +401,13 @@ export * from './validators';`,
           setCompletionMenu((current) =>
             current
               ? {
-                  ...current,
-                  selectedIndex:
-                    (current.selectedIndex +
-                      (event.code === 'ArrowDown' ? 1 : -1) +
-                      visibleMatches.length) %
-                    visibleMatches.length,
-                }
+                ...current,
+                selectedIndex:
+                  (current.selectedIndex +
+                    (event.code === 'ArrowDown' ? 1 : -1) +
+                    visibleMatches.length) %
+                  visibleMatches.length,
+              }
               : null,
           );
         } else if (event.code === 'Enter' || event.code === 'Tab') {
@@ -499,7 +500,7 @@ export * from './validators';`,
                 const jsonPart = log.substring(log.indexOf('Result: ') + 8);
                 lastJsonObject = JSON.parse(jsonPart);
               }
-            } catch {}
+            } catch { }
           });
         }
 
@@ -692,11 +693,16 @@ export * from './validators';`,
             onClick={handleFormatCode}
             disabled={editorLoading}
             title="Format document (Shift+Alt+F)"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
-            ✨ Format Code
+            <Sparkles size={12} /> Format Code
           </button>
-          <button className="btn btn-secondary" onClick={handleResetCode}>
-            🔄 Reset starter
+          <button
+            className="btn btn-secondary"
+            onClick={handleResetCode}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <RefreshCw size={12} /> Reset Starter
           </button>
         </div>
       </div>
@@ -718,17 +724,17 @@ export * from './validators';`,
           >
             <button
               className={`btn btn-secondary ${leftTab === 'editor' ? 'active-tab-btn' : ''}`}
-              style={{ margin: 0, padding: '4px 10px', fontSize: '12px' }}
+              style={{ margin: 0, padding: '4px 10px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               onClick={() => setLeftTab('editor')}
             >
-              💻 Client Editor
+              <Code2 size={12} /> Client Editor
             </button>
             <button
               className={`btn btn-secondary ${leftTab === 'preview' ? 'active-tab-btn' : ''}`}
-              style={{ margin: 0, padding: '4px 10px', fontSize: '12px' }}
+              style={{ margin: 0, padding: '4px 10px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               onClick={() => setLeftTab('preview')}
             >
-              📂 SDK Files Preview
+              <Folder size={12} /> SDK Files Preview
             </button>
           </div>
 
@@ -962,24 +968,24 @@ export * from './validators';`,
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 className={`btn btn-secondary ${rightTab === 'terminal' ? 'active-tab-btn' : ''}`}
-                style={{ margin: 0, padding: '4px 10px', fontSize: '12px' }}
+                style={{ margin: 0, padding: '4px 10px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                 onClick={() => setRightTab('terminal')}
               >
-                🖥️ Output Terminal
+                <Terminal size={12} /> Output Terminal
               </button>
               <button
                 className={`btn btn-secondary ${rightTab === 'response' ? 'active-tab-btn' : ''}`}
-                style={{ margin: 0, padding: '4px 10px', fontSize: '12px' }}
+                style={{ margin: 0, padding: '4px 10px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                 onClick={() => setRightTab('response')}
               >
-                📦 Response Preview
+                <Layers size={12} /> Response Preview
               </button>
               <button
                 className={`btn btn-secondary ${rightTab === 'history' ? 'active-tab-btn' : ''}`}
-                style={{ margin: 0, padding: '4px 10px', fontSize: '12px' }}
+                style={{ margin: 0, padding: '4px 10px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                 onClick={() => setRightTab('history')}
               >
-                📜 Request History
+                <Clock size={12} /> Request History
               </button>
             </div>
             {rightTab === 'terminal' && (

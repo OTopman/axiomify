@@ -25,25 +25,6 @@
         }
       }
     },
-    "/assets/*": {
-      "get": {
-        "summary": "GET /assets/*",
-        "operationId": "getAssetsAll",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/users": {
       "get": {
         "summary": "GET /api/users",
@@ -77,8 +58,7 @@
                       "id",
                       "username",
                       "role"
-                    ],
-                    "additionalProperties": false
+                    ]
                   }
                 }
               }
@@ -125,10 +105,8 @@
                   }
                 },
                 "required": [
-                  "username",
-                  "role"
-                ],
-                "additionalProperties": false
+                  "username"
+                ]
               }
             }
           }
@@ -170,8 +148,7 @@
                 },
                 "required": [
                   "userId"
-                ],
-                "additionalProperties": false
+                ]
               }
             }
           }
@@ -227,6 +204,58 @@
                 "schema": {
                   "type": "object"
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/checkout": {
+      "post": {
+        "summary": "POST /api/checkout",
+        "operationId": "postApiCheckout",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "amount": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "simulateFailure": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "email",
+                  "name",
+                  "amount"
+                ]
               }
             }
           }
@@ -290,8 +319,7 @@
                   },
                   "required": [
                     "message"
-                  ],
-                  "additionalProperties": false
+                  ]
                 }
               }
             }
@@ -353,7 +381,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
       }
     },
     "/docs/openapi.json": {
@@ -394,5 +427,12 @@
         }
       }
     }
-  }
+  },
+  "x-axiomify-warnings": [
+    {
+      "code": "orphaned-security-scheme",
+      "message": "Security requirement references \"bearerAuth\", but it is not declared in components.securitySchemes. Swagger UI cannot authorize this operation.",
+      "location": "/paths//live-feed/get/security/0"
+    }
+  ]
 }

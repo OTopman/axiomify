@@ -29,6 +29,11 @@ npm install @axiomify/sdk-runtime
 
 The runtime is initialized via the `BaseClient`. Your generated SDK will extend this class, but you will configure it using `ClientConfig`.
 
+For generated SDK integration checks, pair a generated client method with an
+`@axiomify/testing` injected app. The client accepts a custom `fetch`, so the
+test can bridge the generated HTTP request into the app without opening a
+socket; see [Contract testing](../../docs/contract-testing.md).
+
 ```ts
 import { MyGeneratedSDK } from './generated-sdks';
 

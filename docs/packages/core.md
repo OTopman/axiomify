@@ -135,6 +135,9 @@ Scoping semantics:
 - `onPreHandler` / `onPostHandler` receive the matched route and are scoped
   **exactly**: they fire only for routes registered through this group,
   including routes added by nested groups.
+- WebSocket route plugins inherit from groups. These HTTP lifecycle hooks do
+  not scope WebSocket handshakes; handshake authorization belongs in the
+  WebSocket route's plugins.
 - `onRequest` / `onError` / `onClose` run without a route match and are scoped
   by **path prefix**: they fire for any request whose path falls under the
   group prefix. `:param` segments in the prefix match any single segment
