@@ -480,7 +480,11 @@ Quick reference:
 | [Examples](examples/)                                | Runnable servers showing the full ecosystem    |
 | [Starter kits](starters/)                            | Deployable, focused production starting points |
 | [Community recipes](docs/recipes/)                   | Production patterns maintained with users      |
-| [Community guide](COMMUNITY.md)                      | Discussions, issues, and contribution path     |
+
+Current runnable recipes cover scoped administration routes, request-to-job
+trace continuity, webhook signature validation, and tenant-scoped routes.
+The starter catalog includes REST and Fetch-based serverless APIs.
+| [Community guide](COMMUNITY.md) | Discussions, issues, and contribution path |
 
 ### Package docs
 

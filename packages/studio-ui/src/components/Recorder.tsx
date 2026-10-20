@@ -1,15 +1,40 @@
-import React, { useEffect, useState } from 'react';
+import {
+  AlertTriangle,
+  ArrowRight,
+  Check,
+  CheckCircle2,
+  Copy,
+  Database,
+  Download,
+  FileJson,
+  Radio,
+  Search,
+  Shield,
+  Terminal,
+  Trash2,
+} from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { apiFetch, getToken } from '../utils/api';
 
-export const Recorder: React.FC = () => {
+interface RecorderProps {
+  onReplay?: (method: string, path: string) => void;
+  onInspectCode?: (
+    filePath: string,
+    lineNumber: number,
+  ) => Promise<void> | void;
+}
+
+export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
   const [sessionData, setSessionData] = useState<any | null>(null);
   const [recordBodies, setRecordBodies] = useState(true);
   const [sensitiveKeysText, setSensitiveKeysText] = useState('');
   const [savingPrivacy, setSavingPrivacy] = useState(false);
   const [selectedRequestId, setSelectedRequestId] = useState<string>('');
+  const [filterText, setFilterText] = useState('');
   const [activeDetailSection, setActiveDetailSection] = useState<
     'request' | 'middlewares' | 'queries' | 'response'
   >('request');
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSession();
@@ -114,182 +139,409 @@ export const Recorder: React.FC = () => {
     window.location.href = `/__studio/api/session/${endpoint}?token=${encodeURIComponent(token)}`;
   };
 
-  const entries = sessionData?.entries || [];
-  const selectedEntry =
-    entries.find((e: any) => e.requestId === selectedRequestId) || entries[0];
+  const handleCopy = (text: string, key: string) => {
+    navigator.clipboard?.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 1500);
+  };
 
-  const getStatusStyle = (code: number) => {
-    if (code >= 200 && code < 300)
-      return { background: 'rgba(0, 210, 160, 0.15)', color: 'var(--success)' };
-    if (code >= 300 && code < 400)
-      return { background: 'rgba(255, 193, 7, 0.15)', color: 'var(--warning)' };
-    return { background: 'rgba(255, 107, 107, 0.15)', color: 'var(--error)' };
+  const entries: any[] = sessionData?.entries || [];
+
+  const filteredEntries = useMemo(() => {
+    if (!filterText.trim()) return entries;
+    const lower = filterText.toLowerCase();
+    return entries.filter(
+      (e) =>
+        e.request?.path?.toLowerCase().includes(lower) ||
+        e.request?.method?.toLowerCase().includes(lower) ||
+        String(e.response?.status || '').includes(lower) ||
+        e.requestId?.toLowerCase().includes(lower),
+    );
+  }, [entries, filterText]);
+
+  const selectedEntry =
+    filteredEntries.find((e) => e.requestId === selectedRequestId) ||
+    entries.find((e) => e.requestId === selectedRequestId) ||
+    filteredEntries[0] ||
+    entries[0];
+
+  const getStatusBadge = (code: number) => {
+    if (code >= 200 && code < 300) {
+      return {
+        bg: 'rgba(34, 197, 94, 0.12)',
+        color: '#4ade80',
+        border: '1px solid rgba(34, 197, 94, 0.25)',
+      };
+    }
+    if (code >= 300 && code < 400) {
+      return {
+        bg: 'rgba(234, 179, 8, 0.12)',
+        color: '#facc15',
+        border: '1px solid rgba(234, 179, 8, 0.25)',
+      };
+    }
+    if (code >= 400) {
+      return {
+        bg: 'rgba(239, 68, 68, 0.12)',
+        color: '#f87171',
+        border: '1px solid rgba(239, 68, 68, 0.25)',
+      };
+    }
+    return {
+      bg: 'rgba(255, 255, 255, 0.05)',
+      color: 'var(--text-muted)',
+      border: '1px solid var(--border)',
+    };
   };
 
   return (
-    <div>
+    <div
+      className="panel-modern-layout"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        animation: 'fade-in 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+      }}
+    >
+      {/* Modern Top Header */}
       <div
-        className="panel-header"
+        className="panel-header-modern"
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          width: '100%',
+          padding: '16px 20px',
+          background:
+            'linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0) 100%)',
+          borderBottom: '1px solid var(--border)',
           flexWrap: 'wrap',
           gap: '12px',
         }}
       >
-        <div>
-          <div className="panel-title">Session Recorder</div>
-          <div className="panel-subtitle">
-            Capture, examine, and export HTTP/WS api request transaction
-            sessions
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: 'var(--radius-md)',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#f87171',
+            }}
+          >
+            <Radio size={18} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  color: 'var(--text-primary)',
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                Session Recorder
+              </h2>
+              {entries.length > 0 && (
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontFamily: 'var(--font-mono)',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    background: 'rgba(59, 130, 246, 0.12)',
+                    color: 'var(--accent)',
+                    border: '1px solid rgba(59, 130, 246, 0.25)',
+                  }}
+                >
+                  {entries.length} recorded
+                </span>
+              )}
+            </div>
+            <p
+              style={{
+                margin: '2px 0 0',
+                fontSize: '12px',
+                color: 'var(--text-muted)',
+              }}
+            >
+              Capture, inspect, and export live HTTP & WebSocket transactions
+              with lifecycle telemetry
+            </p>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             className="btn btn-secondary"
             onClick={handleClearSession}
-            disabled={!sessionData}
+            disabled={!sessionData || entries.length === 0}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12px',
+              padding: '6px 12px',
+            }}
           >
-            Clear Recorder
+            <Trash2 size={13} />
+            Clear
           </button>
           <button
             className="btn btn-secondary"
             onClick={() => handleExport('json')}
+            disabled={entries.length === 0}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12px',
+              padding: '6px 12px',
+            }}
           >
-            ⬇ Export JSON
+            <FileJson size={13} />
+            Export JSON
           </button>
-          <button className="btn" onClick={() => handleExport('har')}>
-            ⬇ Export HAR
+          <button
+            className="btn btn-secondary"
+            onClick={() => handleExport('har')}
+            disabled={entries.length === 0}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12px',
+              padding: '6px 12px',
+            }}
+          >
+            <Download size={13} />
+            Export HAR
           </button>
         </div>
       </div>
 
-      <label
+      {/* Privacy Subheader Strip */}
+      <div
         style={{
+          padding: '10px 20px',
+          background: 'var(--bg-secondary)',
+          borderBottom: '1px solid var(--border)',
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
-          color: 'var(--text-secondary)',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
           fontSize: '12px',
-          marginBottom: '16px',
-          cursor: 'pointer',
         }}
       >
-        <input
-          type="checkbox"
-          checked={recordBodies}
-          onChange={(e) => handleRecordBodiesChange(e.target.checked)}
-        />
-        Record request and response bodies (sensitive fields and headers are
-        always redacted)
-      </label>
-      <div
-        className="form-group"
-        style={{ maxWidth: '680px', marginBottom: '20px' }}
-      >
-        <label className="form-label">Additional sensitive field names</label>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            cursor: 'pointer',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={recordBodies}
+            onChange={(e) => handleRecordBodiesChange(e.target.checked)}
+            style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+          />
+          <span>Record request & response payloads</span>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+            (headers & sensitive keys auto-redacted)
+          </span>
+        </label>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              color: 'var(--text-muted)',
+              fontSize: '11px',
+            }}
+          >
+            <Shield size={12} />
+            <span>Sensitive keys:</span>
+          </div>
           <input
             className="text-input"
             value={sensitiveKeysText}
             onChange={(e) => setSensitiveKeysText(e.target.value)}
-            placeholder="customerId, accountNumber"
+            placeholder="customerId, password, token"
             aria-label="Additional sensitive field names"
-            style={{ flex: 1 }}
+            style={{
+              width: '200px',
+              padding: '4px 8px',
+              fontSize: '11px',
+              height: '28px',
+            }}
           />
           <button
             className="btn btn-secondary"
             onClick={handleSaveSensitiveKeys}
             disabled={savingPrivacy}
+            style={{ fontSize: '11px', padding: '4px 10px', height: '28px' }}
           >
             {savingPrivacy ? 'Saving…' : 'Save'}
           </button>
         </div>
-        <div
-          style={{
-            color: 'var(--text-muted)',
-            fontSize: '11px',
-            marginTop: '5px',
-          }}
-        >
-          Comma or line-separated names. Matching request, response, and replay
-          fields are masked before storage.
-        </div>
       </div>
 
+      {/* Main Content Area */}
       {entries.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-state-icon">📡</div>
-          <div className="empty-state-message">
-            No requests recorded yet. Fire some requests via the Request Tester
-            or host API.
+        <div
+          className="empty-state"
+          style={{ padding: '64px 20px', textAlign: 'center' }}
+        >
+          <div
+            style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '50%',
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 16px',
+              color: 'var(--text-muted)',
+            }}
+          >
+            <Radio size={22} />
+          </div>
+          <div
+            style={{
+              fontSize: '14px',
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              marginBottom: '6px',
+            }}
+          >
+            No Recorded Transactions
+          </div>
+          <div
+            className="empty-state-message"
+            style={{
+              maxWidth: '380px',
+              margin: '0 auto',
+              fontSize: '12px',
+              color: 'var(--text-muted)',
+              lineHeight: '1.5',
+            }}
+          >
+            Fire some requests via the Request Tester or host API to inspect
+            transaction lifecycles, database queries, and middleware traces.
           </div>
         </div>
       ) : (
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '360px 1fr',
-            gap: '24px',
-            minHeight: '650px',
-            height: 'auto',
-            textAlign: 'left',
+            gridTemplateColumns: '320px 1fr',
+            flex: 1,
+            overflow: 'hidden',
           }}
         >
-          {/* Left Panel: Transaction Logs List */}
+          {/* Left Panel: Stream of Transactions */}
           <div
             style={{
+              borderRight: '1px solid var(--border)',
               background: 'var(--bg-secondary)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-md)',
-              padding: '16px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '12px',
+              overflow: 'hidden',
             }}
           >
+            {/* Search Filter Header */}
             <div
               style={{
-                fontSize: '12px',
-                fontWeight: 700,
-                color: 'var(--text-muted)',
+                padding: '12px 14px',
+                borderBottom: '1px solid var(--border)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
               }}
             >
-              Recorded Transactions
+              <div
+                style={{
+                  position: 'relative',
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+              >
+                <Search
+                  size={13}
+                  style={{
+                    position: 'absolute',
+                    left: '8px',
+                    color: 'var(--text-muted)',
+                  }}
+                />
+                <input
+                  type="text"
+                  placeholder="Filter transactions…"
+                  value={filterText}
+                  onChange={(e) => setFilterText(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '6px 10px 6px 28px',
+                    fontSize: '12px',
+                    background: 'var(--bg-primary)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)',
+                    color: 'var(--text-primary)',
+                    outline: 'none',
+                  }}
+                />
+              </div>
             </div>
+
+            {/* List */}
             <div
               style={{
                 flex: 1,
                 overflowY: 'auto',
+                padding: '8px',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '8px',
-                maxHeight: '600px',
+                gap: '6px',
               }}
             >
-              {entries.map((e: any) => {
+              {filteredEntries.map((e: any) => {
                 const isSelected =
                   selectedEntry && e.requestId === selectedEntry.requestId;
                 const status = e.response?.status || 0;
                 const duration = e.response?.durationMs;
+                const statusTheme = getStatusBadge(status);
+
                 return (
                   <div
                     key={e.requestId}
+                    onClick={() => setSelectedRequestId(e.requestId)}
                     style={{
                       background: isSelected
-                        ? 'var(--bg-tertiary)'
+                        ? 'rgba(59, 130, 246, 0.08)'
                         : 'var(--bg-primary)',
                       border: isSelected
-                        ? '1px solid var(--accent)'
+                        ? '1px solid rgba(59, 130, 246, 0.35)'
                         : '1px solid var(--border)',
                       borderRadius: 'var(--radius-sm)',
-                      padding: '12px',
+                      padding: '10px 12px',
                       cursor: 'pointer',
-                      transition: 'all 0.2s',
+                      transition: 'all 0.15s ease',
                     }}
-                    onClick={() => setSelectedRequestId(e.requestId)}
                   >
                     <div
                       style={{
@@ -300,26 +552,29 @@ export const Recorder: React.FC = () => {
                       }}
                     >
                       <span
-                        className={`method-badge method-${e.request.method}`}
-                        style={{ fontSize: '9px', padding: '1px 5px' }}
+                        className={`method-badge method-${e.request?.method || 'GET'}`}
+                        style={{ fontSize: '10px', padding: '1px 6px' }}
                       >
-                        {e.request.method}
+                        {e.request?.method || 'GET'}
                       </span>
                       <div
                         style={{
                           display: 'flex',
-                          gap: '6px',
                           alignItems: 'center',
+                          gap: '6px',
                         }}
                       >
                         {status > 0 && (
                           <span
                             style={{
-                              fontSize: '9px',
-                              fontWeight: 700,
-                              padding: '1px 5px',
-                              borderRadius: '3px',
-                              ...getStatusStyle(status),
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              fontFamily: 'var(--font-mono)',
+                              padding: '1px 6px',
+                              borderRadius: '4px',
+                              background: statusTheme.bg,
+                              color: statusTheme.color,
+                              border: statusTheme.border,
                             }}
                           >
                             {status}
@@ -328,8 +583,9 @@ export const Recorder: React.FC = () => {
                         {duration !== undefined && (
                           <span
                             style={{
-                              fontSize: '10px',
+                              fontSize: '11px',
                               color: 'var(--text-muted)',
+                              fontFamily: 'var(--font-mono)',
                             }}
                           >
                             {duration.toFixed(1)}ms
@@ -337,32 +593,39 @@ export const Recorder: React.FC = () => {
                         )}
                       </div>
                     </div>
+
                     <div
                       style={{
                         fontFamily: 'var(--font-mono)',
                         fontSize: '11px',
-                        fontWeight: 600,
+                        fontWeight: 500,
                         color: 'var(--text-primary)',
-                        wordBreak: 'break-all',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
                       }}
+                      title={e.request?.path}
                     >
-                      {e.request.path}
+                      {e.request?.path || '/'}
                     </div>
+
                     <div
                       style={{
                         display: 'flex',
                         justifyContent: 'space-between',
-                        fontSize: '9px',
+                        alignItems: 'center',
+                        fontSize: '10px',
                         color: 'var(--text-muted)',
                         marginTop: '6px',
                       }}
                     >
-                      <span>ID: {e.requestId.slice(0, 8)}...</span>
+                      <span style={{ fontFamily: 'var(--font-mono)' }}>
+                        {e.requestId.slice(0, 8)}
+                      </span>
                       <span>
-                        {new Date(e.request.timestamp).toLocaleTimeString()}
+                        {new Date(
+                          e.request?.timestamp || Date.now(),
+                        ).toLocaleTimeString()}
                       </span>
                     </div>
                   </div>
@@ -371,317 +634,382 @@ export const Recorder: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Panel: Transaction Flowchart & Payloads Details */}
+          {/* Right Panel: Flowchart + Inspection Tabs */}
           <div
-            style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              background: 'var(--bg-primary)',
+              overflowY: 'auto',
+            }}
           >
             {selectedEntry ? (
-              <>
-                {/* Visual Flowchart */}
+              <div
+                style={{
+                  padding: '20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '20px',
+                }}
+              >
+                {/* Visual Flowchart Lifecycle */}
                 <div
                   style={{
                     background: 'var(--bg-secondary)',
                     border: '1px solid var(--border)',
                     borderRadius: 'var(--radius-md)',
-                    padding: '24px',
-                    textAlign: 'center',
+                    padding: '18px 20px',
                   }}
                 >
                   <div
                     style={{
-                      fontSize: '12px',
-                      fontWeight: 700,
+                      fontSize: '11px',
+                      fontWeight: 600,
                       textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
                       color: 'var(--text-muted)',
-                      marginBottom: '20px',
-                      textAlign: 'left',
+                      marginBottom: '14px',
                     }}
                   >
                     Transaction Lifecycle Flowchart
                   </div>
+
                   <div
                     style={{
                       display: 'flex',
-                      justifyContent: 'center',
                       alignItems: 'center',
-                      gap: '16px',
-                      flexWrap: 'wrap',
+                      gap: '12px',
+                      overflowX: 'auto',
+                      paddingBottom: '4px',
                     }}
                   >
-                    {/* Node 1: Client */}
-                    <div
+                    {/* Node 1: Client Request */}
+                    <button
+                      onClick={() => setActiveDetailSection('request')}
                       style={{
+                        flex: '1 1 0',
+                        minWidth: '140px',
                         background:
                           activeDetailSection === 'request'
-                            ? 'rgba(0, 120, 255, 0.08)'
+                            ? 'rgba(59, 130, 246, 0.1)'
                             : 'var(--bg-primary)',
                         border:
                           activeDetailSection === 'request'
-                            ? '2px solid var(--accent)'
+                            ? '1px solid var(--accent)'
                             : '1px solid var(--border)',
                         borderRadius: 'var(--radius-sm)',
                         padding: '12px',
-                        minWidth: '130px',
                         cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        boxShadow:
-                          activeDetailSection === 'request'
-                            ? '0 0 10px rgba(0, 120, 255, 0.15)'
-                            : 'none',
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease',
                       }}
-                      onClick={() => setActiveDetailSection('request')}
                     >
-                      <div style={{ fontSize: '24px', marginBottom: '4px' }}>
-                        💻
-                      </div>
                       <div
                         style={{
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          color: 'var(--text-primary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          marginBottom: '4px',
+                          color:
+                            activeDetailSection === 'request'
+                              ? 'var(--accent)'
+                              : 'var(--text-muted)',
                         }}
                       >
-                        Client Request
+                        <Terminal size={14} />
+                        <span style={{ fontSize: '12px', fontWeight: 600 }}>
+                          1. Request
+                        </span>
                       </div>
                       <div
                         style={{
-                          fontSize: '10px',
-                          color: 'var(--text-muted)',
+                          fontSize: '11px',
                           fontFamily: 'var(--font-mono)',
+                          color: 'var(--text-primary)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
                         }}
                       >
-                        {selectedEntry.request.method}
+                        {selectedEntry.request?.method}{' '}
+                        {selectedEntry.request?.path}
                       </div>
-                    </div>
+                    </button>
 
-                    <div
-                      style={{
-                        fontSize: '18px',
-                        color: 'var(--text-muted)',
-                        fontWeight: 800,
-                      }}
-                    >
-                      ➔
-                    </div>
+                    <ArrowRight
+                      size={14}
+                      style={{ color: 'var(--text-muted)', flexShrink: 0 }}
+                    />
 
                     {/* Node 2: Middlewares */}
-                    <div
+                    <button
+                      onClick={() => setActiveDetailSection('middlewares')}
                       style={{
+                        flex: '1 1 0',
+                        minWidth: '140px',
                         background:
                           activeDetailSection === 'middlewares'
-                            ? 'rgba(0, 120, 255, 0.08)'
+                            ? 'rgba(59, 130, 246, 0.1)'
                             : 'var(--bg-primary)',
                         border:
                           activeDetailSection === 'middlewares'
-                            ? '2px solid var(--accent)'
+                            ? '1px solid var(--accent)'
                             : '1px solid var(--border)',
                         borderRadius: 'var(--radius-sm)',
                         padding: '12px',
-                        minWidth: '130px',
                         cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        boxShadow:
-                          activeDetailSection === 'middlewares'
-                            ? '0 0 10px rgba(0, 120, 255, 0.15)'
-                            : 'none',
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease',
                       }}
-                      onClick={() => setActiveDetailSection('middlewares')}
                     >
-                      <div style={{ fontSize: '24px', marginBottom: '4px' }}>
-                        🛡️
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          marginBottom: '4px',
+                          color:
+                            activeDetailSection === 'middlewares'
+                              ? 'var(--accent)'
+                              : 'var(--text-muted)',
+                        }}
+                      >
+                        <Shield size={14} />
+                        <span style={{ fontSize: '12px', fontWeight: 600 }}>
+                          2. Pipeline
+                        </span>
                       </div>
                       <div
                         style={{
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          color: 'var(--text-primary)',
+                          fontSize: '11px',
+                          color: 'var(--text-secondary)',
                         }}
                       >
-                        Middlewares
+                        {selectedEntry.timeline?.length || 0} stages recorded
                       </div>
-                      <div
-                        style={{ fontSize: '10px', color: 'var(--text-muted)' }}
-                      >
-                        {selectedEntry.request.headers?.['content-type']
-                          ? 'Parser + Custom'
-                          : 'Standard'}
-                      </div>
-                    </div>
+                    </button>
 
-                    <div
-                      style={{
-                        fontSize: '18px',
-                        color: 'var(--text-muted)',
-                        fontWeight: 800,
-                      }}
-                    >
-                      ➔
-                    </div>
+                    <ArrowRight
+                      size={14}
+                      style={{ color: 'var(--text-muted)', flexShrink: 0 }}
+                    />
 
                     {/* Node 3: Database Queries */}
-                    <div
+                    <button
+                      onClick={() => setActiveDetailSection('queries')}
                       style={{
+                        flex: '1 1 0',
+                        minWidth: '140px',
                         background:
                           activeDetailSection === 'queries'
-                            ? 'rgba(0, 120, 255, 0.08)'
+                            ? 'rgba(59, 130, 246, 0.1)'
                             : 'var(--bg-primary)',
                         border:
                           activeDetailSection === 'queries'
-                            ? '2px solid var(--accent)'
+                            ? '1px solid var(--accent)'
                             : '1px solid var(--border)',
                         borderRadius: 'var(--radius-sm)',
                         padding: '12px',
-                        minWidth: '130px',
                         cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        boxShadow:
-                          activeDetailSection === 'queries'
-                            ? '0 0 10px rgba(0, 120, 255, 0.15)'
-                            : 'none',
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease',
                       }}
-                      onClick={() => setActiveDetailSection('queries')}
                     >
-                      <div style={{ fontSize: '24px', marginBottom: '4px' }}>
-                        🛢️
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          marginBottom: '4px',
+                          color:
+                            activeDetailSection === 'queries'
+                              ? 'var(--accent)'
+                              : 'var(--text-muted)',
+                        }}
+                      >
+                        <Database size={14} />
+                        <span style={{ fontSize: '12px', fontWeight: 600 }}>
+                          3. Queries
+                        </span>
                       </div>
                       <div
                         style={{
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          color: 'var(--text-primary)',
+                          fontSize: '11px',
+                          color: 'var(--text-secondary)',
                         }}
-                      >
-                        Database Queries
-                      </div>
-                      <div
-                        style={{ fontSize: '10px', color: 'var(--text-muted)' }}
                       >
                         {selectedEntry.queries?.length || 0} executed
                       </div>
-                    </div>
+                    </button>
 
-                    <div
-                      style={{
-                        fontSize: '18px',
-                        color: 'var(--text-muted)',
-                        fontWeight: 800,
-                      }}
-                    >
-                      ➔
-                    </div>
+                    <ArrowRight
+                      size={14}
+                      style={{ color: 'var(--text-muted)', flexShrink: 0 }}
+                    />
 
                     {/* Node 4: Server Response */}
-                    <div
+                    <button
+                      onClick={() => setActiveDetailSection('response')}
                       style={{
+                        flex: '1 1 0',
+                        minWidth: '140px',
                         background:
                           activeDetailSection === 'response'
-                            ? 'rgba(0, 120, 255, 0.08)'
+                            ? 'rgba(59, 130, 246, 0.1)'
                             : 'var(--bg-primary)',
                         border:
                           activeDetailSection === 'response'
-                            ? '2px solid var(--accent)'
+                            ? '1px solid var(--accent)'
                             : '1px solid var(--border)',
                         borderRadius: 'var(--radius-sm)',
                         padding: '12px',
-                        minWidth: '130px',
                         cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        boxShadow:
-                          activeDetailSection === 'response'
-                            ? '0 0 10px rgba(0, 120, 255, 0.15)'
-                            : 'none',
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease',
                       }}
-                      onClick={() => setActiveDetailSection('response')}
                     >
-                      <div style={{ fontSize: '24px', marginBottom: '4px' }}>
-                        📥
-                      </div>
                       <div
                         style={{
-                          fontSize: '12px',
-                          fontWeight: 700,
-                          color: 'var(--text-primary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          marginBottom: '4px',
+                          color:
+                            activeDetailSection === 'response'
+                              ? 'var(--accent)'
+                              : 'var(--text-muted)',
                         }}
                       >
-                        Server Response
+                        <Download size={14} />
+                        <span style={{ fontSize: '12px', fontWeight: 600 }}>
+                          4. Response
+                        </span>
                       </div>
                       <div
                         style={{
-                          fontSize: '10px',
-                          color: 'var(--text-muted)',
-                          fontWeight: 'bold',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          fontFamily: 'var(--font-mono)',
+                          color: selectedEntry.response
+                            ? getStatusBadge(selectedEntry.response.status)
+                                .color
+                            : 'var(--text-muted)',
                         }}
                       >
                         {selectedEntry.response
-                          ? selectedEntry.response.status
-                          : 'NO RESPONSE'}
+                          ? `${selectedEntry.response.status} OK`
+                          : 'Pending'}
                       </div>
-                    </div>
+                    </button>
                   </div>
                 </div>
 
-                {/* Details Section */}
+                {/* Tabbed Inspection Container */}
                 <div
                   style={{
                     background: 'var(--bg-secondary)',
                     border: '1px solid var(--border)',
                     borderRadius: 'var(--radius-md)',
-                    padding: '24px',
-                    flex: 1,
-                    minHeight: '350px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '16px',
+                    overflow: 'hidden',
                   }}
                 >
+                  {/* Request Section */}
                   {activeDetailSection === 'request' && (
-                    <>
+                    <div style={{ padding: '20px' }}>
                       <div
                         style={{
                           display: 'flex',
                           justifyContent: 'space-between',
-                          borderBottom: '1px solid var(--border)',
-                          paddingBottom: '10px',
+                          alignItems: 'center',
+                          marginBottom: '16px',
                         }}
                       >
                         <div>
                           <span
                             className="tag-pill"
-                            style={{ textTransform: 'uppercase' }}
+                            style={{
+                              textTransform: 'uppercase',
+                              fontSize: '10px',
+                            }}
                           >
-                            Request Details
+                            Inbound Payload
                           </span>
                           <h4
                             style={{
-                              margin: '6px 0 0 0',
+                              margin: '6px 0 0',
                               fontSize: '14px',
                               fontFamily: 'var(--font-mono)',
                               color: 'var(--text-primary)',
                             }}
                           >
-                            {selectedEntry.request.method}{' '}
-                            {selectedEntry.request.path}
+                            {selectedEntry.request?.method}{' '}
+                            {selectedEntry.request?.path}
                           </h4>
                         </div>
                       </div>
+
                       <div
                         style={{
                           display: 'grid',
-                          gridTemplateColumns: '1fr 1fr',
+                          gridTemplateColumns:
+                            'repeat(auto-fit, minmax(300px, 1fr))',
                           gap: '16px',
                         }}
                       >
-                        <div>
+                        {/* Headers */}
+                        <div
+                          style={{
+                            background: 'var(--bg-primary)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 'var(--radius-sm)',
+                            padding: '14px',
+                          }}
+                        >
                           <div
                             style={{
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              color: 'var(--text-muted)',
-                              textTransform: 'uppercase',
-                              marginBottom: '6px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              marginBottom: '8px',
                             }}
                           >
-                            Headers
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                textTransform: 'uppercase',
+                                color: 'var(--text-muted)',
+                              }}
+                            >
+                              Headers
+                            </span>
+                            <button
+                              className="btn btn-secondary"
+                              onClick={() =>
+                                handleCopy(
+                                  JSON.stringify(
+                                    selectedEntry.request?.headers,
+                                    null,
+                                    2,
+                                  ),
+                                  'req-headers',
+                                )
+                              }
+                              style={{
+                                padding: '2px 8px',
+                                fontSize: '10px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              {copiedKey === 'req-headers' ? (
+                                <Check size={11} color="var(--success)" />
+                              ) : (
+                                <Copy size={11} />
+                              )}
+                              Copy
+                            </button>
                           </div>
                           <pre
                             style={{
@@ -689,32 +1017,75 @@ export const Recorder: React.FC = () => {
                               fontSize: '11px',
                               fontFamily: 'var(--font-mono)',
                               whiteSpace: 'pre-wrap',
-                              maxHeight: '200px',
+                              maxHeight: '220px',
                               overflowY: 'auto',
-                              background: 'var(--bg-primary)',
-                              border: '1px solid var(--border)',
-                              padding: '10px',
-                              borderRadius: 'var(--radius-sm)',
+                              color: 'var(--text-secondary)',
                             }}
                           >
                             {JSON.stringify(
-                              selectedEntry.request.headers,
+                              selectedEntry.request?.headers || {},
                               null,
                               2,
                             )}
                           </pre>
                         </div>
-                        <div>
+
+                        {/* Body / Query Params */}
+                        <div
+                          style={{
+                            background: 'var(--bg-primary)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 'var(--radius-sm)',
+                            padding: '14px',
+                          }}
+                        >
                           <div
                             style={{
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              color: 'var(--text-muted)',
-                              textTransform: 'uppercase',
-                              marginBottom: '6px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              marginBottom: '8px',
                             }}
                           >
-                            Body / Query Params
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                textTransform: 'uppercase',
+                                color: 'var(--text-muted)',
+                              }}
+                            >
+                              Body / Query Parameters
+                            </span>
+                            <button
+                              className="btn btn-secondary"
+                              onClick={() =>
+                                handleCopy(
+                                  JSON.stringify(
+                                    selectedEntry.request?.body ||
+                                      selectedEntry.request?.query ||
+                                      {},
+                                    null,
+                                    2,
+                                  ),
+                                  'req-body',
+                                )
+                              }
+                              style={{
+                                padding: '2px 8px',
+                                fontSize: '10px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              {copiedKey === 'req-body' ? (
+                                <Check size={11} color="var(--success)" />
+                              ) : (
+                                <Copy size={11} />
+                              )}
+                              Copy
+                            </button>
                           </div>
                           <pre
                             style={{
@@ -722,21 +1093,18 @@ export const Recorder: React.FC = () => {
                               fontSize: '11px',
                               fontFamily: 'var(--font-mono)',
                               whiteSpace: 'pre-wrap',
-                              maxHeight: '200px',
+                              maxHeight: '220px',
                               overflowY: 'auto',
-                              background: 'var(--bg-primary)',
-                              border: '1px solid var(--border)',
-                              padding: '10px',
-                              borderRadius: 'var(--radius-sm)',
+                              color: 'var(--text-secondary)',
                             }}
                           >
-                            {selectedEntry.request.body
+                            {selectedEntry.request?.body
                               ? JSON.stringify(
                                   selectedEntry.request.body,
                                   null,
                                   2,
                                 )
-                              : selectedEntry.request.query &&
+                              : selectedEntry.request?.query &&
                                   Object.keys(selectedEntry.request.query)
                                     .length > 0
                                 ? JSON.stringify(
@@ -744,37 +1112,43 @@ export const Recorder: React.FC = () => {
                                     null,
                                     2,
                                   )
-                                : 'No payload / query parameters'}
+                                : 'No payload or query parameters'}
                           </pre>
                         </div>
                       </div>
-                    </>
+                    </div>
                   )}
 
+                  {/* Middlewares Section */}
                   {activeDetailSection === 'middlewares' && (
-                    <>
+                    <div style={{ padding: '20px' }}>
                       <div
                         style={{
                           borderBottom: '1px solid var(--border)',
-                          paddingBottom: '10px',
+                          paddingBottom: '12px',
+                          marginBottom: '16px',
                         }}
                       >
                         <span
                           className="tag-pill"
-                          style={{ textTransform: 'uppercase' }}
+                          style={{
+                            textTransform: 'uppercase',
+                            fontSize: '10px',
+                          }}
                         >
-                          Middlewares Execution
+                          Pipeline Breakdown
                         </span>
                         <h4
                           style={{
-                            margin: '6px 0 0 0',
+                            margin: '6px 0 0',
                             fontSize: '14px',
                             color: 'var(--text-primary)',
                           }}
                         >
-                          Request Processing Pipeline
+                          Execution Middleware Pipeline
                         </h4>
                       </div>
+
                       <div
                         style={{
                           display: 'flex',
@@ -791,25 +1165,38 @@ export const Recorder: React.FC = () => {
                                 style={{
                                   display: 'flex',
                                   justifyContent: 'space-between',
+                                  alignItems: 'center',
                                   background: 'var(--bg-primary)',
                                   border: '1px solid var(--border)',
                                   borderRadius: 'var(--radius-sm)',
                                   padding: '10px 14px',
                                 }}
                               >
-                                <span
+                                <div
                                   style={{
-                                    fontSize: '12px',
-                                    fontWeight: 600,
-                                    color: 'var(--text-primary)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
                                   }}
                                 >
-                                  {step.name}
-                                </span>
+                                  <CheckCircle2
+                                    size={13}
+                                    style={{ color: 'var(--success)' }}
+                                  />
+                                  <span
+                                    style={{
+                                      fontSize: '12px',
+                                      fontWeight: 500,
+                                      color: 'var(--text-primary)',
+                                    }}
+                                  >
+                                    {step.name}
+                                  </span>
+                                </div>
                                 <span
                                   style={{
                                     fontSize: '11px',
-                                    color: 'var(--success)',
+                                    color: 'var(--accent)',
                                     fontFamily: 'var(--font-mono)',
                                   }}
                                 >
@@ -824,33 +1211,40 @@ export const Recorder: React.FC = () => {
                               fontStyle: 'italic',
                               color: 'var(--text-muted)',
                               fontSize: '12px',
+                              textAlign: 'center',
+                              padding: '24px',
                             }}
                           >
-                            No pipeline execution markers recorded. Custom
-                            middleware stats may not be configured.
+                            No custom middleware timing markers captured for
+                            this transaction.
                           </div>
                         )}
                       </div>
-                    </>
+                    </div>
                   )}
 
+                  {/* Database Queries Section */}
                   {activeDetailSection === 'queries' && (
-                    <>
+                    <div style={{ padding: '20px' }}>
                       <div
                         style={{
                           borderBottom: '1px solid var(--border)',
-                          paddingBottom: '10px',
+                          paddingBottom: '12px',
+                          marginBottom: '16px',
                         }}
                       >
                         <span
                           className="tag-pill"
-                          style={{ textTransform: 'uppercase' }}
+                          style={{
+                            textTransform: 'uppercase',
+                            fontSize: '10px',
+                          }}
                         >
-                          Database Queries
+                          Database Operations
                         </span>
                         <h4
                           style={{
-                            margin: '6px 0 0 0',
+                            margin: '6px 0 0',
                             fontSize: '14px',
                             color: 'var(--text-primary)',
                           }}
@@ -859,13 +1253,14 @@ export const Recorder: React.FC = () => {
                           {selectedEntry.queries?.length || 0})
                         </h4>
                       </div>
+
                       <div
                         style={{
                           display: 'flex',
                           flexDirection: 'column',
                           gap: '10px',
+                          maxHeight: '340px',
                           overflowY: 'auto',
-                          maxHeight: '300px',
                         }}
                       >
                         {!selectedEntry.queries ||
@@ -876,10 +1271,10 @@ export const Recorder: React.FC = () => {
                               color: 'var(--text-muted)',
                               fontSize: '12px',
                               textAlign: 'center',
-                              padding: '20px',
+                              padding: '28px',
                             }}
                           >
-                            No database queries executed during this
+                            No database queries were executed during this
                             transaction.
                           </div>
                         ) : (
@@ -897,22 +1292,39 @@ export const Recorder: React.FC = () => {
                                 style={{
                                   display: 'flex',
                                   justifyContent: 'space-between',
-                                  fontSize: '10px',
-                                  color: 'var(--text-muted)',
-                                  marginBottom: '6px',
+                                  alignItems: 'center',
+                                  marginBottom: '8px',
                                 }}
                               >
                                 <span
                                   style={{
-                                    fontWeight: 700,
-                                    color: q.failed
-                                      ? 'var(--error)'
-                                      : 'var(--success)',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontSize: '10px',
+                                    fontWeight: 600,
+                                    color: q.failed ? '#f87171' : '#4ade80',
                                   }}
                                 >
-                                  {q.failed ? '❌ FAILED' : '✅ SUCCESS'}
+                                  {q.failed ? (
+                                    <>
+                                      <AlertTriangle size={12} /> FAILED
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CheckCircle2 size={12} /> SUCCESS
+                                    </>
+                                  )}
                                 </span>
-                                <span>{q.durationMs.toFixed(1)} ms</span>
+                                <span
+                                  style={{
+                                    fontSize: '11px',
+                                    fontFamily: 'var(--font-mono)',
+                                    color: 'var(--text-muted)',
+                                  }}
+                                >
+                                  {q.durationMs.toFixed(1)} ms
+                                </span>
                               </div>
                               <pre
                                 style={{
@@ -930,69 +1342,121 @@ export const Recorder: React.FC = () => {
                           ))
                         )}
                       </div>
-                    </>
+                    </div>
                   )}
 
+                  {/* Response Section */}
                   {activeDetailSection === 'response' && (
-                    <>
+                    <div style={{ padding: '20px' }}>
                       <div
                         style={{
                           display: 'flex',
                           justifyContent: 'space-between',
+                          alignItems: 'center',
                           borderBottom: '1px solid var(--border)',
-                          paddingBottom: '10px',
+                          paddingBottom: '12px',
+                          marginBottom: '16px',
                         }}
                       >
                         <div>
                           <span
                             className="tag-pill"
-                            style={{ textTransform: 'uppercase' }}
+                            style={{
+                              textTransform: 'uppercase',
+                              fontSize: '10px',
+                            }}
                           >
-                            Server Response
+                            Outbound Payload
                           </span>
                           <h4
                             style={{
-                              margin: '6px 0 0 0',
+                              margin: '6px 0 0',
                               fontSize: '14px',
                               color: 'var(--text-primary)',
                             }}
                           >
-                            Execution Summary
+                            Execution Response
                           </h4>
                         </div>
                         {selectedEntry.response && (
                           <span
                             style={{
-                              fontSize: '12px',
-                              fontWeight: 700,
-                              padding: '4px 10px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              fontFamily: 'var(--font-mono)',
+                              padding: '3px 8px',
                               borderRadius: '4px',
-                              ...getStatusStyle(selectedEntry.response.status),
+                              ...getStatusBadge(selectedEntry.response.status),
                             }}
                           >
                             {selectedEntry.response.status}
                           </span>
                         )}
                       </div>
+
                       {selectedEntry.response ? (
                         <div
                           style={{
                             display: 'grid',
-                            gridTemplateColumns: '1fr 1fr',
+                            gridTemplateColumns:
+                              'repeat(auto-fit, minmax(300px, 1fr))',
                             gap: '16px',
                           }}
                         >
-                          <div>
+                          {/* Response Headers */}
+                          <div
+                            style={{
+                              background: 'var(--bg-primary)',
+                              border: '1px solid var(--border)',
+                              borderRadius: 'var(--radius-sm)',
+                              padding: '14px',
+                            }}
+                          >
                             <div
                               style={{
-                                fontSize: '11px',
-                                fontWeight: 700,
-                                color: 'var(--text-muted)',
-                                textTransform: 'uppercase',
-                                marginBottom: '6px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                marginBottom: '8px',
                               }}
                             >
-                              Headers
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  textTransform: 'uppercase',
+                                  color: 'var(--text-muted)',
+                                }}
+                              >
+                                Headers
+                              </span>
+                              <button
+                                className="btn btn-secondary"
+                                onClick={() =>
+                                  handleCopy(
+                                    JSON.stringify(
+                                      selectedEntry.response.headers,
+                                      null,
+                                      2,
+                                    ),
+                                    'res-headers',
+                                  )
+                                }
+                                style={{
+                                  padding: '2px 8px',
+                                  fontSize: '10px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                {copiedKey === 'res-headers' ? (
+                                  <Check size={11} color="var(--success)" />
+                                ) : (
+                                  <Copy size={11} />
+                                )}
+                                Copy
+                              </button>
                             </div>
                             <pre
                               style={{
@@ -1000,32 +1464,78 @@ export const Recorder: React.FC = () => {
                                 fontSize: '11px',
                                 fontFamily: 'var(--font-mono)',
                                 whiteSpace: 'pre-wrap',
-                                maxHeight: '200px',
+                                maxHeight: '220px',
                                 overflowY: 'auto',
-                                background: 'var(--bg-primary)',
-                                border: '1px solid var(--border)',
-                                padding: '10px',
-                                borderRadius: 'var(--radius-sm)',
+                                color: 'var(--text-secondary)',
                               }}
                             >
                               {JSON.stringify(
-                                selectedEntry.response.headers,
+                                selectedEntry.response.headers || {},
                                 null,
                                 2,
                               )}
                             </pre>
                           </div>
-                          <div>
+
+                          {/* Response Body */}
+                          <div
+                            style={{
+                              background: 'var(--bg-primary)',
+                              border: '1px solid var(--border)',
+                              borderRadius: 'var(--radius-sm)',
+                              padding: '14px',
+                            }}
+                          >
                             <div
                               style={{
-                                fontSize: '11px',
-                                fontWeight: 700,
-                                color: 'var(--text-muted)',
-                                textTransform: 'uppercase',
-                                marginBottom: '6px',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                marginBottom: '8px',
                               }}
                             >
-                              Body
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  textTransform: 'uppercase',
+                                  color: 'var(--text-muted)',
+                                }}
+                              >
+                                Response Body
+                              </span>
+                              <button
+                                className="btn btn-secondary"
+                                onClick={() =>
+                                  handleCopy(
+                                    typeof selectedEntry.response.body ===
+                                      'object'
+                                      ? JSON.stringify(
+                                          selectedEntry.response.body,
+                                          null,
+                                          2,
+                                        )
+                                      : String(
+                                          selectedEntry.response.body || '',
+                                        ),
+                                    'res-body',
+                                  )
+                                }
+                                style={{
+                                  padding: '2px 8px',
+                                  fontSize: '10px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                {copiedKey === 'res-body' ? (
+                                  <Check size={11} color="var(--success)" />
+                                ) : (
+                                  <Copy size={11} />
+                                )}
+                                Copy
+                              </button>
                             </div>
                             <pre
                               style={{
@@ -1033,12 +1543,9 @@ export const Recorder: React.FC = () => {
                                 fontSize: '11px',
                                 fontFamily: 'var(--font-mono)',
                                 whiteSpace: 'pre-wrap',
-                                maxHeight: '200px',
+                                maxHeight: '220px',
                                 overflowY: 'auto',
-                                background: 'var(--bg-primary)',
-                                border: '1px solid var(--border)',
-                                padding: '10px',
-                                borderRadius: 'var(--radius-sm)',
+                                color: 'var(--text-secondary)',
                               }}
                             >
                               {selectedEntry.response.body
@@ -1061,26 +1568,27 @@ export const Recorder: React.FC = () => {
                             color: 'var(--text-muted)',
                             fontSize: '12px',
                             textAlign: 'center',
-                            padding: '20px',
+                            padding: '24px',
                           }}
                         >
                           Response has not been captured yet or transaction is
                           incomplete.
                         </div>
                       )}
-                    </>
+                    </div>
                   )}
                 </div>
-              </>
+              </div>
             ) : (
               <div
                 style={{
                   color: 'var(--text-muted)',
                   textAlign: 'center',
-                  padding: '40px',
+                  padding: '48px',
+                  fontSize: '13px',
                 }}
               >
-                Select a transaction from the list.
+                Select a transaction from the left list.
               </div>
             )}
           </div>

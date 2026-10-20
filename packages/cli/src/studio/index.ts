@@ -25,23 +25,23 @@ import {
 import { instrumentErrorObservatory } from './api/errors';
 import { instrumentEventRecording } from './api/events';
 import { instrumentLogs, setOnLogsUpdated } from './api/logs';
+import { setOnTracesUpdated } from './api/otlp';
 import { setOnPerfUpdated } from './api/perf';
 import { setOnRecorderUpdated } from './api/recorder';
 import { instrumentRequestReplay, setOnReplayUpdated } from './api/replay';
 import { setBaselineDiscovery } from './api/sdk-impact';
 import { instrumentTrafficProfiling } from './api/traffic-interceptor';
 import {
+  clearRoomManagers,
   instrumentWsAnalytics,
   stopWsMetricsInterval,
-  clearRoomManagers,
 } from './api/ws-analytics';
-import { setOnTracesUpdated } from './api/otlp';
+import { setAppBaseUrl } from './api/ws-tester';
 import { performDiscovery, type StudioDiscoveryResult } from './discovery';
 import { createStudioServer } from './server/http-server';
 import { StudioRouter } from './server/router';
 import { StudioWsServer } from './server/ws-server';
 import { StudioSyncEngine } from './sync';
-import { setAppBaseUrl } from './api/ws-tester';
 
 export interface StudioOptions {
   /** Port to listen on. Default: 4399. */
@@ -206,7 +206,10 @@ export async function startStudio(
         req.url ?? '/',
         `http://${req.headers.host ?? 'localhost'}`,
       );
-      if (parsedUrl.pathname === '/__studio/ws') {
+      if (
+        parsedUrl.pathname === '/__studio/ws' ||
+        parsedUrl.pathname === '/__studio/live'
+      ) {
         const tokenParam = parsedUrl.searchParams.get('token');
         if (tokenParam !== studioToken) {
           socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');

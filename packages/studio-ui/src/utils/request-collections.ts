@@ -14,6 +14,8 @@ export interface SavedRequest {
   bodyMode: 'none' | 'json' | 'text' | 'form-data' | 'urlencoded';
   body: string;
   bodyFields: RequestKeyValue[];
+  preRequestScript?: string;
+  testScript?: string;
 }
 
 export interface RequestCollection {

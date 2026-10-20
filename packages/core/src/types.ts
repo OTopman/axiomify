@@ -414,9 +414,10 @@ export interface RouteGroup {
    * rest of the application.
    *
    * Scoping semantics:
-   *   - `onPreHandler` / `onPostHandler` receive the matched route and are
-   *     scoped **exactly**: they fire only for routes registered through
-   *     this group (including nested groups).
+   *   - `onPreHandler` / `onPostHandler` receive a matched HTTP route and are
+   *     scoped **exactly**: they fire only for HTTP routes registered through
+   *     this group (including nested groups). WebSocket handshakes have no
+   *     corresponding HTTP route in the core route dispatcher.
    *   - `onRequest` / `onError` / `onClose` run without a route match and
    *     are scoped by **path prefix**: they fire for any request whose path
    *     falls under the group prefix (`:param` segments match any value).

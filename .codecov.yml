@@ -1,0 +1,31 @@
+# Codecov Configuration
+# https://docs.codecov.com/docs/codecov-yaml
+
+codecov:
+  require_ci_to_pass: yes
+
+coverage:
+  precision: 2
+  round: down
+  range: '70...100'
+
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: auto
+        threshold: 5%
+        informational: true
+
+# Subsystems using integration/browser-style suites or build artifacts are excluded
+# from core line-level coverage gates, matching vitest.config.mts policy.
+ignore:
+  - 'packages/studio-ui/**/*'
+  - 'packages/cli/ui-dist/**/*'
+  - 'benchmarks/**/*'
+  - 'examples/**/*'
+  - 'docs/**/*'
+  - 'scripts/**/*'

@@ -1,10 +1,85 @@
-import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import { DiscoveryData, FindingItem } from './types';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { useAppDispatch, useAppSelector } from './store/hooks';
+import {
+  setDiscoveryData,
+  setDiscoveryError,
+  setDiscoveryLoading,
+} from './store/slices/discoverySlice';
+import {
+  addVariable,
+  createEnvironment,
+  deleteEnvironment,
+  removeVariable,
+  saveCurrentEnvironment,
+  selectEnvironment,
+  updateVariable,
+} from './store/slices/environmentsSlice';
+import {
+  setActiveTab,
+  setCommandPaletteOpen,
+  setSidebarCollapsed,
+  setTheme,
+  toggleSidebar,
+  toggleTheme,
+} from './store/slices/uiSlice';
+import {
+  recordReload,
+  setBuildError,
+  setReloadError,
+  setWsConnected,
+} from './store/slices/websocketSlice';
 import { apiFetch, getToken, removeToken, setToken } from './utils/api';
 import { STUDIO_VERSION } from './version';
 
+// Lucide Icons for authentic engineering tool aesthetics
+import {
+  Activity,
+  AlertTriangle,
+  Award,
+  BarChart3,
+  BookOpen,
+  Boxes,
+  Check,
+  CheckSquare,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Copy,
+  Cpu,
+  Download,
+  FileCode,
+  GitFork,
+  Globe,
+  Heart,
+  Layers,
+  Lock,
+  LogOut,
+  Menu,
+  Moon,
+  Network,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Play,
+  Plus,
+  Radio,
+  Search,
+  Send,
+  Settings,
+  Shield,
+  Sliders,
+  Sparkles,
+  Sun,
+  Terminal,
+  Trash2,
+  Webhook,
+  Wifi,
+  X,
+  Zap,
+} from 'lucide-react';
+
 // Components
 import { Dashboard } from './components/Dashboard';
+import { JobsPanel } from './components/JobsPanel';
 import { Logs } from './components/Logs';
 import {
   AiAssistantPanel,
@@ -25,13 +100,12 @@ import {
   ServicesPanel,
 } from './components/OtherPanels';
 import { Recorder } from './components/Recorder';
-import { WebSocketTester } from './components/WebSocketTester';
-import { ProfilerPanel } from './components/ProfilerPanel';
+import { RouteSelector } from './components/RouteSelector';
+import { SecurityPanel } from './components/SecurityPanel';
 import { TracingPanel } from './components/Tracing';
-import { JobsPanel } from './components/JobsPanel';
+import { WebSocketTester } from './components/WebSocketTester';
 
-// Monaco is by far Studio's largest browser dependency. Load editor panels
-// only when opened so the dashboard remains small and fast to start.
+// Monaco is loaded lazily for fast startup
 const Playground = lazy(() =>
   import('./components/Playground').then(({ Playground }) => ({
     default: Playground,
@@ -43,10 +117,35 @@ const RequestBuilder = lazy(() =>
   })),
 );
 
-const editorFallback = <div className="empty-state">Loading editor…</div>;
+const editorFallback = (
+  <div className="empty-state" style={{ minHeight: '300px' }}>
+    <div
+      className="spinner"
+      style={{ width: '20px', height: '20px', borderWidth: '2px' }}
+    />
+    <span>Loading editor environment…</span>
+  </div>
+);
 
-function App() {
+export function App() {
+  const dispatch = useAppDispatch();
+  const { activeTab, isDark, sidebarCollapsed, commandPaletteOpen } =
+    useAppSelector((state) => state.ui);
+  const discovery = useAppSelector((state) => state.discovery.data);
+  const loadingDiscovery = useAppSelector((state) => state.discovery.loading);
+  const { environments, selectedEnvironmentId, environmentVariables } =
+    useAppSelector((state) => state.environments);
+  const [envModalOpen, setEnvModalOpen] = useState(false);
+  const [envCopiedKey, setEnvCopiedKey] = useState<string | null>(null);
+  const [envSaveSuccess, setEnvSaveSuccess] = useState(false);
+  const {
+    connected: wsConnected,
+    buildError,
+    reloadError,
+  } = useAppSelector((state) => state.websocket);
+
   const [token, setTokenState] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
     const params = new URLSearchParams(window.location.search);
     const urlToken = params.get('token');
     if (urlToken) {
@@ -63,29 +162,21 @@ function App() {
     }
     return getToken();
   });
+
   const [loginInput, setLoginInput] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  const [loadingDiscovery, setLoadingDiscovery] = useState(false);
-  const [discovery, setDiscovery] = useState<DiscoveryData | null>(null);
-  const [activePanel, setActivePanel] = useState('routes');
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
-
-  // WebSocket Live Sync
+  // WebSocket Live Sync state
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<any>(null);
 
-  // Prefill references for quick tests
+  // Quick test prefill references
   const [prefilledMethod, setPrefilledMethod] = useState('');
   const [prefilledPath, setPrefilledPath] = useState('');
   const [prefilledWsPath, setPrefilledWsPath] = useState('');
 
   // Logs tracing
   const [filterRequestId, setFilterRequestId] = useState<string | null>(null);
-
-  // Errors banners
-  const [buildError, setBuildError] = useState<string | null>(null);
-  const [reloadError, setReloadError] = useState<string | null>(null);
 
   // Source Viewer Modal
   const [sourceViewerFile, setSourceViewerFile] = useState<string | null>(null);
@@ -97,9 +188,35 @@ function App() {
   // Export report dropdown
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
-  // Sync token-level events and theme setting
+  // Floating tooltip state for collapsed sidebar
+  const [sidebarTooltip, setSidebarTooltip] = useState<{
+    text: string;
+    category?: string;
+    badge?: string | number;
+    top: number;
+  } | null>(null);
+
+  // Clear tooltip when sidebar collapses or expands
   useEffect(() => {
-    // Check URL query parameter for token
+    setSidebarTooltip(null);
+  }, [sidebarCollapsed]);
+
+  // Dismiss tooltip on any global scroll or resize
+  useEffect(() => {
+    if (!sidebarTooltip) return;
+    const hide = () => setSidebarTooltip(null);
+    window.addEventListener('scroll', hide, true);
+    window.addEventListener('resize', hide);
+    return () => {
+      window.removeEventListener('scroll', hide, true);
+      window.removeEventListener('resize', hide);
+    };
+  }, [sidebarTooltip]);
+
+  // Sync token and initial state
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
     const params = new URLSearchParams(window.location.search);
     const urlToken = params.get('token');
     if (urlToken) {
@@ -115,12 +232,13 @@ function App() {
       window.history.replaceState({}, document.title, newUrl);
     }
 
-    // Read theme from localStorage or document
-    const savedTheme = localStorage.getItem('axiomify_studio_theme') as
-      'light' | 'dark' | null;
-    const initialTheme = savedTheme || 'light';
-    setTheme(initialTheme);
-    document.documentElement.setAttribute('data-theme', initialTheme);
+    const savedTheme = localStorage.getItem('axiomify_studio_theme');
+    const initialDark = savedTheme ? savedTheme === 'dark' : true;
+    dispatch(setTheme(initialDark));
+    document.documentElement.setAttribute(
+      'data-theme',
+      initialDark ? 'dark' : 'light',
+    );
 
     const handleUnauthorized = () => {
       handleLogout();
@@ -129,7 +247,7 @@ function App() {
     const handleFilterRequestId = (e: Event) => {
       const rid = (e as CustomEvent).detail;
       setFilterRequestId(rid);
-      setActivePanel('logs');
+      dispatch(setActiveTab('logs'));
     };
 
     window.addEventListener('axiomify-unauthorized', handleUnauthorized);
@@ -138,7 +256,6 @@ function App() {
       handleFilterRequestId,
     );
 
-    // Initial load
     if (token || urlToken) {
       loadDiscovery();
     }
@@ -149,147 +266,148 @@ function App() {
         'axiomify-filter-request-id',
         handleFilterRequestId,
       );
-      closeWs();
+    };
+  }, []);
+
+  // Global Keyboard Shortcuts (⌘K for command palette / route finder)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        dispatch(setCommandPaletteOpen(!commandPaletteOpen));
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [commandPaletteOpen, dispatch]);
+
+  // Collapse sidebar initially on mobile screens <= 768px
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      dispatch(setSidebarCollapsed(true));
+    }
+  }, [dispatch]);
+
+  // Connect live reload WebSocket
+  useEffect(() => {
+    if (typeof window === 'undefined' || !token) return;
+
+    const connectLiveWs = () => {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/__studio/ws?token=${encodeURIComponent(token)}`;
+
+      try {
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          dispatch(setWsConnected(true));
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'reload') {
+              loadDiscovery();
+              dispatch(recordReload());
+            } else if (msg.type === 'build_error') {
+              dispatch(
+                setBuildError(msg.error || 'Build failed during reload'),
+              );
+            } else if (msg.type === 'reload_error') {
+              dispatch(
+                setReloadError(
+                  msg.error || 'Server error restarting application',
+                ),
+              );
+            }
+          } catch (err) {
+            console.error('Failed to parse WS message:', err);
+          }
+        };
+
+        ws.onclose = () => {
+          dispatch(setWsConnected(false));
+          reconnectTimeoutRef.current = setTimeout(connectLiveWs, 2000);
+        };
+
+        ws.onerror = () => {
+          dispatch(setWsConnected(false));
+        };
+      } catch (err) {
+        console.error('WebSocket connection error:', err);
+        reconnectTimeoutRef.current = setTimeout(connectLiveWs, 2000);
+      }
+    };
+
+    connectLiveWs();
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+      }
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
     };
   }, [token]);
 
-  // Load discovery data
   const loadDiscovery = async () => {
-    setLoadingDiscovery(true);
+    dispatch(setDiscoveryLoading(true));
     try {
       const res = await apiFetch('/__studio/api/discovery');
-      if (res.status === 401) {
-        handleLogout();
-        setLoginError('Invalid Access Token. Please check the terminal.');
-        setLoadingDiscovery(false);
-        return;
+      if (res.ok) {
+        const data = await res.json();
+        dispatch(setDiscoveryData(data));
+      } else {
+        dispatch(setDiscoveryError('Failed to fetch discovery metadata.'));
       }
-      if (!res.ok) {
-        throw new Error('Failed to load discovery metadata');
-      }
-      const data = await res.json();
-      setDiscovery(data);
-      setLoginError(null);
-
-      // Successfully authenticated -> bootstrap socket sync
-      connectWs();
-    } catch (err: any) {
-      console.error('Failed to load discovery:', err);
-    } finally {
-      setLoadingDiscovery(false);
+    } catch (err) {
+      console.error('Discovery fetch error:', err);
+      dispatch(setDiscoveryError(String(err)));
     }
   };
 
-  // WebSocket Live-Sync Bootstrap
-  const connectWs = () => {
-    if (wsRef.current) {
-      wsRef.current.close();
-    }
-
-    const currentToken = getToken();
-    const wsProto = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const wsUrl = `${wsProto}${window.location.host}/__studio/ws${currentToken ? `?token=${encodeURIComponent(currentToken)}` : ''}`;
-
-    const socket = new WebSocket(wsUrl);
-    wsRef.current = socket;
-
-    socket.onopen = () => {
-      console.log('Studio Live Sync connected');
-      clearTimeout(reconnectTimeoutRef.current);
-    };
-
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'reload') {
-          setBuildError(null);
-          setReloadError(null);
-          loadDiscovery();
-        } else if (data.type === 'build-error') {
-          const errMsg = data.errors.map((e: any) => e.text).join('\n');
-          setBuildError(errMsg);
-        } else if (data.type === 'reload-error') {
-          setReloadError(data.message);
-        } else if (data.type === 'replays-updated') {
-          window.dispatchEvent(new CustomEvent('axiomify-replays-updated'));
-        } else if (data.type === 'recorder-updated') {
-          // recorder component automatically polls or updates badge
-          apiFetch('/__studio/api/session')
-            .then((r) => r.json())
-            .then((d) => {
-              const badge = document.getElementById('badge-recorder');
-              if (badge)
-                badge.textContent = String(d.summary?.requestCount || 0);
-            })
-            .catch(() => {});
-        } else if (data.type === 'sdk-impact') {
-          const badge = document.getElementById('badge-sdk-impact');
-          if (badge) {
-            badge.textContent = String(data.count || 0);
-            badge.style.display = data.count > 0 ? 'inline-block' : 'none';
-          }
-        } else if (data.type === 'contracts-updated') {
-          apiFetch('/__studio/api/contracts')
-            .then((r) => r.json())
-            .then((d) => {
-              const failedCount = d.results
-                ? d.results.filter(
-                    (c: any) => !c.passed && c.status === 'failed',
-                  ).length
-                : 0;
-              const badge = document.getElementById('badge-contracts');
-              if (badge) {
-                badge.textContent = String(failedCount);
-                badge.style.display = failedCount > 0 ? 'inline-flex' : 'none';
-              }
-            })
-            .catch(() => {});
-        }
-      } catch (err) {
-        console.error('Failed to parse WebSocket message:', err);
-      }
-    };
-
-    socket.onclose = () => {
-      console.log('Studio Live Sync disconnected, reconnecting...');
-      reconnectTimeoutRef.current = setTimeout(connectWs, 2000);
-    };
-
-    socket.onerror = () => {
-      socket.close();
-    };
-  };
-
-  const closeWs = () => {
-    clearTimeout(reconnectTimeoutRef.current);
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-  };
-
-  const handleLogin = () => {
-    const trimmed = loginInput.trim();
-    if (!trimmed) {
-      setLoginError('Token cannot be empty');
+  const handleLogin = async () => {
+    setLoginError(null);
+    if (!loginInput.trim()) {
+      setLoginError('Token cannot be empty.');
       return;
     }
-    setToken(trimmed);
-    setTokenState(trimmed);
+    setToken(loginInput.trim());
+    try {
+      const res = await apiFetch('/__studio/api/discovery');
+      if (res.ok) {
+        setTokenState(loginInput.trim());
+        const data = await res.json();
+        dispatch(setDiscoveryData(data));
+      } else {
+        setLoginError('Invalid access token.');
+        removeToken();
+      }
+    } catch {
+      setLoginError('Connection failed. Make sure the server is running.');
+      removeToken();
+    }
   };
 
   const handleLogout = () => {
     removeToken();
     setTokenState('');
-    setDiscovery(null);
-    closeWs();
   };
 
   const handleThemeToggle = () => {
-    const nextTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(nextTheme);
-    localStorage.setItem('axiomify_studio_theme', nextTheme);
-    document.documentElement.setAttribute('data-theme', nextTheme);
+    const nextDark = !isDark;
+    dispatch(toggleTheme());
+    localStorage.setItem('axiomify_studio_theme', nextDark ? 'dark' : 'light');
+    document.documentElement.setAttribute(
+      'data-theme',
+      nextDark ? 'dark' : 'light',
+    );
   };
 
   const triggerExportReport = (format: string) => {
@@ -301,15 +419,14 @@ function App() {
   const handleQuickTest = (m: string, p: string) => {
     setPrefilledMethod(m);
     setPrefilledPath(p);
-    setActivePanel('tester');
+    dispatch(setActiveTab('tester'));
   };
 
   const handleOpenWsTester = (p: string) => {
     setPrefilledWsPath(p);
-    setActivePanel('ws-tester');
+    dispatch(setActiveTab('ws-tester'));
   };
 
-  // Open Source code context viewer
   const handleOpenSourceViewer = async (
     filePath: string,
     lineNumber: number,
@@ -346,14 +463,12 @@ function App() {
     const prompt = `I got an error in the file ${sourceViewerFile} around line ${sourceViewerLine}.\nHere is the code context:\n\`\`\`typescript\n${codeLines}\n\`\`\`\n\nCan you analyze this code and tell me what is causing the error and how to fix it?`;
 
     handleCloseSourceViewer();
-    setActivePanel('ai');
+    dispatch(setActiveTab('ai'));
 
-    // Focus and fill the prompt in textarea if present
     setTimeout(() => {
       const textarea = document.querySelector('textarea');
       if (textarea) {
         textarea.value = prompt;
-        // Trigger dispatch/change
         const event = new Event('input', { bubbles: true });
         textarea.dispatchEvent(event);
       }
@@ -364,28 +479,24 @@ function App() {
   const renderPanelContent = () => {
     if (!discovery) return null;
 
-    switch (activePanel) {
+    switch (activeTab) {
       case 'routes':
         return (
           <Dashboard
             discovery={discovery}
             onQuickTest={handleQuickTest}
             onOpenWsTester={handleOpenWsTester}
+            onInspectCode={handleOpenSourceViewer}
           />
         );
       case 'schemas':
         return <SchemasPanel discovery={discovery} />;
       case 'openapi':
-        return <OpenApiPanel discovery={discovery} onRefresh={loadDiscovery} />;
+        return <OpenApiPanel discovery={discovery} />;
       case 'services':
         return <ServicesPanel discovery={discovery} />;
       case 'middlewares':
-        return (
-          <MiddlewaresPanel
-            discovery={discovery}
-            onNavigateToRoute={handleQuickTest}
-          />
-        );
+        return <MiddlewaresPanel discovery={discovery} />;
       case 'events':
         return <EventsPanel discovery={discovery} />;
       case 'architecture':
@@ -395,27 +506,29 @@ function App() {
       case 'logs':
         return (
           <Logs
-            onOpenSourceViewer={handleOpenSourceViewer}
             filterRequestId={filterRequestId}
-            onClearRequestIdFilter={() => setFilterRequestId(null)}
+            onClearFilter={() => setFilterRequestId(null)}
           />
         );
       case 'errors':
-        return <ErrorsPanel />;
+        return <ErrorsPanel discovery={discovery} />;
       case 'analytics':
         return <AnalyticsPanel />;
       case 'recorder':
-        return <Recorder />;
-      case 'profiler':
-        return <ProfilerPanel />;
+        return (
+          <Recorder
+            onReplay={(m, p) => handleQuickTest(m, p)}
+            onInspectCode={handleOpenSourceViewer}
+          />
+        );
       case 'performance':
         return <PerformancePanel />;
       case 'tracing':
         return <TracingPanel />;
       case 'jobs':
-        return <JobsPanel />;
+        return <JobsPanel discovery={discovery} />;
       case 'sdk-impact':
-        return <SdkImpactPanel />;
+        return <SdkImpactPanel discovery={discovery} />;
       case 'health':
         return <HealthPanel discovery={discovery} />;
       case 'security':
@@ -425,7 +538,7 @@ function App() {
       case 'quality':
         return <QualityPanel />;
       case 'ai':
-        return <AiAssistantPanel isDark={theme === 'dark'} />;
+        return <AiAssistantPanel isDark={isDark} />;
       case 'config':
         return <ConfigPanel discovery={discovery} />;
       case 'tester':
@@ -433,7 +546,7 @@ function App() {
           <Suspense fallback={editorFallback}>
             <RequestBuilder
               discovery={discovery}
-              isDark={theme === 'dark'}
+              isDark={isDark}
               prefilledMethod={prefilledMethod}
               prefilledPath={prefilledPath}
               onClearPrefill={() => {
@@ -454,37 +567,102 @@ function App() {
       case 'playground':
         return (
           <Suspense fallback={editorFallback}>
-            <Playground discovery={discovery} isDark={theme === 'dark'} />
+            <Playground discovery={discovery} isDark={isDark} />
           </Suspense>
         );
       default:
-        return <div>Panel "{activePanel}" not implemented.</div>;
+        return (
+          <div className="empty-state">
+            <Sliders size={24} />
+            <span>Panel "{activeTab}" is active</span>
+          </div>
+        );
     }
   };
 
   if (!token) {
     return (
-      <div className="login-container">
-        <div className="login-card">
-          <div className="login-logo">A</div>
-          <h2 className="login-title">Axiomify Studio</h2>
-          <p className="login-subtitle">
-            Enter the access token printed in your terminal to log in to the
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '100vh',
+          background: 'var(--bg-primary)',
+          padding: '20px',
+        }}
+      >
+        <div
+          style={{
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-lg)',
+            boxShadow: 'var(--shadow-lg)',
+            padding: '32px',
+            width: '100%',
+            maxWidth: '400px',
+            textAlign: 'center',
+          }}
+        >
+          <div
+            style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: 'var(--radius-md)',
+              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+              fontWeight: 700,
+              fontSize: '18px',
+              margin: '0 auto 16px',
+              boxShadow: '0 0 20px rgba(99, 102, 241, 0.35)',
+            }}
+          >
+            A
+          </div>
+          <h2
+            style={{
+              fontSize: '18px',
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              marginBottom: '8px',
+            }}
+          >
+            Axiomify Studio
+          </h2>
+          <p
+            style={{
+              fontSize: '12px',
+              color: 'var(--text-muted)',
+              marginBottom: '20px',
+            }}
+          >
+            Enter the access token printed in your terminal to unlock the API
             explorer.
           </p>
           <input
             type="password"
-            className="login-input"
+            className="text-input"
+            style={{ marginBottom: '12px' }}
             placeholder="Paste access token..."
             value={loginInput}
             onChange={(e) => setLoginInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
           />
-          <button className="login-button" onClick={handleLogin}>
+          <button
+            className="btn btn-primary"
+            style={{ width: '100%', padding: '8px 16px' }}
+            onClick={handleLogin}
+          >
             Access Studio
           </button>
           {loginError && (
-            <div className="login-error" style={{ display: 'block' }}>
+            <div
+              className="error-banner"
+              style={{ marginTop: '14px', textAlign: 'left' }}
+            >
               {loginError}
             </div>
           )}
@@ -494,539 +672,860 @@ function App() {
   }
 
   const hookTotal = discovery?.hooks?.reduce((s, h) => s + h.count, 0) || 0;
+  const currentEnv = environments.find((e) => e.id === selectedEnvironmentId);
+
+  // Breadcrumb label mapping
+  const TAB_LABELS: Record<string, { group: string; name: string }> = {
+    tester: { group: 'API Client', name: 'Request Tester' },
+    'ws-tester': { group: 'API Client', name: 'WebSocket Tester' },
+    playground: { group: 'API Client', name: 'SDK Playground' },
+    routes: { group: 'Discovery & Docs', name: 'Routes & Endpoints' },
+    openapi: { group: 'Discovery & Docs', name: 'OpenAPI 3.1 Spec' },
+    schemas: { group: 'Discovery & Docs', name: 'Schema Definitions' },
+    contracts: { group: 'Discovery & Docs', name: 'API Contracts' },
+    services: { group: 'System Architecture', name: 'Registered Services' },
+    middlewares: { group: 'System Architecture', name: 'Middleware Pipeline' },
+    architecture: { group: 'System Architecture', name: 'Architecture Graph' },
+    events: { group: 'System Architecture', name: 'Events & Listeners' },
+    hooks: { group: 'System Architecture', name: 'Framework Hooks' },
+    logs: { group: 'Observability', name: 'Live Logs' },
+    errors: { group: 'Observability', name: 'Errors & Panics' },
+    analytics: { group: 'Observability', name: 'Realtime Analytics' },
+    performance: { group: 'Observability', name: 'Performance Profiler' },
+    tracing: { group: 'Observability', name: 'Distributed Tracing' },
+    recorder: { group: 'Observability', name: 'Traffic Recorder' },
+    health: { group: 'Observability', name: 'System Health' },
+    security: { group: 'Observability', name: 'Security Audit' },
+    jobs: { group: 'Tooling & Governance', name: 'Background Jobs' },
+    'sdk-impact': { group: 'Tooling & Governance', name: 'SDK Impact' },
+    quality: { group: 'Tooling & Governance', name: 'Quality & Governance' },
+    ai: { group: 'Tooling & Governance', name: 'AI Architecture Assistant' },
+    config: { group: 'Tooling & Governance', name: 'Configuration' },
+  };
+
+  const breadcrumb = TAB_LABELS[activeTab] || {
+    group: 'Studio',
+    name: activeTab,
+  };
+
+  const handleSidebarMouseOver = (e: React.MouseEvent) => {
+    if (!sidebarCollapsed) return;
+    const target = (e.target as HTMLElement).closest(
+      '[data-tooltip]',
+    ) as HTMLElement | null;
+    if (target) {
+      const text = target.getAttribute('data-tooltip');
+      if (text) {
+        const category =
+          target.getAttribute('data-tooltip-category') || undefined;
+        const badge = target.getAttribute('data-tooltip-badge') || undefined;
+        const rect = target.getBoundingClientRect();
+        setSidebarTooltip({
+          text,
+          category,
+          badge,
+          top: rect.top + rect.height / 2,
+        });
+        return;
+      }
+    }
+    setSidebarTooltip(null);
+  };
+
+  const handleSidebarFocusCapture = (e: React.FocusEvent) => {
+    if (!sidebarCollapsed) return;
+    const target = (e.target as HTMLElement).closest(
+      '[data-tooltip]',
+    ) as HTMLElement | null;
+    if (target) {
+      const text = target.getAttribute('data-tooltip');
+      if (text) {
+        const category =
+          target.getAttribute('data-tooltip-category') || undefined;
+        const badge = target.getAttribute('data-tooltip-badge') || undefined;
+        const rect = target.getBoundingClientRect();
+        setSidebarTooltip({
+          text,
+          category,
+          badge,
+          top: rect.top + rect.height / 2,
+        });
+      }
+    }
+  };
+
+  const handleSidebarBlurCapture = () => {
+    if (sidebarCollapsed) {
+      setSidebarTooltip(null);
+    }
+  };
+
+  const handleNavClick = (tab: string) => {
+    dispatch(setActiveTab(tab as any));
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      if (!sidebarCollapsed) {
+        dispatch(toggleSidebar());
+      }
+    }
+  };
 
   return (
-    <div className="app-layout">
-      {/* Header */}
+    <div
+      className={`app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}
+    >
+      {/* ── Top Header ────────────────────────────────────────────── */}
       <header className="header">
-        <div className="header-title" id="header-title">
-          {activePanel.charAt(0).toUpperCase() +
-            activePanel.slice(1).replace('-', ' ')}
+        <div className="header-left">
+          {/* Mobile Navigation Drawer Toggle */}
+          <button
+            className="mobile-menu-btn"
+            onClick={() => dispatch(toggleSidebar())}
+            aria-label={
+              sidebarCollapsed
+                ? 'Open navigation menu'
+                : 'Close navigation menu'
+            }
+            title="Toggle navigation"
+          >
+            <Menu size={16} />
+          </button>
+
+          <div className="header-title-container">
+            <span className="header-subtitle">{breadcrumb.group}</span>
+            <ChevronRight size={14} className="header-separator" />
+            <span className="header-title">{breadcrumb.name}</span>
+          </div>
+
+          {/* Command Palette Trigger */}
+          <button
+            className="command-palette-trigger"
+            onClick={() => dispatch(setCommandPaletteOpen(true))}
+            title="Search routes, commands, and schemas (⌘K)"
+          >
+            <Search size={13} />
+            <span>Search routes, commands...</span>
+            <kbd style={{ marginLeft: 'auto' }}>⌘K</kbd>
+          </button>
         </div>
 
-        {discovery && (
-          <div
-            className="header-stats"
-            id="header-stats"
-            style={{ display: 'flex', gap: '16px' }}
-          >
-            <span>
-              <span className="header-stat-value">
-                {discovery.routes?.filter((r) => !r.isWs).length || 0}
-              </span>{' '}
-              HTTP
-            </span>
-            <span>
-              <span className="header-stat-value">
-                {discovery.routes?.filter((r) => r.isWs).length || 0}
-              </span>{' '}
-              WS
-            </span>
-            <span>
-              <span className="header-stat-value">{hookTotal}</span> Hooks
-            </span>
+        <div className="header-right">
+          {/* Active Environment Selector & Variables Manager */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Globe size={13} style={{ color: 'var(--text-muted)' }} />
+            {environments.length > 0 && (
+              <select
+                className="select-input"
+                style={{
+                  padding: '4px 8px',
+                  fontSize: '11px',
+                  fontFamily: 'var(--font-mono)',
+                  background: 'var(--bg-primary)',
+                  borderColor: 'var(--border)',
+                  minWidth: '110px',
+                }}
+                value={selectedEnvironmentId}
+                onChange={(e) => dispatch(selectEnvironment(e.target.value))}
+                title="Active Environment"
+              >
+                {environments.map((env) => (
+                  <option key={env.id} value={env.id}>
+                    {env.name} ({env.variables?.length || 0} vars)
+                  </option>
+                ))}
+              </select>
+            )}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{
+                padding: '4px 8px',
+                fontSize: '11px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+              onClick={() => setEnvModalOpen(true)}
+              title="Manage environment variables & interpolation values"
+            >
+              <Sliders size={12} style={{ color: 'var(--accent)' }} />
+              <span>Variables</span>
+            </button>
           </div>
-        )}
 
-        {/* Export Report Dropdown */}
-        <div style={{ position: 'relative', marginLeft: 'auto' }}>
-          <button
-            className="btn btn-secondary"
+          {/* Connection Status */}
+          <div
             style={{
-              margin: 0,
-              padding: '6px 12px',
-              fontSize: '13px',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
+              fontSize: '11px',
+              fontFamily: 'var(--font-mono)',
+              color: wsConnected ? 'var(--success)' : 'var(--text-muted)',
+              padding: '4px 8px',
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
             }}
-            onClick={() => setExportMenuOpen(!exportMenuOpen)}
           >
-            <span>📤</span> Export Report{' '}
-            <span style={{ fontSize: '10px' }}>▼</span>
-          </button>
-          {exportMenuOpen && (
-            <div
+            <span
+              className="status-dot"
               style={{
-                position: 'absolute',
-                right: 0,
-                top: '110%',
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)',
-                boxShadow: 'var(--shadow-md)',
-                zIndex: 100,
-                minWidth: '160px',
-                overflow: 'hidden',
+                background: wsConnected
+                  ? 'var(--success)'
+                  : 'var(--text-muted)',
+                boxShadow: wsConnected
+                  ? '0 0 8px rgba(16, 185, 129, 0.4)'
+                  : 'none',
               }}
-            >
-              <a
-                href="#"
-                style={{
-                  display: 'block',
-                  padding: '10px 14px',
-                  color: 'var(--text-primary)',
-                  textDecoration: 'none',
-                  fontSize: '13px',
-                  textAlign: 'left',
-                }}
-                onClick={() => triggerExportReport('html')}
-              >
-                HTML Report (.html)
-              </a>
-              <a
-                href="#"
-                style={{
-                  display: 'block',
-                  padding: '10px 14px',
-                  color: 'var(--text-primary)',
-                  textDecoration: 'none',
-                  fontSize: '13px',
-                  textAlign: 'left',
-                  borderTop: '1px solid var(--border)',
-                }}
-                onClick={() => triggerExportReport('pdf')}
-              >
-                PDF Report (.pdf)
-              </a>
-              <a
-                href="#"
-                style={{
-                  display: 'block',
-                  padding: '10px 14px',
-                  color: 'var(--text-primary)',
-                  textDecoration: 'none',
-                  fontSize: '13px',
-                  textAlign: 'left',
-                  borderTop: '1px solid var(--border)',
-                }}
-                onClick={() => triggerExportReport('markdown')}
-              >
-                Markdown Report (.md)
-              </a>
-            </div>
-          )}
-        </div>
+            />
+            <span>{wsConnected ? 'Live' : 'Offline'}</span>
+          </div>
 
-        <button
-          className="theme-toggle-btn"
-          onClick={handleThemeToggle}
-          title="Toggle Light/Dark Mode"
-        >
-          {theme === 'light' ? '☀️' : '🌙'}
-        </button>
+          {/* Export Report Dropdown */}
+          <div style={{ position: 'relative' }}>
+            <button
+              className="btn btn-secondary"
+              style={{ padding: '5px 9px', fontSize: '11px' }}
+              onClick={() => setExportMenuOpen(!exportMenuOpen)}
+            >
+              <Download size={13} />
+              <span>Export</span>
+              <ChevronDown size={11} />
+            </button>
+            {exportMenuOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: '115%',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  boxShadow: 'var(--shadow-md)',
+                  zIndex: 100,
+                  minWidth: '150px',
+                  overflow: 'hidden',
+                }}
+              >
+                <button
+                  className="btn btn-ghost"
+                  style={{
+                    width: '100%',
+                    justifyContent: 'flex-start',
+                    borderRadius: 0,
+                    padding: '8px 12px',
+                    fontSize: '12px',
+                  }}
+                  onClick={() => triggerExportReport('html')}
+                >
+                  HTML Report (.html)
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  style={{
+                    width: '100%',
+                    justifyContent: 'flex-start',
+                    borderRadius: 0,
+                    padding: '8px 12px',
+                    fontSize: '12px',
+                    borderTop: '1px solid var(--border)',
+                  }}
+                  onClick={() => triggerExportReport('pdf')}
+                >
+                  PDF Report (.pdf)
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  style={{
+                    width: '100%',
+                    justifyContent: 'flex-start',
+                    borderRadius: 0,
+                    padding: '8px 12px',
+                    fontSize: '12px',
+                    borderTop: '1px solid var(--border)',
+                  }}
+                  onClick={() => triggerExportReport('markdown')}
+                >
+                  Markdown (.md)
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Theme Toggle Button */}
+          <button
+            className="btn btn-ghost"
+            style={{ padding: '6px' }}
+            onClick={handleThemeToggle}
+            title={isDark ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+          >
+            {isDark ? <Sun size={14} /> : <Moon size={14} />}
+          </button>
+        </div>
       </header>
 
-      {/* Sidebar Navigation */}
-      <nav className="sidebar">
-        <div className="sidebar-brand">
-          <div className="header-logo-icon">A</div>
-          <span>Axiomify Studio</span>
-          <span className="header-badge">v{STUDIO_VERSION}</span>
-        </div>
+      {/* Mobile Drawer Backdrop */}
+      <div
+        className={`sidebar-backdrop ${!sidebarCollapsed ? 'active' : ''}`}
+        onClick={() => dispatch(toggleSidebar())}
+        aria-hidden="true"
+      />
 
-        <div className="sidebar-section">Inspect</div>
-        <a
-          className={`nav-item ${activePanel === 'routes' ? 'active' : ''}`}
-          href="#routes"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('routes');
-          }}
-        >
-          <span className="nav-icon">🧭</span>
-          <span>Routes</span>
-          {discovery && (
-            <span className="nav-badge">{discovery.routes?.length || 0}</span>
-          )}
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'schemas' ? 'active' : ''}`}
-          href="#schemas"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('schemas');
-          }}
-        >
-          <span className="nav-icon">📐</span>
-          <span>Schemas</span>
-          {discovery && (
-            <span className="nav-badge">{discovery.schemas?.length || 0}</span>
-          )}
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'openapi' ? 'active' : ''}`}
-          href="#openapi"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('openapi');
-          }}
-        >
-          <span className="nav-icon">📄</span>
-          <span>OpenAPI</span>
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'services' ? 'active' : ''}`}
-          href="#services"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('services');
-          }}
-        >
-          <span className="nav-icon">🧩</span>
-          <span>Services</span>
-          {discovery && (
-            <span className="nav-badge">{discovery.services?.length || 0}</span>
-          )}
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'middlewares' ? 'active' : ''}`}
-          href="#middlewares"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('middlewares');
-          }}
-        >
-          <span className="nav-icon">🧱</span>
-          <span>Middlewares</span>
-          {discovery && (
-            <span className="nav-badge">
-              {
-                Array.from(
-                  new Set(
-                    discovery.routes?.flatMap((r) => r.plugins || []) || [],
-                  ),
-                ).length
-              }
-            </span>
-          )}
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'events' ? 'active' : ''}`}
-          href="#events"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('events');
-          }}
-        >
-          <span className="nav-icon">📣</span>
-          <span>Events</span>
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'architecture' ? 'active' : ''}`}
-          href="#architecture"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('architecture');
-          }}
-        >
-          <span className="nav-icon">🗺️</span>
-          <span>Architecture</span>
-        </a>
-
-        <div className="sidebar-section">Observe</div>
-        <a
-          className={`nav-item ${activePanel === 'hooks' ? 'active' : ''}`}
-          href="#hooks"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('hooks');
-          }}
-        >
-          <span className="nav-icon">🪝</span>
-          <span>Hooks</span>
-          {discovery && <span className="nav-badge">{hookTotal}</span>}
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'logs' ? 'active' : ''}`}
-          href="#logs"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('logs');
-          }}
-        >
-          <span className="nav-icon">📜</span>
-          <span>Logs</span>
-          <span className="nav-badge" id="badge-logs">
-            0
-          </span>
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'errors' ? 'active' : ''}`}
-          href="#errors"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('errors');
-          }}
-        >
-          <span className="nav-icon">🚨</span>
-          <span>Errors</span>
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'analytics' ? 'active' : ''}`}
-          href="#analytics"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('analytics');
-          }}
-        >
-          <span className="nav-icon">📊</span>
-          <span>Analytics</span>
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'recorder' ? 'active' : ''}`}
-          href="#recorder"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('recorder');
-          }}
-        >
-          <span className="nav-icon">🔴</span>
-          <span>Recorder</span>
-          <span className="nav-badge" id="badge-recorder">
-            0
-          </span>
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'performance' ? 'active' : ''}`}
-          href="#performance"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('performance');
-          }}
-        >
-          <span className="nav-icon">⚡</span>
-          <span>Performance</span>
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'tracing' ? 'active' : ''}`}
-          href="#tracing"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('tracing');
-          }}
-        >
-          <span className="nav-icon">🧭</span>
-          <span>Tracing</span>
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'jobs' ? 'active' : ''}`}
-          href="#jobs"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('jobs');
-          }}
-        >
-          <span className="nav-icon">💼</span>
-          <span>Jobs & Workers</span>
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'sdk-impact' ? 'active' : ''}`}
-          href="#sdk-impact"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('sdk-impact');
-          }}
-        >
-          <span className="nav-icon">📦</span>
-          <span>SDK Impact</span>
-          <span
-            className="nav-badge"
-            id="badge-sdk-impact"
-            style={{ display: 'none' }}
+      {/* ── Sidebar Navigation ────────────────────────────────────── */}
+      <nav
+        className="sidebar"
+        onMouseOver={handleSidebarMouseOver}
+        onMouseLeave={() => setSidebarTooltip(null)}
+        onScroll={() => setSidebarTooltip(null)}
+        onFocusCapture={handleSidebarFocusCapture}
+        onBlurCapture={handleSidebarBlurCapture}
+      >
+        <div className="sidebar-header">
+          <div
+            className="sidebar-brand-wrapper"
+            data-tooltip="Axiomify Studio"
+            aria-label="Axiomify Studio"
           >
-            0
-          </span>
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'health' ? 'active' : ''}`}
-          href="#health"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('health');
-          }}
-        >
-          <span className="nav-icon">❤️</span>
-          <span>Health</span>
-          {discovery?.health && (
-            <span
-              className="nav-badge"
-              id="badge-health"
-              style={{
-                background:
-                  discovery.health.summary.failures > 0
-                    ? 'rgba(255,107,107,0.2)'
-                    : discovery.health.summary.warnings > 0
-                      ? 'rgba(255,193,7,0.2)'
-                      : 'var(--bg-tertiary)',
-                color:
-                  discovery.health.summary.failures > 0
-                    ? 'var(--error)'
-                    : discovery.health.summary.warnings > 0
-                      ? 'var(--warning)'
-                      : 'var(--text-muted)',
-              }}
-            >
-              {discovery.health.summary.failures +
-                discovery.health.summary.warnings}
-            </span>
-          )}
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'security' ? 'active' : ''}`}
-          href="#security"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('security');
-          }}
-        >
-          <span className="nav-icon">🛡️</span>
-          <span>Security</span>
-          <span
-            className="nav-badge"
-            id="badge-security"
-            style={{ display: 'none' }}
-          >
-            0
-          </span>
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'contracts' ? 'active' : ''}`}
-          href="#contracts"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('contracts');
-          }}
-        >
-          <span className="nav-icon">📋</span>
-          <span>Contracts</span>
-          <span
-            className="nav-badge"
-            id="badge-contracts"
-            style={{ display: 'none' }}
-          >
-            0
-          </span>
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'quality' ? 'active' : ''}`}
-          href="#quality"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('quality');
-          }}
-        >
-          <span className="nav-icon">🏆</span>
-          <span>Quality</span>
-          <span
-            className="nav-badge"
-            id="badge-quality"
-            style={{
-              background: 'var(--accent)',
-              color: '#fff',
-              fontWeight: 700,
-            }}
-          >
-            100
-          </span>
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'ai' ? 'active' : ''}`}
-          href="#ai"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('ai');
-          }}
-        >
-          <span className="nav-icon">✨</span>
-          <span>AI Assistant</span>
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'config' ? 'active' : ''}`}
-          href="#config"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('config');
-          }}
-        >
-          <span className="nav-icon">⚙️</span>
-          <span>Config</span>
-        </a>
-
-        <div className="sidebar-section">Playground</div>
-        <a
-          className={`nav-item ${activePanel === 'tester' ? 'active' : ''}`}
-          href="#tester"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('tester');
-          }}
-        >
-          <span className="nav-icon">⚡</span>
-          <span>Request Tester</span>
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'ws-tester' ? 'active' : ''}`}
-          href="#ws-tester"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('ws-tester');
-          }}
-        >
-          <span className="nav-icon">🔌</span>
-          <span>WebSocket Tester</span>
-        </a>
-        <a
-          className={`nav-item ${activePanel === 'playground' ? 'active' : ''}`}
-          href="#playground"
-          onClick={(e) => {
-            e.preventDefault();
-            setActivePanel('playground');
-          }}
-        >
-          <span className="nav-icon">🧪</span>
-          <span>SDK Playground</span>
-        </a>
-
-        <div style={{ marginTop: 'auto', paddingTop: '20px' }}>
+            <div className="sidebar-logo">A</div>
+            {!sidebarCollapsed && (
+              <>
+                <span className="brand-name">Axiomify</span>
+                <span
+                  className="nav-badge"
+                  style={{ padding: '1px 5px', fontSize: '9px' }}
+                >
+                  v{STUDIO_VERSION}
+                </span>
+              </>
+            )}
+          </div>
           <button
-            onClick={handleLogout}
-            className="nav-item"
-            style={{
-              width: '100%',
-              border: 'none',
-              background: 'transparent',
-              textAlign: 'left',
-              justifyContent: 'flex-start',
-            }}
+            className="sidebar-collapse-btn"
+            onClick={() => dispatch(toggleSidebar())}
+            data-tooltip={
+              sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
+            }
+            aria-label={
+              sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
+            }
+            title={!sidebarCollapsed ? 'Collapse sidebar' : undefined}
           >
-            <span className="nav-icon">🚪</span>
-            <span>Logout</span>
+            {sidebarCollapsed ? (
+              <PanelLeftOpen size={13} />
+            ) : (
+              <PanelLeftClose size={13} />
+            )}
           </button>
         </div>
+
+        {/* Global Quick Search trigger */}
+        {!sidebarCollapsed && (
+          <div className="sidebar-search-container">
+            <button
+              className="sidebar-search-btn"
+              onClick={() => dispatch(setCommandPaletteOpen(true))}
+              title="Search routes, schemas, and commands (⌘K)"
+            >
+              <Search size={12} />
+              <span>Quick find...</span>
+              <kbd>⌘K</kbd>
+            </button>
+          </div>
+        )}
+
+        <div className="sidebar-nav">
+          {/* Group 1: API Client */}
+          {!sidebarCollapsed && (
+            <div className="sidebar-section">API Client</div>
+          )}
+          <button
+            className={`nav-item ${activeTab === 'tester' ? 'active' : ''}`}
+            onClick={() => handleNavClick('tester')}
+            data-tooltip="Request Tester"
+            data-tooltip-category="API Client"
+            aria-label="Request Tester"
+          >
+            <span className="nav-icon">
+              <Send size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Request Tester</span>}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'ws-tester' ? 'active' : ''}`}
+            onClick={() => handleNavClick('ws-tester')}
+            data-tooltip="WebSocket Tester"
+            data-tooltip-category="API Client"
+            data-tooltip-badge={
+              (discovery?.routes?.filter((r) => r.isWs).length || 0) > 0
+                ? discovery?.routes?.filter((r) => r.isWs).length
+                : undefined
+            }
+            aria-label="WebSocket Tester"
+          >
+            <span className="nav-icon">
+              <Wifi size={13} />
+            </span>
+            {!sidebarCollapsed && <span>WebSocket Tester</span>}
+            {!sidebarCollapsed && discovery && (
+              <span className="nav-badge">
+                {discovery.routes?.filter((r) => r.isWs).length || 0}
+              </span>
+            )}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'playground' ? 'active' : ''}`}
+            onClick={() => handleNavClick('playground')}
+            data-tooltip="SDK Playground"
+            data-tooltip-category="API Client"
+            aria-label="SDK Playground"
+          >
+            <span className="nav-icon">
+              <Play size={13} />
+            </span>
+            {!sidebarCollapsed && <span>SDK Playground</span>}
+          </button>
+
+          {/* Group 2: Specifications & Docs */}
+          {!sidebarCollapsed && (
+            <div className="sidebar-section">Discovery & Docs</div>
+          )}
+          <button
+            className={`nav-item ${activeTab === 'routes' ? 'active' : ''}`}
+            onClick={() => handleNavClick('routes')}
+            data-tooltip="Routes Index"
+            data-tooltip-category="Discovery & Docs"
+            data-tooltip-badge={
+              (discovery?.routes?.filter((r) => !r.isWs).length || 0) > 0
+                ? discovery?.routes?.filter((r) => !r.isWs).length
+                : undefined
+            }
+            aria-label="Routes Index"
+          >
+            <span className="nav-icon">
+              <Layers size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Routes Index</span>}
+            {!sidebarCollapsed && discovery && (
+              <span className="nav-badge">
+                {discovery.routes?.filter((r) => !r.isWs).length || 0}
+              </span>
+            )}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'openapi' ? 'active' : ''}`}
+            onClick={() => handleNavClick('openapi')}
+            data-tooltip="OpenAPI Spec"
+            data-tooltip-category="Discovery & Docs"
+            aria-label="OpenAPI Spec"
+          >
+            <span className="nav-icon">
+              <BookOpen size={13} />
+            </span>
+            {!sidebarCollapsed && <span>OpenAPI Spec</span>}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'schemas' ? 'active' : ''}`}
+            onClick={() => handleNavClick('schemas')}
+            data-tooltip="Schemas"
+            data-tooltip-category="Discovery & Docs"
+            data-tooltip-badge={
+              (discovery?.schemas?.length || 0) > 0
+                ? discovery?.schemas?.length
+                : undefined
+            }
+            aria-label="Schemas"
+          >
+            <span className="nav-icon">
+              <FileCode size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Schemas</span>}
+            {!sidebarCollapsed && discovery && (
+              <span className="nav-badge">
+                {discovery.schemas?.length || 0}
+              </span>
+            )}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'contracts' ? 'active' : ''}`}
+            onClick={() => handleNavClick('contracts')}
+            data-tooltip="Contracts"
+            data-tooltip-category="Discovery & Docs"
+            aria-label="Contracts"
+          >
+            <span className="nav-icon">
+              <CheckSquare size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Contracts</span>}
+          </button>
+
+          {/* Group 4: Architecture */}
+          {!sidebarCollapsed && (
+            <div className="sidebar-section">Architecture</div>
+          )}
+          <button
+            className={`nav-item ${activeTab === 'services' ? 'active' : ''}`}
+            onClick={() => handleNavClick('services')}
+            data-tooltip="Services"
+            data-tooltip-category="Architecture"
+            data-tooltip-badge={
+              (discovery?.services?.length || 0) > 0
+                ? discovery?.services?.length
+                : undefined
+            }
+            aria-label="Services"
+          >
+            <span className="nav-icon">
+              <Cpu size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Services</span>}
+            {!sidebarCollapsed && discovery && (
+              <span className="nav-badge">
+                {discovery.services?.length || 0}
+              </span>
+            )}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'middlewares' ? 'active' : ''}`}
+            onClick={() => handleNavClick('middlewares')}
+            data-tooltip="Middlewares"
+            data-tooltip-category="Architecture"
+            data-tooltip-badge={
+              (discovery?.middlewares?.length || 0) > 0
+                ? discovery?.middlewares?.length
+                : undefined
+            }
+            aria-label="Middlewares"
+          >
+            <span className="nav-icon">
+              <Shield size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Middlewares</span>}
+            {!sidebarCollapsed && discovery && (
+              <span className="nav-badge">
+                {discovery.middlewares?.length || 0}
+              </span>
+            )}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'architecture' ? 'active' : ''}`}
+            onClick={() => handleNavClick('architecture')}
+            data-tooltip="Architecture Map"
+            data-tooltip-category="Architecture"
+            aria-label="Architecture Map"
+          >
+            <span className="nav-icon">
+              <Network size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Architecture Map</span>}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'events' ? 'active' : ''}`}
+            onClick={() => handleNavClick('events')}
+            data-tooltip="Events"
+            data-tooltip-category="Architecture"
+            data-tooltip-badge={
+              (discovery?.events?.length || 0) > 0
+                ? discovery?.events?.length
+                : undefined
+            }
+            aria-label="Events"
+          >
+            <span className="nav-icon">
+              <Activity size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Events</span>}
+            {!sidebarCollapsed && discovery && (
+              <span className="nav-badge">{discovery.events?.length || 0}</span>
+            )}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'hooks' ? 'active' : ''}`}
+            onClick={() => handleNavClick('hooks')}
+            data-tooltip="Hooks"
+            data-tooltip-category="Architecture"
+            data-tooltip-badge={hookTotal > 0 ? hookTotal : undefined}
+            aria-label="Hooks"
+          >
+            <span className="nav-icon">
+              <Webhook size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Hooks</span>}
+            {!sidebarCollapsed && discovery && (
+              <span className="nav-badge">{hookTotal}</span>
+            )}
+          </button>
+
+          {/* Group 5: Observability & Telemetry (Option 3 Metrics Hub) */}
+          {!sidebarCollapsed && (
+            <div className="sidebar-section">Observability</div>
+          )}
+          <button
+            className={`nav-item ${activeTab === 'logs' ? 'active' : ''}`}
+            onClick={() => handleNavClick('logs')}
+            data-tooltip="Live Logs"
+            data-tooltip-category="Observability"
+            aria-label="Live Logs"
+          >
+            <span className="nav-icon">
+              <Terminal size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Live Logs</span>}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'errors' ? 'active' : ''}`}
+            onClick={() => handleNavClick('errors')}
+            data-tooltip="Errors"
+            data-tooltip-category="Observability"
+            data-tooltip-badge={
+              (discovery?.errors?.length || 0) > 0
+                ? discovery?.errors?.length
+                : undefined
+            }
+            aria-label="Errors"
+          >
+            <span className="nav-icon">
+              <AlertTriangle size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Errors</span>}
+            {!sidebarCollapsed && discovery && (
+              <span className="nav-badge">{discovery.errors?.length || 0}</span>
+            )}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'analytics' ? 'active' : ''}`}
+            onClick={() => handleNavClick('analytics')}
+            data-tooltip="Analytics"
+            data-tooltip-category="Observability"
+            aria-label="Analytics"
+          >
+            <span className="nav-icon">
+              <BarChart3 size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Analytics</span>}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'performance' ? 'active' : ''}`}
+            onClick={() => handleNavClick('performance')}
+            data-tooltip="Performance"
+            data-tooltip-category="Observability"
+            aria-label="Performance"
+          >
+            <span className="nav-icon">
+              <Zap size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Performance</span>}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'tracing' ? 'active' : ''}`}
+            onClick={() => handleNavClick('tracing')}
+            data-tooltip="Distributed Tracing"
+            data-tooltip-category="Observability"
+            aria-label="Distributed Tracing"
+          >
+            <span className="nav-icon">
+              <GitFork size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Distributed Tracing</span>}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'recorder' ? 'active' : ''}`}
+            onClick={() => handleNavClick('recorder')}
+            data-tooltip="Traffic Recorder"
+            data-tooltip-category="Observability"
+            aria-label="Traffic Recorder"
+          >
+            <span className="nav-icon">
+              <Radio size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Traffic Recorder</span>}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'health' ? 'active' : ''}`}
+            onClick={() => handleNavClick('health')}
+            data-tooltip="System Health"
+            data-tooltip-category="Observability"
+            aria-label="System Health"
+          >
+            <span className="nav-icon">
+              <Heart size={13} />
+            </span>
+            {!sidebarCollapsed && <span>System Health</span>}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'security' ? 'active' : ''}`}
+            onClick={() => handleNavClick('security')}
+            data-tooltip="Security Audit"
+            data-tooltip-category="Observability"
+            aria-label="Security Audit"
+          >
+            <span className="nav-icon">
+              <Lock size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Security Audit</span>}
+          </button>
+
+          {/* Group 6: Tooling & Governance */}
+          {!sidebarCollapsed && (
+            <div className="sidebar-section">Tooling & Quality</div>
+          )}
+          <button
+            className={`nav-item ${activeTab === 'jobs' ? 'active' : ''}`}
+            onClick={() => handleNavClick('jobs')}
+            data-tooltip="Background Jobs"
+            data-tooltip-category="Tooling & Quality"
+            aria-label="Background Jobs"
+          >
+            <span className="nav-icon">
+              <Clock size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Background Jobs</span>}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'sdk-impact' ? 'active' : ''}`}
+            onClick={() => handleNavClick('sdk-impact')}
+            data-tooltip="SDK Impact"
+            data-tooltip-category="Tooling & Quality"
+            aria-label="SDK Impact"
+          >
+            <span className="nav-icon">
+              <Boxes size={13} />
+            </span>
+            {!sidebarCollapsed && <span>SDK Impact</span>}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'quality' ? 'active' : ''}`}
+            onClick={() => handleNavClick('quality')}
+            data-tooltip="Quality & Governance"
+            data-tooltip-category="Tooling & Quality"
+            aria-label="Quality & Governance"
+          >
+            <span className="nav-icon">
+              <Award size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Quality & Governance</span>}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'ai' ? 'active' : ''}`}
+            onClick={() => handleNavClick('ai')}
+            data-tooltip="AI Assistant"
+            data-tooltip-category="Tooling & Quality"
+            aria-label="AI Assistant"
+          >
+            <span className="nav-icon">
+              <Sparkles size={13} />
+            </span>
+            {!sidebarCollapsed && <span>AI Assistant</span>}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'config' ? 'active' : ''}`}
+            onClick={() => handleNavClick('config')}
+            data-tooltip="Configuration"
+            data-tooltip-category="Tooling & Quality"
+            aria-label="Configuration"
+          >
+            <span className="nav-icon">
+              <Settings size={13} />
+            </span>
+            {!sidebarCollapsed && <span>Configuration</span>}
+          </button>
+        </div>
+
+        <div className="sidebar-footer">
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            data-tooltip={
+              wsConnected
+                ? 'Connected to Axiomify Server'
+                : 'Offline / Disconnected'
+            }
+            aria-label={
+              wsConnected
+                ? 'Connected to Axiomify Server'
+                : 'Offline / Disconnected'
+            }
+          >
+            <span
+              className="status-dot"
+              style={{
+                width: '6px',
+                height: '6px',
+                background: wsConnected
+                  ? 'var(--success)'
+                  : 'var(--text-muted)',
+              }}
+            />
+            {!sidebarCollapsed && (
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                {wsConnected ? 'Connected' : 'Offline'}
+              </span>
+            )}
+          </div>
+          <button
+            className="btn btn-ghost"
+            style={{
+              padding: '4px 8px',
+              fontSize: '11px',
+              color: 'var(--text-muted)',
+            }}
+            onClick={handleLogout}
+            data-tooltip="Log out of Studio"
+            aria-label="Log out of Studio"
+            title={!sidebarCollapsed ? 'Log out of Studio' : undefined}
+          >
+            <LogOut size={13} />
+            {!sidebarCollapsed && <span>Logout</span>}
+          </button>
+        </div>
+
+        {/* Floating tooltip for collapsed sidebar */}
+        {sidebarCollapsed && sidebarTooltip && (
+          <div
+            className="sidebar-floating-tooltip"
+            style={{ top: `${sidebarTooltip.top}px` }}
+          >
+            {sidebarTooltip.category && (
+              <span className="sidebar-tooltip-category">
+                {sidebarTooltip.category}
+              </span>
+            )}
+            <span className="sidebar-tooltip-text">{sidebarTooltip.text}</span>
+            {sidebarTooltip.badge !== undefined && (
+              <span className="sidebar-tooltip-badge">
+                {sidebarTooltip.badge}
+              </span>
+            )}
+          </div>
+        )}
       </nav>
 
-      {/* Main Panel Content */}
+      {/* ── Main Content Area ────────────────────────────────────── */}
       <main className="main" id="main-content">
         {loadingDiscovery && !discovery ? (
-          <div className="loading" id="loading-state">
-            <div className="spinner"></div>
-            <span>Loading discovery data...</span>
+          <div className="empty-state" style={{ height: '100%' }}>
+            <div
+              className="spinner"
+              style={{ width: '24px', height: '24px', borderWidth: '2px' }}
+            />
+            <span>Discovering routes, schemas, and services...</span>
           </div>
         ) : (
           <>
             {buildError && (
-              <div
-                className="error-banner"
-                style={{ textAlign: 'left', whiteSpace: 'pre-wrap' }}
-              >
+              <div className="error-banner" style={{ margin: '16px' }}>
                 <strong>Build Failure:</strong>
-                <br />
-                {buildError}
+                <pre
+                  style={{
+                    marginTop: '6px',
+                    fontSize: '11px',
+                    whiteSpace: 'pre-wrap',
+                  }}
+                >
+                  {buildError}
+                </pre>
               </div>
             )}
             {reloadError && (
-              <div className="error-banner" style={{ textAlign: 'left' }}>
+              <div className="error-banner" style={{ margin: '16px' }}>
                 <strong>Reload Failure:</strong> {reloadError}
               </div>
             )}
@@ -1035,132 +1534,481 @@ function App() {
         )}
       </main>
 
-      {/* Source Code Debugger / Inspector Overlay Modal */}
+      {/* ── Global Command Palette / Route Launcher Modal ─────────── */}
+      {commandPaletteOpen && discovery && (
+        <RouteSelector
+          routes={discovery.routes || []}
+          selectedMethod={prefilledMethod || 'GET'}
+          selectedPath={prefilledPath || ''}
+          openapi={discovery.openapi}
+          defaultOpen={true}
+          onClose={() => dispatch(setCommandPaletteOpen(false))}
+          onSelectRoute={(m, p) => {
+            dispatch(setCommandPaletteOpen(false));
+            handleQuickTest(m, p);
+          }}
+        />
+      )}
+
+      {/* ── Source Code Debugger / Inspector Modal ───────────────── */}
       {sourceViewerFile && (
-        <div id="source-viewer-overlay" className="modal-overlay active">
+        <div className="modal-overlay" onClick={handleCloseSourceViewer}>
           <div
-            className="card"
-            style={{
-              width: '100%',
-              maxWidth: '850px',
-              maxHeight: '85vh',
-              display: 'flex',
-              flexDirection: 'column',
-              margin: 0,
-              boxShadow: 'var(--shadow-md)',
-              borderRadius: 'var(--radius-lg)',
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border)',
-            }}
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '850px' }}
           >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                borderBottom: '1px solid var(--border)',
-                padding: '16px 20px',
-                textAlign: 'left',
-              }}
-            >
+            <div className="pane-header">
               <div
                 style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}
               >
-                <div
-                  id="source-viewer-title"
+                <span style={{ fontWeight: 600 }}>Source Code Inspector</span>
+                <span
                   style={{
-                    fontWeight: 700,
-                    fontSize: '16px',
-                    color: 'var(--text-primary)',
-                  }}
-                >
-                  Source Code Inspector
-                </div>
-                <div
-                  id="source-viewer-filepath"
-                  style={{
-                    fontSize: '12px',
-                    color: 'var(--text-secondary)',
                     fontFamily: 'var(--font-mono)',
+                    fontSize: '11px',
+                    color: 'var(--text-muted)',
                   }}
                 >
                   {sourceViewerFile}:{sourceViewerLine}
-                </div>
+                </span>
               </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  className="btn btn-secondary"
+                  style={{ padding: '4px 8px', fontSize: '11px' }}
+                  onClick={handleAiDebugClick}
+                >
+                  <Sparkles size={12} />
+                  <span>Explain with AI</span>
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  style={{ padding: '4px' }}
+                  onClick={handleCloseSourceViewer}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+            <div
+              style={{
+                padding: '16px',
+                overflowY: 'auto',
+                maxHeight: '70vh',
+                background: 'var(--bg-primary)',
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '12px',
+                  lineHeight: 1.6,
+                }}
+              >
+                {sourceViewerLines.map((line) => (
+                  <div
+                    key={line.num}
+                    style={{
+                      display: 'flex',
+                      gap: '12px',
+                      padding: '1px 4px',
+                      background: line.isTarget
+                        ? 'rgba(239, 68, 68, 0.12)'
+                        : 'transparent',
+                      borderLeft: line.isTarget
+                        ? '3px solid var(--error)'
+                        : '3px solid transparent',
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: '36px',
+                        textAlign: 'right',
+                        color: 'var(--text-muted)',
+                        userSelect: 'none',
+                      }}
+                    >
+                      {line.num}
+                    </span>
+                    <pre
+                      style={{
+                        margin: 0,
+                        color: line.isTarget
+                          ? 'var(--error)'
+                          : 'var(--text-primary)',
+                      }}
+                    >
+                      {line.text}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Environment Variables Manager Modal ─────────────────── */}
+      {envModalOpen && (
+        <div className="modal-overlay" onClick={() => setEnvModalOpen(false)}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '640px' }}
+          >
+            <div className="pane-header">
               <div
                 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
               >
-                <button
-                  className="btn btn-secondary"
-                  id="ai-debug-btn"
-                  onClick={handleAiDebugClick}
+                <Sliders size={14} style={{ color: 'var(--accent)' }} />
+                <div>
+                  <span style={{ fontWeight: 600, fontSize: '13px' }}>
+                    Environment Variables
+                  </span>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Interpolate values anywhere via{' '}
+                    <code
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        color: 'var(--accent-text)',
+                      }}
+                    >
+                      {'{{variable}}'}
+                    </code>{' '}
+                    syntax
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ padding: '4px' }}
+                onClick={() => setEnvModalOpen(false)}
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div
+              style={{
+                padding: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px',
+                overflowY: 'auto',
+                maxHeight: '65vh',
+              }}
+            >
+              {/* Environment Switcher & Actions */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span
                   style={{
-                    padding: '6px 12px',
-                    fontSize: '12px',
-                    margin: 0,
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  Active Environment:
+                </span>
+                <select
+                  className="select-input"
+                  style={{
+                    padding: '4px 8px',
+                    fontSize: '11px',
+                    fontFamily: 'var(--font-mono)',
+                    minWidth: '140px',
+                  }}
+                  value={selectedEnvironmentId}
+                  onChange={(e) => dispatch(selectEnvironment(e.target.value))}
+                >
+                  {environments.map((env) => (
+                    <option key={env.id} value={env.id}>
+                      {env.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '4px 8px', fontSize: '11px' }}
+                  onClick={() => {
+                    const name = window.prompt(
+                      'Environment Name (e.g. Staging, Production):',
+                    );
+                    if (name?.trim()) {
+                      dispatch(createEnvironment(name.trim()));
+                    }
+                  }}
+                >
+                  <Plus size={11} />
+                  <span>New Env</span>
+                </button>
+                {environments.length > 1 && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: '11px',
+                      color: 'var(--error)',
+                    }}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Delete environment "${currentEnv?.name}"?`,
+                        )
+                      ) {
+                        dispatch(deleteEnvironment(selectedEnvironmentId));
+                      }
+                    }}
+                    title="Delete current environment"
+                  >
+                    <Trash2 size={12} />
+                    <span>Delete</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Variable Key-Value Editor Table */}
+              <div
+                style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  overflow: 'hidden',
+                }}
+              >
+                <table className="env-variable-table">
+                  <thead>
+                    <tr style={{ background: 'var(--bg-primary)' }}>
+                      <th style={{ width: '42%' }}>Variable Name</th>
+                      <th>Value</th>
+                      <th style={{ width: '64px', textAlign: 'center' }}>
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {environmentVariables.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={3}
+                          style={{
+                            textAlign: 'center',
+                            padding: '24px 12px',
+                            color: 'var(--text-muted)',
+                          }}
+                        >
+                          No variables defined for{' '}
+                          <strong>
+                            {currentEnv?.name || 'this environment'}
+                          </strong>
+                          .
+                          <div style={{ marginTop: '8px' }}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ padding: '3px 8px', fontSize: '11px' }}
+                              onClick={() => dispatch(addVariable())}
+                            >
+                              <Plus size={11} />
+                              <span>Add first variable</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      environmentVariables.map((v, idx) => (
+                        <tr
+                          key={idx}
+                          style={{ background: 'var(--bg-secondary)' }}
+                        >
+                          <td>
+                            <input
+                              type="text"
+                              className="text-input"
+                              placeholder="e.g. baseUrl or token"
+                              style={{
+                                width: '100%',
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: '11px',
+                                padding: '4px 8px',
+                              }}
+                              value={v.key}
+                              onChange={(e) =>
+                                dispatch(
+                                  updateVariable({
+                                    index: idx,
+                                    key: e.target.value,
+                                  }),
+                                )
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              className="text-input"
+                              placeholder="e.g. http://localhost:3000"
+                              style={{
+                                width: '100%',
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: '11px',
+                                padding: '4px 8px',
+                              }}
+                              value={v.value}
+                              onChange={(e) =>
+                                dispatch(
+                                  updateVariable({
+                                    index: idx,
+                                    value: e.target.value,
+                                  }),
+                                )
+                              }
+                            />
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px',
+                              }}
+                            >
+                              {v.key.trim() && (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost"
+                                  style={{
+                                    padding: '3px',
+                                    color: 'var(--text-muted)',
+                                  }}
+                                  title={`Copy {{${v.key}}}`}
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(
+                                      `{{${v.key.trim()}}}`,
+                                    );
+                                    setEnvCopiedKey(v.key);
+                                    setTimeout(
+                                      () => setEnvCopiedKey(null),
+                                      1500,
+                                    );
+                                  }}
+                                >
+                                  {envCopiedKey === v.key ? (
+                                    <Check
+                                      size={12}
+                                      style={{ color: 'var(--success)' }}
+                                    />
+                                  ) : (
+                                    <Copy size={12} />
+                                  )}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                style={{
+                                  padding: '3px',
+                                  color: 'var(--text-muted)',
+                                }}
+                                onClick={() => dispatch(removeVariable(idx))}
+                                title="Remove variable"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Add Variable & Auto Suggestions Tip */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '4px 10px', fontSize: '11px' }}
+                  onClick={() => dispatch(addVariable())}
+                >
+                  <Plus size={12} />
+                  <span>Add Variable</span>
+                </button>
+
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  Tip: Type{' '}
+                  <kbd style={{ padding: '1px 4px', fontSize: '10px' }}>
+                    {'{{'}
+                  </kbd>{' '}
+                  in request paths or body for auto-completion
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div
+              style={{
+                padding: '10px 16px',
+                borderTop: '1px solid var(--border)',
+                background: 'var(--bg-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: '8px',
+              }}
+            >
+              {envSaveSuccess && (
+                <span
+                  style={{
+                    fontSize: '11px',
+                    color: 'var(--success)',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '4px',
-                    background: 'rgba(108, 92, 231, 0.08)',
-                    color: 'var(--accent)',
-                    borderColor: 'rgba(108, 92, 231, 0.2)',
+                    marginRight: 'auto',
                   }}
                 >
-                  <span>✨</span> Debug with AI
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={handleCloseSourceViewer}
-                  style={{ padding: '6px 12px', fontSize: '12px', margin: 0 }}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-            <div
-              id="source-viewer-content"
-              style={{
-                flex: 1,
-                overflow: 'auto',
-                padding: '20px',
-                fontFamily: 'var(--font-mono)',
-                fontSize: '13px',
-                lineHeight: 1.5,
-                background: 'var(--bg-primary)',
-                borderBottomLeftRadius: 'var(--radius-lg)',
-                borderBottomRightRadius: 'var(--radius-lg)',
-              }}
-            >
-              {sourceViewerLines.map((line, i) => (
-                <div
-                  key={i}
-                  className={`source-viewer-line ${line.isTarget ? 'target' : ''}`}
-                  style={{
-                    display: 'flex',
-                    gap: '16px',
-                    padding: '2px 4px',
-                    textAlign: 'left',
-                  }}
-                >
-                  <div
-                    className="source-viewer-num"
-                    style={{
-                      width: '40px',
-                      textAlign: 'right',
-                      color: 'var(--text-muted)',
-                      userSelect: 'none',
-                    }}
-                  >
-                    {line.num}
-                  </div>
-                  <div
-                    className="source-viewer-text"
-                    style={{ flex: 1, whiteSpace: 'pre', overflowX: 'auto' }}
-                  >
-                    {line.text}
-                  </div>
-                </div>
-              ))}
+                  <Check size={12} />
+                  <span>Variables saved successfully</span>
+                </span>
+              )}
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ padding: '5px 12px', fontSize: '11px' }}
+                onClick={() => setEnvModalOpen(false)}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ padding: '5px 14px', fontSize: '11px' }}
+                onClick={() => {
+                  dispatch(saveCurrentEnvironment());
+                  setEnvSaveSuccess(true);
+                  setTimeout(() => setEnvSaveSuccess(false), 2000);
+                }}
+              >
+                Save Changes
+              </button>
             </div>
           </div>
         </div>
@@ -1168,323 +2016,5 @@ function App() {
     </div>
   );
 }
-
-// ==========================================
-// SECURITY PANEL WIDGET
-// ==========================================
-interface SecurityPanelProps {
-  discovery: DiscoveryData;
-}
-const SecurityPanel: React.FC<SecurityPanelProps> = ({ discovery }) => {
-  const [data, setData] = useState<any | null>(null);
-  const [probing, setProbing] = useState(false);
-
-  useEffect(() => {
-    fetchSecurity();
-  }, []);
-
-  const fetchSecurity = async () => {
-    try {
-      const res = await apiFetch('/__studio/api/security');
-      if (res.ok) {
-        const payload = await res.json();
-        setData(payload);
-        if (payload.isProbing) {
-          setTimeout(fetchSecurity, 1000);
-        }
-      }
-    } catch {}
-  };
-
-  const handleProbe = async () => {
-    setProbing(true);
-    try {
-      const res = await apiFetch('/__studio/api/security/probe', {
-        method: 'POST',
-      });
-      if (res.ok) {
-        setTimeout(fetchSecurity, 500);
-      }
-    } catch {
-    } finally {
-      setProbing(false);
-    }
-  };
-
-  if (!data) {
-    return (
-      <div>
-        <div className="panel-header">
-          <div className="panel-title">Security Center</div>
-          <div className="panel-subtitle">
-            Static and dynamic security validation tests
-          </div>
-        </div>
-        <div
-          style={{
-            fontStyle: 'italic',
-            color: 'var(--text-muted)',
-            fontSize: '12px',
-          }}
-        >
-          Security data loading...
-        </div>
-      </div>
-    );
-  }
-
-  const staticChecks = data.static || [];
-  const dynamicChecks = data.dynamic || [];
-  const totalFindings = staticChecks.length + dynamicChecks.length;
-
-  return (
-    <div>
-      <div
-        className="panel-header"
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '12px',
-        }}
-      >
-        <div>
-          <div className="panel-title">Security Center</div>
-          <div className="panel-subtitle">
-            Static and dynamic security validation tests
-          </div>
-        </div>
-        <button
-          className="btn"
-          onClick={handleProbe}
-          disabled={probing || data.isProbing}
-        >
-          {probing || data.isProbing
-            ? `Probing (${data.progress || 0}%)...`
-            : 'Run Dynamic Probe'}
-        </button>
-      </div>
-
-      {data.isProbing && (
-        <div style={{ marginBottom: '20px', textAlign: 'left' }}>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              fontSize: '12px',
-              marginBottom: '4px',
-              color: 'var(--text-secondary)',
-            }}
-          >
-            <span>Dynamic Vulnerability Scanning...</span>
-            <span>{data.progress || 0}%</span>
-          </div>
-          <div className="metric-progress-container">
-            <div
-              className="metric-progress-bar success"
-              style={{
-                width: `${data.progress || 0}%`,
-                transition: 'width 0.3s ease',
-              }}
-            />
-          </div>
-        </div>
-      )}
-
-      <div className="info-grid" style={{ marginBottom: '24px' }}>
-        <div className="info-card" style={{ margin: 0 }}>
-          <div className="info-card-label">Static Rule Violations</div>
-          <div className="info-card-value">{staticChecks.length}</div>
-        </div>
-        <div className="info-card" style={{ margin: 0 }}>
-          <div className="info-card-label">Dynamic Probe Violations</div>
-          <div className="info-card-value">{dynamicChecks.length}</div>
-        </div>
-        <div className="info-card" style={{ margin: 0 }}>
-          <div className="info-card-label">Overall Security Grade</div>
-          <div
-            className="info-card-value"
-            style={{
-              color:
-                totalFindings > 2
-                  ? 'var(--error)'
-                  : totalFindings > 0
-                    ? 'var(--warning)'
-                    : 'var(--success)',
-            }}
-          >
-            {totalFindings > 4
-              ? 'F'
-              : totalFindings > 2
-                ? 'D'
-                : totalFindings > 0
-                  ? 'B'
-                  : 'A'}
-          </div>
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: '20px',
-          textAlign: 'left',
-          flexWrap: 'wrap',
-        }}
-      >
-        {/* Static audits */}
-        <div className="tester-section">
-          <div className="tester-section-title">🛡️ Static Rule Warnings</div>
-          {staticChecks.length === 0 ? (
-            <div
-              style={{
-                color: 'var(--text-muted)',
-                fontStyle: 'italic',
-                fontSize: '12px',
-              }}
-            >
-              No static violations detected. Excellent!
-            </div>
-          ) : (
-            <div
-              style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
-            >
-              {staticChecks.map((f: FindingItem) => (
-                <div
-                  key={f.id}
-                  className={`finding-card severity-${f.severity} open`}
-                  style={{ margin: 0 }}
-                >
-                  <div
-                    className="finding-card-header"
-                    style={{ cursor: 'default' }}
-                  >
-                    <span className="finding-card-status-icon">⚠️</span>
-                    <span className="finding-card-title">{f.title}</span>
-                  </div>
-                  <div
-                    className="finding-card-body"
-                    style={{ display: 'block' }}
-                  >
-                    {f.cwe && (
-                      <div
-                        style={{
-                          fontSize: '10px',
-                          color: 'var(--accent)',
-                          fontWeight: 700,
-                        }}
-                      >
-                        CWE: {f.cwe}
-                      </div>
-                    )}
-                    <div
-                      style={{
-                        fontSize: '12px',
-                        color: 'var(--text-secondary)',
-                        marginTop: '4px',
-                      }}
-                    >
-                      {f.description}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '11px',
-                        marginTop: '6px',
-                        background: 'var(--bg-secondary)',
-                        padding: '6px',
-                        borderRadius: '4px',
-                        border: '1px solid var(--border)',
-                      }}
-                    >
-                      <strong>Fix:</strong> {f.remediation}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Dynamic audits */}
-        <div className="tester-section">
-          <div className="tester-section-title">
-            🕵️ Dynamic Attack Probe findings
-          </div>
-          {dynamicChecks.length === 0 ? (
-            <div
-              style={{
-                color: 'var(--text-muted)',
-                fontStyle: 'italic',
-                fontSize: '12px',
-              }}
-            >
-              No dynamic probe vulnerabilities detected. Run a probe to check
-              injection leaks.
-            </div>
-          ) : (
-            <div
-              style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
-            >
-              {dynamicChecks.map((f: FindingItem) => (
-                <div
-                  key={f.id}
-                  className="finding-card severity-fail open"
-                  style={{ margin: 0 }}
-                >
-                  <div
-                    className="finding-card-header"
-                    style={{ cursor: 'default' }}
-                  >
-                    <span className="finding-card-status-icon">❌</span>
-                    <span className="finding-card-title">{f.title}</span>
-                  </div>
-                  <div
-                    className="finding-card-body"
-                    style={{ display: 'block' }}
-                  >
-                    {f.cwe && (
-                      <div
-                        style={{
-                          fontSize: '10px',
-                          color: 'var(--accent)',
-                          fontWeight: 700,
-                        }}
-                      >
-                        CWE: {f.cwe}
-                      </div>
-                    )}
-                    <div
-                      style={{
-                        fontSize: '12px',
-                        color: 'var(--text-secondary)',
-                        marginTop: '4px',
-                      }}
-                    >
-                      {f.description}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: '11px',
-                        marginTop: '6px',
-                        background: 'var(--bg-secondary)',
-                        padding: '6px',
-                        borderRadius: '4px',
-                        border: '1px solid var(--border)',
-                      }}
-                    >
-                      <strong>Fix:</strong> {f.remediation}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 export default App;

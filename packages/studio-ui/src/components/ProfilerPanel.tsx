@@ -1,5 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { apiFetch, getToken } from '../utils/api';
+import { AlertTriangle, CheckCircle2, Flame } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { apiFetch } from '../utils/api';
 
 interface TimelineItem {
   name: string;
@@ -35,7 +36,15 @@ interface ProfilerRequest {
   timeline: TimelineItem[];
 }
 
-export const ProfilerPanel: React.FC = () => {
+interface ProfilerPanelProps {
+  onReplay?: (method: any, path: any) => void;
+  onInspectCode?: (
+    filePath: string,
+    lineNumber: number,
+  ) => Promise<void> | void;
+}
+
+export const ProfilerPanel: React.FC<ProfilerPanelProps> = () => {
   const [sessionData, setSessionData] = useState<any | null>(null);
   const [selectedRequestId, setSelectedRequestId] = useState<string>('');
   const [searchPath, setSearchPath] = useState('');
@@ -390,7 +399,10 @@ export const ProfilerPanel: React.FC = () => {
 
       {entries.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-state-icon">🔥</div>
+          <Flame
+            size={36}
+            style={{ marginBottom: '12px', color: 'var(--text-muted)' }}
+          />
           <div className="empty-state-message">
             No execution traces captured. Hit the server with requests to
             populate the profiler.
@@ -941,13 +953,24 @@ export const ProfilerPanel: React.FC = () => {
                           >
                             <span
                               style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
                                 fontWeight: 700,
                                 color: q.failed
                                   ? 'var(--error)'
                                   : 'var(--success)',
                               }}
                             >
-                              {q.failed ? '❌ FAILED' : '✅ SUCCESS'}
+                              {q.failed ? (
+                                <>
+                                  <AlertTriangle size={11} /> FAILED
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle2 size={11} /> SUCCESS
+                                </>
+                              )}
                             </span>
                             <span>{q.durationMs.toFixed(2)} ms</span>
                           </div>

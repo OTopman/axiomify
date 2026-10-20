@@ -553,9 +553,8 @@ export class Axiomify {
    * Group construction with encapsulation support.
    *
    * `ancestorMembers` threads every enclosing group's route-membership set
-   * down to nested groups, so a route registered three levels deep is a
-   * member of all three scopes — a parent's scoped `onPreHandler` fires for
-   * it, exactly like Fastify's child-context inheritance.
+   * down to nested groups, so HTTP and WebSocket routes registered three
+   * levels deep are members of all three scopes.
    */
   private _createGroup(
     prefix: string,
@@ -593,11 +592,12 @@ export class Axiomify {
         return groupProxy;
       },
       ws: <S extends RouteSchema, M = any>(def: WsRouteDefinition<S, M>) => {
-        this.ws<S, M>({
+        const finalDef = {
           ...def,
           path: joinRoutePath(prefix, def.path),
           plugins: mergePlugins(scopedPlugins, def.plugins),
-        });
+        };
+        this.ws<S, M>(finalDef);
         return groupProxy;
       },
       group: ((subPrefix, subOptionsOrCallback, subMaybeCallback) => {

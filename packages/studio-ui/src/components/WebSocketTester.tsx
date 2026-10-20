@@ -1,3 +1,22 @@
+import {
+  Activity,
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  CheckSquare,
+  ChevronRight,
+  CircleDot,
+  Copy,
+  Play,
+  Radio,
+  Search,
+  Send,
+  Square,
+  Trash2,
+  Wifi,
+  WifiOff,
+  Zap,
+} from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { AssertionRule, DiscoveryData, WsLogItem } from '../types';
@@ -38,6 +57,14 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
     'disconnected' | 'connecting' | 'connected' | 'error'
   >('disconnected');
   const [logs, setLogs] = useState<WsLogItem[]>([]);
+  const [frameFilter, setFrameFilter] = useState<
+    'all' | 'in' | 'out' | 'assertion'
+  >('all');
+  const [searchWsQuery, setSearchWsQuery] = useState('');
+  const [copiedPayload, setCopiedPayload] = useState(false);
+  const [mobileWsPane, setMobileWsPane] = useState<
+    'routes' | 'composer' | 'traffic'
+  >('composer');
 
   // Message Sending
   const [eventName, setEventName] = useState('message');
@@ -98,6 +125,7 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
 
   const handleRouteSelect = (pathVal: string) => {
     setSelectedRoutePath(pathVal);
+    setMobileWsPane('composer');
     const route = wsRoutes.find((r) => r.path === pathVal);
     if (!route) return;
 
@@ -332,13 +360,13 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
       recordStartTimeRef.current = Date.now();
       appendWsLog(
         'info',
-        '🔴 [RECORD] Recording session started. Outbound and inbound messages will be captured.',
+        '[RECORD] Recording session started. Outbound and inbound messages will be captured.',
       );
     } else {
       setRecording(false);
       appendWsLog(
         'info',
-        `⏹ [RECORD] Recording stopped. ${recordedMessages.length} messages saved.`,
+        `[RECORD] Recording stopped. ${recordedMessages.length} messages saved.`,
       );
     }
   };
@@ -346,11 +374,8 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
   const handleReplaySession = async () => {
     if (recordedMessages.length === 0) return;
 
-    appendWsLog(
-      'info',
-      '🎬 [REPLAY] Starting auto-replay of recorded session...',
-    );
-    appendWsLog('info', '🎬 [REPLAY] Reconnecting WebSocket...');
+    appendWsLog('info', '[REPLAY] Starting auto-replay of recorded session...');
+    appendWsLog('info', '[REPLAY] Reconnecting WebSocket...');
     disconnectWs();
     connectWs();
 
@@ -373,13 +398,13 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
     }
 
     if (!connected || !clientRef.current) {
-      appendWsLog('error', '❌ [REPLAY] Failed to connect for replay.');
+      appendWsLog('error', '[REPLAY] Failed to connect for replay.');
       return;
     }
 
     appendWsLog(
       'info',
-      '🎬 [REPLAY] WebSocket connected. Sending outbound events with delays...',
+      '[REPLAY] WebSocket connected. Sending outbound events with delays...',
     );
 
     const outbounds = recordedMessages.filter((m) => m.type === 'sent');
@@ -387,7 +412,7 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
       await new Promise((r) => setTimeout(r, msg.delay));
       appendWsLog(
         'info',
-        `🎬 [REPLAY] Replaying outbound message after ${msg.delay}ms`,
+        `[REPLAY] Replaying outbound message after ${msg.delay}ms`,
       );
 
       if (protocol === 'socketio') {
@@ -407,7 +432,7 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
       }
     }
 
-    appendWsLog('info', '🎬 [REPLAY] Completed sending all outbound messages.');
+    appendWsLog('info', '[REPLAY] Completed sending all outbound messages.');
   };
 
   // Assertions
@@ -497,12 +522,12 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
       if (matched) {
         appendWsLog(
           'info',
-          `✅ [ASSERTION PASSED] Matches rule: Target: ${rule.target} | Match: ${rule.type} | Value: "${rule.value}"`,
+          `[ASSERTION PASSED] Matches rule: Target: ${rule.target} | Match: ${rule.type} | Value: "${rule.value}"`,
         );
       } else {
         appendWsLog(
           'error',
-          `❌ [ASSERTION FAILED] Target: ${rule.target} | Expected Match: "${rule.value}" | Actual: ${targetVal}`,
+          `[ASSERTION FAILED] Target: ${rule.target} | Expected Match: "${rule.value}" | Actual: ${targetVal}`,
         );
       }
     });
@@ -519,120 +544,265 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
   };
 
   return (
-    <div>
-      <div className="panel-header">
-        <div className="panel-title">WebSocket Route Tester</div>
-        <div className="panel-subtitle">
-          Connect, join rooms, send events, and analyze bidirectional messaging
-          traffic in real-time
-        </div>
+    <div className={`ws-tester-layout mobile-pane-${mobileWsPane}`}>
+      {/* Mobile Top Segmented Switcher (Routes | Composer | Traffic) */}
+      <div className="mobile-ws-nav">
+        <button
+          type="button"
+          className={`mobile-ws-nav-btn ${mobileWsPane === 'routes' ? 'active' : ''}`}
+          onClick={() => setMobileWsPane('routes')}
+        >
+          <Radio size={13} />
+          <span>Routes</span>
+          <span className="mobile-tester-badge">{wsRoutes.length}</span>
+        </button>
+        <button
+          type="button"
+          className={`mobile-ws-nav-btn ${mobileWsPane === 'composer' ? 'active' : ''}`}
+          onClick={() => setMobileWsPane('composer')}
+        >
+          <Zap size={13} />
+          <span>Composer</span>
+          <span
+            className="status-dot"
+            style={{
+              width: '6px',
+              height: '6px',
+              background:
+                connStatus === 'connected'
+                  ? 'var(--success)'
+                  : connStatus === 'connecting'
+                    ? 'var(--warning)'
+                    : 'var(--text-muted)',
+            }}
+          />
+        </button>
+        <button
+          type="button"
+          className={`mobile-ws-nav-btn ${mobileWsPane === 'traffic' ? 'active' : ''}`}
+          onClick={() => setMobileWsPane('traffic')}
+        >
+          <Activity size={13} />
+          <span>Traffic</span>
+          {logs.length > 0 && (
+            <span className="mobile-tester-badge">{logs.length}</span>
+          )}
+        </button>
       </div>
 
-      <div className="tester-container">
-        {/* Column 1: Connection & Control */}
+      {/* ── Pane 1: Left Sub-Sidebar (WS Routes, Rooms, Rules, Recorder) ── */}
+      <aside className="ws-sidebar">
+        {/* Section: Discovered WebSocket Routes */}
         <div
-          className="tester-section"
-          style={{ height: '700px', overflowY: 'auto' }}
+          style={{
+            padding: '12px 14px',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+          }}
         >
-          <div className="tester-section-title">
-            <span>🔌</span> WS Connection
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Discovered Route</label>
-            <select
-              className="select-input"
-              value={selectedRoutePath}
-              onChange={(e) => handleRouteSelect(e.target.value)}
-            >
-              <option value="">-- Choose Route --</option>
-              {wsRoutes.map((r) => (
-                <option key={r.path} value={r.path}>
-                  WS {r.path}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Protocol Type</label>
-            <select
-              className="select-input"
-              value={protocol}
-              onChange={(e) => setProtocol(e.target.value as 'ws' | 'socketio')}
-            >
-              <option value="ws">Raw WebSocket</option>
-              <option value="socketio">Socket.IO</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Connection Status</label>
-            <div
-              style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
-            >
-              <div
-                className={getStatusBadgeClass()}
-                style={{ width: '100%', justifyContent: 'center' }}
-              >
-                {connStatus.toUpperCase()}
-              </div>
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button
-                  className="btn"
-                  style={{
-                    flex: 1,
-                    padding: '8px 12px',
-                    fontSize: '12px',
-                    margin: 0,
-                  }}
-                  onClick={connectWs}
-                  disabled={
-                    connStatus === 'connected' || connStatus === 'connecting'
-                  }
-                >
-                  Connect
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  style={{
-                    flex: 1,
-                    padding: '8px 12px',
-                    fontSize: '12px',
-                    margin: 0,
-                  }}
-                  onClick={disconnectWs}
-                  disabled={connStatus === 'disconnected'}
-                >
-                  Disconnect
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {protocol === 'socketio' && (
-            <div
-              className="form-group"
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <span
               style={{
-                borderTop: '1px solid var(--border)',
-                paddingTop: '12px',
+                fontSize: '11px',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                color: 'var(--text-secondary)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
               }}
             >
-              <label className="form-label">Socket.IO Rooms</label>
+              <Radio size={13} style={{ color: 'var(--accent)' }} /> WS Routes
+            </span>
+            <span className="route-count-badge">{wsRoutes.length}</span>
+          </div>
+
+          {wsRoutes.length > 3 && (
+            <div style={{ position: 'relative' }}>
+              <Search
+                size={12}
+                style={{
+                  position: 'absolute',
+                  left: '8px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted)',
+                }}
+              />
+              <input
+                type="text"
+                className="filter-search-input"
+                placeholder="Filter routes..."
+                style={{
+                  paddingLeft: '26px',
+                  fontSize: '11px',
+                  height: '28px',
+                }}
+                value={searchWsQuery}
+                onChange={(e) => setSearchWsQuery(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
+
+        <div
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '8px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+          }}
+        >
+          {wsRoutes.length === 0 ? (
+            <div
+              style={{
+                padding: '24px 12px',
+                textAlign: 'center',
+                color: 'var(--text-muted)',
+                fontSize: '11px',
+                fontStyle: 'italic',
+              }}
+            >
+              No WebSocket routes detected. Connect to custom URL or define a WS
+              handler.
+            </div>
+          ) : (
+            wsRoutes
+              .filter(
+                (r) =>
+                  !searchWsQuery ||
+                  r.path.toLowerCase().includes(searchWsQuery.toLowerCase()),
+              )
+              .map((r) => {
+                const isActive = selectedRoutePath === r.path;
+                return (
+                  <button
+                    key={r.path}
+                    className={`ws-route-card ${isActive ? 'active' : ''}`}
+                    onClick={() => handleRouteSelect(r.path)}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        minWidth: 0,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <span
+                        className="method-badge method-WS"
+                        style={{ fontSize: '9px', padding: '1px 5px' }}
+                      >
+                        WS
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '11.5px',
+                          textOverflow: 'ellipsis',
+                          overflow: 'hidden',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title={r.path}
+                      >
+                        {r.path}
+                      </span>
+                    </div>
+                    {isActive && (
+                      <ChevronRight
+                        size={13}
+                        style={{ color: 'var(--accent)', flexShrink: 0 }}
+                      />
+                    )}
+                  </button>
+                );
+              })
+          )}
+
+          {/* Custom Route Input if user wants manual path */}
+          <div
+            style={{
+              marginTop: '8px',
+              paddingTop: '8px',
+              borderTop: '1px solid var(--border)',
+            }}
+          >
+            <label
+              className="form-label"
+              style={{
+                fontSize: '10px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+              }}
+            >
+              Custom Path
+            </label>
+            <input
+              type="text"
+              className="text-input"
+              style={{
+                fontSize: '11px',
+                padding: '5px 8px',
+                fontFamily: 'var(--font-mono)',
+              }}
+              placeholder="/ws/custom"
+              value={selectedRoutePath}
+              onChange={(e) => handleRouteSelect(e.target.value)}
+            />
+          </div>
+
+          {/* Socket.IO Rooms (Conditional) */}
+          {protocol === 'socketio' && (
+            <div
+              style={{
+                marginTop: '10px',
+                paddingTop: '10px',
+                borderTop: '1px solid var(--border)',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  color: 'var(--text-secondary)',
+                  marginBottom: '6px',
+                }}
+              >
+                Socket.IO Rooms
+              </div>
               <input
                 className="text-input"
                 type="text"
-                placeholder="Room name"
+                placeholder="Room identifier"
+                style={{
+                  fontSize: '11px',
+                  padding: '5px 8px',
+                  marginBottom: '6px',
+                }}
                 value={roomName}
                 onChange={(e) => setRoomName(e.target.value)}
               />
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '6px' }}>
                 <button
                   className="btn btn-secondary"
                   style={{
                     flex: 1,
-                    padding: '6px',
-                    fontSize: '11px',
+                    padding: '4px 6px',
+                    fontSize: '10px',
                     margin: 0,
                   }}
                   onClick={handleJoinRoom}
@@ -644,8 +814,8 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                   className="btn btn-secondary"
                   style={{
                     flex: 1,
-                    padding: '6px',
-                    fontSize: '11px',
+                    padding: '4px 6px',
+                    fontSize: '10px',
                     margin: 0,
                   }}
                   onClick={handleLeaveRoom}
@@ -657,131 +827,12 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
             </div>
           )}
 
-          {/* Session Recorder controls */}
-          <div
-            className="form-group"
-            style={{ borderTop: '1px solid var(--border)', paddingTop: '12px' }}
-          >
-            <label className="form-label">Replay & Recorder</label>
-            <div
-              style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
-            >
-              <button
-                className="btn"
-                style={{
-                  background: recording
-                    ? 'rgba(239, 68, 68, 0.2)'
-                    : 'rgba(239, 68, 68, 0.05)',
-                  color: 'var(--error)',
-                  borderColor: recording
-                    ? 'var(--error)'
-                    : 'rgba(239, 68, 68, 0.2)',
-                  borderWidth: '1px',
-                  borderStyle: 'solid',
-                  margin: 0,
-                }}
-                onClick={toggleRecording}
-              >
-                {recording ? '⏹ Stop' : '🔴 Record Session'}
-              </button>
-              <div
-                style={{
-                  fontSize: '11px',
-                  color: 'var(--text-secondary)',
-                  textAlign: 'center',
-                }}
-              >
-                {recording
-                  ? `Recording... (${recordedMessages.length} captured)`
-                  : recordedMessages.length > 0
-                    ? `Captured ${recordedMessages.length} messages`
-                    : 'No messages captured'}
-              </div>
-              <button
-                className="btn btn-secondary"
-                onClick={handleReplaySession}
-                disabled={recordedMessages.length === 0 || recording}
-                style={{ margin: 0 }}
-              >
-                🎬 Playback Replay
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Column 2: Composer & Rules */}
-        <div
-          className="tester-section"
-          style={{
-            height: '700px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '14px',
-            overflowY: 'auto',
-          }}
-        >
-          <div className="tester-section-title" style={{ flexShrink: 0 }}>
-            <span>📝</span> Message Composer
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '10px',
-              flexShrink: 0,
-            }}
-          >
-            {protocol === 'socketio' && (
-              <div className="form-group">
-                <label className="form-label">Event Name</label>
-                <input
-                  className="text-input"
-                  type="text"
-                  placeholder="Event name"
-                  value={eventName}
-                  onChange={(e) => setEventName(e.target.value)}
-                />
-              </div>
-            )}
-            <div
-              className="form-group"
-              style={{ display: 'flex', flexDirection: 'column' }}
-            >
-              <label className="form-label">
-                Message Payload (String or JSON)
-              </label>
-              <textarea
-                className="textarea-input"
-                style={{ minHeight: '120px', resize: 'none' }}
-                placeholder={
-                  protocol === 'socketio'
-                    ? '{\n  "key": "value"\n}'
-                    : 'Hello WebSocket'
-                }
-                value={messagePayload}
-                onChange={(e) => setMessagePayload(e.target.value)}
-              />
-            </div>
-            <button
-              className="btn"
-              onClick={handleSendMessage}
-              disabled={connStatus !== 'connected'}
-              style={{ width: '100%', margin: 0 }}
-            >
-              ⚡ Send Message
-            </button>
-          </div>
-
           {/* Assertion Rules Box */}
           <div
             style={{
+              marginTop: '10px',
+              paddingTop: '10px',
               borderTop: '1px solid var(--border)',
-              paddingTop: '12px',
-              display: 'flex',
-              flexDirection: 'column',
-              height: '240px',
-              flexShrink: 0,
             }}
           >
             <div
@@ -789,56 +840,58 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                marginBottom: '8px',
+                marginBottom: '6px',
               }}
             >
-              <span className="form-label" style={{ fontWeight: 600 }}>
-                📐 Assertion Rules
+              <span
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  color: 'var(--text-secondary)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                }}
+              >
+                <CheckSquare size={12} /> Assertions ({rules.length})
               </span>
               <button
                 className="btn btn-secondary"
-                style={{ padding: '2px 8px', fontSize: '10px', margin: 0 }}
+                style={{ padding: '2px 6px', fontSize: '10px', margin: 0 }}
                 onClick={addAssertionRule}
               >
-                + Add Rule
+                + Add
               </button>
             </div>
-            <div
-              style={{
-                flex: 1,
-                overflowY: 'auto',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-                paddingRight: '4px',
-              }}
-            >
-              {rules.length === 0 ? (
-                <div
-                  style={{
-                    color: 'var(--text-muted)',
-                    fontSize: '11px',
-                    textAlign: 'center',
-                    fontStyle: 'italic',
-                    paddingTop: '20px',
-                  }}
-                >
-                  No assertions defined. Add rules to validate traffic.
-                </div>
-              ) : (
-                rules.map((rule, idx) => (
+            {rules.length === 0 ? (
+              <div
+                style={{
+                  fontSize: '11px',
+                  color: 'var(--text-muted)',
+                  fontStyle: 'italic',
+                  padding: '4px 0',
+                }}
+              >
+                No active assertions.
+              </div>
+            ) : (
+              <div
+                style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+              >
+                {rules.map((rule, idx) => (
                   <div
                     key={rule.id}
                     style={{
+                      background: 'var(--bg-primary)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '6px 8px',
                       display: 'flex',
                       flexDirection: 'column',
                       gap: '4px',
-                      padding: '10px',
-                      border: '1px solid var(--border)',
-                      borderRadius: 'var(--radius-sm)',
-                      background: 'var(--bg-secondary)',
-                      textAlign: 'left',
-                      position: 'relative',
+                      fontSize: '11px',
                     }}
                   >
                     <div
@@ -850,35 +903,33 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                     >
                       <span
                         style={{
-                          fontSize: '11px',
-                          fontWeight: 700,
+                          fontWeight: 600,
                           color: 'var(--text-secondary)',
+                          fontSize: '10px',
                         }}
                       >
-                        Rule #{idx + 1}
+                        #{idx + 1}
                       </span>
                       <button
-                        className="btn btn-secondary"
-                        style={{
-                          padding: '2px 6px',
-                          fontSize: '9px',
-                          margin: 0,
-                          color: 'var(--error)',
-                          borderColor: 'transparent',
-                          background: 'transparent',
-                        }}
                         onClick={() => removeAssertionRule(rule.id)}
+                        style={{
+                          border: 'none',
+                          background: 'none',
+                          color: 'var(--error)',
+                          cursor: 'pointer',
+                          padding: '0 2px',
+                        }}
                       >
                         ✕
                       </button>
                     </div>
-                    <div style={{ display: 'flex', gap: '6px' }}>
+                    <div style={{ display: 'flex', gap: '4px' }}>
                       <select
                         className="select-input"
                         style={{
-                          fontSize: '11px',
-                          padding: '4px 6px',
-                          height: 'auto',
+                          fontSize: '10px',
+                          padding: '2px 4px',
+                          height: '24px',
                           flex: 1,
                         }}
                         value={rule.target}
@@ -886,15 +937,15 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                           updateAssertionRule(rule.id, 'target', e.target.value)
                         }
                       >
-                        <option value="event">Event Match</option>
-                        <option value="payload">Payload Subset</option>
+                        <option value="event">Event</option>
+                        <option value="payload">Payload</option>
                       </select>
                       <select
                         className="select-input"
                         style={{
-                          fontSize: '11px',
-                          padding: '4px 6px',
-                          height: 'auto',
+                          fontSize: '10px',
+                          padding: '2px 4px',
+                          height: '24px',
                           flex: 1,
                         }}
                         value={rule.type}
@@ -902,20 +953,19 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                           updateAssertionRule(rule.id, 'type', e.target.value)
                         }
                       >
-                        <option value="contains">Contains</option>
-                        <option value="equals">Equals</option>
-                        <option value="regex">RegExp</option>
+                        <option value="contains">contains</option>
+                        <option value="equals">equals</option>
+                        <option value="regex">regex</option>
                       </select>
                     </div>
                     <input
                       className="text-input"
                       type="text"
-                      placeholder="Expected value/JSON"
+                      placeholder="Expected string"
                       style={{
-                        fontSize: '11px',
-                        padding: '6px 8px',
-                        height: 'auto',
-                        marginTop: '4px',
+                        fontSize: '10px',
+                        padding: '3px 6px',
+                        height: '24px',
                       }}
                       value={rule.value}
                       onChange={(e) =>
@@ -923,461 +973,872 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                       }
                     />
                   </div>
-                ))
-              )}
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Traffic Recording */}
+          <div
+            style={{
+              marginTop: 'auto',
+              paddingTop: '10px',
+              borderTop: '1px solid var(--border)',
+            }}
+          >
+            <div
+              style={{
+                fontSize: '10px',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: 'var(--text-secondary)',
+                marginBottom: '6px',
+              }}
+            >
+              Traffic Recording
+            </div>
+            <div
+              style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+            >
+              <button
+                className="btn"
+                style={{
+                  background: recording
+                    ? 'rgba(239, 68, 68, 0.15)'
+                    : 'rgba(239, 68, 68, 0.05)',
+                  color: 'var(--error)',
+                  borderColor: recording
+                    ? 'var(--error)'
+                    : 'rgba(239, 68, 68, 0.25)',
+                  padding: '6px 10px',
+                  fontSize: '11px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  margin: 0,
+                }}
+                onClick={toggleRecording}
+              >
+                {recording ? (
+                  <>
+                    <Square size={12} /> Stop ({recordedMessages.length})
+                  </>
+                ) : (
+                  <>
+                    <CircleDot size={12} /> Record Frames
+                  </>
+                )}
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={handleReplaySession}
+                disabled={recordedMessages.length === 0 || recording}
+                style={{
+                  padding: '6px 10px',
+                  fontSize: '11px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  margin: 0,
+                }}
+              >
+                <Play size={12} /> Replay ({recordedMessages.length})
+              </button>
             </div>
           </div>
         </div>
+      </aside>
 
-        {/* Column 3: Live Traffic Stream */}
+      {/* ── Pane 2: Center Omnibar & Message Composer ───────────────── */}
+      <main className="ws-main-composer">
+        {/* Omnibar Header */}
         <div
-          className="tester-section"
           style={{
-            height: '700px',
+            padding: '12px 16px',
+            borderBottom: '1px solid var(--border)',
+            background: 'var(--bg-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+          }}
+        >
+          {/* Protocol segmented toggle */}
+          <div
+            style={{
+              display: 'flex',
+              background: 'var(--bg-primary)',
+              padding: '2px',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            <button
+              className={`pill-btn ${protocol === 'ws' ? 'active' : ''}`}
+              style={{
+                fontSize: '11px',
+                padding: '3px 8px',
+                background:
+                  protocol === 'ws' ? 'var(--bg-secondary)' : 'transparent',
+                border: 'none',
+                color:
+                  protocol === 'ws' ? 'var(--accent)' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                borderRadius: '3px',
+                fontWeight: protocol === 'ws' ? 600 : 400,
+              }}
+              onClick={() => setProtocol('ws')}
+            >
+              Raw WS
+            </button>
+            <button
+              className={`pill-btn ${protocol === 'socketio' ? 'active' : ''}`}
+              style={{
+                fontSize: '11px',
+                padding: '3px 8px',
+                background:
+                  protocol === 'socketio'
+                    ? 'var(--bg-secondary)'
+                    : 'transparent',
+                border: 'none',
+                color:
+                  protocol === 'socketio'
+                    ? 'var(--accent)'
+                    : 'var(--text-secondary)',
+                cursor: 'pointer',
+                borderRadius: '3px',
+                fontWeight: protocol === 'socketio' ? 600 : 400,
+              }}
+              onClick={() => setProtocol('socketio')}
+            >
+              Socket.IO
+            </button>
+          </div>
+
+          {/* URL bar */}
+          <div
+            style={{
+              flex: 1,
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            <span
+              style={{
+                position: 'absolute',
+                left: '10px',
+                fontSize: '11px',
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--text-muted)',
+              }}
+            >
+              {protocol === 'socketio' ? 'http://' : 'ws://'}
+            </span>
+            <input
+              type="text"
+              className="text-input"
+              style={{
+                paddingLeft: protocol === 'socketio' ? '60px' : '52px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: '12px',
+                height: '32px',
+              }}
+              value={
+                selectedRoutePath
+                  ? appBaseUrl.replace(/^https?:\/\//, '') + selectedRoutePath
+                  : ''
+              }
+              onChange={(e) => {
+                const val = e.target.value;
+                const pathIdx = val.indexOf('/');
+                if (pathIdx !== -1) {
+                  setSelectedRoutePath(val.substring(pathIdx));
+                } else {
+                  setSelectedRoutePath('/' + val);
+                }
+              }}
+              placeholder="localhost:3000/ws"
+            />
+          </div>
+
+          {/* Status Badge */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 8px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--border)',
+              fontSize: '11px',
+              fontFamily: 'var(--font-mono)',
+            }}
+          >
+            <span
+              className="status-dot"
+              style={{
+                background:
+                  connStatus === 'connected'
+                    ? 'var(--success)'
+                    : connStatus === 'connecting'
+                      ? 'var(--warning)'
+                      : 'var(--text-muted)',
+                boxShadow:
+                  connStatus === 'connected'
+                    ? '0 0 8px rgba(16, 185, 129, 0.4)'
+                    : 'none',
+              }}
+            />
+            <span
+              style={{
+                fontWeight: 600,
+                color:
+                  connStatus === 'connected'
+                    ? 'var(--success)'
+                    : connStatus === 'connecting'
+                      ? 'var(--warning)'
+                      : 'var(--text-muted)',
+              }}
+            >
+              {connStatus.toUpperCase()}
+            </span>
+          </div>
+
+          {/* Connect / Disconnect Action Button */}
+          {connStatus === 'connected' ? (
+            <button
+              className="btn btn-secondary"
+              style={{
+                padding: '6px 14px',
+                fontSize: '12px',
+                color: 'var(--error)',
+                borderColor: 'rgba(239, 68, 68, 0.3)',
+                margin: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+              onClick={disconnectWs}
+            >
+              <WifiOff size={13} /> Disconnect
+            </button>
+          ) : (
+            <button
+              className="btn"
+              style={{
+                padding: '6px 14px',
+                fontSize: '12px',
+                margin: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+              onClick={connectWs}
+              disabled={connStatus === 'connecting' || !selectedRoutePath}
+            >
+              <Wifi size={13} />{' '}
+              {connStatus === 'connecting' ? 'Connecting...' : 'Connect'}
+            </button>
+          )}
+        </div>
+
+        {/* Message Composer Area */}
+        <div
+          style={{
+            flex: 1,
             display: 'flex',
             flexDirection: 'column',
+            padding: '16px 20px',
+            gap: '14px',
             overflowY: 'auto',
           }}
         >
+          {protocol === 'socketio' && (
+            <div className="form-group" style={{ margin: 0 }}>
+              <label
+                className="form-label"
+                style={{ fontSize: '11px', fontWeight: 600 }}
+              >
+                Event Name
+              </label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <input
+                  type="text"
+                  className="text-input"
+                  placeholder="e.g. chat:message"
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}
+                  value={eventName}
+                  onChange={(e) => setEventName(e.target.value)}
+                />
+                {['message', 'chat', 'ping'].map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: '4px 8px', fontSize: '11px', margin: 0 }}
+                    onClick={() => setEventName(chip)}
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Message Payload Editor */}
           <div
-            className="tester-section-title"
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <label
+                className="form-label"
+                style={{ fontSize: '11px', fontWeight: 600, margin: 0 }}
+              >
+                Message Payload
+              </label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '2px 8px', fontSize: '10px', margin: 0 }}
+                  onClick={() =>
+                    setMessagePayload(
+                      '{\n  "event": "ping",\n  "timestamp": ' +
+                        Date.now() +
+                        '\n}',
+                    )
+                  }
+                >
+                  Ping Template
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '2px 8px', fontSize: '10px', margin: 0 }}
+                  onClick={() => {
+                    try {
+                      const p = JSON.parse(messagePayload);
+                      setMessagePayload(JSON.stringify(p, null, 2));
+                    } catch {}
+                  }}
+                >
+                  Prettify JSON
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '2px 8px', fontSize: '10px', margin: 0 }}
+                  onClick={() => setMessagePayload('')}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <textarea
+              className="textarea-input"
+              style={{
+                flex: 1,
+                minHeight: '220px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: '12px',
+                lineHeight: '1.5',
+                resize: 'none',
+                background: 'var(--bg-secondary)',
+              }}
+              placeholder={
+                protocol === 'socketio'
+                  ? '{\n  "text": "Hello Socket.IO"\n}'
+                  : '{\n  "type": "hello"\n}'
+              }
+              value={messagePayload}
+              onChange={(e) => setMessagePayload(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                  e.preventDefault();
+                  if (connStatus === 'connected') handleSendMessage();
+                }
+              }}
+            />
+          </div>
+
+          {/* Send Action Bar */}
+          <div
             style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              flexShrink: 0,
+              paddingTop: '8px',
+              borderTop: '1px solid var(--border)',
             }}
           >
-            <span>💬 Live Traffic Stream</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              Press{' '}
+              <kbd
+                style={{
+                  background: 'var(--bg-secondary)',
+                  padding: '2px 5px',
+                  borderRadius: '3px',
+                  border: '1px solid var(--border)',
+                  fontSize: '10px',
+                }}
+              >
+                ⌘ + Enter
+              </kbd>{' '}
+              to send
+            </span>
             <button
-              className="btn btn-secondary"
-              style={{ padding: '4px 10px', fontSize: '11px', margin: 0 }}
-              onClick={clearLogs}
-            >
-              Clear Stream
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', flex: 1, gap: '12px', minHeight: 0 }}>
-            <div
-              ref={logsContainerRef}
-              className="console-terminal"
+              className="btn"
+              onClick={handleSendMessage}
+              disabled={connStatus !== 'connected'}
               style={{
-                flex: 1,
-                overflowY: 'auto',
-                background: 'var(--bg-primary)',
-                border: '1px solid var(--border)',
-                padding: '16px',
-                borderRadius: 'var(--radius-md)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
+                padding: '7px 18px',
+                fontSize: '12px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                margin: 0,
               }}
             >
-              {logs.length === 0 ? (
-                <div
+              <Send size={13} /> Send Frame
+            </button>
+          </div>
+        </div>
+      </main>
+
+      {/* ── Pane 3: Right Traffic Inspector ─────────────────────────── */}
+      <section className="ws-traffic-inspector">
+        {/* Stream Toolbar */}
+        <div
+          style={{
+            padding: '10px 14px',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'var(--bg-primary)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Activity size={13} style={{ color: 'var(--accent)' }} />
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              Live Traffic ({logs.length})
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div
+              style={{
+                display: 'flex',
+                background: 'var(--bg-secondary)',
+                padding: '2px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+              }}
+            >
+              {(['all', 'in', 'out', 'assertion'] as const).map((mode) => (
+                <button
+                  key={mode}
                   style={{
-                    color: 'var(--text-muted)',
-                    fontSize: '13px',
-                    textAlign: 'center',
-                    paddingTop: '80px',
+                    fontSize: '10px',
+                    padding: '2px 6px',
+                    border: 'none',
+                    background:
+                      frameFilter === mode
+                        ? 'var(--bg-primary)'
+                        : 'transparent',
+                    color:
+                      frameFilter === mode
+                        ? 'var(--accent)'
+                        : 'var(--text-muted)',
+                    borderRadius: '3px',
+                    cursor: 'pointer',
+                    fontWeight: frameFilter === mode ? 600 : 400,
                   }}
+                  onClick={() => setFrameFilter(mode)}
                 >
-                  Select a route and connect to begin capturing WebSocket
-                  traffic.
-                </div>
-              ) : (
-                logs.map((log, i) => {
-                  const isSent = log.type === 'sent';
-                  const isReceived = log.type === 'received';
-                  const isAssertion = log.payload.includes('[ASSERTION');
-
-                  let dirLabel = 'ℹ️ System';
-                  let labelColor = 'var(--text-secondary)';
-
-                  if (isSent) {
-                    dirLabel = '⬆️ Outbound';
-                    labelColor = 'var(--accent)';
-                  } else if (isReceived) {
-                    dirLabel = '⬇️ Inbound';
-                    labelColor = 'var(--success)';
-                  } else if (isAssertion) {
-                    const passed = log.payload.includes('PASSED');
-                    dirLabel = passed
-                      ? '✅ Assertion Passed'
-                      : '❌ Assertion Failed';
-                    labelColor = passed ? 'var(--success)' : 'var(--error)';
-                  }
-
-                  // Try to pretty print JSON payloads for easier readability
-                  let formattedPayload = log.payload;
-                  if (isReceived || isSent) {
-                    let rawJson = log.payload;
-                    if (log.payload.startsWith('Event: ')) {
-                      const parts = log.payload.split(' | Payload: ');
-                      if (parts.length > 1) {
-                        rawJson = parts[1];
-                      }
-                    }
-                    try {
-                      const parsed = JSON.parse(rawJson);
-                      const pretty = JSON.stringify(parsed, null, 2);
-                      if (log.payload.startsWith('Event: ')) {
-                        formattedPayload = `Event: ${log.payload.split(' | Payload: ')[0].substring(7)}\nPayload:\n${pretty}`;
-                      } else {
-                        formattedPayload = pretty;
-                      }
-                    } catch {}
-                  }
-
-                  const isSelected = selectedFrame === log;
-
-                  return (
-                    <div
-                      key={i}
-                      className={`ws-log-item ${log.type}`}
-                      style={{
-                        textAlign: 'left',
-                        margin: 0,
-                        padding: '10px 14px',
-                        cursor: 'pointer',
-                        border: isSelected
-                          ? '1px solid var(--accent)'
-                          : '1px solid transparent',
-                        background: isSelected
-                          ? 'var(--bg-tertiary)'
-                          : undefined,
-                        borderRadius: 'var(--radius-sm)',
-                      }}
-                      onClick={() => setSelectedFrame(log)}
-                    >
-                      <div
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          color: labelColor,
-                        }}
-                      >
-                        <span>{dirLabel}</span>
-                        <span
-                          style={{
-                            color: 'var(--text-muted)',
-                            fontFamily: 'var(--font-mono)',
-                          }}
-                        >
-                          {log.time}
-                        </span>
-                      </div>
-                      <pre
-                        style={{
-                          marginTop: '6px',
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: '12px',
-                          whiteSpace: 'pre-wrap',
-                          wordBreak: 'break-all',
-                          color: 'var(--text-primary)',
-                          margin: 0,
-                        }}
-                      >
-                        {formattedPayload}
-                      </pre>
-                    </div>
-                  );
-                })
-              )}
+                  {mode === 'all'
+                    ? 'All'
+                    : mode === 'in'
+                      ? '↓ IN'
+                      : mode === 'out'
+                        ? '↑ OUT'
+                        : 'Rules'}
+                </button>
+              ))}
             </div>
 
-            {selectedFrame &&
-              (() => {
-                const activeRoute = wsRoutes.find(
-                  (r) => r.path === selectedRoutePath,
-                );
-                const activeMessageSchema = activeRoute?.schema?.message;
+            <button
+              className="btn btn-secondary"
+              style={{
+                padding: '3px 8px',
+                fontSize: '10px',
+                margin: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+              onClick={clearLogs}
+              title="Clear traffic stream"
+            >
+              <Trash2 size={11} /> Clear
+            </button>
+          </div>
+        </div>
 
-                let frameJsonPayload: any = null;
-                let parseError: string | null = null;
-                let rawJson = selectedFrame.payload;
-
-                if (selectedFrame.payload.startsWith('Event: ')) {
-                  const parts = selectedFrame.payload.split(' | Payload: ');
-                  if (parts.length > 1) {
-                    rawJson = parts[1];
-                  }
-                }
-
-                try {
-                  frameJsonPayload = JSON.parse(rawJson);
-                } catch (e: any) {
-                  parseError = e.message;
-                }
-
-                const validationErrors =
-                  activeMessageSchema && frameJsonPayload && !parseError
-                    ? validateJsonSchema(frameJsonPayload, activeMessageSchema)
-                    : [];
+        {/* Traffic Frame Stream */}
+        <div
+          ref={logsContainerRef}
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          {logs.length === 0 ? (
+            <div
+              style={{
+                padding: '80px 20px',
+                textAlign: 'center',
+                color: 'var(--text-muted)',
+                fontSize: '12px',
+              }}
+            >
+              <Activity
+                size={24}
+                style={{ opacity: 0.3, marginBottom: '8px' }}
+              />
+              <div>No frames recorded yet.</div>
+              <div
+                style={{
+                  fontSize: '11px',
+                  marginTop: '4px',
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                Connect to a WebSocket route to monitor live traffic.
+              </div>
+            </div>
+          ) : (
+            logs
+              .filter((log) => {
+                if (frameFilter === 'in') return log.type === 'received';
+                if (frameFilter === 'out') return log.type === 'sent';
+                if (frameFilter === 'assertion')
+                  return log.payload.includes('[ASSERTION');
+                return true;
+              })
+              .map((log, i) => {
+                const isSent = log.type === 'sent';
+                const isReceived = log.type === 'received';
+                const isAssertion = log.payload.includes('[ASSERTION');
+                const isSelected = selectedFrame === log;
 
                 return (
                   <div
+                    key={i}
+                    className={`ws-frame-row ${isSent ? 'is-sent' : isReceived ? 'is-recv' : ''}`}
                     style={{
-                      width: '280px',
-                      borderLeft: '1px solid var(--border)',
-                      paddingLeft: '12px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '12px',
-                      overflowY: 'auto',
-                      background: 'var(--bg-secondary)',
-                      borderRadius: 'var(--radius-sm)',
-                      textAlign: 'left',
-                      flexShrink: 0,
+                      cursor: 'pointer',
+                      background: isSelected ? 'var(--bg-tertiary)' : undefined,
                     }}
+                    onClick={() => setSelectedFrame(log)}
                   >
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        borderBottom: '1px solid var(--border)',
-                        paddingBottom: '8px',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: '13px',
-                          fontWeight: 700,
-                          color: 'var(--text-primary)',
-                        }}
-                      >
-                        🔍 Frame Inspector
-                      </span>
-                      <button
-                        className="btn btn-secondary"
-                        style={{
-                          padding: '2px 6px',
-                          fontSize: '10px',
-                          margin: 0,
-                        }}
-                        onClick={() => setSelectedFrame(null)}
-                      >
-                        ✕ Close
-                      </button>
-                    </div>
-
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: '6px',
-                        flexWrap: 'wrap',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <span
-                        className={`method-badge ${selectedFrame.type === 'sent' ? 'method-POST' : selectedFrame.type === 'received' ? 'method-GET' : 'method-OPTIONS'}`}
-                        style={{ fontSize: '9px', padding: '2px 6px' }}
-                      >
-                        {selectedFrame.type.toUpperCase()}
-                      </span>
-                      <span
-                        style={{
-                          color: 'var(--text-muted)',
-                          fontSize: '10px',
-                          fontFamily: 'var(--font-mono)',
-                        }}
-                      >
-                        {selectedFrame.time}
-                      </span>
-                    </div>
-
-                    {/* Validation Status Block */}
-                    {selectedFrame.type !== 'sent' &&
-                    selectedFrame.type !== 'received' ? (
-                      <div
-                        style={{
-                          fontSize: '11px',
-                          color: 'var(--text-muted)',
-                          background: 'var(--bg-tertiary)',
-                          padding: '8px',
-                          borderRadius: '4px',
-                        }}
-                      >
-                        System event frames do not have payload schemas.
-                      </div>
-                    ) : !activeMessageSchema ? (
-                      <div
-                        style={{
-                          fontSize: '11px',
-                          color: 'var(--text-muted)',
-                          background: 'var(--bg-tertiary)',
-                          padding: '8px',
-                          borderRadius: '4px',
-                          border: '1px solid var(--border)',
-                        }}
-                      >
-                        ℹ️ No Zod schema registered for messages on this route.
-                      </div>
-                    ) : parseError ? (
-                      <div
-                        style={{
-                          fontSize: '11px',
-                          color: 'var(--error)',
-                          background: 'rgba(239, 68, 68, 0.08)',
-                          padding: '8px',
-                          borderRadius: '4px',
-                          border: '1px solid rgba(239, 68, 68, 0.15)',
-                        }}
-                      >
-                        ⚠️ Failed to parse frame as JSON: {parseError}
-                      </div>
-                    ) : validationErrors.length > 0 ? (
-                      <div
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '6px',
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            color: 'var(--error)',
-                            background: 'rgba(239, 68, 68, 0.08)',
-                            padding: '6px 10px',
-                            borderRadius: '4px',
-                            border: '1px solid rgba(239, 68, 68, 0.15)',
-                          }}
-                        >
-                          ❌ Schema Validation Failed ({validationErrors.length}{' '}
-                          error{validationErrors.length === 1 ? '' : 's'})
-                        </div>
-                        <ul
-                          style={{
-                            margin: 0,
-                            padding: 0,
-                            listStyle: 'none',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '4px',
-                          }}
-                        >
-                          {validationErrors.map((err, idx) => (
-                            <li
-                              key={idx}
-                              style={{
-                                fontSize: '10px',
-                                fontFamily: 'var(--font-mono)',
-                                color: 'var(--error)',
-                                background: 'var(--bg-primary)',
-                                padding: '4px 8px',
-                                borderRadius: '3px',
-                                borderLeft: '2px solid var(--error)',
-                              }}
-                            >
-                              {err}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          color: 'var(--success)',
-                          background: 'rgba(16, 185, 129, 0.08)',
-                          padding: '6px 10px',
-                          borderRadius: '4px',
-                          border: '1px solid rgba(16, 185, 129, 0.15)',
-                        }}
-                      >
-                        ✅ Frame Valid against Zod Schema
-                      </div>
-                    )}
-
-                    {/* Parsed Payload tree */}
                     <div
                       style={{
                         display: 'flex',
                         flexDirection: 'column',
                         gap: '4px',
+                        flexShrink: 0,
                       }}
                     >
-                      <span
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          color: 'var(--text-secondary)',
-                        }}
-                      >
-                        Parsed Payload:
-                      </span>
-                      <pre
-                        style={{
-                          margin: 0,
-                          padding: '8px',
-                          background: 'var(--bg-primary)',
-                          border: '1px solid var(--border)',
-                          borderRadius: 'var(--radius-sm)',
-                          fontFamily: 'var(--font-mono)',
-                          fontSize: '11px',
-                          overflowX: 'auto',
-                          whiteSpace: 'pre-wrap',
-                          maxHeight: '200px',
-                        }}
-                      >
-                        {parseError
-                          ? rawJson
-                          : JSON.stringify(frameJsonPayload, null, 2)}
-                      </pre>
-                    </div>
-
-                    {/* Schema definition */}
-                    {activeMessageSchema && (
-                      <div
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '4px',
-                          borderTop: '1px solid var(--border)',
-                          paddingTop: '8px',
-                        }}
-                      >
+                      {isSent ? (
+                        <span className="ws-dir-badge sent">↑ OUT</span>
+                      ) : isReceived ? (
+                        <span className="ws-dir-badge recv">↓ IN</span>
+                      ) : isAssertion ? (
                         <span
+                          className="ws-dir-badge"
                           style={{
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            color: 'var(--text-secondary)',
+                            background: log.payload.includes('PASSED')
+                              ? 'rgba(16, 185, 129, 0.12)'
+                              : 'rgba(239, 68, 68, 0.12)',
+                            color: log.payload.includes('PASSED')
+                              ? 'var(--success)'
+                              : 'var(--error)',
                           }}
                         >
-                          Registered JSON Schema:
+                          {log.payload.includes('PASSED') ? '✓ PASS' : '✗ FAIL'}
                         </span>
-                        <pre
+                      ) : (
+                        <span
+                          className="ws-dir-badge"
                           style={{
-                            margin: 0,
-                            padding: '8px',
                             background: 'var(--bg-primary)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 'var(--radius-sm)',
-                            fontFamily: 'var(--font-mono)',
-                            fontSize: '10px',
-                            overflowX: 'auto',
-                            maxHeight: '150px',
                             color: 'var(--text-muted)',
                           }}
                         >
-                          {JSON.stringify(activeMessageSchema, null, 2)}
-                        </pre>
-                      </div>
-                    )}
+                          INFO
+                        </span>
+                      )}
+                      <span
+                        style={{ fontSize: '10px', color: 'var(--text-muted)' }}
+                      >
+                        {log.time}
+                      </span>
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <pre
+                        style={{
+                          margin: 0,
+                          fontSize: '11.5px',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-all',
+                          color: 'var(--text-primary)',
+                          maxHeight: isSelected ? 'none' : '65px',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {log.payload}
+                      </pre>
+                    </div>
                   </div>
                 );
-              })()}
-          </div>
+              })
+          )}
         </div>
-      </div>
+
+        {/* Docked Frame Inspector Panel (When a frame is selected) */}
+        {selectedFrame &&
+          (() => {
+            const activeRoute = wsRoutes.find(
+              (r) => r.path === selectedRoutePath,
+            );
+            const activeMessageSchema = activeRoute?.schema?.message;
+
+            let frameJsonPayload: any = null;
+            let parseError: string | null = null;
+            let rawJson = selectedFrame.payload;
+
+            if (selectedFrame.payload.startsWith('Event: ')) {
+              const parts = selectedFrame.payload.split(' | Payload: ');
+              if (parts.length > 1) {
+                rawJson = parts[1];
+              }
+            }
+
+            try {
+              frameJsonPayload = JSON.parse(rawJson);
+            } catch (e: any) {
+              parseError = e.message;
+            }
+
+            const validationErrors =
+              activeMessageSchema && frameJsonPayload && !parseError
+                ? validateJsonSchema(frameJsonPayload, activeMessageSchema)
+                : [];
+
+            return (
+              <div
+                style={{
+                  borderTop: '2px solid var(--border)',
+                  background: 'var(--bg-primary)',
+                  padding: '12px 14px',
+                  maxHeight: '280px',
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      color: 'var(--text-secondary)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <Search size={12} /> Frame Inspector
+                  </span>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      className="btn btn-secondary"
+                      style={{
+                        padding: '2px 8px',
+                        fontSize: '10px',
+                        margin: 0,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                      onClick={() => {
+                        navigator.clipboard.writeText(rawJson);
+                        setCopiedPayload(true);
+                        setTimeout(() => setCopiedPayload(false), 1500);
+                      }}
+                    >
+                      {copiedPayload ? (
+                        <Check size={10} style={{ color: 'var(--success)' }} />
+                      ) : (
+                        <Copy size={10} />
+                      )}
+                      {copiedPayload ? 'Copied' : 'Copy'}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      style={{
+                        padding: '2px 6px',
+                        fontSize: '10px',
+                        margin: 0,
+                      }}
+                      onClick={() => setSelectedFrame(null)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                {/* Schema Validation Status */}
+                {selectedFrame.type !== 'sent' &&
+                selectedFrame.type !== 'received' ? (
+                  <div
+                    style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}
+                  >
+                    System event frames do not have payload schemas.
+                  </div>
+                ) : !activeMessageSchema ? (
+                  <div
+                    style={{
+                      fontSize: '10.5px',
+                      color: 'var(--text-muted)',
+                      background: 'var(--bg-secondary)',
+                      padding: '6px 8px',
+                      borderRadius: 'var(--radius-sm)',
+                    }}
+                  >
+                    No Zod schema registered for messages on this route.
+                  </div>
+                ) : parseError ? (
+                  <div
+                    style={{
+                      fontSize: '10.5px',
+                      color: 'var(--error)',
+                      background: 'rgba(239, 68, 68, 0.08)',
+                      padding: '6px 8px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                    }}
+                  >
+                    Failed to parse JSON: {parseError}
+                  </div>
+                ) : validationErrors.length > 0 ? (
+                  <div
+                    style={{
+                      fontSize: '10.5px',
+                      color: 'var(--error)',
+                      background: 'rgba(239, 68, 68, 0.08)',
+                      padding: '6px 8px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                      }}
+                    >
+                      <AlertTriangle size={11} /> Schema Validation Failed (
+                      {validationErrors.length} errors)
+                    </div>
+                    <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                      {validationErrors.map((err, idx) => (
+                        <li key={idx}>{err}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      fontSize: '10.5px',
+                      color: 'var(--success)',
+                      background: 'rgba(16, 185, 129, 0.08)',
+                      padding: '6px 8px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid rgba(16, 185, 129, 0.2)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontWeight: 600,
+                    }}
+                  >
+                    <CheckCircle2 size={11} /> Valid according to registered Zod
+                    schema
+                  </div>
+                )}
+
+                {/* Formatted JSON Payload */}
+                <pre
+                  style={{
+                    margin: 0,
+                    padding: '8px',
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '11px',
+                    whiteSpace: 'pre-wrap',
+                    maxHeight: '140px',
+                    overflowY: 'auto',
+                  }}
+                >
+                  {parseError
+                    ? rawJson
+                    : JSON.stringify(frameJsonPayload, null, 2)}
+                </pre>
+              </div>
+            );
+          })()}
+      </section>
     </div>
   );
 };

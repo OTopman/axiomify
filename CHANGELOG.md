@@ -1,5 +1,32 @@
 # Changelog
 
+## 7.2.0
+
+### Features
+
+- **Studio Script Sandbox & IntelliSense:** Pre-request and test script execution in a secure sandbox with infinite loop timeout guards, and autocompletion for `$` and `axiomify` APIs.
+- **Studio Pre-Request Output Timeline:** Dedicated inspection pane displaying execution latency, status badges, console logs, and real-time mutated headers, params, and environment variables.
+- **Studio Environment Variables IntelliSense:** Interactive `{{variable}}` autocomplete popup across URL, header, and parameter inputs with live substitution previews.
+- **Studio Collection Batch Runner:** Dedicated modal runner to execute all requests in a saved collection sequentially with real-time progress tracking, assertion pass/fail summaries, and latency timelines.
+- **Studio Sidebar Collapsed Tooltips:** Accessible floating tooltip badges displaying route categories and navigation labels on mouse hover and keyboard focus.
+- **Full Studio Mobile Responsiveness:**
+  - Off-canvas slide-out navigation drawer with backdrop overlay for screens `<= 768px`.
+  - Header search input collapses into a 32×32px compact button on `<= 640px`.
+  - 3-pane mobile segmented control (`Routes | Request | Response`) for Request Tester with automatic pane switching on route selection and request dispatch.
+  - WebSocket Tester mobile segmented control (`Routes | Composer | Traffic`) with frame count badges and connection status indicators.
+  - Horizontal touch-scrolling data tables and responsive modal sizing.
+- **Studio Next.js 16 App Router Migration:** Modular architecture with Turbopack builds, Redux Toolkit slices, dynamic lazy-loaded editor components, and optimized production export.
+- **Core Route Group Hooks on WebSocket:** Route groups (`app.group(...)`) now properly inherit and thread scoped middleware/plugins onto nested WebSocket route definitions (`group.ws(...)`).
+- **SDK Runtime Dispatcher:** Exposed `BaseClient.prototype.request` as public to allow custom client extensions and contract testing without network binding.
+
+### Tooling and documentation
+
+- **CLI Studio Server Asset Hardening:** Support Next.js content-hashed bundles (`/_next/`), font MIME types (`.woff2`, `.woff`, `.ttf`), and strict 404s for missing chunks.
+- **SDK Generation Contract Testing:** Added integration test suite verifying generated SDK client compatibility with custom `fetch` implementations.
+- **New Recipes:** Added comprehensive implementation guides for [Tenant-Scoped Routes](./docs/recipes/tenant-scoped-routes.md) and [Webhook Signature Validation](./docs/recipes/webhook-signature-validation.md).
+- **New Starter:** Added standalone [Serverless API Starter](./starters/serverless-api/) configured for Fetch/WinterCG runtimes.
+- **Contract Testing Documentation:** Documented in-memory contract testing patterns for generated SDK clients paired with `@axiomify/testing`.
+
 ## 7.1.0
 
 ### Compatibility and migration notes

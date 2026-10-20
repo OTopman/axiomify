@@ -184,29 +184,43 @@
 /* Monaco ships its own theme variables, but its suggestion widget can inherit
    a transparent foreground inside Studio's dark panel stack. Keep SDK method
    labels and their metadata readable regardless of the surrounding theme. */
-[data-theme="dark"] .monaco-editor .suggest-widget {
-  background: #171722 !important;
-  border: 1px solid #3a3a58 !important;
+.monaco-editor .suggest-widget,
+.monaco-editor .suggest-widget-container,
+.suggest-widget {
+  background: #151520 !important;
+  border: 1px solid #3d3b5c !important;
   color: #f2f2fa !important;
+  border-radius: var(--radius-xs) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
 }
-[data-theme="dark"] .monaco-editor .suggest-widget .monaco-list-row,
-[data-theme="dark"] .monaco-editor .suggest-widget .monaco-icon-label,
-[data-theme="dark"] .monaco-editor .suggest-widget .monaco-icon-name-container,
-[data-theme="dark"] .monaco-editor .suggest-widget .label-name {
+.monaco-editor .suggest-widget .monaco-list-row,
+.monaco-editor .suggest-widget .monaco-icon-label,
+.monaco-editor .suggest-widget .monaco-icon-name-container,
+.monaco-editor .suggest-widget .label-name,
+.suggest-widget .monaco-list-row,
+.suggest-widget .label-name {
   color: #f2f2fa !important;
   opacity: 1 !important;
+  font-family: var(--font-mono) !important;
+  font-size: 11.5px !important;
 }
-[data-theme="dark"] .monaco-editor .suggest-widget .label-description,
-[data-theme="dark"] .monaco-editor .suggest-widget .label-detail {
-  color: #b8b8cc !important;
+.monaco-editor .suggest-widget .label-description,
+.monaco-editor .suggest-widget .label-detail,
+.suggest-widget .label-description,
+.suggest-widget .label-detail {
+  color: #a0a0b8 !important;
   opacity: 1 !important;
 }
-[data-theme="dark"] .monaco-editor .suggest-widget .monaco-highlighted-label .highlight {
-  color: #a99cff !important;
+.monaco-editor .suggest-widget .monaco-highlighted-label .highlight,
+.suggest-widget .monaco-highlighted-label .highlight {
+  color: var(--accent) !important;
+  font-weight: 700 !important;
 }
-[data-theme="dark"] .monaco-editor .suggest-widget .monaco-list-row.focused,
-[data-theme="dark"] .monaco-editor .suggest-widget .monaco-list-row.focused.selected {
-  background: #343153 !important;
+.monaco-editor .suggest-widget .monaco-list-row.focused,
+.monaco-editor .suggest-widget .monaco-list-row.focused.selected,
+.suggest-widget .monaco-list-row.focused,
+.suggest-widget .monaco-list-row.focused.selected {
+  background: #2a2745 !important;
 }
 .timeline-row.clickable {
   cursor: pointer;
@@ -338,6 +352,126 @@ body {
   grid-template-columns: 260px 1fr;
   grid-template-rows: 60px 1fr;
   min-height: 100vh;
+  transition: grid-template-columns 0.2s ease;
+}
+
+.app-layout.sidebar-collapsed {
+  grid-template-columns: 60px 1fr;
+}
+
+.app-layout.sidebar-collapsed .sidebar {
+  width: 60px;
+  padding: 16px 8px;
+  align-items: center;
+  overflow-x: hidden;
+}
+
+.app-layout.sidebar-collapsed .sidebar-header {
+  padding: 0 0 12px 0;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.app-layout.sidebar-collapsed .sidebar-brand-wrapper {
+  justify-content: center;
+}
+
+.app-layout.sidebar-collapsed .sidebar-section {
+  display: none !important;
+}
+
+.app-layout.sidebar-collapsed .nav-item {
+  width: 44px;
+  height: 40px;
+  padding: 0;
+  justify-content: center;
+}
+
+.app-layout.sidebar-collapsed .nav-icon {
+  margin: 0;
+  width: auto;
+}
+
+.app-layout.sidebar-collapsed .sidebar-footer {
+  padding: 10px 4px;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ── Sidebar Floating Tooltip (Collapsed state) ──────────────── */
+.sidebar-floating-tooltip {
+  position: fixed;
+  left: 68px;
+  transform: translateY(-50%);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-active);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: sidebarTooltipIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sidebar-floating-tooltip::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  transform: translateY(-50%) rotate(45deg);
+  width: 8px;
+  height: 8px;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-active);
+  border-bottom: 1px solid var(--border-active);
+}
+
+.sidebar-tooltip-category {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-right: 6px;
+  border-right: 1px solid var(--border);
+}
+
+.sidebar-tooltip-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.sidebar-tooltip-badge {
+  background: var(--accent-glow);
+  color: var(--accent-text);
+  border: 1px solid rgba(108, 92, 231, 0.3);
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+@keyframes sidebarTooltipIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
 }
 
 /* ── Header ──────────────────────────────────────────────────── */
@@ -963,31 +1097,11 @@ pre.schema-json {
   margin-bottom: 16px;
 }
 
-/* ── Responsive ──────────────────────────────────────────────── */
+/* ── Responsive Utilities ───────────────────────────────────── */
 @media (max-width: 768px) {
-  .app-layout {
+  .tester-container {
     grid-template-columns: 1fr;
-    grid-template-rows: 60px auto 1fr;
   }
-  .sidebar {
-    grid-column: 1;
-    grid-row: 2;
-    flex-direction: row;
-    overflow-x: auto;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    padding: 8px;
-    gap: 4px;
-  }
-  .sidebar-brand {
-    display: none;
-  }
-  .header {
-    grid-column: 1;
-    grid-row: 1;
-  }
-  .sidebar-section { display: none; }
-  .nav-badge { display: none; }
 }
 
 /* ── Request Tester ─────────────────────────────────────────── */
@@ -1473,4 +1587,48 @@ pre.schema-json {
 .badge-info {
   background: rgba(59, 130, 246, 0.1);
   color: var(--info);
+}
+
+/* ── Route Discovery & Variable IntelliSense ──────────────────── */
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.route-selector-trigger:hover {
+  border-color: var(--accent) !important;
+  background: var(--bg-hover) !important;
+}
+
+.route-active-banner:hover {
+  border-color: var(--border-active);
+}
+
+.route-card-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] .route-card-item:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.var-intellisense-popover {
+  animation: varPopIn 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes varPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

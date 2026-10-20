@@ -6,6 +6,8 @@ export interface RouteItem {
   deprecated?: boolean;
   operationId?: string;
   tags?: string[];
+  summary?: string;
+  description?: string;
   plugins?: string[];
   validation: string[];
 }

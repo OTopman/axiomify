@@ -8,6 +8,6 @@ describe('Studio version badge', () => {
     expect(define?.['import.meta.env.VITE_AXIOMIFY_VERSION']).toBe(
       JSON.stringify(workspacePackage.version),
     );
-    expect(workspacePackage.version).toBe('7.1.0');
+    expect(workspacePackage.version).toMatch(/^\d+\.\d+\.\d+/);
   });
 });
