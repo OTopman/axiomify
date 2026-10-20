@@ -5,7 +5,7 @@ import { DiscoveryData } from '../types';
 import { apiFetch } from '../utils/api';
 import {
   collectAvailableVariables,
-  type AvailableVariable
+  type AvailableVariable,
 } from '../utils/environment-intellisense';
 import { configureMonacoSandbox } from '../utils/monaco-intellisense';
 import {
@@ -14,7 +14,7 @@ import {
   saveRequestCollections,
   substituteRequestVariables,
   type RequestCollection,
-  type SavedRequest
+  type SavedRequest,
 } from '../utils/request-collections';
 import {
   executeScriptSandbox,
@@ -55,7 +55,7 @@ import {
   UploadCloud,
   X,
   XCircle,
-  Zap
+  Zap,
 } from 'lucide-react';
 
 interface RequestBuilderProps {
@@ -91,7 +91,15 @@ export interface PreRequestExecutionResult {
 }
 
 type BodyMode = 'none' | 'json' | 'text' | 'form-data' | 'urlencoded';
-type ActiveSubTab = 'params' | 'headers' | 'body' | 'auth' | 'prerequest' | 'tests' | 'uploads' | 'code';
+type ActiveSubTab =
+  | 'params'
+  | 'headers'
+  | 'body'
+  | 'auth'
+  | 'prerequest'
+  | 'tests'
+  | 'uploads'
+  | 'code';
 type SubSidebarTab = 'routes' | 'collections' | 'history';
 type ResponseSubTab = 'body' | 'headers' | 'tests' | 'waterfall' | 'queries';
 type AuthType = 'none' | 'bearer' | 'basic' | 'apikey';
@@ -148,7 +156,8 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
   // Script Sandbox state
   const [preRequestScript, setPreRequestScript] = useState('');
   const [testScript, setTestScript] = useState('');
-  const [preRequestResults, setPreRequestResults] = useState<PreRequestExecutionResult | null>(null);
+  const [preRequestResults, setPreRequestResults] =
+    useState<PreRequestExecutionResult | null>(null);
   const [scriptTestResults, setScriptTestResults] = useState<{
     success: boolean;
     tests: TestAssertion[];
@@ -163,10 +172,14 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
   const [basicPass, setBasicPass] = useState('');
   const [apiKeyName, setApiKeyName] = useState('X-API-Key');
   const [apiKeyValue, setApiKeyValue] = useState('');
-  const [apiKeyLocation, setApiKeyLocation] = useState<'header' | 'query'>('header');
+  const [apiKeyLocation, setApiKeyLocation] = useState<'header' | 'query'>(
+    'header',
+  );
 
   // Code generator language
-  const [codeLang, setCodeLang] = useState<'curl' | 'fetch' | 'axios' | 'python' | 'go'>('curl');
+  const [codeLang, setCodeLang] = useState<
+    'curl' | 'fetch' | 'axios' | 'python' | 'go'
+  >('curl');
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedResponse, setCopiedResponse] = useState(false);
 
@@ -204,7 +217,8 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
   const [collectionSearch, setCollectionSearch] = useState('');
   const [historySearch, setHistorySearch] = useState('');
   const [runnerModalOpen, setRunnerModalOpen] = useState(false);
-  const [runnerTargetCollectionId, setRunnerTargetCollectionId] = useState<string>('');
+  const [runnerTargetCollectionId, setRunnerTargetCollectionId] =
+    useState<string>('');
   const [creatingCollection, setCreatingCollection] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
   const [savingRequest, setSavingRequest] = useState(false);
@@ -248,8 +262,7 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
     return (
       discovery.routes?.find(
         (r) =>
-          r.method.toUpperCase() === method.toUpperCase() &&
-          r.path === path,
+          r.method.toUpperCase() === method.toUpperCase() && r.path === path,
       ) || null
     );
   }, [discovery.routes, method, path]);
@@ -266,7 +279,8 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
       } else {
         const parts = r.path.split('/').filter(Boolean);
         if (parts.length > 0) {
-          const p = parts[0] === 'api' && parts.length > 1 ? parts[1] : parts[0];
+          const p =
+            parts[0] === 'api' && parts.length > 1 ? parts[1] : parts[0];
           cat = p.charAt(0).toUpperCase() + p.slice(1);
         }
       }
@@ -274,7 +288,7 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
       groups[cat].push(r);
     }
     return Object.entries(groups).map(([name, routes]) => ({ name, routes }));
-  }, [discovery?.routes]);
+  }, [discovery.routes]);
 
   // Filtered categories according to routeSearch and routeMethodFilter
   const filteredCategories = useMemo(() => {
@@ -284,7 +298,10 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
     return routeCategories
       .map((cat) => {
         const matchingRoutes = cat.routes.filter((r) => {
-          if (methodTarget !== 'ALL' && r.method.toUpperCase() !== methodTarget) {
+          if (
+            methodTarget !== 'ALL' &&
+            r.method.toUpperCase() !== methodTarget
+          ) {
             return false;
           }
           if (!q) return true;
@@ -301,8 +318,8 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
   }, [routeCategories, routeSearch, routeMethodFilter]);
 
   const totalHttpRoutes = useMemo(
-    () => (discovery?.routes || []).filter((r) => !r.isWs).length,
-    [discovery?.routes],
+    () => (discovery.routes || []).filter((r) => !r.isWs).length,
+    [discovery.routes],
   );
 
   // Global Keyboard Shortcut: ⌘+Enter to Send
@@ -326,14 +343,20 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
     };
     window.addEventListener('axiomify-replays-updated', handleReplaysUpdated);
     return () => {
-      window.removeEventListener('axiomify-replays-updated', handleReplaysUpdated);
+      window.removeEventListener(
+        'axiomify-replays-updated',
+        handleReplaysUpdated,
+      );
     };
   }, []);
 
-  useEffect(() => () => {
-    monacoDisposablesRef.current.forEach((d) => d.dispose());
-    monacoDisposablesRef.current = [];
-  }, []);
+  useEffect(
+    () => () => {
+      monacoDisposablesRef.current.forEach((d) => d.dispose());
+      monacoDisposablesRef.current = [];
+    },
+    [],
+  );
 
   // Handle pre-fill from quick test click
   useEffect(() => {
@@ -401,7 +424,11 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
       if (lowerKey.includes('phone') || lowerKey.includes('tel')) {
         return '+1-555-0199';
       }
-      if (lowerKey.includes('date') || lowerKey.includes('time') || lowerKey.includes('at')) {
+      if (
+        lowerKey.includes('date') ||
+        lowerKey.includes('time') ||
+        lowerKey.includes('at')
+      ) {
         return new Date().toISOString();
       }
       if (schema.enum && schema.enum.length > 0) {
@@ -529,7 +556,8 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
 
   const handleCommitSaveRequest = () => {
     const name = newRequestName.trim() || `${method} ${path || '/'}`;
-    const targetColId = selectedCollectionId || (collections.length > 0 ? collections[0].id : '');
+    const targetColId =
+      selectedCollectionId || (collections.length > 0 ? collections[0].id : '');
     if (!targetColId) {
       alert('Create or select a collection first.');
       return;
@@ -566,11 +594,11 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
     const next = collections.map((collection) =>
       collection.id === selectedCollectionId
         ? {
-          ...collection,
-          requests: collection.requests.filter(
-            (request) => request.id !== requestId,
-          ),
-        }
+            ...collection,
+            requests: collection.requests.filter(
+              (request) => request.id !== requestId,
+            ),
+          }
         : collection,
     );
     setCollections(next);
@@ -578,7 +606,8 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
   };
 
   const deleteCollection = (collectionId: string) => {
-    if (!window.confirm('Delete this collection and all its saved requests?')) return;
+    if (!window.confirm('Delete this collection and all its saved requests?'))
+      return;
     const next = collections.filter((c) => c.id !== collectionId);
     setCollections(next);
     saveRequestCollections(next);
@@ -610,7 +639,11 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
 
     if (replay.body) {
       setBodyMode('json');
-      setReqBody(typeof replay.body === 'string' ? replay.body : JSON.stringify(replay.body, null, 2));
+      setReqBody(
+        typeof replay.body === 'string'
+          ? replay.body
+          : JSON.stringify(replay.body, null, 2),
+      );
     }
 
     try {
@@ -661,11 +694,17 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
     } else if (authType === 'basic' && (basicUser || basicPass)) {
       const credentials = `${resolveVariables(basicUser)}:${resolveVariables(basicPass)}`;
       hdrs['Authorization'] = `Basic ${btoa(credentials)}`;
-    } else if (authType === 'apikey' && apiKeyName.trim() && apiKeyValue.trim()) {
+    } else if (
+      authType === 'apikey' &&
+      apiKeyName.trim() &&
+      apiKeyValue.trim()
+    ) {
       if (apiKeyLocation === 'header') {
-        hdrs[resolveVariables(apiKeyName).trim()] = resolveVariables(apiKeyValue).trim();
+        hdrs[resolveVariables(apiKeyName).trim()] =
+          resolveVariables(apiKeyValue).trim();
       } else {
-        query[resolveVariables(apiKeyName).trim()] = resolveVariables(apiKeyValue).trim();
+        query[resolveVariables(apiKeyName).trim()] =
+          resolveVariables(apiKeyValue).trim();
       }
     }
 
@@ -819,7 +858,11 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
         });
 
         // Automatically switch to tests tab if assertions were evaluated or error occurred
-        if (testResult.tests.length > 0 || testResult.error || executedPreResult?.error) {
+        if (
+          testResult.tests.length > 0 ||
+          testResult.error ||
+          executedPreResult?.error
+        ) {
           setResponseSubTab('tests');
         }
       } else {
@@ -885,14 +928,21 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
 
     const queryString = queryParams
       .filter((q) => q.enabled !== false && q.key.trim())
-      .map((q) => `${encodeURIComponent(resolveVariables(q.key))}=${encodeURIComponent(resolveVariables(q.value))}`)
+      .map(
+        (q) =>
+          `${encodeURIComponent(resolveVariables(q.key))}=${encodeURIComponent(resolveVariables(q.value))}`,
+      )
       .join('&');
     const fullUrl = `http://localhost:3000${finalPath}${queryString ? `?${queryString}` : ''}`;
 
     const hdrsObj: Record<string, string> = {};
-    headers.filter((h) => h.enabled !== false && h.key.trim()).forEach((h) => {
-      hdrsObj[resolveVariables(h.key).trim()] = resolveVariables(h.value).trim();
-    });
+    headers
+      .filter((h) => h.enabled !== false && h.key.trim())
+      .forEach((h) => {
+        hdrsObj[resolveVariables(h.key).trim()] = resolveVariables(
+          h.value,
+        ).trim();
+      });
 
     switch (codeLang) {
       case 'curl': {
@@ -949,7 +999,9 @@ func main() {
   if err != nil {
     panic(err)
   }
-  ${Object.entries(hdrsObj).map(([k, v]) => `req.Header.Set("${k}", "${v}")`).join('\n  ')}
+  ${Object.entries(hdrsObj)
+    .map(([k, v]) => `req.Header.Set("${k}", "${v}")`)
+    .join('\n  ')}
 
   client := &http.Client{}
   resp, err := client.Do(req)
@@ -963,13 +1015,32 @@ func main() {
 }`;
       }
     }
-  }, [method, path, pathParams, queryParams, headers, bodyMode, reqBody, codeLang]);
+  }, [
+    method,
+    path,
+    pathParams,
+    queryParams,
+    headers,
+    bodyMode,
+    reqBody,
+    codeLang,
+  ]);
 
   // Methods pills
-  const METHOD_OPTIONS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
+  const METHOD_OPTIONS = [
+    'GET',
+    'POST',
+    'PUT',
+    'DELETE',
+    'PATCH',
+    'HEAD',
+    'OPTIONS',
+  ];
 
   return (
-    <div className={`request-tester-layout ${routesSidebarCollapsed ? 'routes-collapsed' : ''} mobile-pane-${mobilePane}`}>
+    <div
+      className={`request-tester-layout ${routesSidebarCollapsed ? 'routes-collapsed' : ''} mobile-pane-${mobilePane}`}
+    >
       {/* Mobile Top Segmented Switcher (Routes | Request | Response) */}
       <div className="mobile-tester-nav">
         <button
@@ -991,7 +1062,9 @@ func main() {
         >
           <Send size={13} />
           <span>Request</span>
-          <span className={`mini-method-badge ${method.toLowerCase()}`}>{method}</span>
+          <span className={`mini-method-badge ${method.toLowerCase()}`}>
+            {method}
+          </span>
         </button>
         <button
           type="button"
@@ -1062,7 +1135,12 @@ func main() {
             <button
               type="button"
               className="btn btn-ghost"
-              style={{ padding: '3px 5px', color: 'var(--text-muted)', height: 'auto', marginLeft: 'auto' }}
+              style={{
+                padding: '3px 5px',
+                color: 'var(--text-muted)',
+                height: 'auto',
+                marginLeft: 'auto',
+              }}
               onClick={() => {
                 setRoutesSidebarCollapsed(true);
                 setMobilePane('request');
@@ -1130,19 +1208,21 @@ func main() {
 
                 {/* Method filter pills: ALL, GET, POST, PUT, DEL */}
                 <div style={{ display: 'flex', gap: '3px' }}>
-                  {(['ALL', 'GET', 'POST', 'PUT', 'DELETE'] as const).map((m) => {
-                    const label = m === 'DELETE' ? 'DEL' : m;
-                    return (
-                      <button
-                        key={m}
-                        type="button"
-                        className={`method-filter-pill ${routeMethodFilter === m ? 'active' : ''}`}
-                        onClick={() => setRouteMethodFilter(m)}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
+                  {(['ALL', 'GET', 'POST', 'PUT', 'DELETE'] as const).map(
+                    (m) => {
+                      const label = m === 'DELETE' ? 'DEL' : m;
+                      return (
+                        <button
+                          key={m}
+                          type="button"
+                          className={`method-filter-pill ${routeMethodFilter === m ? 'active' : ''}`}
+                          onClick={() => setRouteMethodFilter(m)}
+                        >
+                          {label}
+                        </button>
+                      );
+                    },
+                  )}
                 </div>
               </div>
 
@@ -1201,18 +1281,41 @@ func main() {
                             userSelect: 'none',
                             transition: 'background var(--transition)',
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.background =
+                              'var(--bg-hover)')
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.background = 'transparent')
+                          }
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
                             {isOpen ? (
-                              <FolderOpen size={13} style={{ color: 'var(--accent)' }} />
+                              <FolderOpen
+                                size={13}
+                                style={{ color: 'var(--accent)' }}
+                              />
                             ) : (
-                              <Folder size={13} style={{ color: 'var(--text-muted)' }} />
+                              <Folder
+                                size={13}
+                                style={{ color: 'var(--text-muted)' }}
+                              />
                             )}
                             <span>{cat.name}</span>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
                             <span
                               style={{
                                 fontSize: '9px',
@@ -1225,7 +1328,11 @@ func main() {
                             >
                               {cat.routes.length}
                             </span>
-                            {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                            {isOpen ? (
+                              <ChevronDown size={12} />
+                            ) : (
+                              <ChevronRight size={12} />
+                            )}
                           </div>
                         </div>
 
@@ -1242,7 +1349,8 @@ func main() {
                           >
                             {cat.routes.map((r, rIdx) => {
                               const isSelected =
-                                method.toUpperCase() === r.method.toUpperCase() && path === r.path;
+                                method.toUpperCase() ===
+                                  r.method.toUpperCase() && path === r.path;
                               return (
                                 <div
                                   key={`${r.method}-${r.path}-${rIdx}`}
@@ -1270,15 +1378,23 @@ func main() {
                                     borderRadius: 'var(--radius-sm)',
                                     cursor: 'pointer',
                                     fontSize: '11px',
-                                    background: isSelected ? 'var(--bg-hover)' : 'transparent',
-                                    borderLeft: isSelected ? '2px solid var(--accent)' : '2px solid transparent',
+                                    background: isSelected
+                                      ? 'var(--bg-hover)'
+                                      : 'transparent',
+                                    borderLeft: isSelected
+                                      ? '2px solid var(--accent)'
+                                      : '2px solid transparent',
                                     transition: 'background var(--transition)',
                                   }}
                                   onMouseEnter={(e) => {
-                                    if (!isSelected) e.currentTarget.style.background = 'var(--bg-hover)';
+                                    if (!isSelected)
+                                      e.currentTarget.style.background =
+                                        'var(--bg-hover)';
                                   }}
                                   onMouseLeave={(e) => {
-                                    if (!isSelected) e.currentTarget.style.background = 'transparent';
+                                    if (!isSelected)
+                                      e.currentTarget.style.background =
+                                        'transparent';
                                   }}
                                 >
                                   <span
@@ -1297,7 +1413,9 @@ func main() {
                                   <span
                                     style={{
                                       fontFamily: 'var(--font-mono)',
-                                      color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                      color: isSelected
+                                        ? 'var(--text-primary)'
+                                        : 'var(--text-secondary)',
                                       fontWeight: isSelected ? 600 : 400,
                                       overflow: 'hidden',
                                       textOverflow: 'ellipsis',
@@ -1324,11 +1442,27 @@ func main() {
           {subSidebarTab === 'collections' && (
             <>
               {/* Action Toolbar */}
-              <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', gap: '5px' }}>
+              <div
+                style={{
+                  padding: '8px 10px',
+                  borderBottom: '1px solid var(--border)',
+                  background: 'var(--bg-primary)',
+                  display: 'flex',
+                  gap: '5px',
+                }}
+              >
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  style={{ padding: '4px 6px', fontSize: '10.5px', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                  style={{
+                    padding: '4px 6px',
+                    fontSize: '10.5px',
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                  }}
                   onClick={createCollection}
                   title="Create new collection"
                 >
@@ -1338,7 +1472,15 @@ func main() {
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  style={{ padding: '4px 6px', fontSize: '10.5px', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                  style={{
+                    padding: '4px 6px',
+                    fontSize: '10.5px',
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                  }}
                   onClick={saveCurrentRequest}
                   title="Save current request to selected collection"
                 >
@@ -1382,7 +1524,15 @@ func main() {
                     gap: '6px',
                   }}
                 >
-                  <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--accent-text)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      color: 'var(--accent-text)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                    }}
+                  >
                     New Collection
                   </span>
                   <input
@@ -1431,8 +1581,19 @@ func main() {
                     gap: '6px',
                   }}
                 >
-                  <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--accent-text)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Save Request to "{collections.find((c) => c.id === selectedCollectionId)?.name || 'Collection'}"
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      color: 'var(--accent-text)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                    }}
+                  >
+                    Save Request to "
+                    {collections.find((c) => c.id === selectedCollectionId)
+                      ?.name || 'Collection'}
+                    "
                   </span>
                   <input
                     autoFocus
@@ -1469,9 +1630,24 @@ func main() {
               )}
 
               {/* Search Filter */}
-              <div style={{ padding: '6px 10px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)' }}>
+              <div
+                style={{
+                  padding: '6px 10px',
+                  borderBottom: '1px solid var(--border)',
+                  background: 'var(--bg-primary)',
+                }}
+              >
                 <div style={{ position: 'relative', width: '100%' }}>
-                  <Search size={12} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <Search
+                    size={12}
+                    style={{
+                      position: 'absolute',
+                      left: '8px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      color: 'var(--text-muted)',
+                    }}
+                  />
                   <input
                     type="text"
                     placeholder="Filter saved requests..."
@@ -1493,7 +1669,18 @@ func main() {
                     <button
                       type="button"
                       onClick={() => setCollectionSearch('')}
-                      style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}
+                      style={{
+                        position: 'absolute',
+                        right: '6px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        cursor: 'pointer',
+                        color: 'var(--text-muted)',
+                        display: 'flex',
+                      }}
                     >
                       <X size={11} />
                     </button>
@@ -1504,9 +1691,22 @@ func main() {
               {/* Collections List */}
               <div className="routes-sidebar-list">
                 {collections.length === 0 ? (
-                  <div style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '11px' }}>
-                    <FolderPlus size={22} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
-                    <p style={{ margin: '0 0 10px 0', lineHeight: 1.4 }}>Organize requests into folders for automated testing and reuse.</p>
+                  <div
+                    style={{
+                      padding: '24px 12px',
+                      textAlign: 'center',
+                      color: 'var(--text-muted)',
+                      fontSize: '11px',
+                    }}
+                  >
+                    <FolderPlus
+                      size={22}
+                      style={{ margin: '0 auto 8px', opacity: 0.5 }}
+                    />
+                    <p style={{ margin: '0 0 10px 0', lineHeight: 1.4 }}>
+                      Organize requests into folders for automated testing and
+                      reuse.
+                    </p>
                     <button
                       type="button"
                       className="btn btn-secondary"
@@ -1545,23 +1745,54 @@ func main() {
                             cursor: 'pointer',
                             fontSize: '11px',
                             fontWeight: 600,
-                            background: isColSelected ? 'var(--bg-hover)' : 'transparent',
-                            color: isColSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            background: isColSelected
+                              ? 'var(--bg-hover)'
+                              : 'transparent',
+                            color: isColSelected
+                              ? 'var(--text-primary)'
+                              : 'var(--text-secondary)',
                             transition: 'background var(--transition)',
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <FolderOpen size={13} style={{ color: 'var(--accent)' }} />
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                          >
+                            <FolderOpen
+                              size={13}
+                              style={{ color: 'var(--accent)' }}
+                            />
                             <span>{col.name}</span>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', padding: '0 5px', borderRadius: '8px', background: 'var(--bg-tertiary)', color: 'var(--text-muted)' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: '9px',
+                                fontFamily: 'var(--font-mono)',
+                                padding: '0 5px',
+                                borderRadius: '8px',
+                                background: 'var(--bg-tertiary)',
+                                color: 'var(--text-muted)',
+                              }}
+                            >
                               {col.requests.length}
                             </span>
                             <button
                               type="button"
                               className="btn btn-ghost"
-                              style={{ padding: '2px 4px', color: 'var(--success)' }}
+                              style={{
+                                padding: '2px 4px',
+                                color: 'var(--success)',
+                              }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedCollectionId(col.id);
@@ -1576,7 +1807,10 @@ func main() {
                             <button
                               type="button"
                               className="btn btn-ghost"
-                              style={{ padding: '2px 4px', color: 'var(--text-muted)' }}
+                              style={{
+                                padding: '2px 4px',
+                                color: 'var(--text-muted)',
+                              }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 deleteCollection(col.id);
@@ -1589,10 +1823,27 @@ func main() {
                         </div>
 
                         {/* Requests in collection */}
-                        <div style={{ paddingLeft: '8px', display: 'flex', flexDirection: 'column', gap: '1px', marginTop: '2px' }}>
+                        <div
+                          style={{
+                            paddingLeft: '8px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '1px',
+                            marginTop: '2px',
+                          }}
+                        >
                           {matchingRequests.length === 0 ? (
-                            <div style={{ padding: '4px 8px', fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                              {col.requests.length === 0 ? 'Empty collection' : 'No matching requests'}
+                            <div
+                              style={{
+                                padding: '4px 8px',
+                                fontSize: '10px',
+                                color: 'var(--text-muted)',
+                                fontStyle: 'italic',
+                              }}
+                            >
+                              {col.requests.length === 0
+                                ? 'Empty collection'
+                                : 'No matching requests'}
                             </div>
                           ) : (
                             matchingRequests.map((req) => (
@@ -1613,22 +1864,55 @@ func main() {
                                   background: 'transparent',
                                   transition: 'background var(--transition)',
                                 }}
-                                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
-                                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                                onMouseEnter={(e) =>
+                                  (e.currentTarget.style.background =
+                                    'var(--bg-hover)')
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.currentTarget.style.background =
+                                    'transparent')
+                                }
                                 title={`Load ${req.method} ${req.path}`}
                               >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
-                                  <span className={`method-badge method-${req.method}`} style={{ fontSize: '8.5px', padding: '1px 4px', minWidth: '32px', textAlign: 'center' }}>
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    minWidth: 0,
+                                    flex: 1,
+                                  }}
+                                >
+                                  <span
+                                    className={`method-badge method-${req.method}`}
+                                    style={{
+                                      fontSize: '8.5px',
+                                      padding: '1px 4px',
+                                      minWidth: '32px',
+                                      textAlign: 'center',
+                                    }}
+                                  >
                                     {req.method}
                                   </span>
-                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)', fontSize: '11px' }}>
+                                  <span
+                                    style={{
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap',
+                                      color: 'var(--text-primary)',
+                                      fontSize: '11px',
+                                    }}
+                                  >
                                     {req.name}
                                   </span>
                                 </div>
                                 <button
                                   type="button"
                                   className="btn btn-ghost"
-                                  style={{ padding: '2px 4px', color: 'var(--text-muted)' }}
+                                  style={{
+                                    padding: '2px 4px',
+                                    color: 'var(--text-muted)',
+                                  }}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     deleteSavedRequest(req.id);
@@ -1653,16 +1937,41 @@ func main() {
           {subSidebarTab === 'history' && (
             <>
               {/* Action Toolbar */}
-              <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              <div
+                style={{
+                  padding: '8px 10px',
+                  borderBottom: '1px solid var(--border)',
+                  background: 'var(--bg-primary)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      color: 'var(--text-secondary)',
+                    }}
+                  >
                     Recent Requests ({replays.length})
                   </span>
                   {replays.length > 0 && (
                     <button
                       type="button"
                       className="btn btn-ghost"
-                      style={{ padding: '2px 6px', fontSize: '10px', color: 'var(--error)' }}
+                      style={{
+                        padding: '2px 6px',
+                        fontSize: '10px',
+                        color: 'var(--error)',
+                      }}
                       onClick={clearAllReplays}
                       title="Clear request history"
                     >
@@ -1671,7 +1980,16 @@ func main() {
                   )}
                 </div>
                 <div style={{ position: 'relative', width: '100%' }}>
-                  <Search size={12} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                  <Search
+                    size={12}
+                    style={{
+                      position: 'absolute',
+                      left: '8px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      color: 'var(--text-muted)',
+                    }}
+                  />
                   <input
                     type="text"
                     placeholder="Filter history..."
@@ -1693,7 +2011,18 @@ func main() {
                     <button
                       type="button"
                       onClick={() => setHistorySearch('')}
-                      style={{ position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--text-muted)', display: 'flex' }}
+                      style={{
+                        position: 'absolute',
+                        right: '6px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        cursor: 'pointer',
+                        color: 'var(--text-muted)',
+                        display: 'flex',
+                      }}
                     >
                       <X size={11} />
                     </button>
@@ -1704,8 +2033,18 @@ func main() {
               {/* History List */}
               <div className="routes-sidebar-list">
                 {replays.length === 0 ? (
-                  <div style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '11px' }}>
-                    <History size={22} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
+                  <div
+                    style={{
+                      padding: '24px 12px',
+                      textAlign: 'center',
+                      color: 'var(--text-muted)',
+                      fontSize: '11px',
+                    }}
+                  >
+                    <History
+                      size={22}
+                      style={{ margin: '0 auto 8px', opacity: 0.5 }}
+                    />
                     <p style={{ margin: 0 }}>No recent requests in history.</p>
                   </div>
                 ) : (
@@ -1720,7 +2059,8 @@ func main() {
                       );
                     })
                     .map((rep) => {
-                      const isSuccess = rep.status && rep.status >= 200 && rep.status < 300;
+                      const isSuccess =
+                        rep.status && rep.status >= 200 && rep.status < 300;
                       return (
                         <div
                           key={rep.id}
@@ -1740,7 +2080,8 @@ func main() {
                             background: 'transparent',
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.background = 'var(--bg-hover)';
+                            e.currentTarget.style.background =
+                              'var(--bg-hover)';
                             e.currentTarget.style.borderColor = 'var(--border)';
                           }}
                           onMouseLeave={(e) => {
@@ -1749,20 +2090,68 @@ func main() {
                           }}
                           title={`Load ${rep.method} ${rep.path}`}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
-                            <span className={`method-badge method-${rep.method}`} style={{ fontSize: '8.5px', padding: '1px 4px', minWidth: '32px', textAlign: 'center' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              minWidth: 0,
+                              flex: 1,
+                            }}
+                          >
+                            <span
+                              className={`method-badge method-${rep.method}`}
+                              style={{
+                                fontSize: '8.5px',
+                                padding: '1px 4px',
+                                minWidth: '32px',
+                                textAlign: 'center',
+                              }}
+                            >
                               {rep.method}
                             </span>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>
+                            <span
+                              style={{
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: '11px',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                color: 'var(--text-primary)',
+                              }}
+                            >
                               {rep.path}
                             </span>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '6px' }}>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: isSuccess ? 'var(--success)' : 'var(--error)', fontWeight: 600 }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              marginLeft: '6px',
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: '10px',
+                                color: isSuccess
+                                  ? 'var(--success)'
+                                  : 'var(--error)',
+                                fontWeight: 600,
+                              }}
+                            >
                               {rep.status || 'ERR'}
                             </span>
-                            <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
-                              {rep.duration ? formatDuration(rep.duration, 0) : ''}
+                            <span
+                              style={{
+                                fontSize: '9px',
+                                color: 'var(--text-muted)',
+                              }}
+                            >
+                              {rep.duration
+                                ? formatDuration(rep.duration, 0)
+                                : ''}
                             </span>
                           </div>
                         </div>
@@ -1778,7 +2167,13 @@ func main() {
       {/* ── CENTER PANE: Request Builder (Option A) ───────────────── */}
       <div className="request-builder-pane">
         {/* Top Request Bar */}
-        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+        <div
+          style={{
+            padding: '12px 14px',
+            borderBottom: '1px solid var(--border)',
+            background: 'var(--bg-secondary)',
+          }}
+        >
           <div className="request-url-bar">
             {routesSidebarCollapsed && (
               <button
@@ -1861,12 +2256,22 @@ func main() {
               title="Send Request (⌘↵)"
             >
               {sending ? (
-                <div className="spinner" style={{ width: '13px', height: '13px', borderWidth: '2px' }} />
+                <div
+                  className="spinner"
+                  style={{ width: '13px', height: '13px', borderWidth: '2px' }}
+                />
               ) : (
                 <Send size={13} />
               )}
               <span>Send</span>
-              <kbd style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', borderColor: 'transparent', fontSize: '9px' }}>
+              <kbd
+                style={{
+                  background: 'rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  borderColor: 'transparent',
+                  fontSize: '9px',
+                }}
+              >
                 ⌘↵
               </kbd>
             </button>
@@ -1884,10 +2289,18 @@ func main() {
                 color: 'var(--text-muted)',
               }}
             >
-              <span className={`method-badge method-${activeRoute.method}`} style={{ fontSize: '9px', padding: '1px 5px' }}>
+              <span
+                className={`method-badge method-${activeRoute.method}`}
+                style={{ fontSize: '9px', padding: '1px 5px' }}
+              >
                 {activeRoute.method}
               </span>
-              <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--text-secondary)',
+                }}
+              >
                 {activeRoute.path}
               </span>
               {activeRoute.summary && (
@@ -1895,26 +2308,34 @@ func main() {
                   — {activeRoute.summary}
                 </span>
               )}
-              {activeRoute.tags && activeRoute.tags.map((t) => (
-                <span
-                  key={t}
-                  style={{
-                    fontSize: '9px',
-                    fontFamily: 'var(--font-mono)',
-                    padding: '1px 5px',
-                    background: 'var(--bg-tertiary)',
-                    borderRadius: 'var(--radius-xs)',
-                    border: '1px solid var(--border)',
-                    color: 'var(--text-secondary)',
-                  }}
-                >
-                  {t}
-                </span>
-              ))}
+              {activeRoute.tags &&
+                activeRoute.tags.map((t) => (
+                  <span
+                    key={t}
+                    style={{
+                      fontSize: '9px',
+                      fontFamily: 'var(--font-mono)',
+                      padding: '1px 5px',
+                      background: 'var(--bg-tertiary)',
+                      borderRadius: 'var(--radius-xs)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text-secondary)',
+                    }}
+                  >
+                    {t}
+                  </span>
+                ))}
               <button
                 className="btn btn-ghost"
-                style={{ marginLeft: 'auto', padding: '2px 6px', fontSize: '10px', color: 'var(--accent-text)' }}
-                onClick={() => prefillFromRoute(activeRoute.method, activeRoute.path)}
+                style={{
+                  marginLeft: 'auto',
+                  padding: '2px 6px',
+                  fontSize: '10px',
+                  color: 'var(--accent-text)',
+                }}
+                onClick={() =>
+                  prefillFromRoute(activeRoute.method, activeRoute.path)
+                }
                 title="Pre-fill mock schema params and body"
               >
                 <Sparkles size={11} />
@@ -1932,7 +2353,10 @@ func main() {
           >
             <span>Params</span>
             {(queryParams.length > 0 || pathParams.length > 0) && (
-              <span className="nav-badge" style={{ padding: '0 4px', fontSize: '9px' }}>
+              <span
+                className="nav-badge"
+                style={{ padding: '0 4px', fontSize: '9px' }}
+              >
                 {queryParams.length + pathParams.length}
               </span>
             )}
@@ -1943,7 +2367,10 @@ func main() {
           >
             <span>Headers</span>
             {headers.length > 0 && (
-              <span className="nav-badge" style={{ padding: '0 4px', fontSize: '9px' }}>
+              <span
+                className="nav-badge"
+                style={{ padding: '0 4px', fontSize: '9px' }}
+              >
                 {headers.length}
               </span>
             )}
@@ -1954,7 +2381,15 @@ func main() {
           >
             <span>Body</span>
             {bodyMode !== 'none' && (
-              <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--accent)', display: 'inline-block' }} />
+              <span
+                style={{
+                  width: '5px',
+                  height: '5px',
+                  borderRadius: '50%',
+                  background: 'var(--accent)',
+                  display: 'inline-block',
+                }}
+              />
             )}
           </button>
           <button
@@ -1963,7 +2398,15 @@ func main() {
           >
             <span>Auth</span>
             {authType !== 'none' && (
-              <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--success)', display: 'inline-block' }} />
+              <span
+                style={{
+                  width: '5px',
+                  height: '5px',
+                  borderRadius: '50%',
+                  background: 'var(--success)',
+                  display: 'inline-block',
+                }}
+              />
             )}
           </button>
           <button
@@ -1972,7 +2415,15 @@ func main() {
           >
             <span>Pre-request</span>
             {preRequestScript.trim() && (
-              <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--accent)', display: 'inline-block' }} />
+              <span
+                style={{
+                  width: '5px',
+                  height: '5px',
+                  borderRadius: '50%',
+                  background: 'var(--accent)',
+                  display: 'inline-block',
+                }}
+              />
             )}
           </button>
           <button
@@ -1981,7 +2432,15 @@ func main() {
           >
             <span>Tests</span>
             {testScript.trim() && (
-              <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--accent)', display: 'inline-block' }} />
+              <span
+                style={{
+                  width: '5px',
+                  height: '5px',
+                  borderRadius: '50%',
+                  background: 'var(--accent)',
+                  display: 'inline-block',
+                }}
+              />
             )}
           </button>
           <button
@@ -1990,7 +2449,10 @@ func main() {
           >
             <span>Uploads</span>
             {uploads.length > 0 && (
-              <span className="nav-badge" style={{ padding: '0 4px', fontSize: '9px' }}>
+              <span
+                className="nav-badge"
+                style={{ padding: '0 4px', fontSize: '9px' }}
+              >
                 {uploads.length}
               </span>
             )}
@@ -2011,7 +2473,16 @@ func main() {
               {/* Path Parameters (if any defined in URL) */}
               {pathParams.length > 0 && (
                 <div style={{ marginBottom: '18px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      color: 'var(--text-muted)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      marginBottom: '6px',
+                    }}
+                  >
                     Path Parameters
                   </div>
                   <table className="kv-table">
@@ -2024,7 +2495,14 @@ func main() {
                     <tbody>
                       {pathParams.map((p, i) => (
                         <tr key={i}>
-                          <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-text)', fontWeight: 500, padding: '6px 10px' }}>
+                          <td
+                            style={{
+                              fontFamily: 'var(--font-mono)',
+                              color: 'var(--accent-text)',
+                              fontWeight: 500,
+                              padding: '6px 10px',
+                            }}
+                          >
                             :{p.key}
                           </td>
                           <td>
@@ -2033,7 +2511,10 @@ func main() {
                               value={p.value}
                               variables={availableVariables}
                               aria-label={`Path parameter value ${p.key}`}
-                              style={{ border: 'none', background: 'transparent' }}
+                              style={{
+                                border: 'none',
+                                background: 'transparent',
+                              }}
                               inputStyle={{
                                 padding: '6px 8px',
                                 background: 'transparent',
@@ -2045,7 +2526,9 @@ func main() {
                               onChange={(nextVal) => {
                                 setPathParams((prev) =>
                                   prev.map((item, idx) =>
-                                    idx === i ? { ...item, value: nextVal } : item,
+                                    idx === i
+                                      ? { ...item, value: nextVal }
+                                      : item,
                                   ),
                                 );
                               }}
@@ -2060,14 +2543,34 @@ func main() {
 
               {/* Query Parameters */}
               <div style={{ marginBottom: '16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '8px',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      color: 'var(--text-muted)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                    }}
+                  >
                     Query Parameters
                   </span>
                   <button
                     className="btn btn-secondary"
                     style={{ padding: '3px 8px', fontSize: '11px' }}
-                    onClick={() => setQueryParams([...queryParams, { key: '', value: '', enabled: true }])}
+                    onClick={() =>
+                      setQueryParams([
+                        ...queryParams,
+                        { key: '', value: '', enabled: true },
+                      ])
+                    }
                   >
                     <Plus size={11} />
                     <span>Add Parameter</span>
@@ -2075,12 +2578,29 @@ func main() {
                 </div>
 
                 {queryParams.length === 0 ? (
-                  <div className="empty-state" style={{ padding: '24px 0', border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No query parameters added</span>
+                  <div
+                    className="empty-state"
+                    style={{
+                      padding: '24px 0',
+                      border: '1px dashed var(--border)',
+                      borderRadius: 'var(--radius-sm)',
+                    }}
+                  >
+                    <span
+                      style={{ fontSize: '12px', color: 'var(--text-muted)' }}
+                    >
+                      No query parameters added
+                    </span>
                     <button
                       className="btn btn-ghost"
-                      style={{ marginTop: '6px', fontSize: '11px', color: 'var(--accent-text)' }}
-                      onClick={() => setQueryParams([{ key: '', value: '', enabled: true }])}
+                      style={{
+                        marginTop: '6px',
+                        fontSize: '11px',
+                        color: 'var(--accent-text)',
+                      }}
+                      onClick={() =>
+                        setQueryParams([{ key: '', value: '', enabled: true }])
+                      }
                     >
                       <Plus size={11} />
                       <span>Add first parameter</span>
@@ -2106,10 +2626,18 @@ func main() {
                               onChange={(e) => {
                                 const checked = e.target.checked;
                                 setQueryParams((prev) =>
-                                  prev.map((item, idx) => (idx === i ? { ...item, enabled: checked } : item)),
+                                  prev.map((item, idx) =>
+                                    idx === i
+                                      ? { ...item, enabled: checked }
+                                      : item,
+                                  ),
                                 );
                               }}
-                              title={q.enabled !== false ? 'Disable parameter' : 'Enable parameter'}
+                              title={
+                                q.enabled !== false
+                                  ? 'Disable parameter'
+                                  : 'Enable parameter'
+                              }
                             />
                           </td>
                           <td>
@@ -2118,7 +2646,10 @@ func main() {
                               value={q.key}
                               variables={availableVariables}
                               aria-label={`Query parameter key ${i + 1}`}
-                              style={{ border: 'none', background: 'transparent' }}
+                              style={{
+                                border: 'none',
+                                background: 'transparent',
+                              }}
                               inputStyle={{
                                 padding: '6px 8px',
                                 background: 'transparent',
@@ -2130,7 +2661,9 @@ func main() {
                               }}
                               onChange={(v) => {
                                 setQueryParams((prev) =>
-                                  prev.map((item, idx) => (idx === i ? { ...item, key: v } : item)),
+                                  prev.map((item, idx) =>
+                                    idx === i ? { ...item, key: v } : item,
+                                  ),
                                 );
                               }}
                             />
@@ -2141,7 +2674,10 @@ func main() {
                               value={q.value}
                               variables={availableVariables}
                               aria-label={`Query parameter value ${i + 1}`}
-                              style={{ border: 'none', background: 'transparent' }}
+                              style={{
+                                border: 'none',
+                                background: 'transparent',
+                              }}
                               inputStyle={{
                                 padding: '6px 8px',
                                 background: 'transparent',
@@ -2153,7 +2689,9 @@ func main() {
                               }}
                               onChange={(v) => {
                                 setQueryParams((prev) =>
-                                  prev.map((item, idx) => (idx === i ? { ...item, value: v } : item)),
+                                  prev.map((item, idx) =>
+                                    idx === i ? { ...item, value: v } : item,
+                                  ),
                                 );
                               }}
                             />
@@ -2161,8 +2699,15 @@ func main() {
                           <td style={{ textAlign: 'center' }}>
                             <button
                               className="btn btn-ghost"
-                              style={{ padding: '4px', color: 'var(--text-muted)' }}
-                              onClick={() => setQueryParams(queryParams.filter((_, idx) => idx !== i))}
+                              style={{
+                                padding: '4px',
+                                color: 'var(--text-muted)',
+                              }}
+                              onClick={() =>
+                                setQueryParams(
+                                  queryParams.filter((_, idx) => idx !== i),
+                                )
+                              }
                               title="Remove parameter"
                             >
                               <Trash2 size={13} />
@@ -2180,14 +2725,34 @@ func main() {
           {/* ── SubTab: Headers ───────────────────────────────────── */}
           {activeSubTab === 'headers' && (
             <div style={{ marginBottom: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '8px',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: 'var(--text-muted)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                  }}
+                >
                   HTTP Headers
                 </span>
                 <button
                   className="btn btn-secondary"
                   style={{ padding: '3px 8px', fontSize: '11px' }}
-                  onClick={() => setHeaders([...headers, { key: '', value: '', enabled: true }])}
+                  onClick={() =>
+                    setHeaders([
+                      ...headers,
+                      { key: '', value: '', enabled: true },
+                    ])
+                  }
                 >
                   <Plus size={11} />
                   <span>Add Header</span>
@@ -2195,12 +2760,35 @@ func main() {
               </div>
 
               {headers.length === 0 ? (
-                <div className="empty-state" style={{ padding: '24px 0', border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No headers specified</span>
+                <div
+                  className="empty-state"
+                  style={{
+                    padding: '24px 0',
+                    border: '1px dashed var(--border)',
+                    borderRadius: 'var(--radius-sm)',
+                  }}
+                >
+                  <span
+                    style={{ fontSize: '12px', color: 'var(--text-muted)' }}
+                  >
+                    No headers specified
+                  </span>
                   <button
                     className="btn btn-ghost"
-                    style={{ marginTop: '6px', fontSize: '11px', color: 'var(--accent-text)' }}
-                    onClick={() => setHeaders([{ key: 'Content-Type', value: 'application/json', enabled: true }])}
+                    style={{
+                      marginTop: '6px',
+                      fontSize: '11px',
+                      color: 'var(--accent-text)',
+                    }}
+                    onClick={() =>
+                      setHeaders([
+                        {
+                          key: 'Content-Type',
+                          value: 'application/json',
+                          enabled: true,
+                        },
+                      ])
+                    }
                   >
                     <Plus size={11} />
                     <span>Add Content-Type</span>
@@ -2226,10 +2814,18 @@ func main() {
                             onChange={(e) => {
                               const checked = e.target.checked;
                               setHeaders((prev) =>
-                                prev.map((item, idx) => (idx === i ? { ...item, enabled: checked } : item)),
+                                prev.map((item, idx) =>
+                                  idx === i
+                                    ? { ...item, enabled: checked }
+                                    : item,
+                                ),
                               );
                             }}
-                            title={h.enabled !== false ? 'Disable header' : 'Enable header'}
+                            title={
+                              h.enabled !== false
+                                ? 'Disable header'
+                                : 'Enable header'
+                            }
                           />
                         </td>
                         <td>
@@ -2238,7 +2834,10 @@ func main() {
                             value={h.key}
                             variables={availableVariables}
                             aria-label={`Header key ${i + 1}`}
-                            style={{ border: 'none', background: 'transparent' }}
+                            style={{
+                              border: 'none',
+                              background: 'transparent',
+                            }}
                             inputStyle={{
                               padding: '6px 8px',
                               background: 'transparent',
@@ -2250,7 +2849,9 @@ func main() {
                             }}
                             onChange={(v) => {
                               setHeaders((prev) =>
-                                prev.map((item, idx) => (idx === i ? { ...item, key: v } : item)),
+                                prev.map((item, idx) =>
+                                  idx === i ? { ...item, key: v } : item,
+                                ),
                               );
                             }}
                           />
@@ -2261,7 +2862,10 @@ func main() {
                             value={h.value}
                             variables={availableVariables}
                             aria-label={`Header value ${i + 1}`}
-                            style={{ border: 'none', background: 'transparent' }}
+                            style={{
+                              border: 'none',
+                              background: 'transparent',
+                            }}
                             inputStyle={{
                               padding: '6px 8px',
                               background: 'transparent',
@@ -2273,7 +2877,9 @@ func main() {
                             }}
                             onChange={(v) => {
                               setHeaders((prev) =>
-                                prev.map((item, idx) => (idx === i ? { ...item, value: v } : item)),
+                                prev.map((item, idx) =>
+                                  idx === i ? { ...item, value: v } : item,
+                                ),
                               );
                             }}
                           />
@@ -2281,8 +2887,13 @@ func main() {
                         <td style={{ textAlign: 'center' }}>
                           <button
                             className="btn btn-ghost"
-                            style={{ padding: '4px', color: 'var(--text-muted)' }}
-                            onClick={() => setHeaders(headers.filter((_, idx) => idx !== i))}
+                            style={{
+                              padding: '4px',
+                              color: 'var(--text-muted)',
+                            }}
+                            onClick={() =>
+                              setHeaders(headers.filter((_, idx) => idx !== i))
+                            }
                             title="Remove header"
                           >
                             <Trash2 size={13} />
@@ -2298,7 +2909,14 @@ func main() {
 
           {/* ── SubTab: Body ──────────────────────────────────────── */}
           {activeSubTab === 'body' && (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '340px' }}>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                minHeight: '340px',
+              }}
+            >
               {/* Body Mode Selector */}
               <div
                 style={{
@@ -2310,7 +2928,9 @@ func main() {
                   gap: '8px',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div
+                  style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
                   {BODY_MODE_OPTIONS.map((opt) => {
                     const isActive = bodyMode === opt.value;
                     return (
@@ -2321,18 +2941,44 @@ func main() {
                           setBodyMode(opt.value);
                           if (opt.value === 'json') {
                             setHeaders((prev) => {
-                              const exists = prev.some((h) => h.key.toLowerCase() === 'content-type');
-                              if (!exists) return [...prev, { key: 'Content-Type', value: 'application/json' }];
+                              const exists = prev.some(
+                                (h) => h.key.toLowerCase() === 'content-type',
+                              );
+                              if (!exists)
+                                return [
+                                  ...prev,
+                                  {
+                                    key: 'Content-Type',
+                                    value: 'application/json',
+                                  },
+                                ];
                               return prev.map((h) =>
-                                h.key.toLowerCase() === 'content-type' ? { ...h, value: 'application/json' } : h,
+                                h.key.toLowerCase() === 'content-type'
+                                  ? { ...h, value: 'application/json' }
+                                  : h,
                               );
                             });
                           } else if (opt.value === 'urlencoded') {
                             setHeaders((prev) => {
-                              const exists = prev.some((h) => h.key.toLowerCase() === 'content-type');
-                              if (!exists) return [...prev, { key: 'Content-Type', value: 'application/x-www-form-urlencoded' }];
+                              const exists = prev.some(
+                                (h) => h.key.toLowerCase() === 'content-type',
+                              );
+                              if (!exists)
+                                return [
+                                  ...prev,
+                                  {
+                                    key: 'Content-Type',
+                                    value: 'application/x-www-form-urlencoded',
+                                  },
+                                ];
                               return prev.map((h) =>
-                                h.key.toLowerCase() === 'content-type' ? { ...h, value: 'application/x-www-form-urlencoded' } : h,
+                                h.key.toLowerCase() === 'content-type'
+                                  ? {
+                                      ...h,
+                                      value:
+                                        'application/x-www-form-urlencoded',
+                                    }
+                                  : h,
                               );
                             });
                           }
@@ -2341,9 +2987,15 @@ func main() {
                           padding: '4px 10px',
                           fontSize: '11px',
                           borderRadius: 'var(--radius-sm)',
-                          border: isActive ? '1px solid var(--accent)' : '1px solid var(--border)',
-                          background: isActive ? 'rgba(59, 130, 246, 0.12)' : 'var(--bg-secondary)',
-                          color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                          border: isActive
+                            ? '1px solid var(--accent)'
+                            : '1px solid var(--border)',
+                          background: isActive
+                            ? 'rgba(59, 130, 246, 0.12)'
+                            : 'var(--bg-secondary)',
+                          color: isActive
+                            ? 'var(--accent)'
+                            : 'var(--text-secondary)',
                           cursor: 'pointer',
                           fontWeight: isActive ? 600 : 400,
                           transition: 'all 0.15s ease',
@@ -2357,7 +3009,13 @@ func main() {
 
                 {/* Quick actions for JSON/Text mode */}
                 {(bodyMode === 'json' || bodyMode === 'text') && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
                     {bodyMode === 'json' && (
                       <button
                         type="button"
@@ -2387,15 +3045,24 @@ func main() {
                       Clear
                     </button>
                     {(() => {
-                      const schema = discovery.schemas?.find((s) => s.method === method && s.path === path);
+                      const schema = discovery.schemas?.find(
+                        (s) => s.method === method && s.path === path,
+                      );
                       if (schema?.body) {
                         return (
                           <button
                             type="button"
                             className="btn btn-secondary"
-                            style={{ padding: '3px 8px', fontSize: '11px', color: 'var(--accent)' }}
+                            style={{
+                              padding: '3px 8px',
+                              fontSize: '11px',
+                              color: 'var(--accent)',
+                            }}
                             onClick={() => {
-                              const template = generateMockData('body', schema.body);
+                              const template = generateMockData(
+                                'body',
+                                schema.body,
+                              );
                               setBodyMode('json');
                               setReqBody(JSON.stringify(template, null, 2));
                             }}
@@ -2415,7 +3082,12 @@ func main() {
                     type="button"
                     className="btn btn-secondary"
                     style={{ padding: '3px 8px', fontSize: '11px' }}
-                    onClick={() => setBodyFields([...bodyFields, { key: '', value: '', enabled: true }])}
+                    onClick={() =>
+                      setBodyFields([
+                        ...bodyFields,
+                        { key: '', value: '', enabled: true },
+                      ])
+                    }
                   >
                     + Add Field
                   </button>
@@ -2433,7 +3105,13 @@ func main() {
                     border: '1px dashed var(--border)',
                   }}
                 >
-                  <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                  <div
+                    style={{
+                      fontSize: '13px',
+                      color: 'var(--text-muted)',
+                      marginBottom: '10px',
+                    }}
+                  >
                     This request does not have a body
                   </div>
                   <button
@@ -2495,12 +3173,21 @@ func main() {
                         border: '1px dashed var(--border)',
                       }}
                     >
-                      No {bodyMode === 'form-data' ? 'form-data' : 'urlencoded'} fields added.{' '}
+                      No {bodyMode === 'form-data' ? 'form-data' : 'urlencoded'}{' '}
+                      fields added.{' '}
                       <button
                         type="button"
                         className="btn-link"
-                        onClick={() => setBodyFields([{ key: '', value: '', enabled: true }])}
-                        style={{ color: 'var(--accent)', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+                        onClick={() =>
+                          setBodyFields([{ key: '', value: '', enabled: true }])
+                        }
+                        style={{
+                          color: 'var(--accent)',
+                          cursor: 'pointer',
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                        }}
                       >
                         Add first field
                       </button>
@@ -2509,10 +3196,14 @@ func main() {
                     <table className="kv-table">
                       <thead>
                         <tr>
-                          <th style={{ width: '40px', textAlign: 'center' }}></th>
+                          <th
+                            style={{ width: '40px', textAlign: 'center' }}
+                          ></th>
                           <th style={{ width: '220px' }}>Key</th>
                           <th>Value</th>
-                          <th style={{ width: '50px', textAlign: 'center' }}></th>
+                          <th
+                            style={{ width: '50px', textAlign: 'center' }}
+                          ></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2525,10 +3216,18 @@ func main() {
                                 onChange={(e) => {
                                   const checked = e.target.checked;
                                   setBodyFields((prev) =>
-                                    prev.map((item, idx) => (idx === i ? { ...item, enabled: checked } : item)),
+                                    prev.map((item, idx) =>
+                                      idx === i
+                                        ? { ...item, enabled: checked }
+                                        : item,
+                                    ),
                                   );
                                 }}
-                                title={field.enabled !== false ? 'Disable field' : 'Enable field'}
+                                title={
+                                  field.enabled !== false
+                                    ? 'Disable field'
+                                    : 'Enable field'
+                                }
                               />
                             </td>
                             <td>
@@ -2537,7 +3236,10 @@ func main() {
                                 value={field.key}
                                 variables={availableVariables}
                                 aria-label={`Body field key ${i + 1}`}
-                                style={{ border: 'none', background: 'transparent' }}
+                                style={{
+                                  border: 'none',
+                                  background: 'transparent',
+                                }}
                                 inputStyle={{
                                   padding: '6px 8px',
                                   background: 'transparent',
@@ -2549,7 +3251,9 @@ func main() {
                                 }}
                                 onChange={(v) => {
                                   setBodyFields((prev) =>
-                                    prev.map((item, idx) => (idx === i ? { ...item, key: v } : item)),
+                                    prev.map((item, idx) =>
+                                      idx === i ? { ...item, key: v } : item,
+                                    ),
                                   );
                                 }}
                               />
@@ -2560,7 +3264,10 @@ func main() {
                                 value={field.value}
                                 variables={availableVariables}
                                 aria-label={`Body field value ${i + 1}`}
-                                style={{ border: 'none', background: 'transparent' }}
+                                style={{
+                                  border: 'none',
+                                  background: 'transparent',
+                                }}
                                 inputStyle={{
                                   padding: '6px 8px',
                                   background: 'transparent',
@@ -2572,7 +3279,9 @@ func main() {
                                 }}
                                 onChange={(v) => {
                                   setBodyFields((prev) =>
-                                    prev.map((item, idx) => (idx === i ? { ...item, value: v } : item)),
+                                    prev.map((item, idx) =>
+                                      idx === i ? { ...item, value: v } : item,
+                                    ),
                                   );
                                 }}
                               />
@@ -2581,8 +3290,15 @@ func main() {
                               <button
                                 type="button"
                                 className="btn btn-ghost"
-                                style={{ padding: '4px', color: 'var(--text-muted)' }}
-                                onClick={() => setBodyFields(bodyFields.filter((_, idx) => idx !== i))}
+                                style={{
+                                  padding: '4px',
+                                  color: 'var(--text-muted)',
+                                }}
+                                onClick={() =>
+                                  setBodyFields(
+                                    bodyFields.filter((_, idx) => idx !== i),
+                                  )
+                                }
                                 title="Remove field"
                               >
                                 <Trash2 size={13} />
@@ -2625,14 +3341,27 @@ func main() {
                     variables={availableVariables}
                     onChange={setBearerToken}
                   />
-                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                    Automatically injected into the <code>Authorization: Bearer &lt;token&gt;</code> header.
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      color: 'var(--text-muted)',
+                      marginTop: '4px',
+                    }}
+                  >
+                    Automatically injected into the{' '}
+                    <code>Authorization: Bearer &lt;token&gt;</code> header.
                   </div>
                 </div>
               )}
 
               {authType === 'basic' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '12px',
+                  }}
+                >
                   <div className="form-group">
                     <label className="form-label">Username</label>
                     <VariableInput
@@ -2656,7 +3385,13 @@ func main() {
               )}
 
               {authType === 'apikey' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 120px', gap: '12px' }}>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr 120px',
+                    gap: '12px',
+                  }}
+                >
                   <div className="form-group">
                     <label className="form-label">Key Name</label>
                     <VariableInput
@@ -2694,9 +3429,26 @@ func main() {
           {/* ── SubTab: Uploads ───────────────────────────────────── */}
           {activeSubTab === 'uploads' && (
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                <span className="form-label" style={{ margin: 0 }}>Multipart File Attachments</span>
-                <label className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: '11px', cursor: 'pointer', margin: 0 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '12px',
+                }}
+              >
+                <span className="form-label" style={{ margin: 0 }}>
+                  Multipart File Attachments
+                </span>
+                <label
+                  className="btn btn-secondary"
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '11px',
+                    cursor: 'pointer',
+                    margin: 0,
+                  }}
+                >
                   <UploadCloud size={13} />
                   <span>Choose Files</span>
                   <input
@@ -2707,9 +3459,12 @@ func main() {
                       const files = Array.from(e.target.files || []);
                       const processed = await Promise.all(
                         files.map(async (file) => {
-                          const bytes = new Uint8Array(await file.arrayBuffer());
+                          const bytes = new Uint8Array(
+                            await file.arrayBuffer(),
+                          );
                           let binary = '';
-                          for (const b of bytes) binary += String.fromCharCode(b);
+                          for (const b of bytes)
+                            binary += String.fromCharCode(b);
                           return {
                             field: 'file',
                             name: file.name,
@@ -2727,30 +3482,62 @@ func main() {
               </div>
 
               {uploads.length === 0 ? (
-                <div className="empty-state" style={{ border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)' }}>
+                <div
+                  className="empty-state"
+                  style={{
+                    border: '1px dashed var(--border)',
+                    borderRadius: 'var(--radius-sm)',
+                  }}
+                >
                   <UploadCloud size={20} />
                   <span>No files attached</span>
                 </div>
               ) : (
                 uploads.map((up, i) => (
-                  <div key={i} className="kv-row" style={{ background: 'var(--bg-secondary)', padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>
+                  <div
+                    key={i}
+                    className="kv-row"
+                    style={{
+                      background: 'var(--bg-secondary)',
+                      padding: '6px 10px',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-sm)',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: 'var(--text-primary)',
+                        flex: 1,
+                      }}
+                    >
                       {up.name}
                     </span>
                     <input
                       className="text-input"
-                      style={{ width: '120px', padding: '3px 6px', fontSize: '11px' }}
+                      style={{
+                        width: '120px',
+                        padding: '3px 6px',
+                        fontSize: '11px',
+                      }}
                       value={up.field}
                       onChange={(e) => {
                         const val = e.target.value;
-                        setUploads((prev) => prev.map((item, idx) => (idx === i ? { ...item, field: val } : item)));
+                        setUploads((prev) =>
+                          prev.map((item, idx) =>
+                            idx === i ? { ...item, field: val } : item,
+                          ),
+                        );
                       }}
                       title="Multipart form field name"
                     />
                     <button
                       className="btn btn-ghost"
                       style={{ padding: '4px', color: 'var(--text-muted)' }}
-                      onClick={() => setUploads(uploads.filter((_, idx) => idx !== i))}
+                      onClick={() =>
+                        setUploads(uploads.filter((_, idx) => idx !== i))
+                      }
                     >
                       <Trash2 size={13} />
                     </button>
@@ -2762,44 +3549,91 @@ func main() {
 
           {/* ── SubTab: Pre-request Script ─────────────────────── */}
           {activeSubTab === 'prerequest' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+            <div
+              style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '8px',
+                }}
+              >
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: 'var(--text-primary)',
+                      }}
+                    >
                       Pre-request Script
                     </span>
-                    <span style={{ fontSize: '9px', padding: '1px 5px', borderRadius: '3px', background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', fontWeight: 600 }}>
+                    <span
+                      style={{
+                        fontSize: '9px',
+                        padding: '1px 5px',
+                        borderRadius: '3px',
+                        background: 'rgba(99, 102, 241, 0.15)',
+                        color: '#818cf8',
+                        fontWeight: 600,
+                      }}
+                    >
                       IntelliSense Enabled
                     </span>
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Runs before HTTP dispatch. Modify headers/params via <code>$.request</code> or set variables via <code>$.env.set()</code>.
+                    Runs before HTTP dispatch. Modify headers/params via{' '}
+                    <code>$.request</code> or set variables via{' '}
+                    <code>$.env.set()</code>.
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                >
                   <select
                     className="select-input"
                     style={{ fontSize: '11px', padding: '3px 8px' }}
                     onChange={(e) => {
-                      const snip = SCRIPT_SNIPPETS.preRequest.find((s) => s.label === e.target.value);
+                      const snip = SCRIPT_SNIPPETS.preRequest.find(
+                        (s) => s.label === e.target.value,
+                      );
                       if (snip) {
-                        setPreRequestScript((prev) => (prev ? prev + '\n\n' + snip.code : snip.code));
+                        setPreRequestScript((prev) =>
+                          prev ? prev + '\n\n' + snip.code : snip.code,
+                        );
                       }
                       e.target.value = '';
                     }}
                     defaultValue=""
                   >
-                    <option value="" disabled>+ Insert Snippet...</option>
+                    <option value="" disabled>
+                      + Insert Snippet...
+                    </option>
                     {SCRIPT_SNIPPETS.preRequest.map((s) => (
-                      <option key={s.label} value={s.label}>{s.label}</option>
+                      <option key={s.label} value={s.label}>
+                        {s.label}
+                      </option>
                     ))}
                   </select>
                   {preRequestScript && (
                     <button
                       type="button"
                       className="btn btn-ghost"
-                      style={{ fontSize: '11px', padding: '3px 8px', color: 'var(--text-muted)' }}
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        color: 'var(--text-muted)',
+                      }}
                       onClick={() => setPreRequestScript('')}
                     >
                       Clear
@@ -2833,7 +3667,11 @@ func main() {
                     wordWrap: 'on',
                     tabSize: 2,
                     suggestOnTriggerCharacters: true,
-                    quickSuggestions: { other: true, comments: false, strings: true },
+                    quickSuggestions: {
+                      other: true,
+                      comments: false,
+                      strings: true,
+                    },
                     acceptSuggestionOnEnter: 'on',
                     tabCompletion: 'on',
                     wordBasedSuggestions: 'currentDocument',
@@ -2845,44 +3683,91 @@ func main() {
 
           {/* ── SubTab: Tests Script ────────────────────────────── */}
           {activeSubTab === 'tests' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+            <div
+              style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '8px',
+                }}
+              >
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: 'var(--text-primary)',
+                      }}
+                    >
                       Post-response Tests Script
                     </span>
-                    <span style={{ fontSize: '9px', padding: '1px 5px', borderRadius: '3px', background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', fontWeight: 600 }}>
+                    <span
+                      style={{
+                        fontSize: '9px',
+                        padding: '1px 5px',
+                        borderRadius: '3px',
+                        background: 'rgba(99, 102, 241, 0.15)',
+                        color: '#818cf8',
+                        fontWeight: 600,
+                      }}
+                    >
                       IntelliSense Enabled
                     </span>
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Write assertions using <code>$.test()</code> and <code>$.expect()</code> (or <code>axiomify.*</code> / <code>pm.*</code>).
+                    Write assertions using <code>$.test()</code> and{' '}
+                    <code>$.expect()</code> (or <code>axiomify.*</code> /{' '}
+                    <code>pm.*</code>).
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div
+                  style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                >
                   <select
                     className="select-input"
                     style={{ fontSize: '11px', padding: '3px 8px' }}
                     onChange={(e) => {
-                      const snip = SCRIPT_SNIPPETS.test.find((s) => s.label === e.target.value);
+                      const snip = SCRIPT_SNIPPETS.test.find(
+                        (s) => s.label === e.target.value,
+                      );
                       if (snip) {
-                        setTestScript((prev) => (prev ? prev + '\n\n' + snip.code : snip.code));
+                        setTestScript((prev) =>
+                          prev ? prev + '\n\n' + snip.code : snip.code,
+                        );
                       }
                       e.target.value = '';
                     }}
                     defaultValue=""
                   >
-                    <option value="" disabled>+ Insert Snippet...</option>
+                    <option value="" disabled>
+                      + Insert Snippet...
+                    </option>
                     {SCRIPT_SNIPPETS.test.map((s) => (
-                      <option key={s.label} value={s.label}>{s.label}</option>
+                      <option key={s.label} value={s.label}>
+                        {s.label}
+                      </option>
                     ))}
                   </select>
                   {testScript && (
                     <button
                       type="button"
                       className="btn btn-ghost"
-                      style={{ fontSize: '11px', padding: '3px 8px', color: 'var(--text-muted)' }}
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        color: 'var(--text-muted)',
+                      }}
                       onClick={() => setTestScript('')}
                     >
                       Clear
@@ -2916,7 +3801,11 @@ func main() {
                     wordWrap: 'on',
                     tabSize: 2,
                     suggestOnTriggerCharacters: true,
-                    quickSuggestions: { other: true, comments: false, strings: true },
+                    quickSuggestions: {
+                      other: true,
+                      comments: false,
+                      strings: true,
+                    },
                     acceptSuggestionOnEnter: 'on',
                     tabCompletion: 'on',
                     wordBasedSuggestions: 'currentDocument',
@@ -2929,18 +3818,31 @@ func main() {
           {/* ── SubTab: Code Generation ───────────────────────────── */}
           {activeSubTab === 'code' && (
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '8px',
+                }}
+              >
                 <div style={{ display: 'flex', gap: '4px' }}>
-                  {(['curl', 'fetch', 'axios', 'python', 'go'] as const).map((lang) => (
-                    <button
-                      key={lang}
-                      className={`btn ${codeLang === lang ? 'btn-primary' : 'btn-ghost'}`}
-                      style={{ padding: '3px 8px', fontSize: '11px', textTransform: 'capitalize' }}
-                      onClick={() => setCodeLang(lang)}
-                    >
-                      {lang}
-                    </button>
-                  ))}
+                  {(['curl', 'fetch', 'axios', 'python', 'go'] as const).map(
+                    (lang) => (
+                      <button
+                        key={lang}
+                        className={`btn ${codeLang === lang ? 'btn-primary' : 'btn-ghost'}`}
+                        style={{
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          textTransform: 'capitalize',
+                        }}
+                        onClick={() => setCodeLang(lang)}
+                      >
+                        {lang}
+                      </button>
+                    ),
+                  )}
                 </div>
                 <button
                   className="btn btn-secondary"
@@ -2985,12 +3887,13 @@ func main() {
               <div className="metrics-pill-bar">
                 {/* Status Pill */}
                 <span
-                  className={`metric-status-pill ${response.status >= 200 && response.status < 300
-                    ? 'success'
-                    : response.status >= 400 && response.status < 500
-                      ? 'warning'
-                      : 'error'
-                    }`}
+                  className={`metric-status-pill ${
+                    response.status >= 200 && response.status < 300
+                      ? 'success'
+                      : response.status >= 400 && response.status < 500
+                        ? 'warning'
+                        : 'error'
+                  }`}
                 >
                   {response.status >= 200 && response.status < 300 ? (
                     <CheckCircle2 size={12} />
@@ -3022,7 +3925,8 @@ func main() {
                 </span>
 
                 {/* Duration */}
-                {(response.duration !== undefined || response.clientLatency !== undefined) && (
+                {(response.duration !== undefined ||
+                  response.clientLatency !== undefined) && (
                   <span className="metric-chip">
                     <Clock
                       size={11}
@@ -3030,12 +3934,17 @@ func main() {
                         color:
                           (response.duration || response.clientLatency) < 150
                             ? 'var(--success)'
-                            : (response.duration || response.clientLatency) < 500
+                            : (response.duration || response.clientLatency) <
+                                500
                               ? 'var(--warning)'
                               : 'var(--error)',
                       }}
                     />
-                    <span>{formatDuration(response.duration || response.clientLatency)}</span>
+                    <span>
+                      {formatDuration(
+                        response.duration || response.clientLatency,
+                      )}
+                    </span>
                   </span>
                 )}
 
@@ -3077,7 +3986,9 @@ func main() {
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Activity size={13} style={{ color: 'var(--text-muted)' }} />
-              <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Live Response Inspector</span>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>
+                Live Response Inspector
+              </span>
             </div>
           )}
         </div>
@@ -3097,7 +4008,10 @@ func main() {
             >
               <span>Headers</span>
               {response.headers && (
-                <span className="nav-badge" style={{ padding: '0 4px', fontSize: '9px' }}>
+                <span
+                  className="nav-badge"
+                  style={{ padding: '0 4px', fontSize: '9px' }}
+                >
                   {Object.keys(response.headers).length}
                 </span>
               )}
@@ -3113,11 +4027,16 @@ func main() {
                   style={{
                     padding: '0 5px',
                     fontSize: '9px',
-                    background: scriptTestResults.success ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                    color: scriptTestResults.success ? 'var(--success)' : 'var(--error)',
+                    background: scriptTestResults.success
+                      ? 'rgba(34, 197, 94, 0.2)'
+                      : 'rgba(239, 68, 68, 0.2)',
+                    color: scriptTestResults.success
+                      ? 'var(--success)'
+                      : 'var(--error)',
                   }}
                 >
-                  {scriptTestResults.tests.filter((t) => t.passed).length}/{scriptTestResults.tests.length}
+                  {scriptTestResults.tests.filter((t) => t.passed).length}/
+                  {scriptTestResults.tests.length}
                 </span>
               ) : preRequestResults ? (
                 <span
@@ -3125,8 +4044,12 @@ func main() {
                   style={{
                     padding: '0 5px',
                     fontSize: '9px',
-                    background: preRequestResults.success ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                    color: preRequestResults.success ? 'var(--success)' : 'var(--error)',
+                    background: preRequestResults.success
+                      ? 'rgba(34, 197, 94, 0.2)'
+                      : 'rgba(239, 68, 68, 0.2)',
+                    color: preRequestResults.success
+                      ? 'var(--success)'
+                      : 'var(--error)',
                   }}
                 >
                   ⚡ Pre-req
@@ -3145,7 +4068,10 @@ func main() {
             >
               <span>Queries</span>
               {response.profile?.queries && (
-                <span className="nav-badge" style={{ padding: '0 4px', fontSize: '9px' }}>
+                <span
+                  className="nav-badge"
+                  style={{ padding: '0 4px', fontSize: '9px' }}
+                >
                   {response.profile.queries.length}
                 </span>
               )}
@@ -3154,22 +4080,66 @@ func main() {
         )}
 
         {/* Response Body & Views */}
-        <div className="pane-content" style={{ display: 'flex', flexDirection: 'column' }}>
+        <div
+          className="pane-content"
+          style={{ display: 'flex', flexDirection: 'column' }}
+        >
           {!response ? (
-            <div className="empty-state" style={{ height: '100%', minHeight: '360px', justifyContent: 'center' }}>
+            <div
+              className="empty-state"
+              style={{
+                height: '100%',
+                minHeight: '360px',
+                justifyContent: 'center',
+              }}
+            >
               <div className="response-empty-radar">
                 <Activity size={22} />
               </div>
-              <span style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+              <span
+                style={{
+                  fontSize: '13.5px',
+                  fontWeight: 600,
+                  color: 'var(--text-primary)',
+                  marginBottom: '4px',
+                }}
+              >
                 Ready to Inspect Response
               </span>
-              <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', maxWidth: '300px', textAlign: 'center', lineHeight: 1.5, marginBottom: '16px' }}>
-                Execute a request to view HTTP status codes, latency waterfall timeline, headers, and payload inspect tools.
+              <span
+                style={{
+                  fontSize: '11.5px',
+                  color: 'var(--text-muted)',
+                  maxWidth: '300px',
+                  textAlign: 'center',
+                  lineHeight: 1.5,
+                  marginBottom: '16px',
+                }}
+              >
+                Execute a request to view HTTP status codes, latency waterfall
+                timeline, headers, and payload inspect tools.
               </span>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                <span className="metric-chip"><kbd>⌘↵</kbd> Send Request</span>
-                <span className="metric-chip"><kbd>⌘K</kbd> Browse Routes</span>
-                <span className="metric-chip"><kbd>{'{'}{'{'}</kbd> Insert Variable</span>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '8px',
+                  flexWrap: 'wrap',
+                  justifyContent: 'center',
+                }}
+              >
+                <span className="metric-chip">
+                  <kbd>⌘↵</kbd> Send Request
+                </span>
+                <span className="metric-chip">
+                  <kbd>⌘K</kbd> Browse Routes
+                </span>
+                <span className="metric-chip">
+                  <kbd>
+                    {'{'}
+                    {'{'}
+                  </kbd>{' '}
+                  Insert Variable
+                </span>
               </div>
             </div>
           ) : (
@@ -3205,7 +4175,10 @@ func main() {
                         fontSize: '12px',
                         lineHeight: 1.5,
                         overflow: 'auto',
-                        color: response.status === 'ERROR' ? 'var(--error)' : 'var(--text-primary)',
+                        color:
+                          response.status === 'ERROR'
+                            ? 'var(--error)'
+                            : 'var(--text-primary)',
                         whiteSpace: 'pre-wrap',
                         wordBreak: 'break-all',
                       }}
@@ -3219,18 +4192,51 @@ func main() {
               {/* Response SubTab: Headers */}
               {responseSubTab === 'headers' && (
                 <div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
+                  <table
+                    style={{
+                      width: '100%',
+                      borderCollapse: 'collapse',
+                      fontSize: '12px',
+                      fontFamily: 'var(--font-mono)',
+                    }}
+                  >
                     <thead>
-                      <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left', color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase' }}>
+                      <tr
+                        style={{
+                          borderBottom: '1px solid var(--border)',
+                          textAlign: 'left',
+                          color: 'var(--text-muted)',
+                          fontSize: '10px',
+                          textTransform: 'uppercase',
+                        }}
+                      >
                         <th style={{ padding: '6px 8px' }}>Key</th>
                         <th style={{ padding: '6px 8px' }}>Value</th>
                       </tr>
                     </thead>
                     <tbody>
                       {Object.entries(response.headers || {}).map(([k, v]) => (
-                        <tr key={k} style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td style={{ padding: '6px 8px', color: 'var(--accent-text)', fontWeight: 500 }}>{k}</td>
-                          <td style={{ padding: '6px 8px', color: 'var(--text-primary)' }}>{String(v)}</td>
+                        <tr
+                          key={k}
+                          style={{ borderBottom: '1px solid var(--border)' }}
+                        >
+                          <td
+                            style={{
+                              padding: '6px 8px',
+                              color: 'var(--accent-text)',
+                              fontWeight: 500,
+                            }}
+                          >
+                            {k}
+                          </td>
+                          <td
+                            style={{
+                              padding: '6px 8px',
+                              color: 'var(--text-primary)',
+                            }}
+                          >
+                            {String(v)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -3239,126 +4245,346 @@ func main() {
               )}
 
               {/* Response SubTab: Waterfall & Metrics (Option 3 Vercel & Railway style) */}
-              {responseSubTab === 'waterfall' && (() => {
-                const totalMs = Math.max(response.clientLatency || response.duration || 1, 1);
-                const serverDuration = response.duration || totalMs * 0.6;
-                const dnsMs = Math.max(1, Math.round(totalMs * 0.08 * 10) / 10);
-                const connectMs = Math.max(1, Math.round(totalMs * 0.14 * 10) / 10);
-                const ttfbMs = Math.max(1, Math.round(Math.min(serverDuration, Math.max(1, totalMs - dnsMs - connectMs)) * 10) / 10);
-                const downloadMs = Math.max(0.5, Math.round(Math.max(0.5, totalMs - (dnsMs + connectMs + ttfbMs)) * 10) / 10);
+              {responseSubTab === 'waterfall' &&
+                (() => {
+                  const totalMs = Math.max(
+                    response.clientLatency || response.duration || 1,
+                    1,
+                  );
+                  const serverDuration = response.duration || totalMs * 0.6;
+                  const dnsMs = Math.max(
+                    1,
+                    Math.round(totalMs * 0.08 * 10) / 10,
+                  );
+                  const connectMs = Math.max(
+                    1,
+                    Math.round(totalMs * 0.14 * 10) / 10,
+                  );
+                  const ttfbMs = Math.max(
+                    1,
+                    Math.round(
+                      Math.min(
+                        serverDuration,
+                        Math.max(1, totalMs - dnsMs - connectMs),
+                      ) * 10,
+                    ) / 10,
+                  );
+                  const downloadMs = Math.max(
+                    0.5,
+                    Math.round(
+                      Math.max(0.5, totalMs - (dnsMs + connectMs + ttfbMs)) *
+                        10,
+                    ) / 10,
+                  );
 
-                const sumMs = dnsMs + connectMs + ttfbMs + downloadMs;
-                const dnsPct = Math.max(4, Math.round((dnsMs / sumMs) * 100));
-                const connectPct = Math.max(6, Math.round((connectMs / sumMs) * 100));
-                const ttfbPct = Math.max(20, Math.round((ttfbMs / sumMs) * 100));
-                const downloadPct = Math.max(4, 100 - dnsPct - connectPct - ttfbPct);
+                  const sumMs = dnsMs + connectMs + ttfbMs + downloadMs;
+                  const dnsPct = Math.max(4, Math.round((dnsMs / sumMs) * 100));
+                  const connectPct = Math.max(
+                    6,
+                    Math.round((connectMs / sumMs) * 100),
+                  );
+                  const ttfbPct = Math.max(
+                    20,
+                    Math.round((ttfbMs / sumMs) * 100),
+                  );
+                  const downloadPct = Math.max(
+                    4,
+                    100 - dnsPct - connectPct - ttfbPct,
+                  );
 
-                return (
-                  <div className="waterfall-container">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        Latency Waterfall Timeline
-                      </span>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--accent-text)', fontWeight: 600 }}>
-                        {formatDuration(totalMs)} Total
-                      </span>
+                  return (
+                    <div className="waterfall-container">
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            color: 'var(--text-secondary)',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em',
+                          }}
+                        >
+                          Latency Waterfall Timeline
+                        </span>
+                        <span
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: '11px',
+                            color: 'var(--accent-text)',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {formatDuration(totalMs)} Total
+                        </span>
+                      </div>
+
+                      {/* Composite Visual Timing Bar */}
+                      <div
+                        className="waterfall-bar-composite"
+                        title="DNS (purple) → TCP/TLS (cyan) → TTFB/Server (amber) → Download (emerald)"
+                      >
+                        <div
+                          className="waterfall-phase-segment"
+                          style={{ width: `${dnsPct}%`, background: '#8b5cf6' }}
+                          title={`DNS Lookup: ${dnsMs}ms (${dnsPct}%)`}
+                        />
+                        <div
+                          className="waterfall-phase-segment"
+                          style={{
+                            width: `${connectPct}%`,
+                            background: '#06b6d4',
+                          }}
+                          title={`Connect & TLS: ${connectMs}ms (${connectPct}%)`}
+                        />
+                        <div
+                          className="waterfall-phase-segment"
+                          style={{
+                            width: `${ttfbPct}%`,
+                            background: '#f59e0b',
+                          }}
+                          title={`Server TTFB: ${ttfbMs}ms (${ttfbPct}%)`}
+                        />
+                        <div
+                          className="waterfall-phase-segment"
+                          style={{
+                            width: `${downloadPct}%`,
+                            background: '#10b981',
+                          }}
+                          title={`Content Download: ${downloadMs}ms (${downloadPct}%)`}
+                        />
+                      </div>
+
+                      {/* 4 Timing Phase Metric Cards */}
+                      <div className="waterfall-grid">
+                        <div className="waterfall-phase-card">
+                          <div className="waterfall-phase-label">
+                            <span
+                              style={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                background: '#8b5cf6',
+                                display: 'inline-block',
+                              }}
+                            />
+                            <span>DNS Lookup</span>
+                          </div>
+                          <div
+                            className="waterfall-phase-value"
+                            style={{ color: '#8b5cf6' }}
+                          >
+                            {formatDuration(dnsMs)}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '10px',
+                              color: 'var(--text-muted)',
+                              marginTop: '2px',
+                            }}
+                          >
+                            {dnsPct}% of total
+                          </div>
+                        </div>
+
+                        <div className="waterfall-phase-card">
+                          <div className="waterfall-phase-label">
+                            <span
+                              style={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                background: '#06b6d4',
+                                display: 'inline-block',
+                              }}
+                            />
+                            <span>Connect & TLS</span>
+                          </div>
+                          <div
+                            className="waterfall-phase-value"
+                            style={{ color: '#06b6d4' }}
+                          >
+                            {formatDuration(connectMs)}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '10px',
+                              color: 'var(--text-muted)',
+                              marginTop: '2px',
+                            }}
+                          >
+                            {connectPct}% of total
+                          </div>
+                        </div>
+
+                        <div className="waterfall-phase-card">
+                          <div className="waterfall-phase-label">
+                            <span
+                              style={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                background: '#f59e0b',
+                                display: 'inline-block',
+                              }}
+                            />
+                            <span>Server TTFB</span>
+                          </div>
+                          <div
+                            className="waterfall-phase-value"
+                            style={{ color: '#f59e0b' }}
+                          >
+                            {formatDuration(ttfbMs)}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '10px',
+                              color: 'var(--text-muted)',
+                              marginTop: '2px',
+                            }}
+                          >
+                            {ttfbPct}% of total
+                          </div>
+                        </div>
+
+                        <div className="waterfall-phase-card">
+                          <div className="waterfall-phase-label">
+                            <span
+                              style={{
+                                width: '6px',
+                                height: '6px',
+                                borderRadius: '50%',
+                                background: '#10b981',
+                                display: 'inline-block',
+                              }}
+                            />
+                            <span>Download</span>
+                          </div>
+                          <div
+                            className="waterfall-phase-value"
+                            style={{ color: '#10b981' }}
+                          >
+                            {formatDuration(downloadMs)}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '10px',
+                              color: 'var(--text-muted)',
+                              marginTop: '2px',
+                            }}
+                          >
+                            {downloadPct}% of total
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Axiomify Internal Profiler Timeline */}
+                      {response.profile?.timeline?.length > 0 && (
+                        <div style={{ marginTop: '12px' }}>
+                          <div
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              color: 'var(--text-secondary)',
+                              marginBottom: '8px',
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.05em',
+                            }}
+                          >
+                            Server Execution Phases (
+                            {response.profile.timeline.length})
+                          </div>
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '6px',
+                            }}
+                          >
+                            {response.profile.timeline.map(
+                              (item: any, idx: number) => {
+                                const dur = Number(item.duration) || 0;
+                                return (
+                                  <div
+                                    key={idx}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      padding: '7px 10px',
+                                      background: 'var(--bg-primary)',
+                                      border: '1px solid var(--border)',
+                                      borderRadius: 'var(--radius-xs)',
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          fontSize: '9px',
+                                          fontFamily: 'var(--font-mono)',
+                                          padding: '1px 5px',
+                                          borderRadius: '3px',
+                                          background: 'var(--bg-tertiary)',
+                                          border: '1px solid var(--border)',
+                                          color: 'var(--accent-text)',
+                                          textTransform: 'uppercase',
+                                        }}
+                                      >
+                                        {item.type || 'EXEC'}
+                                      </span>
+                                      <span
+                                        style={{
+                                          fontSize: '11.5px',
+                                          fontWeight: 500,
+                                          color: 'var(--text-primary)',
+                                        }}
+                                      >
+                                        {item.name}
+                                      </span>
+                                    </div>
+                                    <span
+                                      style={{
+                                        fontFamily: 'var(--font-mono)',
+                                        fontSize: '11px',
+                                        color: 'var(--accent-text)',
+                                        fontWeight: 600,
+                                      }}
+                                    >
+                                      {formatDuration(dur)}
+                                    </span>
+                                  </div>
+                                );
+                              },
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
-
-                    {/* Composite Visual Timing Bar */}
-                    <div className="waterfall-bar-composite" title="DNS (purple) → TCP/TLS (cyan) → TTFB/Server (amber) → Download (emerald)">
-                      <div className="waterfall-phase-segment" style={{ width: `${dnsPct}%`, background: '#8b5cf6' }} title={`DNS Lookup: ${dnsMs}ms (${dnsPct}%)`} />
-                      <div className="waterfall-phase-segment" style={{ width: `${connectPct}%`, background: '#06b6d4' }} title={`Connect & TLS: ${connectMs}ms (${connectPct}%)`} />
-                      <div className="waterfall-phase-segment" style={{ width: `${ttfbPct}%`, background: '#f59e0b' }} title={`Server TTFB: ${ttfbMs}ms (${ttfbPct}%)`} />
-                      <div className="waterfall-phase-segment" style={{ width: `${downloadPct}%`, background: '#10b981' }} title={`Content Download: ${downloadMs}ms (${downloadPct}%)`} />
-                    </div>
-
-                    {/* 4 Timing Phase Metric Cards */}
-                    <div className="waterfall-grid">
-                      <div className="waterfall-phase-card">
-                        <div className="waterfall-phase-label">
-                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#8b5cf6', display: 'inline-block' }} />
-                          <span>DNS Lookup</span>
-                        </div>
-                        <div className="waterfall-phase-value" style={{ color: '#8b5cf6' }}>{formatDuration(dnsMs)}</div>
-                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{dnsPct}% of total</div>
-                      </div>
-
-                      <div className="waterfall-phase-card">
-                        <div className="waterfall-phase-label">
-                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#06b6d4', display: 'inline-block' }} />
-                          <span>Connect & TLS</span>
-                        </div>
-                        <div className="waterfall-phase-value" style={{ color: '#06b6d4' }}>{formatDuration(connectMs)}</div>
-                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{connectPct}% of total</div>
-                      </div>
-
-                      <div className="waterfall-phase-card">
-                        <div className="waterfall-phase-label">
-                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }} />
-                          <span>Server TTFB</span>
-                        </div>
-                        <div className="waterfall-phase-value" style={{ color: '#f59e0b' }}>{formatDuration(ttfbMs)}</div>
-                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{ttfbPct}% of total</div>
-                      </div>
-
-                      <div className="waterfall-phase-card">
-                        <div className="waterfall-phase-label">
-                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
-                          <span>Download</span>
-                        </div>
-                        <div className="waterfall-phase-value" style={{ color: '#10b981' }}>{formatDuration(downloadMs)}</div>
-                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{downloadPct}% of total</div>
-                      </div>
-                    </div>
-
-                    {/* Axiomify Internal Profiler Timeline */}
-                    {response.profile?.timeline?.length > 0 && (
-                      <div style={{ marginTop: '12px' }}>
-                        <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                          Server Execution Phases ({response.profile.timeline.length})
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          {response.profile.timeline.map((item: any, idx: number) => {
-                            const dur = Number(item.duration) || 0;
-                            return (
-                              <div
-                                key={idx}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  padding: '7px 10px',
-                                  background: 'var(--bg-primary)',
-                                  border: '1px solid var(--border)',
-                                  borderRadius: 'var(--radius-xs)',
-                                }}
-                              >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', padding: '1px 5px', borderRadius: '3px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--accent-text)', textTransform: 'uppercase' }}>
-                                    {item.type || 'EXEC'}
-                                  </span>
-                                  <span style={{ fontSize: '11.5px', fontWeight: 500, color: 'var(--text-primary)' }}>
-                                    {item.name}
-                                  </span>
-                                </div>
-                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--accent-text)', fontWeight: 600 }}>
-                                  {formatDuration(dur)}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
+                  );
+                })()}
 
               {/* Response SubTab: Queries */}
               {responseSubTab === 'queries' && (
                 <div>
                   {response.profile?.queries?.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                      }}
+                    >
                       {response.profile.queries.map((q: any, idx: number) => (
                         <div
                           key={idx}
@@ -3369,15 +4595,42 @@ func main() {
                             borderRadius: 'var(--radius-sm)',
                           }}
                         >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                            <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--warning)', fontWeight: 600 }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              marginBottom: '4px',
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                fontFamily: 'var(--font-mono)',
+                                color: 'var(--warning)',
+                                fontWeight: 600,
+                              }}
+                            >
                               DATABASE QUERY
                             </span>
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>
+                            <span
+                              style={{
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: '11px',
+                                color: 'var(--text-muted)',
+                              }}
+                            >
                               {formatDuration(q.duration)}
                             </span>
                           </div>
-                          <pre style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>
+                          <pre
+                            style={{
+                              margin: 0,
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: '11px',
+                              color: 'var(--text-primary)',
+                              whiteSpace: 'pre-wrap',
+                            }}
+                          >
                             {q.sql || q.query || JSON.stringify(q)}
                           </pre>
                         </div>
@@ -3386,7 +4639,9 @@ func main() {
                   ) : (
                     <div className="empty-state">
                       <Database size={20} />
-                      <span>No database queries recorded for this request.</span>
+                      <span>
+                        No database queries recorded for this request.
+                      </span>
                     </div>
                   )}
                 </div>
@@ -3396,7 +4651,13 @@ func main() {
               {responseSubTab === 'tests' && (
                 <div>
                   {preRequestResults || scriptTestResults ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '16px',
+                      }}
+                    >
                       {/* 1. Pre-request Execution Card (if executed) */}
                       {preRequestResults && (
                         <div
@@ -3410,10 +4671,35 @@ func main() {
                             gap: '8px',
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <Zap size={14} style={{ color: preRequestResults.success ? 'var(--success)' : 'var(--error)' }} />
-                              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                              }}
+                            >
+                              <Zap
+                                size={14}
+                                style={{
+                                  color: preRequestResults.success
+                                    ? 'var(--success)'
+                                    : 'var(--error)',
+                                }}
+                              />
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  color: 'var(--text-primary)',
+                                }}
+                              >
                                 Pre-request Script Execution
                               </span>
                               <span
@@ -3423,14 +4709,26 @@ func main() {
                                   fontSize: '9.5px',
                                   fontWeight: 700,
                                   textTransform: 'uppercase',
-                                  background: preRequestResults.success ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                                  color: preRequestResults.success ? 'var(--success)' : 'var(--error)',
+                                  background: preRequestResults.success
+                                    ? 'rgba(34, 197, 94, 0.15)'
+                                    : 'rgba(239, 68, 68, 0.15)',
+                                  color: preRequestResults.success
+                                    ? 'var(--success)'
+                                    : 'var(--error)',
                                 }}
                               >
-                                {preRequestResults.success ? 'Passed' : 'Failed'}
+                                {preRequestResults.success
+                                  ? 'Passed'
+                                  : 'Failed'}
                               </span>
                             </div>
-                            <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                color: 'var(--text-muted)',
+                                fontFamily: 'var(--font-mono)',
+                              }}
+                            >
                               {preRequestResults.durationMs} ms
                             </span>
                           </div>
@@ -3447,126 +4745,221 @@ func main() {
                                 fontFamily: 'var(--font-mono)',
                               }}
                             >
-                              <strong>Script Error: </strong> {preRequestResults.error}
+                              <strong>Script Error: </strong>{' '}
+                              {preRequestResults.error}
                             </div>
                           )}
 
                           {/* Mutated Headers Preview */}
-                          {preRequestResults.mutatedHeaders && Object.keys(preRequestResults.mutatedHeaders).length > 0 && (
-                            <div>
-                              <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                                Outgoing Headers Added/Updated:
-                              </span>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
-                                {Object.entries(preRequestResults.mutatedHeaders).map(([k, v]) => (
-                                  <span
-                                    key={k}
-                                    style={{
-                                      fontSize: '11px',
-                                      fontFamily: 'var(--font-mono)',
-                                      padding: '2px 6px',
-                                      borderRadius: 'var(--radius-xs)',
-                                      background: 'var(--bg-primary)',
-                                      border: '1px solid var(--border)',
-                                      color: 'var(--accent-text)',
-                                    }}
-                                  >
-                                    <strong>{k}:</strong> {String(v)}
-                                  </span>
-                                ))}
+                          {preRequestResults.mutatedHeaders &&
+                            Object.keys(preRequestResults.mutatedHeaders)
+                              .length > 0 && (
+                              <div>
+                                <span
+                                  style={{
+                                    fontSize: '10px',
+                                    fontWeight: 600,
+                                    color: 'var(--text-secondary)',
+                                    textTransform: 'uppercase',
+                                  }}
+                                >
+                                  Outgoing Headers Added/Updated:
+                                </span>
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    flexWrap: 'wrap',
+                                    gap: '6px',
+                                    marginTop: '4px',
+                                  }}
+                                >
+                                  {Object.entries(
+                                    preRequestResults.mutatedHeaders,
+                                  ).map(([k, v]) => (
+                                    <span
+                                      key={k}
+                                      style={{
+                                        fontSize: '11px',
+                                        fontFamily: 'var(--font-mono)',
+                                        padding: '2px 6px',
+                                        borderRadius: 'var(--radius-xs)',
+                                        background: 'var(--bg-primary)',
+                                        border: '1px solid var(--border)',
+                                        color: 'var(--accent-text)',
+                                      }}
+                                    >
+                                      <strong>{k}:</strong> {String(v)}
+                                    </span>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            )}
 
                           {/* Mutated Query Params Preview */}
-                          {preRequestResults.mutatedParams && Object.keys(preRequestResults.mutatedParams).length > 0 && (
-                            <div>
-                              <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                                Query Params Added/Updated:
-                              </span>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
-                                {Object.entries(preRequestResults.mutatedParams).map(([k, v]) => (
-                                  <span
-                                    key={k}
-                                    style={{
-                                      fontSize: '11px',
-                                      fontFamily: 'var(--font-mono)',
-                                      padding: '2px 6px',
-                                      borderRadius: 'var(--radius-xs)',
-                                      background: 'var(--bg-primary)',
-                                      border: '1px solid var(--border)',
-                                      color: 'var(--text-primary)',
-                                    }}
-                                  >
-                                    <strong>{k}:</strong> {String(v)}
-                                  </span>
-                                ))}
+                          {preRequestResults.mutatedParams &&
+                            Object.keys(preRequestResults.mutatedParams)
+                              .length > 0 && (
+                              <div>
+                                <span
+                                  style={{
+                                    fontSize: '10px',
+                                    fontWeight: 600,
+                                    color: 'var(--text-secondary)',
+                                    textTransform: 'uppercase',
+                                  }}
+                                >
+                                  Query Params Added/Updated:
+                                </span>
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    flexWrap: 'wrap',
+                                    gap: '6px',
+                                    marginTop: '4px',
+                                  }}
+                                >
+                                  {Object.entries(
+                                    preRequestResults.mutatedParams,
+                                  ).map(([k, v]) => (
+                                    <span
+                                      key={k}
+                                      style={{
+                                        fontSize: '11px',
+                                        fontFamily: 'var(--font-mono)',
+                                        padding: '2px 6px',
+                                        borderRadius: 'var(--radius-xs)',
+                                        background: 'var(--bg-primary)',
+                                        border: '1px solid var(--border)',
+                                        color: 'var(--text-primary)',
+                                      }}
+                                    >
+                                      <strong>{k}:</strong> {String(v)}
+                                    </span>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            )}
 
                           {/* Mutated Environment Variables Preview */}
-                          {preRequestResults.mutatedEnv && Object.keys(preRequestResults.mutatedEnv).length > 0 && (
-                            <div>
-                              <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                                Environment Variables Updated:
-                              </span>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
-                                {Object.entries(preRequestResults.mutatedEnv).map(([k, v]) => (
-                                  <span
-                                    key={k}
-                                    style={{
-                                      fontSize: '11px',
-                                      fontFamily: 'var(--font-mono)',
-                                      padding: '2px 6px',
-                                      borderRadius: 'var(--radius-xs)',
-                                      background: 'var(--bg-primary)',
-                                      border: '1px solid var(--border)',
-                                      color: 'var(--success)',
-                                    }}
-                                  >
-                                    <strong>{k} =</strong> {String(v)}
-                                  </span>
-                                ))}
+                          {preRequestResults.mutatedEnv &&
+                            Object.keys(preRequestResults.mutatedEnv).length >
+                              0 && (
+                              <div>
+                                <span
+                                  style={{
+                                    fontSize: '10px',
+                                    fontWeight: 600,
+                                    color: 'var(--text-secondary)',
+                                    textTransform: 'uppercase',
+                                  }}
+                                >
+                                  Environment Variables Updated:
+                                </span>
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    flexWrap: 'wrap',
+                                    gap: '6px',
+                                    marginTop: '4px',
+                                  }}
+                                >
+                                  {Object.entries(
+                                    preRequestResults.mutatedEnv,
+                                  ).map(([k, v]) => (
+                                    <span
+                                      key={k}
+                                      style={{
+                                        fontSize: '11px',
+                                        fontFamily: 'var(--font-mono)',
+                                        padding: '2px 6px',
+                                        borderRadius: 'var(--radius-xs)',
+                                        background: 'var(--bg-primary)',
+                                        border: '1px solid var(--border)',
+                                        color: 'var(--success)',
+                                      }}
+                                    >
+                                      <strong>{k} =</strong> {String(v)}
+                                    </span>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            )}
 
                           {/* Console Logs Preview */}
-                          {preRequestResults.logs && preRequestResults.logs.length > 0 && (
-                            <div>
-                              <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
-                                Pre-request Script Logs ({preRequestResults.logs.length}):
-                              </span>
-                              <pre
-                                style={{
-                                  margin: '4px 0 0 0',
-                                  padding: '8px 10px',
-                                  background: 'var(--bg-primary)',
-                                  border: '1px solid var(--border)',
-                                  borderRadius: 'var(--radius-xs)',
-                                  fontFamily: 'var(--font-mono)',
-                                  fontSize: '11px',
-                                  color: 'var(--accent-text)',
-                                  whiteSpace: 'pre-wrap',
-                                  maxHeight: '120px',
-                                  overflowY: 'auto',
-                                }}
-                              >
-                                {preRequestResults.logs.join('\n')}
-                              </pre>
-                            </div>
-                          )}
+                          {preRequestResults.logs &&
+                            preRequestResults.logs.length > 0 && (
+                              <div>
+                                <span
+                                  style={{
+                                    fontSize: '10px',
+                                    fontWeight: 600,
+                                    color: 'var(--text-secondary)',
+                                    textTransform: 'uppercase',
+                                  }}
+                                >
+                                  Pre-request Script Logs (
+                                  {preRequestResults.logs.length}):
+                                </span>
+                                <pre
+                                  style={{
+                                    margin: '4px 0 0 0',
+                                    padding: '8px 10px',
+                                    background: 'var(--bg-primary)',
+                                    border: '1px solid var(--border)',
+                                    borderRadius: 'var(--radius-xs)',
+                                    fontFamily: 'var(--font-mono)',
+                                    fontSize: '11px',
+                                    color: 'var(--accent-text)',
+                                    whiteSpace: 'pre-wrap',
+                                    maxHeight: '120px',
+                                    overflowY: 'auto',
+                                  }}
+                                >
+                                  {preRequestResults.logs.join('\n')}
+                                </pre>
+                              </div>
+                            )}
                         </div>
                       )}
 
                       {/* 2. Post-response Test Assertions Card (if executed) */}
                       {scriptTestResults && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <Activity size={14} style={{ color: scriptTestResults.success ? 'var(--success)' : 'var(--error)' }} />
-                              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '12px',
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                              }}
+                            >
+                              <Activity
+                                size={14}
+                                style={{
+                                  color: scriptTestResults.success
+                                    ? 'var(--success)'
+                                    : 'var(--error)',
+                                }}
+                              />
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  color: 'var(--text-primary)',
+                                }}
+                              >
                                 Post-response Test Assertions
                               </span>
                               <span
@@ -3575,15 +4968,31 @@ func main() {
                                   fontSize: '10px',
                                   fontWeight: 600,
                                   borderRadius: 'var(--radius-xs)',
-                                  background: scriptTestResults.success ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                                  color: scriptTestResults.success ? 'var(--success)' : 'var(--error)',
+                                  background: scriptTestResults.success
+                                    ? 'rgba(34, 197, 94, 0.15)'
+                                    : 'rgba(239, 68, 68, 0.15)',
+                                  color: scriptTestResults.success
+                                    ? 'var(--success)'
+                                    : 'var(--error)',
                                 }}
                               >
-                                {scriptTestResults.success ? 'All Assertions Passed' : 'Assertions Failed'}
+                                {scriptTestResults.success
+                                  ? 'All Assertions Passed'
+                                  : 'Assertions Failed'}
                               </span>
                             </div>
-                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                              Passed: {scriptTestResults.tests.filter((t) => t.passed).length} / {scriptTestResults.tests.length}
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                color: 'var(--text-muted)',
+                              }}
+                            >
+                              Passed:{' '}
+                              {
+                                scriptTestResults.tests.filter((t) => t.passed)
+                                  .length
+                              }{' '}
+                              / {scriptTestResults.tests.length}
                             </span>
                           </div>
 
@@ -3599,12 +5008,19 @@ func main() {
                                 fontFamily: 'var(--font-mono)',
                               }}
                             >
-                              <strong>Script Error: </strong> {scriptTestResults.error}
+                              <strong>Script Error: </strong>{' '}
+                              {scriptTestResults.error}
                             </div>
                           )}
 
                           {/* Assertions list */}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '6px',
+                            }}
+                          >
                             {scriptTestResults.tests.map((t, idx) => (
                               <div
                                 key={idx}
@@ -3620,18 +5036,50 @@ func main() {
                                 }}
                               >
                                 {t.passed ? (
-                                  <CheckCircle2 size={14} style={{ color: 'var(--success)', flexShrink: 0 }} />
+                                  <CheckCircle2
+                                    size={14}
+                                    style={{
+                                      color: 'var(--success)',
+                                      flexShrink: 0,
+                                    }}
+                                  />
                                 ) : (
-                                  <XCircle size={14} style={{ color: 'var(--error)', flexShrink: 0 }} />
+                                  <XCircle
+                                    size={14}
+                                    style={{
+                                      color: 'var(--error)',
+                                      flexShrink: 0,
+                                    }}
+                                  />
                                 )}
-                                <span style={{ fontWeight: 500, color: 'var(--text-primary)', flex: 1 }}>
+                                <span
+                                  style={{
+                                    fontWeight: 500,
+                                    color: 'var(--text-primary)',
+                                    flex: 1,
+                                  }}
+                                >
                                   {t.name}
                                 </span>
-                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)' }}>
+                                <span
+                                  style={{
+                                    fontFamily: 'var(--font-mono)',
+                                    fontSize: '10px',
+                                    color: 'var(--text-muted)',
+                                  }}
+                                >
                                   {t.durationMs} ms
                                 </span>
                                 {t.error && (
-                                  <div style={{ width: '100%', marginTop: '4px', fontSize: '11px', color: 'var(--error)', fontFamily: 'var(--font-mono)' }}>
+                                  <div
+                                    style={{
+                                      width: '100%',
+                                      marginTop: '4px',
+                                      fontSize: '11px',
+                                      color: 'var(--error)',
+                                      fontFamily: 'var(--font-mono)',
+                                    }}
+                                  >
                                     {t.error}
                                   </div>
                                 )}
@@ -3642,8 +5090,16 @@ func main() {
                           {/* Console logs */}
                           {scriptTestResults.logs.length > 0 && (
                             <div style={{ marginTop: '4px' }}>
-                              <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                                Test Script Logs ({scriptTestResults.logs.length}):
+                              <span
+                                style={{
+                                  fontSize: '10px',
+                                  fontWeight: 700,
+                                  color: 'var(--text-muted)',
+                                  textTransform: 'uppercase',
+                                }}
+                              >
+                                Test Script Logs (
+                                {scriptTestResults.logs.length}):
                               </span>
                               <pre
                                 style={{
@@ -3670,7 +5126,11 @@ func main() {
                   ) : (
                     <div className="empty-state">
                       <Activity size={20} />
-                      <span>No test assertions or pre-request scripts executed. Add scripts in the Pre-request or Tests tab in the workbench above.</span>
+                      <span>
+                        No test assertions or pre-request scripts executed. Add
+                        scripts in the Pre-request or Tests tab in the workbench
+                        above.
+                      </span>
                     </div>
                   )}
                 </div>

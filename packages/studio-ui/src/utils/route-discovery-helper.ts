@@ -16,7 +16,10 @@ export interface TagWithCount {
  * Extracts and normalises route metadata (summary, description, tags, operationId)
  * from the route item, falling back to OpenAPI specification if needed.
  */
-export function getRouteMetadata(route: RouteItem, openapi?: any): RouteMetadata {
+export function getRouteMetadata(
+  route: RouteItem,
+  openapi?: any,
+): RouteMetadata {
   const methodLower = route.method.toLowerCase();
   const openapiOp = openapi?.paths?.[route.path]?.[methodLower];
 
@@ -27,7 +30,8 @@ export function getRouteMetadata(route: RouteItem, openapi?: any): RouteMetadata
 
   const description =
     (typeof route.description === 'string' && route.description.trim()) ||
-    (typeof openapiOp?.description === 'string' && openapiOp.description.trim()) ||
+    (typeof openapiOp?.description === 'string' &&
+      openapiOp.description.trim()) ||
     '';
 
   const tagsSet = new Set<string>();
@@ -40,7 +44,8 @@ export function getRouteMetadata(route: RouteItem, openapi?: any): RouteMetadata
 
   const operationId =
     (typeof route.operationId === 'string' && route.operationId.trim()) ||
-    (typeof openapiOp?.operationId === 'string' && openapiOp.operationId.trim()) ||
+    (typeof openapiOp?.operationId === 'string' &&
+      openapiOp.operationId.trim()) ||
     '';
 
   return {
@@ -64,7 +69,13 @@ export function filterRoutes(
     excludeWs?: boolean;
   },
 ): RouteItem[] {
-  const { query = '', method = 'ALL', tag = 'ALL', openapi, excludeWs = true } = options;
+  const {
+    query = '',
+    method = 'ALL',
+    tag = 'ALL',
+    openapi,
+    excludeWs = true,
+  } = options;
   const cleanQuery = query.trim().toLowerCase();
   const cleanMethod = method.trim().toUpperCase();
   const cleanTag = tag.trim().toLowerCase();
@@ -90,8 +101,12 @@ export function filterRoutes(
       const matchPath = route.path.toLowerCase().includes(cleanQuery);
       const matchMethod = route.method.toLowerCase().includes(cleanQuery);
       const matchSummary = meta.summary.toLowerCase().includes(cleanQuery);
-      const matchDescription = meta.description.toLowerCase().includes(cleanQuery);
-      const matchTags = meta.tags.some((t) => t.toLowerCase().includes(cleanQuery));
+      const matchDescription = meta.description
+        .toLowerCase()
+        .includes(cleanQuery);
+      const matchTags = meta.tags.some((t) =>
+        t.toLowerCase().includes(cleanQuery),
+      );
       const matchOpId = meta.operationId.toLowerCase().includes(cleanQuery);
 
       if (
@@ -113,7 +128,10 @@ export function filterRoutes(
 /**
  * Extracts all unique tags from routes along with their occurrence count.
  */
-export function extractAllTags(routes: RouteItem[], openapi?: any): TagWithCount[] {
+export function extractAllTags(
+  routes: RouteItem[],
+  openapi?: any,
+): TagWithCount[] {
   const map = new Map<string, number>();
 
   for (const route of routes) {
@@ -132,7 +150,9 @@ export function extractAllTags(routes: RouteItem[], openapi?: any): TagWithCount
 /**
  * Computes route counts grouped by HTTP method.
  */
-export function extractMethodCounts(routes: RouteItem[]): Record<string, number> {
+export function extractMethodCounts(
+  routes: RouteItem[],
+): Record<string, number> {
   const counts: Record<string, number> = {
     ALL: 0,
     GET: 0,

@@ -18,7 +18,10 @@ import { apiFetch, getToken } from '../utils/api';
 
 interface RecorderProps {
   onReplay?: (method: string, path: string) => void;
-  onInspectCode?: (filePath: string, lineNumber: number) => Promise<void> | void;
+  onInspectCode?: (
+    filePath: string,
+    lineNumber: number,
+  ) => Promise<void> | void;
 }
 
 export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
@@ -268,7 +271,8 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                 color: 'var(--text-muted)',
               }}
             >
-              Capture, inspect, and export live HTTP & WebSocket transactions with lifecycle telemetry
+              Capture, inspect, and export live HTTP & WebSocket transactions
+              with lifecycle telemetry
             </p>
           </div>
         </div>
@@ -436,7 +440,8 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
               lineHeight: '1.5',
             }}
           >
-            Fire some requests via the Request Tester or host API to inspect transaction lifecycles, database queries, and middleware traces.
+            Fire some requests via the Request Tester or host API to inspect
+            transaction lifecycles, database queries, and middleware traces.
           </div>
         </div>
       ) : (
@@ -618,7 +623,9 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                         {e.requestId.slice(0, 8)}
                       </span>
                       <span>
-                        {new Date(e.request?.timestamp || Date.now()).toLocaleTimeString()}
+                        {new Date(
+                          e.request?.timestamp || Date.now(),
+                        ).toLocaleTimeString()}
                       </span>
                     </div>
                   </div>
@@ -724,11 +731,15 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                           whiteSpace: 'nowrap',
                         }}
                       >
-                        {selectedEntry.request?.method} {selectedEntry.request?.path}
+                        {selectedEntry.request?.method}{' '}
+                        {selectedEntry.request?.path}
                       </div>
                     </button>
 
-                    <ArrowRight size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                    <ArrowRight
+                      size={14}
+                      style={{ color: 'var(--text-muted)', flexShrink: 0 }}
+                    />
 
                     {/* Node 2: Middlewares */}
                     <button
@@ -778,7 +789,10 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                       </div>
                     </button>
 
-                    <ArrowRight size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                    <ArrowRight
+                      size={14}
+                      style={{ color: 'var(--text-muted)', flexShrink: 0 }}
+                    />
 
                     {/* Node 3: Database Queries */}
                     <button
@@ -828,7 +842,10 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                       </div>
                     </button>
 
-                    <ArrowRight size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                    <ArrowRight
+                      size={14}
+                      style={{ color: 'var(--text-muted)', flexShrink: 0 }}
+                    />
 
                     {/* Node 4: Server Response */}
                     <button
@@ -874,7 +891,8 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                           fontWeight: 600,
                           fontFamily: 'var(--font-mono)',
                           color: selectedEntry.response
-                            ? getStatusBadge(selectedEntry.response.status).color
+                            ? getStatusBadge(selectedEntry.response.status)
+                                .color
                             : 'var(--text-muted)',
                         }}
                       >
@@ -933,7 +951,8 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                       <div
                         style={{
                           display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+                          gridTemplateColumns:
+                            'repeat(auto-fit, minmax(300px, 1fr))',
                           gap: '16px',
                         }}
                       >
@@ -968,7 +987,11 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                               className="btn btn-secondary"
                               onClick={() =>
                                 handleCopy(
-                                  JSON.stringify(selectedEntry.request?.headers, null, 2),
+                                  JSON.stringify(
+                                    selectedEntry.request?.headers,
+                                    null,
+                                    2,
+                                  ),
                                   'req-headers',
                                 )
                               }
@@ -999,7 +1022,11 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                               color: 'var(--text-secondary)',
                             }}
                           >
-                            {JSON.stringify(selectedEntry.request?.headers || {}, null, 2)}
+                            {JSON.stringify(
+                              selectedEntry.request?.headers || {},
+                              null,
+                              2,
+                            )}
                           </pre>
                         </div>
 
@@ -1036,8 +1063,8 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                                 handleCopy(
                                   JSON.stringify(
                                     selectedEntry.request?.body ||
-                                    selectedEntry.request?.query ||
-                                    {},
+                                      selectedEntry.request?.query ||
+                                      {},
                                     null,
                                     2,
                                   ),
@@ -1072,10 +1099,19 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                             }}
                           >
                             {selectedEntry.request?.body
-                              ? JSON.stringify(selectedEntry.request.body, null, 2)
+                              ? JSON.stringify(
+                                  selectedEntry.request.body,
+                                  null,
+                                  2,
+                                )
                               : selectedEntry.request?.query &&
-                                Object.keys(selectedEntry.request.query).length > 0
-                                ? JSON.stringify(selectedEntry.request.query, null, 2)
+                                  Object.keys(selectedEntry.request.query)
+                                    .length > 0
+                                ? JSON.stringify(
+                                    selectedEntry.request.query,
+                                    null,
+                                    2,
+                                  )
                                 : 'No payload or query parameters'}
                           </pre>
                         </div>
@@ -1113,44 +1149,62 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                         </h4>
                       </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {selectedEntry.timeline && selectedEntry.timeline.length > 0 ? (
-                          selectedEntry.timeline.map((step: any, idx: number) => (
-                            <div
-                              key={idx}
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                background: 'var(--bg-primary)',
-                                border: '1px solid var(--border)',
-                                borderRadius: 'var(--radius-sm)',
-                                padding: '10px 14px',
-                              }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <CheckCircle2 size={13} style={{ color: 'var(--success)' }} />
-                                <span
-                                  style={{
-                                    fontSize: '12px',
-                                    fontWeight: 500,
-                                    color: 'var(--text-primary)',
-                                  }}
-                                >
-                                  {step.name}
-                                </span>
-                              </div>
-                              <span
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px',
+                        }}
+                      >
+                        {selectedEntry.timeline &&
+                        selectedEntry.timeline.length > 0 ? (
+                          selectedEntry.timeline.map(
+                            (step: any, idx: number) => (
+                              <div
+                                key={idx}
                                 style={{
-                                  fontSize: '11px',
-                                  color: 'var(--accent)',
-                                  fontFamily: 'var(--font-mono)',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  background: 'var(--bg-primary)',
+                                  border: '1px solid var(--border)',
+                                  borderRadius: 'var(--radius-sm)',
+                                  padding: '10px 14px',
                                 }}
                               >
-                                {step.duration.toFixed(2)} ms
-                              </span>
-                            </div>
-                          ))
+                                <div
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                  }}
+                                >
+                                  <CheckCircle2
+                                    size={13}
+                                    style={{ color: 'var(--success)' }}
+                                  />
+                                  <span
+                                    style={{
+                                      fontSize: '12px',
+                                      fontWeight: 500,
+                                      color: 'var(--text-primary)',
+                                    }}
+                                  >
+                                    {step.name}
+                                  </span>
+                                </div>
+                                <span
+                                  style={{
+                                    fontSize: '11px',
+                                    color: 'var(--accent)',
+                                    fontFamily: 'var(--font-mono)',
+                                  }}
+                                >
+                                  {step.duration.toFixed(2)} ms
+                                </span>
+                              </div>
+                            ),
+                          )
                         ) : (
                           <div
                             style={{
@@ -1161,7 +1215,8 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                               padding: '24px',
                             }}
                           >
-                            No custom middleware timing markers captured for this transaction.
+                            No custom middleware timing markers captured for
+                            this transaction.
                           </div>
                         )}
                       </div>
@@ -1194,7 +1249,8 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                             color: 'var(--text-primary)',
                           }}
                         >
-                          SQL & ORM Operations ({selectedEntry.queries?.length || 0})
+                          SQL & ORM Operations (
+                          {selectedEntry.queries?.length || 0})
                         </h4>
                       </div>
 
@@ -1207,7 +1263,8 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                           overflowY: 'auto',
                         }}
                       >
-                        {!selectedEntry.queries || selectedEntry.queries.length === 0 ? (
+                        {!selectedEntry.queries ||
+                        selectedEntry.queries.length === 0 ? (
                           <div
                             style={{
                               fontStyle: 'italic',
@@ -1217,7 +1274,8 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                               padding: '28px',
                             }}
                           >
-                            No database queries were executed during this transaction.
+                            No database queries were executed during this
+                            transaction.
                           </div>
                         ) : (
                           selectedEntry.queries.map((q: any, idx: number) => (
@@ -1340,7 +1398,8 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                         <div
                           style={{
                             display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+                            gridTemplateColumns:
+                              'repeat(auto-fit, minmax(300px, 1fr))',
                             gap: '16px',
                           }}
                         >
@@ -1449,13 +1508,16 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                                 className="btn btn-secondary"
                                 onClick={() =>
                                   handleCopy(
-                                    typeof selectedEntry.response.body === 'object'
+                                    typeof selectedEntry.response.body ===
+                                      'object'
                                       ? JSON.stringify(
-                                        selectedEntry.response.body,
-                                        null,
-                                        2,
-                                      )
-                                      : String(selectedEntry.response.body || ''),
+                                          selectedEntry.response.body,
+                                          null,
+                                          2,
+                                        )
+                                      : String(
+                                          selectedEntry.response.body || '',
+                                        ),
                                     'res-body',
                                   )
                                 }
@@ -1487,12 +1549,13 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                               }}
                             >
                               {selectedEntry.response.body
-                                ? typeof selectedEntry.response.body === 'object'
+                                ? typeof selectedEntry.response.body ===
+                                  'object'
                                   ? JSON.stringify(
-                                    selectedEntry.response.body,
-                                    null,
-                                    2,
-                                  )
+                                      selectedEntry.response.body,
+                                      null,
+                                      2,
+                                    )
                                   : String(selectedEntry.response.body)
                                 : 'Empty Response Body'}
                             </pre>
@@ -1508,7 +1571,8 @@ export const Recorder: React.FC<RecorderProps> = ({ onReplay }) => {
                             padding: '24px',
                           }}
                         >
-                          Response has not been captured yet or transaction is incomplete.
+                          Response has not been captured yet or transaction is
+                          incomplete.
                         </div>
                       )}
                     </div>

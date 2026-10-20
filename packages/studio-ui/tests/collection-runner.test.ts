@@ -15,8 +15,8 @@ describe('Collection Runner & Schema Validation', () => {
   beforeEach(() => {
     vi.stubGlobal('localStorage', {
       getItem: () => null,
-      setItem: () => { },
-      removeItem: () => { },
+      setItem: () => {},
+      removeItem: () => {},
     });
   });
 
@@ -59,7 +59,9 @@ describe('Collection Runner & Schema Validation', () => {
       const invalidBody = { token: 'jwt-xyz' };
       const res = validateResponseAgainstSchema(invalidBody, schema);
       expect(res.valid).toBe(false);
-      expect(res.errors.some((e) => e.includes("Missing required field 'user'"))).toBe(true);
+      expect(
+        res.errors.some((e) => e.includes("Missing required field 'user'")),
+      ).toBe(true);
     });
 
     it('should detect field type mismatches', () => {
@@ -77,7 +79,9 @@ describe('Collection Runner & Schema Validation', () => {
       const invalidBody = { price: 'not-a-number' };
       const res = validateResponseAgainstSchema(invalidBody, schema);
       expect(res.valid).toBe(false);
-      expect(res.errors.some((e) => e.includes("expected type 'number'"))).toBe(true);
+      expect(res.errors.some((e) => e.includes("expected type 'number'"))).toBe(
+        true,
+      );
     });
 
     it('should pass cleanly if no response schema is defined', () => {
@@ -122,39 +126,41 @@ describe('Collection Runner & Schema Validation', () => {
 
   describe('runCollectionBatch', () => {
     it('should execute collection requests sequentially and pass downstream chained tokens', async () => {
-      const mockFetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
-        const body = JSON.parse(String(init?.body || '{}'));
+      const mockFetch = vi
+        .fn()
+        .mockImplementation(async (url: string, init?: RequestInit) => {
+          const body = JSON.parse(String(init?.body || '{}'));
 
-        if (body.path.includes('/login')) {
+          if (body.path.includes('/login')) {
+            return {
+              ok: true,
+              json: async () => ({
+                status: 200,
+                duration: 25,
+                body: { token: 'auth-chain-token', userId: 'usr-999' },
+                headers: { 'content-type': 'application/json' },
+              }),
+            };
+          }
+
+          if (body.path.includes('/profile')) {
+            const authHeader = body.headers?.['Authorization'] || '';
+            return {
+              ok: true,
+              json: async () => ({
+                status: authHeader.includes('auth-chain-token') ? 200 : 401,
+                duration: 35,
+                body: { name: 'Alex' },
+                headers: { 'content-type': 'application/json' },
+              }),
+            };
+          }
+
           return {
             ok: true,
-            json: async () => ({
-              status: 200,
-              duration: 25,
-              body: { token: 'auth-chain-token', userId: 'usr-999' },
-              headers: { 'content-type': 'application/json' },
-            }),
+            json: async () => ({ status: 200, duration: 15, body: {} }),
           };
-        }
-
-        if (body.path.includes('/profile')) {
-          const authHeader = body.headers?.['Authorization'] || '';
-          return {
-            ok: true,
-            json: async () => ({
-              status: authHeader.includes('auth-chain-token') ? 200 : 401,
-              duration: 35,
-              body: { name: 'Alex' },
-              headers: { 'content-type': 'application/json' },
-            }),
-          };
-        }
-
-        return {
-          ok: true,
-          json: async () => ({ status: 200, duration: 15, body: {} }),
-        };
-      });
+        });
 
       vi.stubGlobal('fetch', mockFetch);
 
@@ -181,9 +187,7 @@ describe('Collection Runner & Schema Validation', () => {
             path: '/api/v1/users/profile',
             queryParams: [],
             pathParams: [],
-            headers: [
-              { key: 'Authorization', value: 'Bearer {{token}}' },
-            ],
+            headers: [{ key: 'Authorization', value: 'Bearer {{token}}' }],
             bodyMode: 'none',
             body: '',
             bodyFields: [],
@@ -213,7 +217,9 @@ describe('Collection Runner & Schema Validation', () => {
 
       // Verify second request used chained token
       const secondCallBody = JSON.parse(mockFetch.mock.calls[1][1].body);
-      expect(secondCallBody.headers['Authorization']).toBe('Bearer auth-chain-token');
+      expect(secondCallBody.headers['Authorization']).toBe(
+        'Bearer auth-chain-token',
+      );
     });
 
     it('should halt execution when stopOnError is enabled and request fails', async () => {
@@ -329,7 +335,9 @@ describe('Collection Runner & Schema Validation', () => {
             path: '/api/profile',
             queryParams: [],
             pathParams: [],
-            headers: [{ key: 'Authorization', value: 'Bearer {{bearerToken}}' }],
+            headers: [
+              { key: 'Authorization', value: 'Bearer {{bearerToken}}' },
+            ],
             bodyMode: 'none',
             body: '',
             bodyFields: [],
@@ -358,7 +366,11 @@ describe('Collection Runner & Schema Validation', () => {
       // Verify request 2 assertions
       const profileResult = report.results[1];
       expect(profileResult.passed).toBe(true);
-      expect(profileResult.assertions.some((a) => a.name === 'Profile request had auth header' && a.passed)).toBe(true);
+      expect(
+        profileResult.assertions.some(
+          (a) => a.name === 'Profile request had auth header' && a.passed,
+        ),
+      ).toBe(true);
     });
   });
 

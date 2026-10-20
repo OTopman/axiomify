@@ -29,7 +29,7 @@ describe('RouteSelector component', () => {
         routes={mockRoutes}
         selectedMethod="GET"
         selectedPath=""
-        onSelectRoute={() => { }}
+        onSelectRoute={() => {}}
       />,
     );
     expect(markup).toContain('Choose a discovered route to pre-fill request');
@@ -43,7 +43,7 @@ describe('RouteSelector component', () => {
         routes={mockRoutes}
         selectedMethod="GET"
         selectedPath="/api/v1/users"
-        onSelectRoute={() => { }}
+        onSelectRoute={() => {}}
       />,
     );
     expect(markup).toContain('/api/v1/users');

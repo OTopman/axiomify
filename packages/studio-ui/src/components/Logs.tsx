@@ -8,7 +8,7 @@ import {
   Search,
   Terminal,
   Trash2,
-  X
+  X,
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { apiFetch, getToken } from '../utils/api';
@@ -41,7 +41,9 @@ export const Logs: React.FC<LogsProps> = ({
   const [logFilterLevel, setLogFilterLevel] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [showInternal, setShowInternal] = useState(false);
-  const [expandedStacks, setExpandedStacks] = useState<Record<string, boolean>>({});
+  const [expandedStacks, setExpandedStacks] = useState<Record<string, boolean>>(
+    {},
+  );
   const [isRegexSearch, setIsRegexSearch] = useState(false);
   const [timeFilterRange, setTimeFilterRange] = useState('ALL');
   const [isLiveStreaming, setIsLiveStreaming] = useState(true);
@@ -150,7 +152,7 @@ export const Logs: React.FC<LogsProps> = ({
       try {
         const parsed = JSON.parse(trimmed);
         return <StructuredJsonViewer data={parsed} />;
-      } catch (e) { }
+      } catch (e) {}
     }
     return msg;
   };
@@ -218,7 +220,15 @@ export const Logs: React.FC<LogsProps> = ({
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Terminal size={15} style={{ color: 'var(--accent)' }} />
-            <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--text-primary)' }}>
+            <span
+              style={{
+                fontSize: '12px',
+                fontWeight: 700,
+                letterSpacing: '0.05em',
+                textTransform: 'uppercase',
+                color: 'var(--text-primary)',
+              }}
+            >
               Logs Observatory
             </span>
           </div>
@@ -232,7 +242,9 @@ export const Logs: React.FC<LogsProps> = ({
               borderRadius: '12px',
               fontSize: '11px',
               fontFamily: 'var(--font-mono)',
-              background: isLiveStreaming ? 'rgba(16, 185, 129, 0.1)' : 'var(--bg-tertiary)',
+              background: isLiveStreaming
+                ? 'rgba(16, 185, 129, 0.1)'
+                : 'var(--bg-tertiary)',
               border: `1px solid ${isLiveStreaming ? 'rgba(16, 185, 129, 0.25)' : 'var(--border)'}`,
               color: isLiveStreaming ? 'var(--success)' : 'var(--text-muted)',
               fontWeight: 600,
@@ -243,12 +255,18 @@ export const Logs: React.FC<LogsProps> = ({
                 width: '6px',
                 height: '6px',
                 borderRadius: '50%',
-                background: isLiveStreaming ? 'var(--success)' : 'var(--text-muted)',
-                boxShadow: isLiveStreaming ? '0 0 8px rgba(16, 185, 129, 0.5)' : 'none',
+                background: isLiveStreaming
+                  ? 'var(--success)'
+                  : 'var(--text-muted)',
+                boxShadow: isLiveStreaming
+                  ? '0 0 8px rgba(16, 185, 129, 0.5)'
+                  : 'none',
               }}
             />
             <span>{isLiveStreaming ? 'Live' : 'Paused'}</span>
-            <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>• {filteredLogs.length} events</span>
+            <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
+              • {filteredLogs.length} events
+            </span>
           </div>
 
           {filterRequestId && (
@@ -281,7 +299,12 @@ export const Logs: React.FC<LogsProps> = ({
           <button
             type="button"
             className="btn btn-ghost"
-            style={{ padding: '4px 8px', fontSize: '11px', gap: '5px', color: 'var(--text-secondary)' }}
+            style={{
+              padding: '4px 8px',
+              fontSize: '11px',
+              gap: '5px',
+              color: 'var(--text-secondary)',
+            }}
             onClick={() => setIsLiveStreaming(!isLiveStreaming)}
             title={isLiveStreaming ? 'Pause log stream' : 'Resume live stream'}
           >
@@ -328,27 +351,38 @@ export const Logs: React.FC<LogsProps> = ({
       >
         {/* Level Filters */}
         <div className="log-filters-group">
-          {(['ALL', 'INFO', 'WARN', 'ERROR', 'DEBUG', 'TRACE'] as const).map((level) => {
-            const isActive = logFilterLevel === level;
-            const levelClass = level.toLowerCase();
-            return (
-              <button
-                key={level}
-                type="button"
-                className={`log-level-pill ${isActive ? `active level-${levelClass}` : ''}`}
-                onClick={() => setLogFilterLevel(level)}
-              >
-                {level === 'ALL' ? 'All' : level}
-              </button>
-            );
-          })}
+          {(['ALL', 'INFO', 'WARN', 'ERROR', 'DEBUG', 'TRACE'] as const).map(
+            (level) => {
+              const isActive = logFilterLevel === level;
+              const levelClass = level.toLowerCase();
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  className={`log-level-pill ${isActive ? `active level-${levelClass}` : ''}`}
+                  onClick={() => setLogFilterLevel(level)}
+                >
+                  {level === 'ALL' ? 'All' : level}
+                </button>
+              );
+            },
+          )}
         </div>
 
         {/* Search & Modifiers */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            flexWrap: 'wrap',
+          }}
+        >
           {/* Time Filter */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Window:</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              Window:
+            </span>
             <select
               value={timeFilterRange}
               onChange={(e) => setTimeFilterRange(e.target.value)}
@@ -477,7 +511,13 @@ export const Logs: React.FC<LogsProps> = ({
             }}
           >
             <Terminal size={32} style={{ opacity: 0.3 }} />
-            <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+            <div
+              style={{
+                fontSize: '13px',
+                fontWeight: 600,
+                color: 'var(--text-secondary)',
+              }}
+            >
               No log events captured
             </div>
             <div style={{ fontSize: '11px', maxWidth: '360px' }}>
@@ -489,7 +529,11 @@ export const Logs: React.FC<LogsProps> = ({
               <button
                 type="button"
                 className="btn btn-secondary"
-                style={{ padding: '4px 10px', fontSize: '11px', marginTop: '6px' }}
+                style={{
+                  padding: '4px 10px',
+                  fontSize: '11px',
+                  marginTop: '6px',
+                }}
                 onClick={() => {
                   setSearchTerm('');
                   setLogFilterLevel('ALL');
@@ -546,9 +590,12 @@ export const Logs: React.FC<LogsProps> = ({
                 {log.requestId && (
                   <span
                     onClick={() => {
-                      const event = new CustomEvent('axiomify-filter-request-id', {
-                        detail: log.requestId,
-                      });
+                      const event = new CustomEvent(
+                        'axiomify-filter-request-id',
+                        {
+                          detail: log.requestId,
+                        },
+                      );
                       window.dispatchEvent(event);
                     }}
                     title="Click to isolate logs for this request ID"
@@ -612,7 +659,12 @@ export const Logs: React.FC<LogsProps> = ({
                       <button
                         type="button"
                         className="btn btn-ghost"
-                        style={{ padding: '1px 6px', fontSize: '10px', height: 'auto', color: 'var(--accent-text)' }}
+                        style={{
+                          padding: '1px 6px',
+                          fontSize: '10px',
+                          height: 'auto',
+                          color: 'var(--accent-text)',
+                        }}
                         onClick={() =>
                           setExpandedStacks((prev) => ({
                             ...prev,
@@ -620,7 +672,9 @@ export const Logs: React.FC<LogsProps> = ({
                           }))
                         }
                       >
-                        {isStackOpen ? '▾ Hide Stack Trace' : '▸ Show Stack Trace'}
+                        {isStackOpen
+                          ? '▾ Hide Stack Trace'
+                          : '▸ Show Stack Trace'}
                       </button>
                       {isStackOpen && (
                         <pre

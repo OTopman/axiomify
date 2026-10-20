@@ -74,7 +74,7 @@ import {
   Webhook,
   Wifi,
   X,
-  Zap
+  Zap,
 } from 'lucide-react';
 
 // Components
@@ -119,27 +119,30 @@ const RequestBuilder = lazy(() =>
 
 const editorFallback = (
   <div className="empty-state" style={{ minHeight: '300px' }}>
-    <div className="spinner" style={{ width: '20px', height: '20px', borderWidth: '2px' }} />
+    <div
+      className="spinner"
+      style={{ width: '20px', height: '20px', borderWidth: '2px' }}
+    />
     <span>Loading editor environment…</span>
   </div>
 );
 
 export function App() {
   const dispatch = useAppDispatch();
-  const { activeTab, isDark, sidebarCollapsed, commandPaletteOpen } = useAppSelector(
-    (state) => state.ui,
-  );
+  const { activeTab, isDark, sidebarCollapsed, commandPaletteOpen } =
+    useAppSelector((state) => state.ui);
   const discovery = useAppSelector((state) => state.discovery.data);
   const loadingDiscovery = useAppSelector((state) => state.discovery.loading);
-  const { environments, selectedEnvironmentId, environmentVariables } = useAppSelector(
-    (state) => state.environments,
-  );
+  const { environments, selectedEnvironmentId, environmentVariables } =
+    useAppSelector((state) => state.environments);
   const [envModalOpen, setEnvModalOpen] = useState(false);
   const [envCopiedKey, setEnvCopiedKey] = useState<string | null>(null);
   const [envSaveSuccess, setEnvSaveSuccess] = useState(false);
-  const { connected: wsConnected, buildError, reloadError } = useAppSelector(
-    (state) => state.websocket,
-  );
+  const {
+    connected: wsConnected,
+    buildError,
+    reloadError,
+  } = useAppSelector((state) => state.websocket);
 
   const [token, setTokenState] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
@@ -185,6 +188,31 @@ export function App() {
   // Export report dropdown
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
+  // Floating tooltip state for collapsed sidebar
+  const [sidebarTooltip, setSidebarTooltip] = useState<{
+    text: string;
+    category?: string;
+    badge?: string | number;
+    top: number;
+  } | null>(null);
+
+  // Clear tooltip when sidebar collapses or expands
+  useEffect(() => {
+    setSidebarTooltip(null);
+  }, [sidebarCollapsed]);
+
+  // Dismiss tooltip on any global scroll or resize
+  useEffect(() => {
+    if (!sidebarTooltip) return;
+    const hide = () => setSidebarTooltip(null);
+    window.addEventListener('scroll', hide, true);
+    window.addEventListener('resize', hide);
+    return () => {
+      window.removeEventListener('scroll', hide, true);
+      window.removeEventListener('resize', hide);
+    };
+  }, [sidebarTooltip]);
+
   // Sync token and initial state
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -207,7 +235,10 @@ export function App() {
     const savedTheme = localStorage.getItem('axiomify_studio_theme');
     const initialDark = savedTheme ? savedTheme === 'dark' : true;
     dispatch(setTheme(initialDark));
-    document.documentElement.setAttribute('data-theme', initialDark ? 'dark' : 'light');
+    document.documentElement.setAttribute(
+      'data-theme',
+      initialDark ? 'dark' : 'light',
+    );
 
     const handleUnauthorized = () => {
       handleLogout();
@@ -220,7 +251,10 @@ export function App() {
     };
 
     window.addEventListener('axiomify-unauthorized', handleUnauthorized);
-    window.addEventListener('axiomify-filter-request-id', handleFilterRequestId);
+    window.addEventListener(
+      'axiomify-filter-request-id',
+      handleFilterRequestId,
+    );
 
     if (token || urlToken) {
       loadDiscovery();
@@ -228,7 +262,10 @@ export function App() {
 
     return () => {
       window.removeEventListener('axiomify-unauthorized', handleUnauthorized);
-      window.removeEventListener('axiomify-filter-request-id', handleFilterRequestId);
+      window.removeEventListener(
+        'axiomify-filter-request-id',
+        handleFilterRequestId,
+      );
     };
   }, []);
 
@@ -277,9 +314,15 @@ export function App() {
               loadDiscovery();
               dispatch(recordReload());
             } else if (msg.type === 'build_error') {
-              dispatch(setBuildError(msg.error || 'Build failed during reload'));
+              dispatch(
+                setBuildError(msg.error || 'Build failed during reload'),
+              );
             } else if (msg.type === 'reload_error') {
-              dispatch(setReloadError(msg.error || 'Server error restarting application'));
+              dispatch(
+                setReloadError(
+                  msg.error || 'Server error restarting application',
+                ),
+              );
             }
           } catch (err) {
             console.error('Failed to parse WS message:', err);
@@ -361,7 +404,10 @@ export function App() {
     const nextDark = !isDark;
     dispatch(toggleTheme());
     localStorage.setItem('axiomify_studio_theme', nextDark ? 'dark' : 'light');
-    document.documentElement.setAttribute('data-theme', nextDark ? 'dark' : 'light');
+    document.documentElement.setAttribute(
+      'data-theme',
+      nextDark ? 'dark' : 'light',
+    );
   };
 
   const triggerExportReport = (format: string) => {
@@ -381,7 +427,10 @@ export function App() {
     dispatch(setActiveTab('ws-tester'));
   };
 
-  const handleOpenSourceViewer = async (filePath: string, lineNumber: number) => {
+  const handleOpenSourceViewer = async (
+    filePath: string,
+    lineNumber: number,
+  ) => {
     try {
       const res = await apiFetch('/__studio/api/debug/source', {
         method: 'POST',
@@ -533,45 +582,65 @@ export function App() {
 
   if (!token) {
     return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '100vh',
-        background: 'var(--bg-primary)',
-        padding: '20px',
-      }}>
-        <div style={{
-          background: 'var(--bg-secondary)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-lg)',
-          boxShadow: 'var(--shadow-lg)',
-          padding: '32px',
-          width: '100%',
-          maxWidth: '400px',
-          textAlign: 'center',
-        }}>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: 'var(--radius-md)',
-            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff',
-            fontWeight: 700,
-            fontSize: '18px',
-            margin: '0 auto 16px',
-            boxShadow: '0 0 20px rgba(99, 102, 241, 0.35)',
-          }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '100vh',
+          background: 'var(--bg-primary)',
+          padding: '20px',
+        }}
+      >
+        <div
+          style={{
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-lg)',
+            boxShadow: 'var(--shadow-lg)',
+            padding: '32px',
+            width: '100%',
+            maxWidth: '400px',
+            textAlign: 'center',
+          }}
+        >
+          <div
+            style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: 'var(--radius-md)',
+              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+              fontWeight: 700,
+              fontSize: '18px',
+              margin: '0 auto 16px',
+              boxShadow: '0 0 20px rgba(99, 102, 241, 0.35)',
+            }}
+          >
             A
           </div>
-          <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
+          <h2
+            style={{
+              fontSize: '18px',
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              marginBottom: '8px',
+            }}
+          >
             Axiomify Studio
           </h2>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '20px' }}>
-            Enter the access token printed in your terminal to unlock the API explorer.
+          <p
+            style={{
+              fontSize: '12px',
+              color: 'var(--text-muted)',
+              marginBottom: '20px',
+            }}
+          >
+            Enter the access token printed in your terminal to unlock the API
+            explorer.
           </p>
           <input
             type="password"
@@ -590,7 +659,10 @@ export function App() {
             Access Studio
           </button>
           {loginError && (
-            <div className="error-banner" style={{ marginTop: '14px', textAlign: 'left' }}>
+            <div
+              className="error-banner"
+              style={{ marginTop: '14px', textAlign: 'left' }}
+            >
               {loginError}
             </div>
           )}
@@ -631,40 +703,21 @@ export function App() {
     config: { group: 'Tooling & Governance', name: 'Configuration' },
   };
 
-  const breadcrumb = TAB_LABELS[activeTab] || { group: 'Studio', name: activeTab };
-
-  // Floating tooltip state for collapsed sidebar
-  const [sidebarTooltip, setSidebarTooltip] = useState<{
-    text: string;
-    category?: string;
-    badge?: string | number;
-    top: number;
-  } | null>(null);
-
-  // Clear tooltip when sidebar collapses or expands
-  useEffect(() => {
-    setSidebarTooltip(null);
-  }, [sidebarCollapsed]);
-
-  // Dismiss tooltip on any global scroll or resize
-  useEffect(() => {
-    if (!sidebarTooltip) return;
-    const hide = () => setSidebarTooltip(null);
-    window.addEventListener('scroll', hide, true);
-    window.addEventListener('resize', hide);
-    return () => {
-      window.removeEventListener('scroll', hide, true);
-      window.removeEventListener('resize', hide);
-    };
-  }, [sidebarTooltip]);
+  const breadcrumb = TAB_LABELS[activeTab] || {
+    group: 'Studio',
+    name: activeTab,
+  };
 
   const handleSidebarMouseOver = (e: React.MouseEvent) => {
     if (!sidebarCollapsed) return;
-    const target = (e.target as HTMLElement).closest('[data-tooltip]') as HTMLElement | null;
+    const target = (e.target as HTMLElement).closest(
+      '[data-tooltip]',
+    ) as HTMLElement | null;
     if (target) {
       const text = target.getAttribute('data-tooltip');
       if (text) {
-        const category = target.getAttribute('data-tooltip-category') || undefined;
+        const category =
+          target.getAttribute('data-tooltip-category') || undefined;
         const badge = target.getAttribute('data-tooltip-badge') || undefined;
         const rect = target.getBoundingClientRect();
         setSidebarTooltip({
@@ -681,11 +734,14 @@ export function App() {
 
   const handleSidebarFocusCapture = (e: React.FocusEvent) => {
     if (!sidebarCollapsed) return;
-    const target = (e.target as HTMLElement).closest('[data-tooltip]') as HTMLElement | null;
+    const target = (e.target as HTMLElement).closest(
+      '[data-tooltip]',
+    ) as HTMLElement | null;
     if (target) {
       const text = target.getAttribute('data-tooltip');
       if (text) {
-        const category = target.getAttribute('data-tooltip-category') || undefined;
+        const category =
+          target.getAttribute('data-tooltip-category') || undefined;
         const badge = target.getAttribute('data-tooltip-badge') || undefined;
         const rect = target.getBoundingClientRect();
         setSidebarTooltip({
@@ -714,7 +770,9 @@ export function App() {
   };
 
   return (
-    <div className={`app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+    <div
+      className={`app-layout ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}
+    >
       {/* ── Top Header ────────────────────────────────────────────── */}
       <header className="header">
         <div className="header-left">
@@ -722,7 +780,11 @@ export function App() {
           <button
             className="mobile-menu-btn"
             onClick={() => dispatch(toggleSidebar())}
-            aria-label={sidebarCollapsed ? 'Open navigation menu' : 'Close navigation menu'}
+            aria-label={
+              sidebarCollapsed
+                ? 'Open navigation menu'
+                : 'Close navigation menu'
+            }
             title="Toggle navigation"
           >
             <Menu size={16} />
@@ -808,8 +870,12 @@ export function App() {
             <span
               className="status-dot"
               style={{
-                background: wsConnected ? 'var(--success)' : 'var(--text-muted)',
-                boxShadow: wsConnected ? '0 0 8px rgba(16, 185, 129, 0.4)' : 'none',
+                background: wsConnected
+                  ? 'var(--success)'
+                  : 'var(--text-muted)',
+                boxShadow: wsConnected
+                  ? '0 0 8px rgba(16, 185, 129, 0.4)'
+                  : 'none',
               }}
             />
             <span>{wsConnected ? 'Live' : 'Offline'}</span>
@@ -843,21 +909,41 @@ export function App() {
               >
                 <button
                   className="btn btn-ghost"
-                  style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, padding: '8px 12px', fontSize: '12px' }}
+                  style={{
+                    width: '100%',
+                    justifyContent: 'flex-start',
+                    borderRadius: 0,
+                    padding: '8px 12px',
+                    fontSize: '12px',
+                  }}
                   onClick={() => triggerExportReport('html')}
                 >
                   HTML Report (.html)
                 </button>
                 <button
                   className="btn btn-ghost"
-                  style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, padding: '8px 12px', fontSize: '12px', borderTop: '1px solid var(--border)' }}
+                  style={{
+                    width: '100%',
+                    justifyContent: 'flex-start',
+                    borderRadius: 0,
+                    padding: '8px 12px',
+                    fontSize: '12px',
+                    borderTop: '1px solid var(--border)',
+                  }}
                   onClick={() => triggerExportReport('pdf')}
                 >
                   PDF Report (.pdf)
                 </button>
                 <button
                   className="btn btn-ghost"
-                  style={{ width: '100%', justifyContent: 'flex-start', borderRadius: 0, padding: '8px 12px', fontSize: '12px', borderTop: '1px solid var(--border)' }}
+                  style={{
+                    width: '100%',
+                    justifyContent: 'flex-start',
+                    borderRadius: 0,
+                    padding: '8px 12px',
+                    fontSize: '12px',
+                    borderTop: '1px solid var(--border)',
+                  }}
                   onClick={() => triggerExportReport('markdown')}
                 >
                   Markdown (.md)
@@ -904,18 +990,31 @@ export function App() {
             {!sidebarCollapsed && (
               <>
                 <span className="brand-name">Axiomify</span>
-                <span className="nav-badge" style={{ padding: '1px 5px', fontSize: '9px' }}>v{STUDIO_VERSION}</span>
+                <span
+                  className="nav-badge"
+                  style={{ padding: '1px 5px', fontSize: '9px' }}
+                >
+                  v{STUDIO_VERSION}
+                </span>
               </>
             )}
           </div>
           <button
             className="sidebar-collapse-btn"
             onClick={() => dispatch(toggleSidebar())}
-            data-tooltip={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            data-tooltip={
+              sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
+            }
+            aria-label={
+              sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
+            }
             title={!sidebarCollapsed ? 'Collapse sidebar' : undefined}
           >
-            {sidebarCollapsed ? <PanelLeftOpen size={13} /> : <PanelLeftClose size={13} />}
+            {sidebarCollapsed ? (
+              <PanelLeftOpen size={13} />
+            ) : (
+              <PanelLeftClose size={13} />
+            )}
           </button>
         </div>
 
@@ -936,7 +1035,9 @@ export function App() {
 
         <div className="sidebar-nav">
           {/* Group 1: API Client */}
-          {!sidebarCollapsed && <div className="sidebar-section">API Client</div>}
+          {!sidebarCollapsed && (
+            <div className="sidebar-section">API Client</div>
+          )}
           <button
             className={`nav-item ${activeTab === 'tester' ? 'active' : ''}`}
             onClick={() => handleNavClick('tester')}
@@ -944,7 +1045,9 @@ export function App() {
             data-tooltip-category="API Client"
             aria-label="Request Tester"
           >
-            <span className="nav-icon"><Send size={13} /></span>
+            <span className="nav-icon">
+              <Send size={13} />
+            </span>
             {!sidebarCollapsed && <span>Request Tester</span>}
           </button>
           <button
@@ -952,10 +1055,16 @@ export function App() {
             onClick={() => handleNavClick('ws-tester')}
             data-tooltip="WebSocket Tester"
             data-tooltip-category="API Client"
-            data-tooltip-badge={(discovery?.routes?.filter((r) => r.isWs).length || 0) > 0 ? (discovery?.routes?.filter((r) => r.isWs).length) : undefined}
+            data-tooltip-badge={
+              (discovery?.routes?.filter((r) => r.isWs).length || 0) > 0
+                ? discovery?.routes?.filter((r) => r.isWs).length
+                : undefined
+            }
             aria-label="WebSocket Tester"
           >
-            <span className="nav-icon"><Wifi size={13} /></span>
+            <span className="nav-icon">
+              <Wifi size={13} />
+            </span>
             {!sidebarCollapsed && <span>WebSocket Tester</span>}
             {!sidebarCollapsed && discovery && (
               <span className="nav-badge">
@@ -970,21 +1079,31 @@ export function App() {
             data-tooltip-category="API Client"
             aria-label="SDK Playground"
           >
-            <span className="nav-icon"><Play size={13} /></span>
+            <span className="nav-icon">
+              <Play size={13} />
+            </span>
             {!sidebarCollapsed && <span>SDK Playground</span>}
           </button>
 
           {/* Group 2: Specifications & Docs */}
-          {!sidebarCollapsed && <div className="sidebar-section">Discovery & Docs</div>}
+          {!sidebarCollapsed && (
+            <div className="sidebar-section">Discovery & Docs</div>
+          )}
           <button
             className={`nav-item ${activeTab === 'routes' ? 'active' : ''}`}
             onClick={() => handleNavClick('routes')}
             data-tooltip="Routes Index"
             data-tooltip-category="Discovery & Docs"
-            data-tooltip-badge={(discovery?.routes?.filter((r) => !r.isWs).length || 0) > 0 ? (discovery?.routes?.filter((r) => !r.isWs).length) : undefined}
+            data-tooltip-badge={
+              (discovery?.routes?.filter((r) => !r.isWs).length || 0) > 0
+                ? discovery?.routes?.filter((r) => !r.isWs).length
+                : undefined
+            }
             aria-label="Routes Index"
           >
-            <span className="nav-icon"><Layers size={13} /></span>
+            <span className="nav-icon">
+              <Layers size={13} />
+            </span>
             {!sidebarCollapsed && <span>Routes Index</span>}
             {!sidebarCollapsed && discovery && (
               <span className="nav-badge">
@@ -999,7 +1118,9 @@ export function App() {
             data-tooltip-category="Discovery & Docs"
             aria-label="OpenAPI Spec"
           >
-            <span className="nav-icon"><BookOpen size={13} /></span>
+            <span className="nav-icon">
+              <BookOpen size={13} />
+            </span>
             {!sidebarCollapsed && <span>OpenAPI Spec</span>}
           </button>
           <button
@@ -1007,13 +1128,21 @@ export function App() {
             onClick={() => handleNavClick('schemas')}
             data-tooltip="Schemas"
             data-tooltip-category="Discovery & Docs"
-            data-tooltip-badge={(discovery?.schemas?.length || 0) > 0 ? discovery?.schemas?.length : undefined}
+            data-tooltip-badge={
+              (discovery?.schemas?.length || 0) > 0
+                ? discovery?.schemas?.length
+                : undefined
+            }
             aria-label="Schemas"
           >
-            <span className="nav-icon"><FileCode size={13} /></span>
+            <span className="nav-icon">
+              <FileCode size={13} />
+            </span>
             {!sidebarCollapsed && <span>Schemas</span>}
             {!sidebarCollapsed && discovery && (
-              <span className="nav-badge">{discovery.schemas?.length || 0}</span>
+              <span className="nav-badge">
+                {discovery.schemas?.length || 0}
+              </span>
             )}
           </button>
           <button
@@ -1023,24 +1152,36 @@ export function App() {
             data-tooltip-category="Discovery & Docs"
             aria-label="Contracts"
           >
-            <span className="nav-icon"><CheckSquare size={13} /></span>
+            <span className="nav-icon">
+              <CheckSquare size={13} />
+            </span>
             {!sidebarCollapsed && <span>Contracts</span>}
           </button>
 
           {/* Group 4: Architecture */}
-          {!sidebarCollapsed && <div className="sidebar-section">Architecture</div>}
+          {!sidebarCollapsed && (
+            <div className="sidebar-section">Architecture</div>
+          )}
           <button
             className={`nav-item ${activeTab === 'services' ? 'active' : ''}`}
             onClick={() => handleNavClick('services')}
             data-tooltip="Services"
             data-tooltip-category="Architecture"
-            data-tooltip-badge={(discovery?.services?.length || 0) > 0 ? discovery?.services?.length : undefined}
+            data-tooltip-badge={
+              (discovery?.services?.length || 0) > 0
+                ? discovery?.services?.length
+                : undefined
+            }
             aria-label="Services"
           >
-            <span className="nav-icon"><Cpu size={13} /></span>
+            <span className="nav-icon">
+              <Cpu size={13} />
+            </span>
             {!sidebarCollapsed && <span>Services</span>}
             {!sidebarCollapsed && discovery && (
-              <span className="nav-badge">{discovery.services?.length || 0}</span>
+              <span className="nav-badge">
+                {discovery.services?.length || 0}
+              </span>
             )}
           </button>
           <button
@@ -1048,13 +1189,21 @@ export function App() {
             onClick={() => handleNavClick('middlewares')}
             data-tooltip="Middlewares"
             data-tooltip-category="Architecture"
-            data-tooltip-badge={(discovery?.middlewares?.length || 0) > 0 ? discovery?.middlewares?.length : undefined}
+            data-tooltip-badge={
+              (discovery?.middlewares?.length || 0) > 0
+                ? discovery?.middlewares?.length
+                : undefined
+            }
             aria-label="Middlewares"
           >
-            <span className="nav-icon"><Shield size={13} /></span>
+            <span className="nav-icon">
+              <Shield size={13} />
+            </span>
             {!sidebarCollapsed && <span>Middlewares</span>}
             {!sidebarCollapsed && discovery && (
-              <span className="nav-badge">{discovery.middlewares?.length || 0}</span>
+              <span className="nav-badge">
+                {discovery.middlewares?.length || 0}
+              </span>
             )}
           </button>
           <button
@@ -1064,7 +1213,9 @@ export function App() {
             data-tooltip-category="Architecture"
             aria-label="Architecture Map"
           >
-            <span className="nav-icon"><Network size={13} /></span>
+            <span className="nav-icon">
+              <Network size={13} />
+            </span>
             {!sidebarCollapsed && <span>Architecture Map</span>}
           </button>
           <button
@@ -1072,10 +1223,16 @@ export function App() {
             onClick={() => handleNavClick('events')}
             data-tooltip="Events"
             data-tooltip-category="Architecture"
-            data-tooltip-badge={(discovery?.events?.length || 0) > 0 ? discovery?.events?.length : undefined}
+            data-tooltip-badge={
+              (discovery?.events?.length || 0) > 0
+                ? discovery?.events?.length
+                : undefined
+            }
             aria-label="Events"
           >
-            <span className="nav-icon"><Activity size={13} /></span>
+            <span className="nav-icon">
+              <Activity size={13} />
+            </span>
             {!sidebarCollapsed && <span>Events</span>}
             {!sidebarCollapsed && discovery && (
               <span className="nav-badge">{discovery.events?.length || 0}</span>
@@ -1089,13 +1246,19 @@ export function App() {
             data-tooltip-badge={hookTotal > 0 ? hookTotal : undefined}
             aria-label="Hooks"
           >
-            <span className="nav-icon"><Webhook size={13} /></span>
+            <span className="nav-icon">
+              <Webhook size={13} />
+            </span>
             {!sidebarCollapsed && <span>Hooks</span>}
-            {!sidebarCollapsed && discovery && <span className="nav-badge">{hookTotal}</span>}
+            {!sidebarCollapsed && discovery && (
+              <span className="nav-badge">{hookTotal}</span>
+            )}
           </button>
 
           {/* Group 5: Observability & Telemetry (Option 3 Metrics Hub) */}
-          {!sidebarCollapsed && <div className="sidebar-section">Observability</div>}
+          {!sidebarCollapsed && (
+            <div className="sidebar-section">Observability</div>
+          )}
           <button
             className={`nav-item ${activeTab === 'logs' ? 'active' : ''}`}
             onClick={() => handleNavClick('logs')}
@@ -1103,7 +1266,9 @@ export function App() {
             data-tooltip-category="Observability"
             aria-label="Live Logs"
           >
-            <span className="nav-icon"><Terminal size={13} /></span>
+            <span className="nav-icon">
+              <Terminal size={13} />
+            </span>
             {!sidebarCollapsed && <span>Live Logs</span>}
           </button>
           <button
@@ -1111,10 +1276,16 @@ export function App() {
             onClick={() => handleNavClick('errors')}
             data-tooltip="Errors"
             data-tooltip-category="Observability"
-            data-tooltip-badge={(discovery?.errors?.length || 0) > 0 ? discovery?.errors?.length : undefined}
+            data-tooltip-badge={
+              (discovery?.errors?.length || 0) > 0
+                ? discovery?.errors?.length
+                : undefined
+            }
             aria-label="Errors"
           >
-            <span className="nav-icon"><AlertTriangle size={13} /></span>
+            <span className="nav-icon">
+              <AlertTriangle size={13} />
+            </span>
             {!sidebarCollapsed && <span>Errors</span>}
             {!sidebarCollapsed && discovery && (
               <span className="nav-badge">{discovery.errors?.length || 0}</span>
@@ -1127,7 +1298,9 @@ export function App() {
             data-tooltip-category="Observability"
             aria-label="Analytics"
           >
-            <span className="nav-icon"><BarChart3 size={13} /></span>
+            <span className="nav-icon">
+              <BarChart3 size={13} />
+            </span>
             {!sidebarCollapsed && <span>Analytics</span>}
           </button>
           <button
@@ -1137,7 +1310,9 @@ export function App() {
             data-tooltip-category="Observability"
             aria-label="Performance"
           >
-            <span className="nav-icon"><Zap size={13} /></span>
+            <span className="nav-icon">
+              <Zap size={13} />
+            </span>
             {!sidebarCollapsed && <span>Performance</span>}
           </button>
           <button
@@ -1147,7 +1322,9 @@ export function App() {
             data-tooltip-category="Observability"
             aria-label="Distributed Tracing"
           >
-            <span className="nav-icon"><GitFork size={13} /></span>
+            <span className="nav-icon">
+              <GitFork size={13} />
+            </span>
             {!sidebarCollapsed && <span>Distributed Tracing</span>}
           </button>
           <button
@@ -1157,7 +1334,9 @@ export function App() {
             data-tooltip-category="Observability"
             aria-label="Traffic Recorder"
           >
-            <span className="nav-icon"><Radio size={13} /></span>
+            <span className="nav-icon">
+              <Radio size={13} />
+            </span>
             {!sidebarCollapsed && <span>Traffic Recorder</span>}
           </button>
           <button
@@ -1167,7 +1346,9 @@ export function App() {
             data-tooltip-category="Observability"
             aria-label="System Health"
           >
-            <span className="nav-icon"><Heart size={13} /></span>
+            <span className="nav-icon">
+              <Heart size={13} />
+            </span>
             {!sidebarCollapsed && <span>System Health</span>}
           </button>
           <button
@@ -1177,12 +1358,16 @@ export function App() {
             data-tooltip-category="Observability"
             aria-label="Security Audit"
           >
-            <span className="nav-icon"><Lock size={13} /></span>
+            <span className="nav-icon">
+              <Lock size={13} />
+            </span>
             {!sidebarCollapsed && <span>Security Audit</span>}
           </button>
 
           {/* Group 6: Tooling & Governance */}
-          {!sidebarCollapsed && <div className="sidebar-section">Tooling & Quality</div>}
+          {!sidebarCollapsed && (
+            <div className="sidebar-section">Tooling & Quality</div>
+          )}
           <button
             className={`nav-item ${activeTab === 'jobs' ? 'active' : ''}`}
             onClick={() => handleNavClick('jobs')}
@@ -1190,7 +1375,9 @@ export function App() {
             data-tooltip-category="Tooling & Quality"
             aria-label="Background Jobs"
           >
-            <span className="nav-icon"><Clock size={13} /></span>
+            <span className="nav-icon">
+              <Clock size={13} />
+            </span>
             {!sidebarCollapsed && <span>Background Jobs</span>}
           </button>
           <button
@@ -1200,7 +1387,9 @@ export function App() {
             data-tooltip-category="Tooling & Quality"
             aria-label="SDK Impact"
           >
-            <span className="nav-icon"><Boxes size={13} /></span>
+            <span className="nav-icon">
+              <Boxes size={13} />
+            </span>
             {!sidebarCollapsed && <span>SDK Impact</span>}
           </button>
           <button
@@ -1210,7 +1399,9 @@ export function App() {
             data-tooltip-category="Tooling & Quality"
             aria-label="Quality & Governance"
           >
-            <span className="nav-icon"><Award size={13} /></span>
+            <span className="nav-icon">
+              <Award size={13} />
+            </span>
             {!sidebarCollapsed && <span>Quality & Governance</span>}
           </button>
           <button
@@ -1220,7 +1411,9 @@ export function App() {
             data-tooltip-category="Tooling & Quality"
             aria-label="AI Assistant"
           >
-            <span className="nav-icon"><Sparkles size={13} /></span>
+            <span className="nav-icon">
+              <Sparkles size={13} />
+            </span>
             {!sidebarCollapsed && <span>AI Assistant</span>}
           </button>
           <button
@@ -1230,7 +1423,9 @@ export function App() {
             data-tooltip-category="Tooling & Quality"
             aria-label="Configuration"
           >
-            <span className="nav-icon"><Settings size={13} /></span>
+            <span className="nav-icon">
+              <Settings size={13} />
+            </span>
             {!sidebarCollapsed && <span>Configuration</span>}
           </button>
         </div>
@@ -1238,15 +1433,25 @@ export function App() {
         <div className="sidebar-footer">
           <div
             style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-            data-tooltip={wsConnected ? 'Connected to Axiomify Server' : 'Offline / Disconnected'}
-            aria-label={wsConnected ? 'Connected to Axiomify Server' : 'Offline / Disconnected'}
+            data-tooltip={
+              wsConnected
+                ? 'Connected to Axiomify Server'
+                : 'Offline / Disconnected'
+            }
+            aria-label={
+              wsConnected
+                ? 'Connected to Axiomify Server'
+                : 'Offline / Disconnected'
+            }
           >
             <span
               className="status-dot"
               style={{
                 width: '6px',
                 height: '6px',
-                background: wsConnected ? 'var(--success)' : 'var(--text-muted)',
+                background: wsConnected
+                  ? 'var(--success)'
+                  : 'var(--text-muted)',
               }}
             />
             {!sidebarCollapsed && (
@@ -1257,7 +1462,11 @@ export function App() {
           </div>
           <button
             className="btn btn-ghost"
-            style={{ padding: '4px 8px', fontSize: '11px', color: 'var(--text-muted)' }}
+            style={{
+              padding: '4px 8px',
+              fontSize: '11px',
+              color: 'var(--text-muted)',
+            }}
             onClick={handleLogout}
             data-tooltip="Log out of Studio"
             aria-label="Log out of Studio"
@@ -1275,11 +1484,15 @@ export function App() {
             style={{ top: `${sidebarTooltip.top}px` }}
           >
             {sidebarTooltip.category && (
-              <span className="sidebar-tooltip-category">{sidebarTooltip.category}</span>
+              <span className="sidebar-tooltip-category">
+                {sidebarTooltip.category}
+              </span>
             )}
             <span className="sidebar-tooltip-text">{sidebarTooltip.text}</span>
             {sidebarTooltip.badge !== undefined && (
-              <span className="sidebar-tooltip-badge">{sidebarTooltip.badge}</span>
+              <span className="sidebar-tooltip-badge">
+                {sidebarTooltip.badge}
+              </span>
             )}
           </div>
         )}
@@ -1289,7 +1502,10 @@ export function App() {
       <main className="main" id="main-content">
         {loadingDiscovery && !discovery ? (
           <div className="empty-state" style={{ height: '100%' }}>
-            <div className="spinner" style={{ width: '24px', height: '24px', borderWidth: '2px' }} />
+            <div
+              className="spinner"
+              style={{ width: '24px', height: '24px', borderWidth: '2px' }}
+            />
             <span>Discovering routes, schemas, and services...</span>
           </div>
         ) : (
@@ -1297,7 +1513,15 @@ export function App() {
             {buildError && (
               <div className="error-banner" style={{ margin: '16px' }}>
                 <strong>Build Failure:</strong>
-                <pre style={{ marginTop: '6px', fontSize: '11px', whiteSpace: 'pre-wrap' }}>{buildError}</pre>
+                <pre
+                  style={{
+                    marginTop: '6px',
+                    fontSize: '11px',
+                    whiteSpace: 'pre-wrap',
+                  }}
+                >
+                  {buildError}
+                </pre>
               </div>
             )}
             {reloadError && (
@@ -1307,9 +1531,8 @@ export function App() {
             )}
             {renderPanelContent()}
           </>
-        )
-        }
-      </main >
+        )}
+      </main>
 
       {/* ── Global Command Palette / Route Launcher Modal ─────────── */}
       {commandPaletteOpen && discovery && (
@@ -1328,54 +1551,103 @@ export function App() {
       )}
 
       {/* ── Source Code Debugger / Inspector Modal ───────────────── */}
-      {
-        sourceViewerFile && (
-          <div className="modal-overlay" onClick={handleCloseSourceViewer}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '850px' }}>
-              <div className="pane-header">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <span style={{ fontWeight: 600 }}>Source Code Inspector</span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)' }}>
-                    {sourceViewerFile}:{sourceViewerLine}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={handleAiDebugClick}>
-                    <Sparkles size={12} />
-                    <span>Explain with AI</span>
-                  </button>
-                  <button className="btn btn-ghost" style={{ padding: '4px' }} onClick={handleCloseSourceViewer}>
-                    <X size={14} />
-                  </button>
-                </div>
+      {sourceViewerFile && (
+        <div className="modal-overlay" onClick={handleCloseSourceViewer}>
+          <div
+            className="modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '850px' }}
+          >
+            <div className="pane-header">
+              <div
+                style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}
+              >
+                <span style={{ fontWeight: 600 }}>Source Code Inspector</span>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '11px',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  {sourceViewerFile}:{sourceViewerLine}
+                </span>
               </div>
-              <div style={{ padding: '16px', overflowY: 'auto', maxHeight: '70vh', background: 'var(--bg-primary)' }}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', lineHeight: 1.6 }}>
-                  {sourceViewerLines.map((line) => (
-                    <div
-                      key={line.num}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  className="btn btn-secondary"
+                  style={{ padding: '4px 8px', fontSize: '11px' }}
+                  onClick={handleAiDebugClick}
+                >
+                  <Sparkles size={12} />
+                  <span>Explain with AI</span>
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  style={{ padding: '4px' }}
+                  onClick={handleCloseSourceViewer}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+            <div
+              style={{
+                padding: '16px',
+                overflowY: 'auto',
+                maxHeight: '70vh',
+                background: 'var(--bg-primary)',
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '12px',
+                  lineHeight: 1.6,
+                }}
+              >
+                {sourceViewerLines.map((line) => (
+                  <div
+                    key={line.num}
+                    style={{
+                      display: 'flex',
+                      gap: '12px',
+                      padding: '1px 4px',
+                      background: line.isTarget
+                        ? 'rgba(239, 68, 68, 0.12)'
+                        : 'transparent',
+                      borderLeft: line.isTarget
+                        ? '3px solid var(--error)'
+                        : '3px solid transparent',
+                    }}
+                  >
+                    <span
                       style={{
-                        display: 'flex',
-                        gap: '12px',
-                        padding: '1px 4px',
-                        background: line.isTarget ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
-                        borderLeft: line.isTarget ? '3px solid var(--error)' : '3px solid transparent',
+                        width: '36px',
+                        textAlign: 'right',
+                        color: 'var(--text-muted)',
+                        userSelect: 'none',
                       }}
                     >
-                      <span style={{ width: '36px', textAlign: 'right', color: 'var(--text-muted)', userSelect: 'none' }}>
-                        {line.num}
-                      </span>
-                      <pre style={{ margin: 0, color: line.isTarget ? 'var(--error)' : 'var(--text-primary)' }}>
-                        {line.text}
-                      </pre>
-                    </div>
-                  ))}
-                </div>
+                      {line.num}
+                    </span>
+                    <pre
+                      style={{
+                        margin: 0,
+                        color: line.isTarget
+                          ? 'var(--error)'
+                          : 'var(--text-primary)',
+                      }}
+                    >
+                      {line.text}
+                    </pre>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
-        )
-      }
+        </div>
+      )}
 
       {/* ── Environment Variables Manager Modal ─────────────────── */}
       {envModalOpen && (
@@ -1386,14 +1658,25 @@ export function App() {
             style={{ maxWidth: '640px' }}
           >
             <div className="pane-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
                 <Sliders size={14} style={{ color: 'var(--accent)' }} />
                 <div>
                   <span style={{ fontWeight: 600, fontSize: '13px' }}>
                     Environment Variables
                   </span>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                    Interpolate values anywhere via <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-text)' }}>{'{{variable}}'}</code> syntax
+                    Interpolate values anywhere via{' '}
+                    <code
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        color: 'var(--accent-text)',
+                      }}
+                    >
+                      {'{{variable}}'}
+                    </code>{' '}
+                    syntax
                   </div>
                 </div>
               </div>
@@ -1407,10 +1690,32 @@ export function App() {
               </button>
             </div>
 
-            <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto', maxHeight: '65vh' }}>
+            <div
+              style={{
+                padding: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px',
+                overflowY: 'auto',
+                maxHeight: '65vh',
+              }}
+            >
               {/* Environment Switcher & Actions */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: 'var(--text-secondary)',
+                  }}
+                >
                   Active Environment:
                 </span>
                 <select
@@ -1435,7 +1740,9 @@ export function App() {
                   className="btn btn-secondary"
                   style={{ padding: '4px 8px', fontSize: '11px' }}
                   onClick={() => {
-                    const name = window.prompt('Environment Name (e.g. Staging, Production):');
+                    const name = window.prompt(
+                      'Environment Name (e.g. Staging, Production):',
+                    );
                     if (name?.trim()) {
                       dispatch(createEnvironment(name.trim()));
                     }
@@ -1448,9 +1755,17 @@ export function App() {
                   <button
                     type="button"
                     className="btn btn-ghost"
-                    style={{ padding: '4px 8px', fontSize: '11px', color: 'var(--error)' }}
+                    style={{
+                      padding: '4px 8px',
+                      fontSize: '11px',
+                      color: 'var(--error)',
+                    }}
                     onClick={() => {
-                      if (window.confirm(`Delete environment "${currentEnv?.name}"?`)) {
+                      if (
+                        window.confirm(
+                          `Delete environment "${currentEnv?.name}"?`,
+                        )
+                      ) {
                         dispatch(deleteEnvironment(selectedEnvironmentId));
                       }
                     }}
@@ -1463,20 +1778,39 @@ export function App() {
               </div>
 
               {/* Variable Key-Value Editor Table */}
-              <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+              <div
+                style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  overflow: 'hidden',
+                }}
+              >
                 <table className="env-variable-table">
                   <thead>
                     <tr style={{ background: 'var(--bg-primary)' }}>
                       <th style={{ width: '42%' }}>Variable Name</th>
                       <th>Value</th>
-                      <th style={{ width: '64px', textAlign: 'center' }}>Action</th>
+                      <th style={{ width: '64px', textAlign: 'center' }}>
+                        Action
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {environmentVariables.length === 0 ? (
                       <tr>
-                        <td colSpan={3} style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--text-muted)' }}>
-                          No variables defined for <strong>{currentEnv?.name || 'this environment'}</strong>.
+                        <td
+                          colSpan={3}
+                          style={{
+                            textAlign: 'center',
+                            padding: '24px 12px',
+                            color: 'var(--text-muted)',
+                          }}
+                        >
+                          No variables defined for{' '}
+                          <strong>
+                            {currentEnv?.name || 'this environment'}
+                          </strong>
+                          .
                           <div style={{ marginTop: '8px' }}>
                             <button
                               type="button"
@@ -1492,16 +1826,29 @@ export function App() {
                       </tr>
                     ) : (
                       environmentVariables.map((v, idx) => (
-                        <tr key={idx} style={{ background: 'var(--bg-secondary)' }}>
+                        <tr
+                          key={idx}
+                          style={{ background: 'var(--bg-secondary)' }}
+                        >
                           <td>
                             <input
                               type="text"
                               className="text-input"
                               placeholder="e.g. baseUrl or token"
-                              style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: '11px', padding: '4px 8px' }}
+                              style={{
+                                width: '100%',
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: '11px',
+                                padding: '4px 8px',
+                              }}
                               value={v.key}
                               onChange={(e) =>
-                                dispatch(updateVariable({ index: idx, key: e.target.value }))
+                                dispatch(
+                                  updateVariable({
+                                    index: idx,
+                                    key: e.target.value,
+                                  }),
+                                )
                               }
                             />
                           </td>
@@ -1510,34 +1857,69 @@ export function App() {
                               type="text"
                               className="text-input"
                               placeholder="e.g. http://localhost:3000"
-                              style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: '11px', padding: '4px 8px' }}
+                              style={{
+                                width: '100%',
+                                fontFamily: 'var(--font-mono)',
+                                fontSize: '11px',
+                                padding: '4px 8px',
+                              }}
                               value={v.value}
                               onChange={(e) =>
-                                dispatch(updateVariable({ index: idx, value: e.target.value }))
+                                dispatch(
+                                  updateVariable({
+                                    index: idx,
+                                    value: e.target.value,
+                                  }),
+                                )
                               }
                             />
                           </td>
                           <td style={{ textAlign: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px',
+                              }}
+                            >
                               {v.key.trim() && (
                                 <button
                                   type="button"
                                   className="btn btn-ghost"
-                                  style={{ padding: '3px', color: 'var(--text-muted)' }}
+                                  style={{
+                                    padding: '3px',
+                                    color: 'var(--text-muted)',
+                                  }}
                                   title={`Copy {{${v.key}}}`}
                                   onClick={() => {
-                                    navigator.clipboard.writeText(`{{${v.key.trim()}}}`);
+                                    navigator.clipboard.writeText(
+                                      `{{${v.key.trim()}}}`,
+                                    );
                                     setEnvCopiedKey(v.key);
-                                    setTimeout(() => setEnvCopiedKey(null), 1500);
+                                    setTimeout(
+                                      () => setEnvCopiedKey(null),
+                                      1500,
+                                    );
                                   }}
                                 >
-                                  {envCopiedKey === v.key ? <Check size={12} style={{ color: 'var(--success)' }} /> : <Copy size={12} />}
+                                  {envCopiedKey === v.key ? (
+                                    <Check
+                                      size={12}
+                                      style={{ color: 'var(--success)' }}
+                                    />
+                                  ) : (
+                                    <Copy size={12} />
+                                  )}
                                 </button>
                               )}
                               <button
                                 type="button"
                                 className="btn btn-ghost"
-                                style={{ padding: '3px', color: 'var(--text-muted)' }}
+                                style={{
+                                  padding: '3px',
+                                  color: 'var(--text-muted)',
+                                }}
                                 onClick={() => dispatch(removeVariable(idx))}
                                 title="Remove variable"
                               >
@@ -1553,7 +1935,13 @@ export function App() {
               </div>
 
               {/* Add Variable & Auto Suggestions Tip */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
                 <button
                   type="button"
                   className="btn btn-secondary"
@@ -1565,7 +1953,11 @@ export function App() {
                 </button>
 
                 <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  Tip: Type <kbd style={{ padding: '1px 4px', fontSize: '10px' }}>{'{{'}</kbd> in request paths or body for auto-completion
+                  Tip: Type{' '}
+                  <kbd style={{ padding: '1px 4px', fontSize: '10px' }}>
+                    {'{{'}
+                  </kbd>{' '}
+                  in request paths or body for auto-completion
                 </div>
               </div>
             </div>
@@ -1583,7 +1975,16 @@ export function App() {
               }}
             >
               {envSaveSuccess && (
-                <span style={{ fontSize: '11px', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '4px', marginRight: 'auto' }}>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    color: 'var(--success)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    marginRight: 'auto',
+                  }}
+                >
                   <Check size={12} />
                   <span>Variables saved successfully</span>
                 </span>
@@ -1612,7 +2013,7 @@ export function App() {
           </div>
         </div>
       )}
-    </div >
+    </div>
   );
 }
 

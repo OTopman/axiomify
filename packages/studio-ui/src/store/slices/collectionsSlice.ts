@@ -72,9 +72,9 @@ export const collectionsSlice = createSlice({
       state.collections = state.collections.map((col) =>
         col.id === collectionId
           ? {
-            ...col,
-            requests: col.requests.filter((r) => r.id !== requestId),
-          }
+              ...col,
+              requests: col.requests.filter((r) => r.id !== requestId),
+            }
           : col,
       );
       saveRequestCollections(state.collections);

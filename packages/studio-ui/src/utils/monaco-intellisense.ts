@@ -108,7 +108,10 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'headers',
         kind: K.Property,
         detail: 'Record<string, string>',
-        documentation: { value: 'Outgoing HTTP request headers map. Mutate headers before sending.' },
+        documentation: {
+          value:
+            'Outgoing HTTP request headers map. Mutate headers before sending.',
+        },
         insertText: "headers['${1:Header-Name}'] = '${2:value}';",
         insertTextRules: R.InsertAsSnippet,
         range,
@@ -126,7 +129,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'body',
         kind: K.Property,
         detail: 'any',
-        documentation: { value: 'Request body payload (JSON object or string).' },
+        documentation: {
+          value: 'Request body payload (JSON object or string).',
+        },
         insertText: 'body',
         range,
       },
@@ -157,7 +162,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'status',
         kind: K.Property,
         detail: 'number',
-        documentation: { value: 'HTTP response status code (e.g. 200, 404, 500).' },
+        documentation: {
+          value: 'HTTP response status code (e.g. 200, 404, 500).',
+        },
         insertText: 'status',
         range,
       },
@@ -181,7 +188,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'json',
         kind: K.Method,
         detail: '(): any',
-        documentation: { value: 'Parses and returns the response body as a JSON object.' },
+        documentation: {
+          value: 'Parses and returns the response body as a JSON object.',
+        },
         insertText: 'json()',
         range,
       },
@@ -197,7 +206,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'responseTime',
         kind: K.Property,
         detail: 'number',
-        documentation: { value: 'Response duration / latency in milliseconds.' },
+        documentation: {
+          value: 'Response duration / latency in milliseconds.',
+        },
         insertText: 'responseTime',
         range,
       },
@@ -205,7 +216,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'data',
         kind: K.Property,
         detail: 'any',
-        documentation: { value: 'Directly parsed response data object (if JSON).' },
+        documentation: {
+          value: 'Directly parsed response data object (if JSON).',
+        },
         insertText: 'data',
         range,
       },
@@ -220,7 +233,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'get',
         kind: K.Method,
         detail: '(key: string): string | undefined',
-        documentation: { value: 'Retrieve an environment variable value by name.' },
+        documentation: {
+          value: 'Retrieve an environment variable value by name.',
+        },
         insertText: "get('${1:variableName}')",
         insertTextRules: R.InsertAsSnippet,
         range,
@@ -229,7 +244,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'set',
         kind: K.Method,
         detail: '(key: string, value: any): void',
-        documentation: { value: 'Persist or update an environment variable during execution.' },
+        documentation: {
+          value: 'Persist or update an environment variable during execution.',
+        },
         insertText: "set('${1:variableName}', ${2:value});",
         insertTextRules: R.InsertAsSnippet,
         range,
@@ -238,7 +255,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'unset',
         kind: K.Method,
         detail: '(key: string): void',
-        documentation: { value: 'Remove an environment variable from active state.' },
+        documentation: {
+          value: 'Remove an environment variable from active state.',
+        },
         insertText: "unset('${1:variableName}')",
         insertTextRules: R.InsertAsSnippet,
         range,
@@ -247,7 +266,10 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'toObject',
         kind: K.Method,
         detail: '(): Record<string, string>',
-        documentation: { value: 'Return all active environment variables as a key-value dictionary.' },
+        documentation: {
+          value:
+            'Return all active environment variables as a key-value dictionary.',
+        },
         insertText: 'toObject()',
         range,
       },
@@ -256,7 +278,11 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
   }
 
   // 4. Expectation matchers: expect(...). or expect(...).not.
-  if (/(?:expect\(.*?\)|(?:\$|axiomify)\.expect\(.*?\))(?:\.not)?\.([a-zA-Z0-9_$]*)$/.test(textUntilPosition)) {
+  if (
+    /(?:expect\(.*?\)|(?:\$|axiomify)\.expect\(.*?\))(?:\.not)?\.([a-zA-Z0-9_$]*)$/.test(
+      textUntilPosition,
+    )
+  ) {
     suggestions.push(
       {
         label: 'toBe',
@@ -271,7 +297,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'toEqual',
         kind: K.Method,
         detail: '(expected: any): void',
-        documentation: { value: 'Deep structural equality comparison for objects and arrays.' },
+        documentation: {
+          value: 'Deep structural equality comparison for objects and arrays.',
+        },
         insertText: 'toEqual(${1:expected})',
         insertTextRules: R.InsertAsSnippet,
         range,
@@ -280,7 +308,10 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'toHaveProperty',
         kind: K.Method,
         detail: '(prop: string, value?: any): void',
-        documentation: { value: 'Asserts that the object has the specified property path, optionally matching value.' },
+        documentation: {
+          value:
+            'Asserts that the object has the specified property path, optionally matching value.',
+        },
         insertText: "toHaveProperty('${1:propName}')",
         insertTextRules: R.InsertAsSnippet,
         range,
@@ -313,7 +344,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'toBeTruthy',
         kind: K.Method,
         detail: '(): void',
-        documentation: { value: 'Asserts that value is truthy (Boolean(val) === true).' },
+        documentation: {
+          value: 'Asserts that value is truthy (Boolean(val) === true).',
+        },
         insertText: 'toBeTruthy()',
         range,
       },
@@ -321,7 +354,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'toBeFalsy',
         kind: K.Method,
         detail: '(): void',
-        documentation: { value: 'Asserts that value is falsy (Boolean(val) === false).' },
+        documentation: {
+          value: 'Asserts that value is falsy (Boolean(val) === false).',
+        },
         insertText: 'toBeFalsy()',
         range,
       },
@@ -365,7 +400,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'toContain',
         kind: K.Method,
         detail: '(item: any): void',
-        documentation: { value: 'Asserts array includes item, or string contains substring.' },
+        documentation: {
+          value: 'Asserts array includes item, or string contains substring.',
+        },
         insertText: 'toContain(${1:item})',
         insertTextRules: R.InsertAsSnippet,
         range,
@@ -374,7 +411,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'toBeOneOf',
         kind: K.Method,
         detail: '(array: any[]): void',
-        documentation: { value: 'Asserts value is contained within the supplied list.' },
+        documentation: {
+          value: 'Asserts value is contained within the supplied list.',
+        },
         insertText: 'toBeOneOf([${1:item1}, ${2:item2}])',
         insertTextRules: R.InsertAsSnippet,
         range,
@@ -415,8 +454,12 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'test',
         kind: K.Method,
         detail: '(name: string, fn: () => void | Promise<void>): void',
-        documentation: { value: 'Declare an automated test assertion block to validate the response.' },
-        insertText: "test('${1:Status is 200}', () => {\n\t$.expect($.response.status).toBe(200);\n});",
+        documentation: {
+          value:
+            'Declare an automated test assertion block to validate the response.',
+        },
+        insertText:
+          "test('${1:Status is 200}', () => {\n\t$.expect($.response.status).toBe(200);\n});",
         insertTextRules: R.InsertAsSnippet,
         range,
       },
@@ -424,7 +467,10 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'expect',
         kind: K.Method,
         detail: '(actual: any): Expectation',
-        documentation: { value: 'Create an assertion matcher on any value or response property.' },
+        documentation: {
+          value:
+            'Create an assertion matcher on any value or response property.',
+        },
         insertText: 'expect(${1:actual}).$0',
         insertTextRules: R.InsertAsSnippet,
         range,
@@ -433,7 +479,10 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'request',
         kind: K.Property,
         detail: 'ScriptRequest',
-        documentation: { value: 'Access or mutate outgoing request headers, query params, body, or URL.' },
+        documentation: {
+          value:
+            'Access or mutate outgoing request headers, query params, body, or URL.',
+        },
         insertText: 'request',
         range,
       },
@@ -441,7 +490,10 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'response',
         kind: K.Property,
         detail: 'ScriptResponse',
-        documentation: { value: 'Access received HTTP response status, headers, json(), text(), or responseTime.' },
+        documentation: {
+          value:
+            'Access received HTTP response status, headers, json(), text(), or responseTime.',
+        },
         insertText: 'response',
         range,
       },
@@ -449,7 +501,10 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'env',
         kind: K.Property,
         detail: 'ScriptEnvironment',
-        documentation: { value: 'Manage environment variables across scripts (get, set, unset, toObject).' },
+        documentation: {
+          value:
+            'Manage environment variables across scripts (get, set, unset, toObject).',
+        },
         insertText: 'env',
         range,
       },
@@ -457,7 +512,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         label: 'log',
         kind: K.Method,
         detail: '(...args: any[]): void',
-        documentation: { value: 'Print debug output to the test execution logs.' },
+        documentation: {
+          value: 'Print debug output to the test execution logs.',
+        },
         insertText: "log('${1:message}');",
         insertTextRules: R.InsertAsSnippet,
         range,
@@ -496,13 +553,55 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
   // 8. pm.response.
   if (/pm\.response\.([a-zA-Z0-9_$]*)$/.test(textUntilPosition)) {
     suggestions.push(
-      { label: 'code', kind: K.Property, detail: 'number', insertText: 'code', range },
-      { label: 'status', kind: K.Property, detail: 'string', insertText: 'status', range },
-      { label: 'responseTime', kind: K.Property, detail: 'number', insertText: 'responseTime', range },
-      { label: 'headers', kind: K.Property, detail: 'Record<string, string>', insertText: 'headers', range },
-      { label: 'json', kind: K.Method, detail: '(): any', insertText: 'json()', range },
-      { label: 'text', kind: K.Method, detail: '(): string', insertText: 'text()', range },
-      { label: 'to', kind: K.Property, detail: 'Chaining assertion helper', insertText: 'to.', range },
+      {
+        label: 'code',
+        kind: K.Property,
+        detail: 'number',
+        insertText: 'code',
+        range,
+      },
+      {
+        label: 'status',
+        kind: K.Property,
+        detail: 'string',
+        insertText: 'status',
+        range,
+      },
+      {
+        label: 'responseTime',
+        kind: K.Property,
+        detail: 'number',
+        insertText: 'responseTime',
+        range,
+      },
+      {
+        label: 'headers',
+        kind: K.Property,
+        detail: 'Record<string, string>',
+        insertText: 'headers',
+        range,
+      },
+      {
+        label: 'json',
+        kind: K.Method,
+        detail: '(): any',
+        insertText: 'json()',
+        range,
+      },
+      {
+        label: 'text',
+        kind: K.Method,
+        detail: '(): string',
+        insertText: 'text()',
+        range,
+      },
+      {
+        label: 'to',
+        kind: K.Property,
+        detail: 'Chaining assertion helper',
+        insertText: 'to.',
+        range,
+      },
     );
     return { suggestions };
   }
@@ -526,9 +625,27 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
         insertTextRules: R.InsertAsSnippet,
         range,
       },
-      { label: 'response', kind: K.Property, detail: 'Postman response shim', insertText: 'response', range },
-      { label: 'environment', kind: K.Property, detail: 'ScriptEnvironment', insertText: 'environment', range },
-      { label: 'variables', kind: K.Property, detail: 'ScriptEnvironment', insertText: 'variables', range },
+      {
+        label: 'response',
+        kind: K.Property,
+        detail: 'Postman response shim',
+        insertText: 'response',
+        range,
+      },
+      {
+        label: 'environment',
+        kind: K.Property,
+        detail: 'ScriptEnvironment',
+        insertText: 'environment',
+        range,
+      },
+      {
+        label: 'variables',
+        kind: K.Property,
+        detail: 'ScriptEnvironment',
+        insertText: 'variables',
+        range,
+      },
     );
     return { suggestions };
   }
@@ -539,7 +656,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
       label: 'axiomify',
       kind: K.Variable,
       detail: 'AxiomifyContext',
-      documentation: { value: 'Canonical Axiomify test and pre-request execution sandbox.' },
+      documentation: {
+        value: 'Canonical Axiomify test and pre-request execution sandbox.',
+      },
       insertText: 'axiomify',
       range,
     },
@@ -547,7 +666,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
       label: '$',
       kind: K.Variable,
       detail: 'AxiomifyContext',
-      documentation: { value: 'Ergonomic shorthand for axiomify context ($ = axiomify).' },
+      documentation: {
+        value: 'Ergonomic shorthand for axiomify context ($ = axiomify).',
+      },
       insertText: '$',
       range,
     },
@@ -555,7 +676,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
       label: 'pm',
       kind: K.Variable,
       detail: 'Postman compatibility context',
-      documentation: { value: 'Postman compatible runtime context for existing scripts.' },
+      documentation: {
+        value: 'Postman compatible runtime context for existing scripts.',
+      },
       insertText: 'pm',
       range,
     },
@@ -564,7 +687,8 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
       kind: K.Snippet,
       detail: '$.test(name, fn)',
       documentation: { value: 'Insert a complete test assertion block.' },
-      insertText: "$.test('${1:Status code is 200}', () => {\n\t$.expect($.response.status).toBe(${2:200});\n});",
+      insertText:
+        "$.test('${1:Status code is 200}', () => {\n\t$.expect($.response.status).toBe(${2:200});\n});",
       insertTextRules: R.InsertAsSnippet,
       range,
     },
@@ -581,7 +705,9 @@ export function getSandboxCompletions(model: any, position: any, monaco: any) {
       label: 'header mutation (snippet)',
       kind: K.Snippet,
       detail: "$.request.headers['...']",
-      documentation: { value: 'Add or modify an outgoing HTTP header in pre-request.' },
+      documentation: {
+        value: 'Add or modify an outgoing HTTP header in pre-request.',
+      },
       insertText: "$.request.headers['${1:X-Custom-Header}'] = ${2:'value'};",
       insertTextRules: R.InsertAsSnippet,
       range,
@@ -657,7 +783,10 @@ export function configureMonacoSandbox(monaco: any) {
             return {
               contents: [
                 { value: '**Axiomify Script Sandbox Context**' },
-                { value: 'Provides `$.test()`, `$.expect()`, `$.request`, `$.response`, `$.env`, and `$.log()`.' },
+                {
+                  value:
+                    'Provides `$.test()`, `$.expect()`, `$.request`, `$.response`, `$.env`, and `$.log()`.',
+                },
               ],
             };
           }
@@ -665,15 +794,24 @@ export function configureMonacoSandbox(monaco: any) {
             return {
               contents: [
                 { value: '**Postman Compatibility Shim**' },
-                { value: 'Provides `pm.test()`, `pm.expect()`, and `pm.response` for existing Postman test scripts.' },
+                {
+                  value:
+                    'Provides `pm.test()`, `pm.expect()`, and `pm.response` for existing Postman test scripts.',
+                },
               ],
             };
           }
           if (word === 'test') {
             return {
               contents: [
-                { value: '`$.test(name: string, fn: () => void | Promise<void>): void`' },
-                { value: 'Defines an automated assertion test block. The test passes if no expectation throws an error.' },
+                {
+                  value:
+                    '`$.test(name: string, fn: () => void | Promise<void>): void`',
+                },
+                {
+                  value:
+                    'Defines an automated assertion test block. The test passes if no expectation throws an error.',
+                },
               ],
             };
           }
@@ -681,7 +819,10 @@ export function configureMonacoSandbox(monaco: any) {
             return {
               contents: [
                 { value: '`$.expect(actual: any): Expectation`' },
-                { value: 'Wraps a value in an expectation matcher (`toBe`, `toEqual`, `toHaveProperty`, `toContain`, etc.).' },
+                {
+                  value:
+                    'Wraps a value in an expectation matcher (`toBe`, `toEqual`, `toHaveProperty`, `toContain`, etc.).',
+                },
               ],
             };
           }
@@ -689,7 +830,10 @@ export function configureMonacoSandbox(monaco: any) {
             return {
               contents: [
                 { value: '`$.request: ScriptRequest`' },
-                { value: 'Access and mutate outgoing request headers, query parameters, method, url, and body.' },
+                {
+                  value:
+                    'Access and mutate outgoing request headers, query parameters, method, url, and body.',
+                },
               ],
             };
           }
@@ -697,7 +841,10 @@ export function configureMonacoSandbox(monaco: any) {
             return {
               contents: [
                 { value: '`$.response: ScriptResponse`' },
-                { value: 'Access incoming response status, statusText, headers, json(), text(), and responseTime.' },
+                {
+                  value:
+                    'Access incoming response status, statusText, headers, json(), text(), and responseTime.',
+                },
               ],
             };
           }
@@ -705,7 +852,10 @@ export function configureMonacoSandbox(monaco: any) {
             return {
               contents: [
                 { value: '`$.env: ScriptEnvironment`' },
-                { value: 'Manage active environment variables with `.get()`, `.set()`, `.unset()`, and `.toObject()`.' },
+                {
+                  value:
+                    'Manage active environment variables with `.get()`, `.set()`, `.unset()`, and `.toObject()`.',
+                },
               ],
             };
           }
@@ -713,7 +863,10 @@ export function configureMonacoSandbox(monaco: any) {
             return {
               contents: [
                 { value: '`$.log(...args: any[]): void`' },
-                { value: 'Prints messages to the test / pre-request script logs console.' },
+                {
+                  value:
+                    'Prints messages to the test / pre-request script logs console.',
+                },
               ],
             };
           }
@@ -725,7 +878,9 @@ export function configureMonacoSandbox(monaco: any) {
       monaco.languages.registerSignatureHelpProvider(lang, {
         signatureHelpTriggerCharacters: ['(', ','],
         provideSignatureHelp: (model: any, position: any) => {
-          const linePrefix = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
+          const linePrefix = model
+            .getLineContent(position.lineNumber)
+            .slice(0, position.column - 1);
           if (/(?:axiomify|\$)\.test\([^)]*$/.test(linePrefix)) {
             return {
               value: {
@@ -733,16 +888,25 @@ export function configureMonacoSandbox(monaco: any) {
                 activeSignature: 0,
                 signatures: [
                   {
-                    label: 'test(name: string, fn: () => void | Promise<void>): void',
-                    documentation: 'Declare a test assertion block to validate the response.',
+                    label:
+                      'test(name: string, fn: () => void | Promise<void>): void',
+                    documentation:
+                      'Declare a test assertion block to validate the response.',
                     parameters: [
-                      { label: 'name', documentation: 'Human readable name of the test' },
-                      { label: 'fn', documentation: 'Assertion callback containing $.expect() statements' },
+                      {
+                        label: 'name',
+                        documentation: 'Human readable name of the test',
+                      },
+                      {
+                        label: 'fn',
+                        documentation:
+                          'Assertion callback containing $.expect() statements',
+                      },
                     ],
                   },
                 ],
               },
-              dispose: () => { },
+              dispose: () => {},
             };
           }
           if (/(?:axiomify|\$)\.expect\([^)]*$/.test(linePrefix)) {
@@ -755,12 +919,15 @@ export function configureMonacoSandbox(monaco: any) {
                     label: 'expect(actual: any): Expectation',
                     documentation: 'Wrap a value to perform assertions.',
                     parameters: [
-                      { label: 'actual', documentation: 'The actual value to evaluate' },
+                      {
+                        label: 'actual',
+                        documentation: 'The actual value to evaluate',
+                      },
                     ],
                   },
                 ],
               },
-              dispose: () => { },
+              dispose: () => {},
             };
           }
           return null;

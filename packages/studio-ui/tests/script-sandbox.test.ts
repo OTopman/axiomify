@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { createExpectation, executeScriptSandbox } from '../src/utils/script-sandbox';
+import {
+  createExpectation,
+  executeScriptSandbox,
+} from '../src/utils/script-sandbox';
 
 describe('Axiomify Scripting Sandbox', () => {
   const dummyRequest = {
     url: 'http://localhost:3000/api/users',
     method: 'GET',
-    headers: { 'Accept': 'application/json' },
+    headers: { Accept: 'application/json' },
     body: null,
     params: { page: '1' },
   };
@@ -169,7 +172,9 @@ describe('Axiomify Scripting Sandbox', () => {
 
       expect(result.success).toBe(true);
       expect(result.mutatedRequest?.headers['X-Timestamp']).toBe('1700000000');
-      expect(result.mutatedRequest?.headers['Authorization']).toBe('Bearer my_api_key_xyz');
+      expect(result.mutatedRequest?.headers['Authorization']).toBe(
+        'Bearer my_api_key_xyz',
+      );
       expect(result.mutatedRequest?.params['version']).toBe('2');
       expect(result.mutatedEnv['lastRun']).toBe('1700000000');
       expect(result.logs).toContain('Request modified successfully');
@@ -179,7 +184,9 @@ describe('Axiomify Scripting Sandbox', () => {
   describe('Sandbox Isolation and Safety', () => {
     it('catches syntax errors gracefully', async () => {
       const script = `invalid syntax :::;`;
-      const result = await executeScriptSandbox(script, { request: dummyRequest });
+      const result = await executeScriptSandbox(script, {
+        request: dummyRequest,
+      });
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
     });

@@ -37,8 +37,12 @@ describe('Monaco Script Sandbox IntelliSense', () => {
   };
 
   it('defines typing contracts for $, axiomify, and pm globals', () => {
-    expect(AXIOMIFY_SANDBOX_TYPES).toContain('declare const axiomify: AxiomifyContext;');
-    expect(AXIOMIFY_SANDBOX_TYPES).toContain('declare const $: AxiomifyContext;');
+    expect(AXIOMIFY_SANDBOX_TYPES).toContain(
+      'declare const axiomify: AxiomifyContext;',
+    );
+    expect(AXIOMIFY_SANDBOX_TYPES).toContain(
+      'declare const $: AxiomifyContext;',
+    );
     expect(AXIOMIFY_SANDBOX_TYPES).toContain('declare const pm:');
     expect(AXIOMIFY_SANDBOX_TYPES).toContain('interface Expectation');
     expect(AXIOMIFY_SANDBOX_TYPES).toContain('interface ScriptEnvironment');
@@ -49,9 +53,17 @@ describe('Monaco Script Sandbox IntelliSense', () => {
   it('provides rich completions when typing axiomify. or $.', () => {
     const model = {
       getLineContent: () => 'axiomify.',
-      getWordUntilPosition: () => ({ word: '', startColumn: 10, endColumn: 10 }),
+      getWordUntilPosition: () => ({
+        word: '',
+        startColumn: 10,
+        endColumn: 10,
+      }),
     };
-    const result = getSandboxCompletions(model, { lineNumber: 1, column: 10 }, mockMonaco);
+    const result = getSandboxCompletions(
+      model,
+      { lineNumber: 1, column: 10 },
+      mockMonaco,
+    );
     const labels = result.suggestions.map((s) => s.label);
     expect(labels).toContain('test');
     expect(labels).toContain('expect');
@@ -64,9 +76,17 @@ describe('Monaco Script Sandbox IntelliSense', () => {
   it('provides request completions when typing $.request.', () => {
     const model = {
       getLineContent: () => '$.request.',
-      getWordUntilPosition: () => ({ word: '', startColumn: 11, endColumn: 11 }),
+      getWordUntilPosition: () => ({
+        word: '',
+        startColumn: 11,
+        endColumn: 11,
+      }),
     };
-    const result = getSandboxCompletions(model, { lineNumber: 1, column: 11 }, mockMonaco);
+    const result = getSandboxCompletions(
+      model,
+      { lineNumber: 1, column: 11 },
+      mockMonaco,
+    );
     const labels = result.suggestions.map((s) => s.label);
     expect(labels).toContain('headers');
     expect(labels).toContain('params');
@@ -78,9 +98,17 @@ describe('Monaco Script Sandbox IntelliSense', () => {
   it('provides response completions when typing $.response.', () => {
     const model = {
       getLineContent: () => '$.response.',
-      getWordUntilPosition: () => ({ word: '', startColumn: 12, endColumn: 12 }),
+      getWordUntilPosition: () => ({
+        word: '',
+        startColumn: 12,
+        endColumn: 12,
+      }),
     };
-    const result = getSandboxCompletions(model, { lineNumber: 1, column: 12 }, mockMonaco);
+    const result = getSandboxCompletions(
+      model,
+      { lineNumber: 1, column: 12 },
+      mockMonaco,
+    );
     const labels = result.suggestions.map((s) => s.label);
     expect(labels).toContain('status');
     expect(labels).toContain('json');
@@ -94,7 +122,11 @@ describe('Monaco Script Sandbox IntelliSense', () => {
       getLineContent: () => '$.env.',
       getWordUntilPosition: () => ({ word: '', startColumn: 7, endColumn: 7 }),
     };
-    const result = getSandboxCompletions(model, { lineNumber: 1, column: 7 }, mockMonaco);
+    const result = getSandboxCompletions(
+      model,
+      { lineNumber: 1, column: 7 },
+      mockMonaco,
+    );
     const labels = result.suggestions.map((s) => s.label);
     expect(labels).toContain('get');
     expect(labels).toContain('set');
@@ -105,9 +137,17 @@ describe('Monaco Script Sandbox IntelliSense', () => {
   it('provides matcher completions when typing expect(x).', () => {
     const model = {
       getLineContent: () => '$.expect($.response.status).',
-      getWordUntilPosition: () => ({ word: '', startColumn: 29, endColumn: 29 }),
+      getWordUntilPosition: () => ({
+        word: '',
+        startColumn: 29,
+        endColumn: 29,
+      }),
     };
-    const result = getSandboxCompletions(model, { lineNumber: 1, column: 29 }, mockMonaco);
+    const result = getSandboxCompletions(
+      model,
+      { lineNumber: 1, column: 29 },
+      mockMonaco,
+    );
     const labels = result.suggestions.map((s) => s.label);
     expect(labels).toContain('toBe');
     expect(labels).toContain('toEqual');
@@ -119,13 +159,11 @@ describe('Monaco Script Sandbox IntelliSense', () => {
 
   it('configures Monaco providers for both javascript and typescript', () => {
     configureMonacoSandbox(mockMonaco);
-    expect(mockMonaco.languages.registerCompletionItemProvider).toHaveBeenCalledWith(
-      'javascript',
-      expect.any(Object),
-    );
-    expect(mockMonaco.languages.registerCompletionItemProvider).toHaveBeenCalledWith(
-      'typescript',
-      expect.any(Object),
-    );
+    expect(
+      mockMonaco.languages.registerCompletionItemProvider,
+    ).toHaveBeenCalledWith('javascript', expect.any(Object));
+    expect(
+      mockMonaco.languages.registerCompletionItemProvider,
+    ).toHaveBeenCalledWith('typescript', expect.any(Object));
   });
 });

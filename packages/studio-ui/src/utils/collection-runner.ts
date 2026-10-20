@@ -80,7 +80,8 @@ export function validateResponseAgainstSchema(
         Array.isArray(responseBody)
       ) {
         errors.push(
-          `Expected response of type 'object', but received '${Array.isArray(responseBody) ? 'array' : typeof responseBody
+          `Expected response of type 'object', but received '${
+            Array.isArray(responseBody) ? 'array' : typeof responseBody
           }'`,
         );
       }
@@ -161,7 +162,8 @@ export function validateResponseAgainstSchema(
           (typeof val !== 'object' || Array.isArray(val))
         ) {
           errors.push(
-            `Field '${propName}' expected type 'object', received '${Array.isArray(val) ? 'array' : typeof val
+            `Field '${propName}' expected type 'object', received '${
+              Array.isArray(val) ? 'array' : typeof val
             }'`,
           );
         }
@@ -228,10 +230,7 @@ export function extractRuntimeVariables(
 
   if (responseHeaders) {
     if (responseHeaders['authorization']) {
-      const auth = responseHeaders['authorization'].replace(
-        /^Bearer\s+/i,
-        '',
-      );
+      const auth = responseHeaders['authorization'].replace(/^Bearer\s+/i, '');
       extracted.push({ key: 'token', value: auth });
     }
   }
@@ -364,10 +363,10 @@ export async function executeSingleRunnerRequest(
   }
 
   const startTime = performance.now();
-  let resStatus: number | 'ERROR' = 'ERROR';
+  let resStatus: number | 'ERROR';
   let resBody: any = undefined;
   let resHeaders: Record<string, string> = {};
-  let duration = 0;
+  let duration: number;
   let fetchError: string | undefined = undefined;
 
   try {
@@ -439,16 +438,11 @@ export async function executeSingleRunnerRequest(
     );
 
     if (matchingSchema?.response) {
-      const validation = validateResponseAgainstSchema(
-        resBody,
-        matchingSchema,
-      );
+      const validation = validateResponseAgainstSchema(resBody, matchingSchema);
       assertions.push({
         name: `Response Conforms to Route Schema`,
         passed: validation.valid,
-        message: validation.valid
-          ? undefined
-          : validation.errors.join('; '),
+        message: validation.valid ? undefined : validation.errors.join('; '),
       });
     }
   }
@@ -511,7 +505,10 @@ export async function executeSingleRunnerRequest(
     responseBody: resBody,
     responseHeaders: resHeaders,
     error: fetchError,
-    mutatedEnv: Object.keys(accumulatedMutatedEnv).length > 0 ? accumulatedMutatedEnv : undefined,
+    mutatedEnv:
+      Object.keys(accumulatedMutatedEnv).length > 0
+        ? accumulatedMutatedEnv
+        : undefined,
     scriptLogs: scriptLogs.length > 0 ? scriptLogs : undefined,
   };
 }
@@ -647,9 +644,7 @@ export async function runCollectionBatch(
  */
 export function generateRunnerMarkdownSummary(report: RunnerReport): string {
   const passRate =
-    report.total > 0
-      ? Math.round((report.passed / report.total) * 100)
-      : 0;
+    report.total > 0 ? Math.round((report.passed / report.total) * 100) : 0;
   return `# Collection Test Run: ${report.collectionName}
 - **Timestamp**: ${new Date(report.timestamp).toLocaleString()}
 - **Environment**: ${report.environmentName}
@@ -659,12 +654,12 @@ export function generateRunnerMarkdownSummary(report: RunnerReport): string {
 | Method | Endpoint | Request Name | Status | Latency | Result |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 ${report.results
-      .map(
-        (r) =>
-          `| \`${r.method}\` | \`${r.path}\` | ${r.requestName} | \`${r.status}\` | ${r.duration.toFixed(
-            0,
-          )}ms | ${r.passed ? '✅ Passed' : '❌ Failed'} |`,
-      )
-      .join('\n')}
+  .map(
+    (r) =>
+      `| \`${r.method}\` | \`${r.path}\` | ${r.requestName} | \`${r.status}\` | ${r.duration.toFixed(
+        0,
+      )}ms | ${r.passed ? '✅ Passed' : '❌ Failed'} |`,
+  )
+  .join('\n')}
 `;
 }

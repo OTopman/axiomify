@@ -25,16 +25,16 @@ beforeAll(() => {
       hash: '',
     },
     history: {
-      replaceState: () => { },
+      replaceState: () => {},
     },
-    addEventListener: () => { },
-    removeEventListener: () => { },
+    addEventListener: () => {},
+    removeEventListener: () => {},
     localStorage: mockLocalStorage,
   };
   (globalThis as any).document = {
     title: 'Axiomify Studio',
     documentElement: {
-      setAttribute: () => { },
+      setAttribute: () => {},
       getAttribute: () => 'dark',
     },
   };

@@ -83,7 +83,8 @@ export const environmentsSlice = createSlice({
       const { index, key, value } = action.payload;
       if (state.environmentVariables[index]) {
         if (key !== undefined) state.environmentVariables[index].key = key;
-        if (value !== undefined) state.environmentVariables[index].value = value;
+        if (value !== undefined)
+          state.environmentVariables[index].value = value;
       }
     },
     removeVariable: (state, action: PayloadAction<number>) => {

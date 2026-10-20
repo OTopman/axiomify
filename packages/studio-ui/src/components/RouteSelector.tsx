@@ -438,7 +438,8 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: '12px',
-            transition: 'border-color var(--transition), background var(--transition)',
+            transition:
+              'border-color var(--transition), background var(--transition)',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -770,7 +771,9 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({
                             ? 'var(--accent)'
                             : 'var(--bg-tertiary)',
                         color:
-                          tagFilter === 'ALL' ? '#fff' : 'var(--text-secondary)',
+                          tagFilter === 'ALL'
+                            ? '#fff'
+                            : 'var(--text-secondary)',
                         fontWeight: tagFilter === 'ALL' ? 700 : 500,
                         cursor: 'pointer',
                       }}
@@ -778,7 +781,8 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({
                       All Tags
                     </button>
                     {allTags.map(({ tag, count }) => {
-                      const isActive = tagFilter.toLowerCase() === tag.toLowerCase();
+                      const isActive =
+                        tagFilter.toLowerCase() === tag.toLowerCase();
                       return (
                         <button
                           key={tag}
@@ -794,8 +798,7 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({
                             background: isActive
                               ? 'var(--accent)'
                               : 'var(--bg-tertiary)',
-                            color:
-                              isActive ? '#fff' : 'var(--text-secondary)',
+                            color: isActive ? '#fff' : 'var(--text-secondary)',
                             fontWeight: isActive ? 700 : 500,
                             cursor: 'pointer',
                           }}
@@ -830,16 +833,28 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({
                     color: 'var(--text-muted)',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
-                    <Search size={24} style={{ color: 'var(--border-active)' }} />
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    <Search
+                      size={24}
+                      style={{ color: 'var(--border-active)' }}
+                    />
                   </div>
                   <div style={{ fontSize: '13px', fontWeight: 600 }}>
                     No routes found matching your criteria
                   </div>
                   <div style={{ fontSize: '12px', marginTop: '4px' }}>
-                    Try searching for another keyword or clear the active filters.
+                    Try searching for another keyword or clear the active
+                    filters.
                   </div>
-                  {(searchQuery || methodFilter !== 'ALL' || tagFilter !== 'ALL') && (
+                  {(searchQuery ||
+                    methodFilter !== 'ALL' ||
+                    tagFilter !== 'ALL') && (
                     <button
                       type="button"
                       className="btn btn-secondary"
@@ -864,7 +879,7 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({
                   const isHighlighted = index === selectedIndex;
                   const isCurrent =
                     route.method.toUpperCase() ===
-                    selectedMethod.toUpperCase() &&
+                      selectedMethod.toUpperCase() &&
                     route.path === selectedPath;
 
                   return (
@@ -1018,7 +1033,10 @@ export const RouteSelector: React.FC<RouteSelectorProps> = ({
                             gap: '5px',
                           }}
                         >
-                          <Bookmark size={11} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+                          <Bookmark
+                            size={11}
+                            style={{ color: 'var(--accent)', flexShrink: 0 }}
+                          />
                           <span>{meta.summary}</span>
                         </div>
                       )}

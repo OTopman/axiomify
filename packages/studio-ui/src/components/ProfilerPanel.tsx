@@ -38,7 +38,10 @@ interface ProfilerRequest {
 
 interface ProfilerPanelProps {
   onReplay?: (method: any, path: any) => void;
-  onInspectCode?: (filePath: string, lineNumber: number) => Promise<void> | void;
+  onInspectCode?: (
+    filePath: string,
+    lineNumber: number,
+  ) => Promise<void> | void;
 }
 
 export const ProfilerPanel: React.FC<ProfilerPanelProps> = () => {
@@ -396,7 +399,10 @@ export const ProfilerPanel: React.FC<ProfilerPanelProps> = () => {
 
       {entries.length === 0 ? (
         <div className="empty-state">
-          <Flame size={36} style={{ marginBottom: '12px', color: 'var(--text-muted)' }} />
+          <Flame
+            size={36}
+            style={{ marginBottom: '12px', color: 'var(--text-muted)' }}
+          />
           <div className="empty-state-message">
             No execution traces captured. Hit the server with requests to
             populate the profiler.
@@ -758,11 +764,11 @@ export const ProfilerPanel: React.FC<ProfilerPanelProps> = () => {
                                     }}
                                   >
                                     {block.name.length >
-                                      (widthPercent * zoom) / 5
+                                    (widthPercent * zoom) / 5
                                       ? block.name.slice(
-                                        0,
-                                        Math.floor((widthPercent * zoom) / 5),
-                                      ) + '..'
+                                          0,
+                                          Math.floor((widthPercent * zoom) / 5),
+                                        ) + '..'
                                       : block.name}
                                   </text>
                                 )}
@@ -913,7 +919,7 @@ export const ProfilerPanel: React.FC<ProfilerPanelProps> = () => {
                     }}
                   >
                     {!selectedRequest.queries ||
-                      selectedRequest.queries.length === 0 ? (
+                    selectedRequest.queries.length === 0 ? (
                       <div
                         style={{
                           fontStyle: 'italic',
@@ -1122,10 +1128,10 @@ export const ProfilerPanel: React.FC<ProfilerPanelProps> = () => {
                 >
                   {selectedRequest?.response?.durationMs
                     ? (
-                      (selectedBlock.duration /
-                        selectedRequest.response.durationMs) *
-                      100
-                    ).toFixed(1) + '%'
+                        (selectedBlock.duration /
+                          selectedRequest.response.durationMs) *
+                        100
+                      ).toFixed(1) + '%'
                     : '—'}
                 </div>
               </div>

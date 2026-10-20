@@ -73,7 +73,9 @@ export function createExpectation(actual: any, isNot = false): Expectation {
     toBe(expected: any) {
       const match = actual === expected;
       if (isNot ? match : !match) {
-        fail(`Expected ${JSON.stringify(actual)} ${isNot ? 'not to be' : 'to be'} ${JSON.stringify(expected)}`);
+        fail(
+          `Expected ${JSON.stringify(actual)} ${isNot ? 'not to be' : 'to be'} ${JSON.stringify(expected)}`,
+        );
       }
     },
     toEqual(expected: any) {
@@ -81,7 +83,9 @@ export function createExpectation(actual: any, isNot = false): Expectation {
       const expectedJson = JSON.stringify(expected);
       const match = actualJson === expectedJson;
       if (isNot ? match : !match) {
-        fail(`Expected ${actualJson} ${isNot ? 'not to equal' : 'to equal'} ${expectedJson}`);
+        fail(
+          `Expected ${actualJson} ${isNot ? 'not to equal' : 'to equal'} ${expectedJson}`,
+        );
       }
     },
     toBeDefined() {
@@ -99,43 +103,57 @@ export function createExpectation(actual: any, isNot = false): Expectation {
     toBeNull() {
       const match = actual === null;
       if (isNot ? match : !match) {
-        fail(`Expected ${JSON.stringify(actual)} ${isNot ? 'not to be null' : 'to be null'}`);
+        fail(
+          `Expected ${JSON.stringify(actual)} ${isNot ? 'not to be null' : 'to be null'}`,
+        );
       }
     },
     toBeTruthy() {
       const match = Boolean(actual);
       if (isNot ? match : !match) {
-        fail(`Expected ${JSON.stringify(actual)} ${isNot ? 'to be falsy' : 'to be truthy'}`);
+        fail(
+          `Expected ${JSON.stringify(actual)} ${isNot ? 'to be falsy' : 'to be truthy'}`,
+        );
       }
     },
     toBeFalsy() {
-      const match = !Boolean(actual);
+      const match = !actual;
       if (isNot ? match : !match) {
-        fail(`Expected ${JSON.stringify(actual)} ${isNot ? 'to be truthy' : 'to be falsy'}`);
+        fail(
+          `Expected ${JSON.stringify(actual)} ${isNot ? 'to be truthy' : 'to be falsy'}`,
+        );
       }
     },
     toBeGreaterThan(n: number) {
       const match = typeof actual === 'number' && actual > n;
       if (isNot ? match : !match) {
-        fail(`Expected ${actual} ${isNot ? 'not to be greater than' : 'to be greater than'} ${n}`);
+        fail(
+          `Expected ${actual} ${isNot ? 'not to be greater than' : 'to be greater than'} ${n}`,
+        );
       }
     },
     toBeGreaterThanOrEqual(n: number) {
       const match = typeof actual === 'number' && actual >= n;
       if (isNot ? match : !match) {
-        fail(`Expected ${actual} ${isNot ? 'not to be greater than or equal to' : 'to be greater than or equal to'} ${n}`);
+        fail(
+          `Expected ${actual} ${isNot ? 'not to be greater than or equal to' : 'to be greater than or equal to'} ${n}`,
+        );
       }
     },
     toBeLessThan(n: number) {
       const match = typeof actual === 'number' && actual < n;
       if (isNot ? match : !match) {
-        fail(`Expected ${actual} ${isNot ? 'not to be less than' : 'to be less than'} ${n}`);
+        fail(
+          `Expected ${actual} ${isNot ? 'not to be less than' : 'to be less than'} ${n}`,
+        );
       }
     },
     toBeLessThanOrEqual(n: number) {
       const match = typeof actual === 'number' && actual <= n;
       if (isNot ? match : !match) {
-        fail(`Expected ${actual} ${isNot ? 'not to be less than or equal to' : 'to be less than or equal to'} ${n}`);
+        fail(
+          `Expected ${actual} ${isNot ? 'not to be less than or equal to' : 'to be less than or equal to'} ${n}`,
+        );
       }
     },
     toContain(item: any) {
@@ -148,20 +166,26 @@ export function createExpectation(actual: any, isNot = false): Expectation {
         match = item in actual;
       }
       if (isNot ? match : !match) {
-        fail(`Expected ${JSON.stringify(actual)} ${isNot ? 'not to contain' : 'to contain'} ${JSON.stringify(item)}`);
+        fail(
+          `Expected ${JSON.stringify(actual)} ${isNot ? 'not to contain' : 'to contain'} ${JSON.stringify(item)}`,
+        );
       }
     },
     toBeOneOf(array: any[]) {
       const match = Array.isArray(array) && array.includes(actual);
       if (isNot ? match : !match) {
-        fail(`Expected ${JSON.stringify(actual)} ${isNot ? 'not to be one of' : 'to be one of'} ${JSON.stringify(array)}`);
+        fail(
+          `Expected ${JSON.stringify(actual)} ${isNot ? 'not to be one of' : 'to be one of'} ${JSON.stringify(array)}`,
+        );
       }
     },
     toHaveProperty(prop: string, value?: any) {
       const hasProp = actual && typeof actual === 'object' && prop in actual;
       const match = hasProp && (value === undefined || actual[prop] === value);
       if (isNot ? match : !match) {
-        fail(`Expected object ${isNot ? 'not to have property' : 'to have property'} "${prop}"${value !== undefined ? ` with value ${JSON.stringify(value)}` : ''}`);
+        fail(
+          `Expected object ${isNot ? 'not to have property' : 'to have property'} "${prop}"${value !== undefined ? ` with value ${JSON.stringify(value)}` : ''}`,
+        );
       }
     },
     toThrow() {
@@ -182,7 +206,9 @@ export function createExpectation(actual: any, isNot = false): Expectation {
       const reg = typeof regex === 'string' ? new RegExp(regex) : regex;
       const match = reg.test(String(actual));
       if (isNot ? match : !match) {
-        fail(`Expected ${JSON.stringify(actual)} ${isNot ? 'not to match' : 'to match'} ${regex}`);
+        fail(
+          `Expected ${JSON.stringify(actual)} ${isNot ? 'not to match' : 'to match'} ${regex}`,
+        );
       }
     },
   };
@@ -239,7 +265,7 @@ export async function executeScriptSandbox(
 
   // Prepare response object if present
   let responseData = options.response?.data;
-  let responseText = options.response?.text;
+  const responseText = options.response?.text;
   if (options.response && responseData === undefined && responseText) {
     try {
       responseData = JSON.parse(responseText);
@@ -250,13 +276,13 @@ export async function executeScriptSandbox(
 
   const responseObj = options.response
     ? {
-      status: options.response.status,
-      statusText: options.response.statusText,
-      headers: { ...options.response.headers },
-      responseTime: options.response.responseTime,
-      json: () => responseData,
-      text: () => responseText ?? JSON.stringify(responseData),
-    }
+        status: options.response.status,
+        statusText: options.response.statusText,
+        headers: { ...options.response.headers },
+        responseTime: options.response.responseTime,
+        json: () => responseData,
+        text: () => responseText ?? JSON.stringify(responseData),
+      }
     : undefined;
 
   // Build the Axiomify scope object
@@ -299,7 +325,11 @@ export async function executeScriptSandbox(
     },
     expect: (actual: any) => createExpectation(actual),
     log: (...args: any[]) => {
-      logs.push(args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' '));
+      logs.push(
+        args
+          .map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a)))
+          .join(' '),
+      );
     },
   };
 
@@ -312,22 +342,24 @@ export async function executeScriptSandbox(
     expect: axiomify.expect,
     response: responseObj
       ? {
-        code: responseObj.status,
-        status: responseObj.statusText,
-        responseTime: responseObj.responseTime,
-        headers: responseObj.headers,
-        json: responseObj.json,
-        text: responseObj.text,
-        to: {
-          have: {
-            status: (code: number) => {
-              if (responseObj.status !== code) {
-                throw new Error(`expected response code ${responseObj.status} to be ${code}`);
-              }
+          code: responseObj.status,
+          status: responseObj.statusText,
+          responseTime: responseObj.responseTime,
+          headers: responseObj.headers,
+          json: responseObj.json,
+          text: responseObj.text,
+          to: {
+            have: {
+              status: (code: number) => {
+                if (responseObj.status !== code) {
+                  throw new Error(
+                    `expected response code ${responseObj.status} to be ${code}`,
+                  );
+                }
+              },
             },
           },
-        },
-      }
+        }
       : undefined,
     environment: {
       get: axiomify.env.get,
@@ -370,12 +402,7 @@ export async function executeScriptSandbox(
       }).apply(undefined, arguments[3]);
     `;
 
-    const runner = new Function(
-      'axiomify',
-      '$',
-      'pm',
-      wrappedCode,
-    );
+    const runner = new Function('axiomify', '$', 'pm', wrappedCode);
 
     // Timeout guard promise
     const executionPromise = new Promise<void>((resolve, reject) => {
@@ -388,7 +415,11 @@ export async function executeScriptSandbox(
     });
 
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error(`Script execution timed out after ${timeoutMs}ms`)), timeoutMs);
+      setTimeout(
+        () =>
+          reject(new Error(`Script execution timed out after ${timeoutMs}ms`)),
+        timeoutMs,
+      );
     });
 
     await Promise.race([executionPromise, timeoutPromise]);

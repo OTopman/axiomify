@@ -17,7 +17,10 @@ interface DashboardProps {
   discovery: DiscoveryData;
   onQuickTest: (method: string, path: string) => void;
   onOpenWsTester: (path: string) => void;
-  onInspectCode?: (filePath: string, lineNumber: number) => Promise<void> | void;
+  onInspectCode?: (
+    filePath: string,
+    lineNumber: number,
+  ) => Promise<void> | void;
 }
 
 const renderFlowCardIcon = (type: string) => {
@@ -187,7 +190,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {filteredRoutes.length === 0 ? (
         <div className="empty-state">
-          <Compass size={36} style={{ marginBottom: '12px', color: 'var(--text-muted)' }} />
+          <Compass
+            size={36}
+            style={{ marginBottom: '12px', color: 'var(--text-muted)' }}
+          />
           <div className="empty-state-message">No routes found</div>
         </div>
       ) : (
@@ -504,7 +510,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                         minWidth: '180px',
                                       }}
                                     >
-                                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                                      <div
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                        }}
+                                      >
                                         {renderFlowCardIcon(card.type)}
                                       </div>
                                       <div
@@ -565,9 +576,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               }}
                             >
                               {!routeSchema ||
-                                (!routeSchema.params &&
-                                  !routeSchema.query &&
-                                  !routeSchema.body) ? (
+                              (!routeSchema.params &&
+                                !routeSchema.query &&
+                                !routeSchema.body) ? (
                                 <div
                                   style={{
                                     color: 'var(--text-muted)',

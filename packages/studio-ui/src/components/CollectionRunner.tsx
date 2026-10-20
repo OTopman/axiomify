@@ -25,7 +25,7 @@ import {
   Sliders,
   Square,
   X,
-  XCircle
+  XCircle,
 } from 'lucide-react';
 
 interface CollectionRunnerProps {
@@ -68,8 +68,12 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
   });
   const [report, setReport] = useState<RunnerReport | null>(null);
   const [liveResults, setLiveResults] = useState<RunnerItemResult[]>([]);
-  const [filterMode, setFilterMode] = useState<'all' | 'passed' | 'failed'>('all');
-  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+  const [filterMode, setFilterMode] = useState<'all' | 'passed' | 'failed'>(
+    'all',
+  );
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>(
+    {},
+  );
   const [copiedSummary, setCopiedSummary] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -187,7 +191,9 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
   const passedCount = currentDisplayResults.filter((r) => r.passed).length;
   const failedCount = currentDisplayResults.filter((r) => !r.passed).length;
   const progressPercent =
-    progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0;
+    progress.total > 0
+      ? Math.round((progress.current / progress.total) * 100)
+      : 0;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -205,7 +211,8 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
                 Collection Runner & Automated Batch Tester
               </span>
               <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                Execute collection test suites sequentially with automated schema validation and token chaining
+                Execute collection test suites sequentially with automated
+                schema validation and token chaining
               </div>
             </div>
           </div>
@@ -221,7 +228,14 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', flex: 1 }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            flex: 1,
+          }}
+        >
           {/* Top Configuration & Control Bar */}
           <div
             style={{
@@ -233,11 +247,26 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
               gap: '12px',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                flexWrap: 'wrap',
+              }}
+            >
               {/* Collection Dropdown */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
                 <Folder size={13} style={{ color: 'var(--accent)' }} />
-                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: 'var(--text-secondary)',
+                  }}
+                >
                   Collection:
                 </span>
                 <select
@@ -261,9 +290,17 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
               </div>
 
               {/* Environment Dropdown */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
                 <Sliders size={13} style={{ color: 'var(--text-muted)' }} />
-                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: 'var(--text-secondary)',
+                  }}
+                >
                   Environment:
                 </span>
                 <select
@@ -288,9 +325,15 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
               </div>
 
               {/* Delay & Max Latency inputs */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
                 <Clock size={12} style={{ color: 'var(--text-muted)' }} />
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Delay:</span>
+                <span
+                  style={{ fontSize: '11px', color: 'var(--text-secondary)' }}
+                >
+                  Delay:
+                </span>
                 <input
                   type="number"
                   min="0"
@@ -307,10 +350,14 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
                     color: 'var(--text-primary)',
                   }}
                   value={delayMs}
-                  onChange={(e) => setDelayMs(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  onChange={(e) =>
+                    setDelayMs(Math.max(0, parseInt(e.target.value, 10) || 0))
+                  }
                   disabled={isRunning}
                 />
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>ms</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                  ms
+                </span>
               </div>
 
               {/* Action Button: Run / Stop */}
@@ -337,7 +384,10 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
                     className="btn btn-primary"
                     style={{ padding: '5px 16px', fontSize: '11px' }}
                     onClick={handleStartRun}
-                    disabled={!activeCollection || activeCollection.requests.length === 0}
+                    disabled={
+                      !activeCollection ||
+                      activeCollection.requests.length === 0
+                    }
                   >
                     <Play size={12} />
                     <span>
@@ -349,18 +399,42 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
             </div>
 
             {/* Execution Toggles & Options */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '11px', color: 'var(--text-secondary)' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
+                fontSize: '11px',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                }}
+              >
                 <input
                   type="checkbox"
                   checked={autoExtractTokens}
                   onChange={(e) => setAutoExtractTokens(e.target.checked)}
                   disabled={isRunning}
                 />
-                <span>Auto-Extract Auth Tokens & IDs into downstream requests</span>
+                <span>
+                  Auto-Extract Auth Tokens & IDs into downstream requests
+                </span>
               </label>
 
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                }}
+              >
                 <input
                   type="checkbox"
                   checked={stopOnError}
@@ -374,12 +448,19 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
 
           {/* Progress Bar (when running or run complete) */}
           {(isRunning || report) && (
-            <div style={{ background: 'var(--bg-tertiary)', height: '4px', width: '100%' }}>
+            <div
+              style={{
+                background: 'var(--bg-tertiary)',
+                height: '4px',
+                width: '100%',
+              }}
+            >
               <div
                 style={{
                   height: '100%',
                   width: `${progressPercent}%`,
-                  background: failedCount > 0 ? 'var(--warning)' : 'var(--accent)',
+                  background:
+                    failedCount > 0 ? 'var(--warning)' : 'var(--accent)',
                   transition: 'width 200ms ease-out',
                 }}
               />
@@ -401,30 +482,41 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
               }}
             >
               {/* Metric Chips */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
                 <span className="metric-chip">
                   <span>Executed:</span>
                   <strong style={{ fontFamily: 'var(--font-mono)' }}>
-                    {currentDisplayResults.length} / {activeCollection?.requests.length || 0}
+                    {currentDisplayResults.length} /{' '}
+                    {activeCollection?.requests.length || 0}
                   </strong>
                 </span>
 
                 <span
                   className="metric-chip"
-                  style={{ color: passedCount > 0 ? 'var(--success)' : 'inherit' }}
+                  style={{
+                    color: passedCount > 0 ? 'var(--success)' : 'inherit',
+                  }}
                 >
                   <CheckCircle2 size={12} />
                   <span>Passed:</span>
-                  <strong style={{ fontFamily: 'var(--font-mono)' }}>{passedCount}</strong>
+                  <strong style={{ fontFamily: 'var(--font-mono)' }}>
+                    {passedCount}
+                  </strong>
                 </span>
 
                 <span
                   className="metric-chip"
-                  style={{ color: failedCount > 0 ? 'var(--error)' : 'inherit' }}
+                  style={{
+                    color: failedCount > 0 ? 'var(--error)' : 'inherit',
+                  }}
                 >
                   <XCircle size={12} />
                   <span>Failed:</span>
-                  <strong style={{ fontFamily: 'var(--font-mono)' }}>{failedCount}</strong>
+                  <strong style={{ fontFamily: 'var(--font-mono)' }}>
+                    {failedCount}
+                  </strong>
                 </span>
 
                 {report && (
@@ -469,34 +561,67 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
           )}
 
           {/* Results Stream Area */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', background: 'var(--bg-primary)' }}>
+          <div
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: '12px 16px',
+              background: 'var(--bg-primary)',
+            }}
+          >
             {currentDisplayResults.length === 0 ? (
               <div
                 className="empty-state"
                 style={{ padding: '40px 16px', textAlign: 'center' }}
               >
-                <Activity size={24} style={{ margin: '0 auto 10px', opacity: 0.5 }} />
-                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                <Activity
+                  size={24}
+                  style={{ margin: '0 auto 10px', opacity: 0.5 }}
+                />
+                <span
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: 'var(--text-primary)',
+                    marginBottom: '4px',
+                  }}
+                >
                   Ready to Run "{activeCollection?.name || 'Collection'}"
                 </span>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)', maxWidth: '400px', lineHeight: 1.5, marginBottom: '16px' }}>
-                  Click "Start Collection Run" to execute all {activeCollection?.requests.length || 0} saved requests in sequence, evaluate schema compliance, and generate a test report.
+                <span
+                  style={{
+                    fontSize: '11px',
+                    color: 'var(--text-muted)',
+                    maxWidth: '400px',
+                    lineHeight: 1.5,
+                    marginBottom: '16px',
+                  }}
+                >
+                  Click "Start Collection Run" to execute all{' '}
+                  {activeCollection?.requests.length || 0} saved requests in
+                  sequence, evaluate schema compliance, and generate a test
+                  report.
                 </span>
                 <button
                   type="button"
                   className="btn btn-primary"
                   style={{ padding: '6px 16px', fontSize: '12px' }}
                   onClick={handleStartRun}
-                  disabled={!activeCollection || activeCollection.requests.length === 0}
+                  disabled={
+                    !activeCollection || activeCollection.requests.length === 0
+                  }
                 >
                   <Play size={13} />
                   <span>Start Test Run</span>
                 </button>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div
+                style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+              >
                 {filteredResults.map((r, idx) => {
-                  const isExpanded = !!expandedItems[r.requestId || String(idx)];
+                  const isExpanded =
+                    !!expandedItems[r.requestId || String(idx)];
                   return (
                     <div
                       key={r.requestId || idx}
@@ -523,19 +648,45 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
                           gap: '10px',
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            minWidth: 0,
+                            flex: 1,
+                          }}
+                        >
                           {r.passed ? (
-                            <CheckCircle2 size={14} style={{ color: 'var(--success)', flexShrink: 0 }} />
+                            <CheckCircle2
+                              size={14}
+                              style={{ color: 'var(--success)', flexShrink: 0 }}
+                            />
                           ) : (
-                            <XCircle size={14} style={{ color: 'var(--error)', flexShrink: 0 }} />
+                            <XCircle
+                              size={14}
+                              style={{ color: 'var(--error)', flexShrink: 0 }}
+                            />
                           )}
                           <span
                             className={`method-badge method-${r.method}`}
-                            style={{ fontSize: '9px', padding: '1px 5px', minWidth: '38px', textAlign: 'center' }}
+                            style={{
+                              fontSize: '9px',
+                              padding: '1px 5px',
+                              minWidth: '38px',
+                              textAlign: 'center',
+                            }}
                           >
                             {r.method}
                           </span>
-                          <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              color: 'var(--text-primary)',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
                             {r.requestName}
                           </span>
                           <span
@@ -552,21 +703,40 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
                           </span>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            flexShrink: 0,
+                          }}
+                        >
                           <span
                             style={{
                               fontFamily: 'var(--font-mono)',
                               fontSize: '11px',
                               fontWeight: 600,
-                              color: r.passed ? 'var(--success)' : 'var(--error)',
+                              color: r.passed
+                                ? 'var(--success)'
+                                : 'var(--error)',
                             }}
                           >
                             {r.status}
                           </span>
-                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-muted)' }}>
+                          <span
+                            style={{
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: '10px',
+                              color: 'var(--text-muted)',
+                            }}
+                          >
                             {r.duration.toFixed(0)} ms
                           </span>
-                          {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                          {isExpanded ? (
+                            <ChevronDown size={12} />
+                          ) : (
+                            <ChevronRight size={12} />
+                          )}
                         </div>
                       </div>
 
@@ -583,8 +753,22 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
                           }}
                         >
                           {/* Assertion Checklist */}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '4px',
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                color: 'var(--text-muted)',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em',
+                              }}
+                            >
                               Evaluated Assertions ({r.assertions.length})
                             </span>
                             {r.assertions.map((a, aIdx) => (
@@ -596,17 +780,30 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
                                   gap: '6px',
                                   fontSize: '11px',
                                   fontFamily: 'var(--font-mono)',
-                                  color: a.passed ? 'var(--text-secondary)' : 'var(--error)',
+                                  color: a.passed
+                                    ? 'var(--text-secondary)'
+                                    : 'var(--error)',
                                 }}
                               >
                                 {a.passed ? (
-                                  <Check size={12} style={{ color: 'var(--success)' }} />
+                                  <Check
+                                    size={12}
+                                    style={{ color: 'var(--success)' }}
+                                  />
                                 ) : (
-                                  <X size={12} style={{ color: 'var(--error)' }} />
+                                  <X
+                                    size={12}
+                                    style={{ color: 'var(--error)' }}
+                                  />
                                 )}
                                 <span>{a.name}</span>
                                 {a.message && (
-                                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                                  <span
+                                    style={{
+                                      fontSize: '10px',
+                                      color: 'var(--text-muted)',
+                                    }}
+                                  >
                                     — {a.message}
                                   </span>
                                 )}
@@ -617,7 +814,15 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
                           {/* Response Payload Preview */}
                           {r.responseBody !== undefined && (
                             <div style={{ marginTop: '6px' }}>
-                              <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              <span
+                                style={{
+                                  fontSize: '10px',
+                                  fontWeight: 700,
+                                  color: 'var(--text-muted)',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.05em',
+                                }}
+                              >
                                 Response Payload
                               </span>
                               <pre
@@ -645,7 +850,15 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
                           {/* Script Console Logs */}
                           {r.scriptLogs && r.scriptLogs.length > 0 && (
                             <div style={{ marginTop: '6px' }}>
-                              <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                              <span
+                                style={{
+                                  fontSize: '10px',
+                                  fontWeight: 700,
+                                  color: 'var(--text-muted)',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.05em',
+                                }}
+                              >
                                 Script Console Logs ({r.scriptLogs.length})
                               </span>
                               <pre
@@ -707,7 +920,11 @@ export const CollectionRunner: React.FC<CollectionRunnerProps> = ({
                   onClick={handleCopyMarkdown}
                   title="Copy GitHub-flavored Markdown summary to clipboard"
                 >
-                  {copiedSummary ? <Check size={12} style={{ color: 'var(--success)' }} /> : <Copy size={12} />}
+                  {copiedSummary ? (
+                    <Check size={12} style={{ color: 'var(--success)' }} />
+                  ) : (
+                    <Copy size={12} />
+                  )}
                   <span>{copiedSummary ? 'Copied' : 'Copy Markdown'}</span>
                 </button>
               </div>

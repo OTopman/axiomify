@@ -43,7 +43,10 @@ describe('Environment Variable IntelliSense', () => {
     expect(ctx4).toBeNull();
 
     // No braces at all
-    const ctx5 = extractVariableReferenceContext('https://example.com/users', 26);
+    const ctx5 = extractVariableReferenceContext(
+      'https://example.com/users',
+      26,
+    );
     expect(ctx5).toBeNull();
 
     // Braces with existing closing braces right after cursor
@@ -59,9 +62,17 @@ describe('Environment Variable IntelliSense', () => {
 
   it('filters variables based on query matching key, value, or environment', () => {
     const vars = [
-      { key: 'baseUrl', value: 'http://localhost:3000', environmentName: 'Local' },
+      {
+        key: 'baseUrl',
+        value: 'http://localhost:3000',
+        environmentName: 'Local',
+      },
       { key: 'apiKey', value: 'secret-1234', environmentName: 'Local' },
-      { key: 'stagingUrl', value: 'https://staging.api.com', environmentName: 'Staging' },
+      {
+        key: 'stagingUrl',
+        value: 'https://staging.api.com',
+        environmentName: 'Staging',
+      },
     ];
 
     expect(filterVariables(vars, '')).toHaveLength(3);

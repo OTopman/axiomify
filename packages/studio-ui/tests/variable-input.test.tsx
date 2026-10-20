@@ -4,7 +4,11 @@ import { VariableInput } from '../src/components/VariableInput';
 
 describe('VariableInput component', () => {
   const sampleVariables = [
-    { key: 'baseUrl', value: 'http://localhost:3000', environmentName: 'Local' },
+    {
+      key: 'baseUrl',
+      value: 'http://localhost:3000',
+      environmentName: 'Local',
+    },
     { key: 'token', value: 'jwt_secret_token_1234', environmentName: 'Local' },
   ];
 
@@ -14,7 +18,7 @@ describe('VariableInput component', () => {
         value="https://api.com/users"
         placeholder="Enter request URL"
         variables={sampleVariables}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(markup).toContain('value="https://api.com/users"');
@@ -28,7 +32,7 @@ describe('VariableInput component', () => {
         rows={4}
         value="Sample raw body text"
         variables={sampleVariables}
-        onChange={() => { }}
+        onChange={() => {}}
       />,
     );
     expect(markup).toContain('<textarea');

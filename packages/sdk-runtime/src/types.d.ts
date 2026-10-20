@@ -5,40 +5,44 @@ import type { AuthProvider } from './auth';
 import type { RetryConfig } from './retry';
 import type { CircuitBreakerConfig } from './circuit-breaker';
 export interface ClientConfig {
-    /** The base URL of the API. */
-    baseUrl: string;
-    headers?: Record<string, string>;
-    timeoutMs?: number;
-    fetch?: typeof fetch;
-    authProvider?: AuthProvider;
-    retryConfig?: Partial<RetryConfig>;
-    circuitBreakerConfig?: Partial<CircuitBreakerConfig>;
-    enableCache?: boolean;
-    cacheTtlMs?: number;
-    telemetry?: {
-        onBeforeRequest?: (req: ClientRequest) => void | Promise<void>;
-        onAfterResponse?: (res: ClientResponse) => void | Promise<void>;
-        onError?: (err: any) => void | Promise<void>;
-    };
+  /** The base URL of the API. */
+  baseUrl: string;
+  headers?: Record<string, string>;
+  timeoutMs?: number;
+  fetch?: typeof fetch;
+  authProvider?: AuthProvider;
+  retryConfig?: Partial<RetryConfig>;
+  circuitBreakerConfig?: Partial<CircuitBreakerConfig>;
+  enableCache?: boolean;
+  cacheTtlMs?: number;
+  telemetry?: {
+    onBeforeRequest?: (req: ClientRequest) => void | Promise<void>;
+    onAfterResponse?: (res: ClientResponse) => void | Promise<void>;
+    onError?: (err: any) => void | Promise<void>;
+  };
 }
 export interface ClientRequest {
-    path: string;
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
-    query?: Record<string, string | number | boolean | undefined | null>;
-    body?: unknown;
-    headers?: Record<string, string>;
+  path: string;
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
+  query?: Record<string, string | number | boolean | undefined | null>;
+  body?: unknown;
+  headers?: Record<string, string>;
 }
 export interface ClientResponse<T = unknown> {
-    data: T;
-    status: number;
-    headers: Headers;
-    request: ClientRequest;
+  data: T;
+  status: number;
+  headers: Headers;
+  request: ClientRequest;
 }
 export declare class SdkError extends Error {
-    message: string;
-    status?: number | undefined;
-    response?: ClientResponse | undefined;
-    constructor(message: string, status?: number | undefined, response?: ClientResponse | undefined);
+  message: string;
+  status?: number | undefined;
+  response?: ClientResponse | undefined;
+  constructor(
+    message: string,
+    status?: number | undefined,
+    response?: ClientResponse | undefined,
+  );
 }
 export * from './auth';
 export * from './interceptors';

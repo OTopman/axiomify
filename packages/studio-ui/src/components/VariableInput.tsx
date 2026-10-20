@@ -219,7 +219,8 @@ export const VariableInput: React.FC<VariableInputProps> = ({
             }}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Zap size={13} style={{ color: 'var(--accent)' }} /> Environment Variables
+              <Zap size={13} style={{ color: 'var(--accent)' }} /> Environment
+              Variables
             </span>
             <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
               Press ↵ or Tab to insert

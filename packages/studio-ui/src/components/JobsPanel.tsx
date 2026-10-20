@@ -76,7 +76,15 @@ export const JobsPanel: React.FC<{ discovery?: DiscoveryData }> = () => {
   if (loading && !data) {
     return (
       <div className="empty-state">
-        <div className="spinner" style={{ width: '24px', height: '24px', borderWidth: '2px', marginBottom: '12px' }} />
+        <div
+          className="spinner"
+          style={{
+            width: '24px',
+            height: '24px',
+            borderWidth: '2px',
+            marginBottom: '12px',
+          }}
+        />
         <div className="empty-state-message">
           Loading distributed jobs status...
         </div>
@@ -102,7 +110,10 @@ export const JobsPanel: React.FC<{ discovery?: DiscoveryData }> = () => {
             background: 'var(--bg-secondary)',
           }}
         >
-          <Briefcase size={36} style={{ marginBottom: '12px', color: 'var(--text-muted)' }} />
+          <Briefcase
+            size={36}
+            style={{ marginBottom: '12px', color: 'var(--text-muted)' }}
+          />
           <div
             className="empty-state-message"
             style={{
@@ -274,7 +285,16 @@ app.use(jobsModule({
             overflow: 'hidden',
           }}
         >
-          <Briefcase size={16} style={{ position: 'absolute', top: '16px', right: '16px', color: 'var(--text-muted)', opacity: 0.7 }} />
+          <Briefcase
+            size={16}
+            style={{
+              position: 'absolute',
+              top: '16px',
+              right: '16px',
+              color: 'var(--text-muted)',
+              opacity: 0.7,
+            }}
+          />
           <div
             style={{
               fontSize: '12px',
@@ -307,7 +327,16 @@ app.use(jobsModule({
             overflow: 'hidden',
           }}
         >
-          <Zap size={16} style={{ position: 'absolute', top: '16px', right: '16px', color: 'var(--accent)', opacity: 0.9 }} />
+          <Zap
+            size={16}
+            style={{
+              position: 'absolute',
+              top: '16px',
+              right: '16px',
+              color: 'var(--accent)',
+              opacity: 0.9,
+            }}
+          />
           <div
             style={{
               fontSize: '12px',
@@ -332,7 +361,10 @@ app.use(jobsModule({
           >
             {stats.running}
             {stats.running > 0 && (
-              <span className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px' }} />
+              <span
+                className="spinner"
+                style={{ width: '14px', height: '14px', borderWidth: '2px' }}
+              />
             )}
           </div>
         </div>
@@ -346,7 +378,16 @@ app.use(jobsModule({
             overflow: 'hidden',
           }}
         >
-          <Clock size={16} style={{ position: 'absolute', top: '16px', right: '16px', color: 'var(--warning)', opacity: 0.9 }} />
+          <Clock
+            size={16}
+            style={{
+              position: 'absolute',
+              top: '16px',
+              right: '16px',
+              color: 'var(--warning)',
+              opacity: 0.9,
+            }}
+          />
           <div
             style={{
               fontSize: '12px',
@@ -379,7 +420,16 @@ app.use(jobsModule({
             overflow: 'hidden',
           }}
         >
-          <CheckCircle2 size={16} style={{ position: 'absolute', top: '16px', right: '16px', color: 'var(--success)', opacity: 0.9 }} />
+          <CheckCircle2
+            size={16}
+            style={{
+              position: 'absolute',
+              top: '16px',
+              right: '16px',
+              color: 'var(--success)',
+              opacity: 0.9,
+            }}
+          />
           <div
             style={{
               fontSize: '12px',
@@ -418,7 +468,16 @@ app.use(jobsModule({
             overflow: 'hidden',
           }}
         >
-          <AlertCircle size={16} style={{ position: 'absolute', top: '16px', right: '16px', color: 'var(--error)', opacity: 0.9 }} />
+          <AlertCircle
+            size={16}
+            style={{
+              position: 'absolute',
+              top: '16px',
+              right: '16px',
+              color: 'var(--error)',
+              opacity: 0.9,
+            }}
+          />
           <div
             style={{
               fontSize: '12px',
@@ -452,7 +511,16 @@ app.use(jobsModule({
             overflow: 'hidden',
           }}
         >
-          <TrendingUp size={16} style={{ position: 'absolute', top: '16px', right: '16px', color: 'var(--success)', opacity: 0.9 }} />
+          <TrendingUp
+            size={16}
+            style={{
+              position: 'absolute',
+              top: '16px',
+              right: '16px',
+              color: 'var(--success)',
+              opacity: 0.9,
+            }}
+          />
           <div
             style={{
               fontSize: '12px',
@@ -544,7 +612,10 @@ app.use(jobsModule({
               color: 'var(--text-secondary)',
             }}
           >
-            <Folder size={32} style={{ marginBottom: '8px', color: 'var(--text-muted)' }} />
+            <Folder
+              size={32}
+              style={{ marginBottom: '8px', color: 'var(--text-muted)' }}
+            />
             <div>No matching jobs found in queue.</div>
           </div>
         ) : (

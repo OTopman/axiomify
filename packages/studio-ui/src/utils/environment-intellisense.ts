@@ -59,7 +59,8 @@ export function filterVariables(
     (v) =>
       v.key.toLowerCase().includes(cleanQuery) ||
       v.value.toLowerCase().includes(cleanQuery) ||
-      (v.environmentName && v.environmentName.toLowerCase().includes(cleanQuery)),
+      (v.environmentName &&
+        v.environmentName.toLowerCase().includes(cleanQuery)),
   );
 }
 

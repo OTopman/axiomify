@@ -15,7 +15,7 @@ import {
   Trash2,
   Wifi,
   WifiOff,
-  Zap
+  Zap,
 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
@@ -57,10 +57,14 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
     'disconnected' | 'connecting' | 'connected' | 'error'
   >('disconnected');
   const [logs, setLogs] = useState<WsLogItem[]>([]);
-  const [frameFilter, setFrameFilter] = useState<'all' | 'in' | 'out' | 'assertion'>('all');
+  const [frameFilter, setFrameFilter] = useState<
+    'all' | 'in' | 'out' | 'assertion'
+  >('all');
   const [searchWsQuery, setSearchWsQuery] = useState('');
   const [copiedPayload, setCopiedPayload] = useState(false);
-  const [mobileWsPane, setMobileWsPane] = useState<'routes' | 'composer' | 'traffic'>('composer');
+  const [mobileWsPane, setMobileWsPane] = useState<
+    'routes' | 'composer' | 'traffic'
+  >('composer');
 
   // Message Sending
   const [eventName, setEventName] = useState('message');
@@ -286,7 +290,7 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
             const parsed = JSON.parse(e.data);
             eventNameMatch =
               parsed.event || parsed.type || parsed.action || null;
-          } catch { }
+          } catch {}
           checkWsAssertions(eventNameMatch, String(e.data));
         };
       }
@@ -370,10 +374,7 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
   const handleReplaySession = async () => {
     if (recordedMessages.length === 0) return;
 
-    appendWsLog(
-      'info',
-      '[REPLAY] Starting auto-replay of recorded session...',
-    );
+    appendWsLog('info', '[REPLAY] Starting auto-replay of recorded session...');
     appendWsLog('info', '[REPLAY] Reconnecting WebSocket...');
     disconnectWs();
     connectWs();
@@ -482,7 +483,7 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
     let parsedPayload: any = null;
     try {
       parsedPayload = JSON.parse(messageContent);
-    } catch { }
+    } catch {}
 
     rules.forEach((rule) => {
       if (!rule.value.trim()) return;
@@ -501,7 +502,7 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
         try {
           const reg = new RegExp(rule.value);
           matched = reg.test(targetVal);
-        } catch { }
+        } catch {}
       }
 
       // If target is payload and is valid JSON, we can do deep subset match as fallback
@@ -592,9 +593,34 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
       {/* ── Pane 1: Left Sub-Sidebar (WS Routes, Rooms, Rules, Recorder) ── */}
       <aside className="ws-sidebar">
         {/* Section: Discovered WebSocket Routes */}
-        <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+        <div
+          style={{
+            padding: '12px 14px',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                color: 'var(--text-secondary)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
               <Radio size={13} style={{ color: 'var(--accent)' }} /> WS Routes
             </span>
             <span className="route-count-badge">{wsRoutes.length}</span>
@@ -602,12 +628,25 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
 
           {wsRoutes.length > 3 && (
             <div style={{ position: 'relative' }}>
-              <Search size={12} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <Search
+                size={12}
+                style={{
+                  position: 'absolute',
+                  left: '8px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: 'var(--text-muted)',
+                }}
+              />
               <input
                 type="text"
                 className="filter-search-input"
                 placeholder="Filter routes..."
-                style={{ paddingLeft: '26px', fontSize: '11px', height: '28px' }}
+                style={{
+                  paddingLeft: '26px',
+                  fontSize: '11px',
+                  height: '28px',
+                }}
                 value={searchWsQuery}
                 onChange={(e) => setSearchWsQuery(e.target.value)}
               />
@@ -615,14 +654,36 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
           )}
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <div
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            padding: '8px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+          }}
+        >
           {wsRoutes.length === 0 ? (
-            <div style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '11px', fontStyle: 'italic' }}>
-              No WebSocket routes detected. Connect to custom URL or define a WS handler.
+            <div
+              style={{
+                padding: '24px 12px',
+                textAlign: 'center',
+                color: 'var(--text-muted)',
+                fontSize: '11px',
+                fontStyle: 'italic',
+              }}
+            >
+              No WebSocket routes detected. Connect to custom URL or define a WS
+              handler.
             </div>
           ) : (
             wsRoutes
-              .filter((r) => !searchWsQuery || r.path.toLowerCase().includes(searchWsQuery.toLowerCase()))
+              .filter(
+                (r) =>
+                  !searchWsQuery ||
+                  r.path.toLowerCase().includes(searchWsQuery.toLowerCase()),
+              )
               .map((r) => {
                 const isActive = selectedRoutePath === r.path;
                 return (
@@ -631,25 +692,71 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                     className={`ws-route-card ${isActive ? 'active' : ''}`}
                     onClick={() => handleRouteSelect(r.path)}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, overflow: 'hidden' }}>
-                      <span className="method-badge method-WS" style={{ fontSize: '9px', padding: '1px 5px' }}>WS</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11.5px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={r.path}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        minWidth: 0,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <span
+                        className="method-badge method-WS"
+                        style={{ fontSize: '9px', padding: '1px 5px' }}
+                      >
+                        WS
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '11.5px',
+                          textOverflow: 'ellipsis',
+                          overflow: 'hidden',
+                          whiteSpace: 'nowrap',
+                        }}
+                        title={r.path}
+                      >
                         {r.path}
                       </span>
                     </div>
-                    {isActive && <ChevronRight size={13} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
+                    {isActive && (
+                      <ChevronRight
+                        size={13}
+                        style={{ color: 'var(--accent)', flexShrink: 0 }}
+                      />
+                    )}
                   </button>
                 );
               })
           )}
 
           {/* Custom Route Input if user wants manual path */}
-          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border)' }}>
-            <label className="form-label" style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Custom Path</label>
+          <div
+            style={{
+              marginTop: '8px',
+              paddingTop: '8px',
+              borderTop: '1px solid var(--border)',
+            }}
+          >
+            <label
+              className="form-label"
+              style={{
+                fontSize: '10px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+              }}
+            >
+              Custom Path
+            </label>
             <input
               type="text"
               className="text-input"
-              style={{ fontSize: '11px', padding: '5px 8px', fontFamily: 'var(--font-mono)' }}
+              style={{
+                fontSize: '11px',
+                padding: '5px 8px',
+                fontFamily: 'var(--font-mono)',
+              }}
               placeholder="/ws/custom"
               value={selectedRoutePath}
               onChange={(e) => handleRouteSelect(e.target.value)}
@@ -658,22 +765,46 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
 
           {/* Socket.IO Rooms (Conditional) */}
           {protocol === 'socketio' && (
-            <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
-              <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+            <div
+              style={{
+                marginTop: '10px',
+                paddingTop: '10px',
+                borderTop: '1px solid var(--border)',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  color: 'var(--text-secondary)',
+                  marginBottom: '6px',
+                }}
+              >
                 Socket.IO Rooms
               </div>
               <input
                 className="text-input"
                 type="text"
                 placeholder="Room identifier"
-                style={{ fontSize: '11px', padding: '5px 8px', marginBottom: '6px' }}
+                style={{
+                  fontSize: '11px',
+                  padding: '5px 8px',
+                  marginBottom: '6px',
+                }}
                 value={roomName}
                 onChange={(e) => setRoomName(e.target.value)}
               />
               <div style={{ display: 'flex', gap: '6px' }}>
                 <button
                   className="btn btn-secondary"
-                  style={{ flex: 1, padding: '4px 6px', fontSize: '10px', margin: 0 }}
+                  style={{
+                    flex: 1,
+                    padding: '4px 6px',
+                    fontSize: '10px',
+                    margin: 0,
+                  }}
                   onClick={handleJoinRoom}
                   disabled={connStatus !== 'connected'}
                 >
@@ -681,7 +812,12 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                 </button>
                 <button
                   className="btn btn-secondary"
-                  style={{ flex: 1, padding: '4px 6px', fontSize: '10px', margin: 0 }}
+                  style={{
+                    flex: 1,
+                    padding: '4px 6px',
+                    fontSize: '10px',
+                    margin: 0,
+                  }}
                   onClick={handleLeaveRoom}
                   disabled={connStatus !== 'connected'}
                 >
@@ -692,9 +828,33 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
           )}
 
           {/* Assertion Rules Box */}
-          <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <span style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+          <div
+            style={{
+              marginTop: '10px',
+              paddingTop: '10px',
+              borderTop: '1px solid var(--border)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '6px',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                  color: 'var(--text-secondary)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                }}
+              >
                 <CheckSquare size={12} /> Assertions ({rules.length})
               </span>
               <button
@@ -706,11 +866,20 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
               </button>
             </div>
             {rules.length === 0 ? (
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', padding: '4px 0' }}>
+              <div
+                style={{
+                  fontSize: '11px',
+                  color: 'var(--text-muted)',
+                  fontStyle: 'italic',
+                  padding: '4px 0',
+                }}
+              >
                 No active assertions.
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div
+                style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+              >
                 {rules.map((rule, idx) => (
                   <div
                     key={rule.id}
@@ -725,11 +894,31 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                       fontSize: '11px',
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 600, color: 'var(--text-secondary)', fontSize: '10px' }}>#{idx + 1}</span>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          color: 'var(--text-secondary)',
+                          fontSize: '10px',
+                        }}
+                      >
+                        #{idx + 1}
+                      </span>
                       <button
                         onClick={() => removeAssertionRule(rule.id)}
-                        style={{ border: 'none', background: 'none', color: 'var(--error)', cursor: 'pointer', padding: '0 2px' }}
+                        style={{
+                          border: 'none',
+                          background: 'none',
+                          color: 'var(--error)',
+                          cursor: 'pointer',
+                          padding: '0 2px',
+                        }}
                       >
                         ✕
                       </button>
@@ -737,18 +926,32 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <select
                         className="select-input"
-                        style={{ fontSize: '10px', padding: '2px 4px', height: '24px', flex: 1 }}
+                        style={{
+                          fontSize: '10px',
+                          padding: '2px 4px',
+                          height: '24px',
+                          flex: 1,
+                        }}
                         value={rule.target}
-                        onChange={(e) => updateAssertionRule(rule.id, 'target', e.target.value)}
+                        onChange={(e) =>
+                          updateAssertionRule(rule.id, 'target', e.target.value)
+                        }
                       >
                         <option value="event">Event</option>
                         <option value="payload">Payload</option>
                       </select>
                       <select
                         className="select-input"
-                        style={{ fontSize: '10px', padding: '2px 4px', height: '24px', flex: 1 }}
+                        style={{
+                          fontSize: '10px',
+                          padding: '2px 4px',
+                          height: '24px',
+                          flex: 1,
+                        }}
                         value={rule.type}
-                        onChange={(e) => updateAssertionRule(rule.id, 'type', e.target.value)}
+                        onChange={(e) =>
+                          updateAssertionRule(rule.id, 'type', e.target.value)
+                        }
                       >
                         <option value="contains">contains</option>
                         <option value="equals">equals</option>
@@ -759,9 +962,15 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                       className="text-input"
                       type="text"
                       placeholder="Expected string"
-                      style={{ fontSize: '10px', padding: '3px 6px', height: '24px' }}
+                      style={{
+                        fontSize: '10px',
+                        padding: '3px 6px',
+                        height: '24px',
+                      }}
                       value={rule.value}
-                      onChange={(e) => updateAssertionRule(rule.id, 'value', e.target.value)}
+                      onChange={(e) =>
+                        updateAssertionRule(rule.id, 'value', e.target.value)
+                      }
                     />
                   </div>
                 ))}
@@ -770,17 +979,38 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
           </div>
 
           {/* Traffic Recording */}
-          <div style={{ marginTop: 'auto', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
-            <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+          <div
+            style={{
+              marginTop: 'auto',
+              paddingTop: '10px',
+              borderTop: '1px solid var(--border)',
+            }}
+          >
+            <div
+              style={{
+                fontSize: '10px',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                color: 'var(--text-secondary)',
+                marginBottom: '6px',
+              }}
+            >
               Traffic Recording
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div
+              style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+            >
               <button
                 className="btn"
                 style={{
-                  background: recording ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.05)',
+                  background: recording
+                    ? 'rgba(239, 68, 68, 0.15)'
+                    : 'rgba(239, 68, 68, 0.05)',
                   color: 'var(--error)',
-                  borderColor: recording ? 'var(--error)' : 'rgba(239, 68, 68, 0.25)',
+                  borderColor: recording
+                    ? 'var(--error)'
+                    : 'rgba(239, 68, 68, 0.25)',
                   padding: '6px 10px',
                   fontSize: '11px',
                   display: 'inline-flex',
@@ -805,7 +1035,15 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                 className="btn btn-secondary"
                 onClick={handleReplaySession}
                 disabled={recordedMessages.length === 0 || recording}
-                style={{ padding: '6px 10px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', margin: 0 }}
+                style={{
+                  padding: '6px 10px',
+                  fontSize: '11px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  margin: 0,
+                }}
               >
                 <Play size={12} /> Replay ({recordedMessages.length})
               </button>
@@ -817,19 +1055,62 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
       {/* ── Pane 2: Center Omnibar & Message Composer ───────────────── */}
       <main className="ws-main-composer">
         {/* Omnibar Header */}
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div
+          style={{
+            padding: '12px 16px',
+            borderBottom: '1px solid var(--border)',
+            background: 'var(--bg-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+          }}
+        >
           {/* Protocol segmented toggle */}
-          <div style={{ display: 'flex', background: 'var(--bg-primary)', padding: '2px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+          <div
+            style={{
+              display: 'flex',
+              background: 'var(--bg-primary)',
+              padding: '2px',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border)',
+            }}
+          >
             <button
               className={`pill-btn ${protocol === 'ws' ? 'active' : ''}`}
-              style={{ fontSize: '11px', padding: '3px 8px', background: protocol === 'ws' ? 'var(--bg-secondary)' : 'transparent', border: 'none', color: protocol === 'ws' ? 'var(--accent)' : 'var(--text-secondary)', cursor: 'pointer', borderRadius: '3px', fontWeight: protocol === 'ws' ? 600 : 400 }}
+              style={{
+                fontSize: '11px',
+                padding: '3px 8px',
+                background:
+                  protocol === 'ws' ? 'var(--bg-secondary)' : 'transparent',
+                border: 'none',
+                color:
+                  protocol === 'ws' ? 'var(--accent)' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                borderRadius: '3px',
+                fontWeight: protocol === 'ws' ? 600 : 400,
+              }}
               onClick={() => setProtocol('ws')}
             >
               Raw WS
             </button>
             <button
               className={`pill-btn ${protocol === 'socketio' ? 'active' : ''}`}
-              style={{ fontSize: '11px', padding: '3px 8px', background: protocol === 'socketio' ? 'var(--bg-secondary)' : 'transparent', border: 'none', color: protocol === 'socketio' ? 'var(--accent)' : 'var(--text-secondary)', cursor: 'pointer', borderRadius: '3px', fontWeight: protocol === 'socketio' ? 600 : 400 }}
+              style={{
+                fontSize: '11px',
+                padding: '3px 8px',
+                background:
+                  protocol === 'socketio'
+                    ? 'var(--bg-secondary)'
+                    : 'transparent',
+                border: 'none',
+                color:
+                  protocol === 'socketio'
+                    ? 'var(--accent)'
+                    : 'var(--text-secondary)',
+                cursor: 'pointer',
+                borderRadius: '3px',
+                fontWeight: protocol === 'socketio' ? 600 : 400,
+              }}
               onClick={() => setProtocol('socketio')}
             >
               Socket.IO
@@ -837,15 +1118,39 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
           </div>
 
           {/* URL bar */}
-          <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <span style={{ position: 'absolute', left: '10px', fontSize: '11px', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+          <div
+            style={{
+              flex: 1,
+              position: 'relative',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            <span
+              style={{
+                position: 'absolute',
+                left: '10px',
+                fontSize: '11px',
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--text-muted)',
+              }}
+            >
               {protocol === 'socketio' ? 'http://' : 'ws://'}
             </span>
             <input
               type="text"
               className="text-input"
-              style={{ paddingLeft: protocol === 'socketio' ? '60px' : '52px', fontFamily: 'var(--font-mono)', fontSize: '12px', height: '32px' }}
-              value={selectedRoutePath ? (appBaseUrl.replace(/^https?:\/\//, '') + selectedRoutePath) : ''}
+              style={{
+                paddingLeft: protocol === 'socketio' ? '60px' : '52px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: '12px',
+                height: '32px',
+              }}
+              value={
+                selectedRoutePath
+                  ? appBaseUrl.replace(/^https?:\/\//, '') + selectedRoutePath
+                  : ''
+              }
               onChange={(e) => {
                 const val = e.target.value;
                 const pathIdx = val.indexOf('/');
@@ -860,15 +1165,45 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
           </div>
 
           {/* Status Badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-primary)', border: '1px solid var(--border)', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 8px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--border)',
+              fontSize: '11px',
+              fontFamily: 'var(--font-mono)',
+            }}
+          >
             <span
               className="status-dot"
               style={{
-                background: connStatus === 'connected' ? 'var(--success)' : connStatus === 'connecting' ? 'var(--warning)' : 'var(--text-muted)',
-                boxShadow: connStatus === 'connected' ? '0 0 8px rgba(16, 185, 129, 0.4)' : 'none',
+                background:
+                  connStatus === 'connected'
+                    ? 'var(--success)'
+                    : connStatus === 'connecting'
+                      ? 'var(--warning)'
+                      : 'var(--text-muted)',
+                boxShadow:
+                  connStatus === 'connected'
+                    ? '0 0 8px rgba(16, 185, 129, 0.4)'
+                    : 'none',
               }}
             />
-            <span style={{ fontWeight: 600, color: connStatus === 'connected' ? 'var(--success)' : connStatus === 'connecting' ? 'var(--warning)' : 'var(--text-muted)' }}>
+            <span
+              style={{
+                fontWeight: 600,
+                color:
+                  connStatus === 'connected'
+                    ? 'var(--success)'
+                    : connStatus === 'connecting'
+                      ? 'var(--warning)'
+                      : 'var(--text-muted)',
+              }}
+            >
               {connStatus.toUpperCase()}
             </span>
           </div>
@@ -877,7 +1212,16 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
           {connStatus === 'connected' ? (
             <button
               className="btn btn-secondary"
-              style={{ padding: '6px 14px', fontSize: '12px', color: 'var(--error)', borderColor: 'rgba(239, 68, 68, 0.3)', margin: 0, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              style={{
+                padding: '6px 14px',
+                fontSize: '12px',
+                color: 'var(--error)',
+                borderColor: 'rgba(239, 68, 68, 0.3)',
+                margin: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
               onClick={disconnectWs}
             >
               <WifiOff size={13} /> Disconnect
@@ -885,20 +1229,42 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
           ) : (
             <button
               className="btn"
-              style={{ padding: '6px 14px', fontSize: '12px', margin: 0, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+              style={{
+                padding: '6px 14px',
+                fontSize: '12px',
+                margin: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
               onClick={connectWs}
               disabled={connStatus === 'connecting' || !selectedRoutePath}
             >
-              <Wifi size={13} /> {connStatus === 'connecting' ? 'Connecting...' : 'Connect'}
+              <Wifi size={13} />{' '}
+              {connStatus === 'connecting' ? 'Connecting...' : 'Connect'}
             </button>
           )}
         </div>
 
         {/* Message Composer Area */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '16px 20px', gap: '14px', overflowY: 'auto' }}>
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            padding: '16px 20px',
+            gap: '14px',
+            overflowY: 'auto',
+          }}
+        >
           {protocol === 'socketio' && (
             <div className="form-group" style={{ margin: 0 }}>
-              <label className="form-label" style={{ fontSize: '11px', fontWeight: 600 }}>Event Name</label>
+              <label
+                className="form-label"
+                style={{ fontSize: '11px', fontWeight: 600 }}
+              >
+                Event Name
+              </label>
               <div style={{ display: 'flex', gap: '6px' }}>
                 <input
                   type="text"
@@ -924,9 +1290,25 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
           )}
 
           {/* Message Payload Editor */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label className="form-label" style={{ fontSize: '11px', fontWeight: 600, margin: 0 }}>
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <label
+                className="form-label"
+                style={{ fontSize: '11px', fontWeight: 600, margin: 0 }}
+              >
                 Message Payload
               </label>
               <div style={{ display: 'flex', gap: '6px' }}>
@@ -934,7 +1316,13 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                   type="button"
                   className="btn btn-secondary"
                   style={{ padding: '2px 8px', fontSize: '10px', margin: 0 }}
-                  onClick={() => setMessagePayload('{\n  "event": "ping",\n  "timestamp": ' + Date.now() + '\n}')}
+                  onClick={() =>
+                    setMessagePayload(
+                      '{\n  "event": "ping",\n  "timestamp": ' +
+                        Date.now() +
+                        '\n}',
+                    )
+                  }
                 >
                   Ping Template
                 </button>
@@ -946,7 +1334,7 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                     try {
                       const p = JSON.parse(messagePayload);
                       setMessagePayload(JSON.stringify(p, null, 2));
-                    } catch { }
+                    } catch {}
                   }}
                 >
                   Prettify JSON
@@ -973,7 +1361,11 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                 resize: 'none',
                 background: 'var(--bg-secondary)',
               }}
-              placeholder={protocol === 'socketio' ? '{\n  "text": "Hello Socket.IO"\n}' : '{\n  "type": "hello"\n}'}
+              placeholder={
+                protocol === 'socketio'
+                  ? '{\n  "text": "Hello Socket.IO"\n}'
+                  : '{\n  "type": "hello"\n}'
+              }
               value={messagePayload}
               onChange={(e) => setMessagePayload(e.target.value)}
               onKeyDown={(e) => {
@@ -986,15 +1378,42 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
           </div>
 
           {/* Send Action Bar */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px', borderTop: '1px solid var(--border)' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              paddingTop: '8px',
+              borderTop: '1px solid var(--border)',
+            }}
+          >
             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              Press <kbd style={{ background: 'var(--bg-secondary)', padding: '2px 5px', borderRadius: '3px', border: '1px solid var(--border)', fontSize: '10px' }}>⌘ + Enter</kbd> to send
+              Press{' '}
+              <kbd
+                style={{
+                  background: 'var(--bg-secondary)',
+                  padding: '2px 5px',
+                  borderRadius: '3px',
+                  border: '1px solid var(--border)',
+                  fontSize: '10px',
+                }}
+              >
+                ⌘ + Enter
+              </kbd>{' '}
+              to send
             </span>
             <button
               className="btn"
               onClick={handleSendMessage}
               disabled={connStatus !== 'connected'}
-              style={{ padding: '7px 18px', fontSize: '12px', display: 'inline-flex', alignItems: 'center', gap: '6px', margin: 0 }}
+              style={{
+                padding: '7px 18px',
+                fontSize: '12px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                margin: 0,
+              }}
             >
               <Send size={13} /> Send Frame
             </button>
@@ -1005,16 +1424,41 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
       {/* ── Pane 3: Right Traffic Inspector ─────────────────────────── */}
       <section className="ws-traffic-inspector">
         {/* Stream Toolbar */}
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-primary)' }}>
+        <div
+          style={{
+            padding: '10px 14px',
+            borderBottom: '1px solid var(--border)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'var(--bg-primary)',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Activity size={13} style={{ color: 'var(--accent)' }} />
-            <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-secondary)' }}>
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                color: 'var(--text-secondary)',
+              }}
+            >
               Live Traffic ({logs.length})
             </span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <div style={{ display: 'flex', background: 'var(--bg-secondary)', padding: '2px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+            <div
+              style={{
+                display: 'flex',
+                background: 'var(--bg-secondary)',
+                padding: '2px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
+              }}
+            >
               {(['all', 'in', 'out', 'assertion'] as const).map((mode) => (
                 <button
                   key={mode}
@@ -1022,22 +1466,41 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                     fontSize: '10px',
                     padding: '2px 6px',
                     border: 'none',
-                    background: frameFilter === mode ? 'var(--bg-primary)' : 'transparent',
-                    color: frameFilter === mode ? 'var(--accent)' : 'var(--text-muted)',
+                    background:
+                      frameFilter === mode
+                        ? 'var(--bg-primary)'
+                        : 'transparent',
+                    color:
+                      frameFilter === mode
+                        ? 'var(--accent)'
+                        : 'var(--text-muted)',
                     borderRadius: '3px',
                     cursor: 'pointer',
                     fontWeight: frameFilter === mode ? 600 : 400,
                   }}
                   onClick={() => setFrameFilter(mode)}
                 >
-                  {mode === 'all' ? 'All' : mode === 'in' ? '↓ IN' : mode === 'out' ? '↑ OUT' : 'Rules'}
+                  {mode === 'all'
+                    ? 'All'
+                    : mode === 'in'
+                      ? '↓ IN'
+                      : mode === 'out'
+                        ? '↑ OUT'
+                        : 'Rules'}
                 </button>
               ))}
             </div>
 
             <button
               className="btn btn-secondary"
-              style={{ padding: '3px 8px', fontSize: '10px', margin: 0, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+              style={{
+                padding: '3px 8px',
+                fontSize: '10px',
+                margin: 0,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
               onClick={clearLogs}
               title="Clear traffic stream"
             >
@@ -1049,13 +1512,34 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
         {/* Traffic Frame Stream */}
         <div
           ref={logsContainerRef}
-          style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
         >
           {logs.length === 0 ? (
-            <div style={{ padding: '80px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
-              <Activity size={24} style={{ opacity: 0.3, marginBottom: '8px' }} />
+            <div
+              style={{
+                padding: '80px 20px',
+                textAlign: 'center',
+                color: 'var(--text-muted)',
+                fontSize: '12px',
+              }}
+            >
+              <Activity
+                size={24}
+                style={{ opacity: 0.3, marginBottom: '8px' }}
+              />
               <div>No frames recorded yet.</div>
-              <div style={{ fontSize: '11px', marginTop: '4px', color: 'var(--text-secondary)' }}>
+              <div
+                style={{
+                  fontSize: '11px',
+                  marginTop: '4px',
+                  color: 'var(--text-secondary)',
+                }}
+              >
                 Connect to a WebSocket route to monitor live traffic.
               </div>
             </div>
@@ -1064,7 +1548,8 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
               .filter((log) => {
                 if (frameFilter === 'in') return log.type === 'received';
                 if (frameFilter === 'out') return log.type === 'sent';
-                if (frameFilter === 'assertion') return log.payload.includes('[ASSERTION');
+                if (frameFilter === 'assertion')
+                  return log.payload.includes('[ASSERTION');
                 return true;
               })
               .map((log, i) => {
@@ -1083,25 +1568,62 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
                     }}
                     onClick={() => setSelectedFrame(log)}
                   >
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flexShrink: 0 }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                        flexShrink: 0,
+                      }}
+                    >
                       {isSent ? (
                         <span className="ws-dir-badge sent">↑ OUT</span>
                       ) : isReceived ? (
                         <span className="ws-dir-badge recv">↓ IN</span>
                       ) : isAssertion ? (
-                        <span className="ws-dir-badge" style={{ background: log.payload.includes('PASSED') ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)', color: log.payload.includes('PASSED') ? 'var(--success)' : 'var(--error)' }}>
+                        <span
+                          className="ws-dir-badge"
+                          style={{
+                            background: log.payload.includes('PASSED')
+                              ? 'rgba(16, 185, 129, 0.12)'
+                              : 'rgba(239, 68, 68, 0.12)',
+                            color: log.payload.includes('PASSED')
+                              ? 'var(--success)'
+                              : 'var(--error)',
+                          }}
+                        >
                           {log.payload.includes('PASSED') ? '✓ PASS' : '✗ FAIL'}
                         </span>
                       ) : (
-                        <span className="ws-dir-badge" style={{ background: 'var(--bg-primary)', color: 'var(--text-muted)' }}>
+                        <span
+                          className="ws-dir-badge"
+                          style={{
+                            background: 'var(--bg-primary)',
+                            color: 'var(--text-muted)',
+                          }}
+                        >
                           INFO
                         </span>
                       )}
-                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{log.time}</span>
+                      <span
+                        style={{ fontSize: '10px', color: 'var(--text-muted)' }}
+                      >
+                        {log.time}
+                      </span>
                     </div>
 
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <pre style={{ margin: 0, fontSize: '11.5px', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-primary)', maxHeight: isSelected ? 'none' : '65px', overflow: 'hidden' }}>
+                      <pre
+                        style={{
+                          margin: 0,
+                          fontSize: '11.5px',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-all',
+                          color: 'var(--text-primary)',
+                          maxHeight: isSelected ? 'none' : '65px',
+                          overflow: 'hidden',
+                        }}
+                      >
                         {log.payload}
                       </pre>
                     </div>
@@ -1112,98 +1634,210 @@ export const WebSocketTester: React.FC<WebSocketTesterProps> = ({
         </div>
 
         {/* Docked Frame Inspector Panel (When a frame is selected) */}
-        {selectedFrame && (() => {
-          const activeRoute = wsRoutes.find((r) => r.path === selectedRoutePath);
-          const activeMessageSchema = activeRoute?.schema?.message;
+        {selectedFrame &&
+          (() => {
+            const activeRoute = wsRoutes.find(
+              (r) => r.path === selectedRoutePath,
+            );
+            const activeMessageSchema = activeRoute?.schema?.message;
 
-          let frameJsonPayload: any = null;
-          let parseError: string | null = null;
-          let rawJson = selectedFrame.payload;
+            let frameJsonPayload: any = null;
+            let parseError: string | null = null;
+            let rawJson = selectedFrame.payload;
 
-          if (selectedFrame.payload.startsWith('Event: ')) {
-            const parts = selectedFrame.payload.split(' | Payload: ');
-            if (parts.length > 1) {
-              rawJson = parts[1];
+            if (selectedFrame.payload.startsWith('Event: ')) {
+              const parts = selectedFrame.payload.split(' | Payload: ');
+              if (parts.length > 1) {
+                rawJson = parts[1];
+              }
             }
-          }
 
-          try {
-            frameJsonPayload = JSON.parse(rawJson);
-          } catch (e: any) {
-            parseError = e.message;
-          }
+            try {
+              frameJsonPayload = JSON.parse(rawJson);
+            } catch (e: any) {
+              parseError = e.message;
+            }
 
-          const validationErrors =
-            activeMessageSchema && frameJsonPayload && !parseError
-              ? validateJsonSchema(frameJsonPayload, activeMessageSchema)
-              : [];
+            const validationErrors =
+              activeMessageSchema && frameJsonPayload && !parseError
+                ? validateJsonSchema(frameJsonPayload, activeMessageSchema)
+                : [];
 
-          return (
-            <div style={{ borderTop: '2px solid var(--border)', background: 'var(--bg-primary)', padding: '12px 14px', maxHeight: '280px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                  <Search size={12} /> Frame Inspector
-                </span>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <button
-                    className="btn btn-secondary"
-                    style={{ padding: '2px 8px', fontSize: '10px', margin: 0, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                    onClick={() => {
-                      navigator.clipboard.writeText(rawJson);
-                      setCopiedPayload(true);
-                      setTimeout(() => setCopiedPayload(false), 1500);
+            return (
+              <div
+                style={{
+                  borderTop: '2px solid var(--border)',
+                  background: 'var(--bg-primary)',
+                  padding: '12px 14px',
+                  maxHeight: '280px',
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      color: 'var(--text-secondary)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
                     }}
                   >
-                    {copiedPayload ? <Check size={10} style={{ color: 'var(--success)' }} /> : <Copy size={10} />}
-                    {copiedPayload ? 'Copied' : 'Copy'}
-                  </button>
-                  <button
-                    className="btn btn-secondary"
-                    style={{ padding: '2px 6px', fontSize: '10px', margin: 0 }}
-                    onClick={() => setSelectedFrame(null)}
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-
-              {/* Schema Validation Status */}
-              {selectedFrame.type !== 'sent' && selectedFrame.type !== 'received' ? (
-                <div style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}>
-                  System event frames do not have payload schemas.
-                </div>
-              ) : !activeMessageSchema ? (
-                <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', background: 'var(--bg-secondary)', padding: '6px 8px', borderRadius: 'var(--radius-sm)' }}>
-                  No Zod schema registered for messages on this route.
-                </div>
-              ) : parseError ? (
-                <div style={{ fontSize: '10.5px', color: 'var(--error)', background: 'rgba(239, 68, 68, 0.08)', padding: '6px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                  Failed to parse JSON: {parseError}
-                </div>
-              ) : validationErrors.length > 0 ? (
-                <div style={{ fontSize: '10.5px', color: 'var(--error)', background: 'rgba(239, 68, 68, 0.08)', padding: '6px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                  <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <AlertTriangle size={11} /> Schema Validation Failed ({validationErrors.length} errors)
+                    <Search size={12} /> Frame Inspector
+                  </span>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      className="btn btn-secondary"
+                      style={{
+                        padding: '2px 8px',
+                        fontSize: '10px',
+                        margin: 0,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                      onClick={() => {
+                        navigator.clipboard.writeText(rawJson);
+                        setCopiedPayload(true);
+                        setTimeout(() => setCopiedPayload(false), 1500);
+                      }}
+                    >
+                      {copiedPayload ? (
+                        <Check size={10} style={{ color: 'var(--success)' }} />
+                      ) : (
+                        <Copy size={10} />
+                      )}
+                      {copiedPayload ? 'Copied' : 'Copy'}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      style={{
+                        padding: '2px 6px',
+                        fontSize: '10px',
+                        margin: 0,
+                      }}
+                      onClick={() => setSelectedFrame(null)}
+                    >
+                      ✕
+                    </button>
                   </div>
-                  <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
-                    {validationErrors.map((err, idx) => (
-                      <li key={idx}>{err}</li>
-                    ))}
-                  </ul>
                 </div>
-              ) : (
-                <div style={{ fontSize: '10.5px', color: 'var(--success)', background: 'rgba(16, 185, 129, 0.08)', padding: '6px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16, 185, 129, 0.2)', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 600 }}>
-                  <CheckCircle2 size={11} /> Valid according to registered Zod schema
-                </div>
-              )}
 
-              {/* Formatted JSON Payload */}
-              <pre style={{ margin: 0, padding: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-mono)', fontSize: '11px', whiteSpace: 'pre-wrap', maxHeight: '140px', overflowY: 'auto' }}>
-                {parseError ? rawJson : JSON.stringify(frameJsonPayload, null, 2)}
-              </pre>
-            </div>
-          );
-        })()}
+                {/* Schema Validation Status */}
+                {selectedFrame.type !== 'sent' &&
+                selectedFrame.type !== 'received' ? (
+                  <div
+                    style={{ fontSize: '10.5px', color: 'var(--text-muted)' }}
+                  >
+                    System event frames do not have payload schemas.
+                  </div>
+                ) : !activeMessageSchema ? (
+                  <div
+                    style={{
+                      fontSize: '10.5px',
+                      color: 'var(--text-muted)',
+                      background: 'var(--bg-secondary)',
+                      padding: '6px 8px',
+                      borderRadius: 'var(--radius-sm)',
+                    }}
+                  >
+                    No Zod schema registered for messages on this route.
+                  </div>
+                ) : parseError ? (
+                  <div
+                    style={{
+                      fontSize: '10.5px',
+                      color: 'var(--error)',
+                      background: 'rgba(239, 68, 68, 0.08)',
+                      padding: '6px 8px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                    }}
+                  >
+                    Failed to parse JSON: {parseError}
+                  </div>
+                ) : validationErrors.length > 0 ? (
+                  <div
+                    style={{
+                      fontSize: '10.5px',
+                      color: 'var(--error)',
+                      background: 'rgba(239, 68, 68, 0.08)',
+                      padding: '6px 8px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                      }}
+                    >
+                      <AlertTriangle size={11} /> Schema Validation Failed (
+                      {validationErrors.length} errors)
+                    </div>
+                    <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
+                      {validationErrors.map((err, idx) => (
+                        <li key={idx}>{err}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      fontSize: '10.5px',
+                      color: 'var(--success)',
+                      background: 'rgba(16, 185, 129, 0.08)',
+                      padding: '6px 8px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid rgba(16, 185, 129, 0.2)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      fontWeight: 600,
+                    }}
+                  >
+                    <CheckCircle2 size={11} /> Valid according to registered Zod
+                    schema
+                  </div>
+                )}
+
+                {/* Formatted JSON Payload */}
+                <pre
+                  style={{
+                    margin: 0,
+                    padding: '8px',
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '11px',
+                    whiteSpace: 'pre-wrap',
+                    maxHeight: '140px',
+                    overflowY: 'auto',
+                  }}
+                >
+                  {parseError
+                    ? rawJson
+                    : JSON.stringify(frameJsonPayload, null, 2)}
+                </pre>
+              </div>
+            );
+          })()}
       </section>
     </div>
   );

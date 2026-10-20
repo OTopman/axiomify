@@ -1,4 +1,12 @@
-import { AlertTriangle, CheckCircle2, Play, Shield, ShieldAlert, ShieldCheck, XCircle } from 'lucide-react';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Play,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  XCircle,
+} from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { DiscoveryData, FindingItem } from '../types';
 import { apiFetch } from '../utils/api';
@@ -25,7 +33,7 @@ export const SecurityPanel: React.FC<SecurityPanelProps> = ({ discovery }) => {
           setTimeout(fetchSecurity, 1000);
         }
       }
-    } catch { }
+    } catch {}
   };
 
   const handleProbe = async () => {
@@ -47,7 +55,15 @@ export const SecurityPanel: React.FC<SecurityPanelProps> = ({ discovery }) => {
     return (
       <div style={{ padding: '24px' }}>
         <div style={{ marginBottom: '16px' }}>
-          <h2 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>Security Center</h2>
+          <h2
+            style={{
+              fontSize: '16px',
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+            }}
+          >
+            Security Center
+          </h2>
           <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             Static and dynamic security validation tests
           </p>
@@ -74,9 +90,18 @@ export const SecurityPanel: React.FC<SecurityPanelProps> = ({ discovery }) => {
         }}
       >
         <div>
-          <h2 style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>Security Center</h2>
+          <h2
+            style={{
+              fontSize: '16px',
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+            }}
+          >
+            Security Center
+          </h2>
           <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            Static rules, injection vulnerability scanners, and dynamic attack probe analysis
+            Static rules, injection vulnerability scanners, and dynamic attack
+            probe analysis
           </p>
         </div>
         <button
@@ -108,7 +133,14 @@ export const SecurityPanel: React.FC<SecurityPanelProps> = ({ discovery }) => {
             <span>Dynamic Vulnerability Scanning in Progress...</span>
             <span>{data.progress || 0}%</span>
           </div>
-          <div style={{ height: '4px', background: 'var(--bg-tertiary)', borderRadius: '2px', overflow: 'hidden' }}>
+          <div
+            style={{
+              height: '4px',
+              background: 'var(--bg-tertiary)',
+              borderRadius: '2px',
+              overflow: 'hidden',
+            }}
+          >
             <div
               style={{
                 width: `${data.progress || 0}%`,
@@ -122,25 +154,67 @@ export const SecurityPanel: React.FC<SecurityPanelProps> = ({ discovery }) => {
       )}
 
       {/* Metric Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', marginBottom: '24px' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: '14px',
+          marginBottom: '24px',
+        }}
+      >
         <div className="card" style={{ margin: 0, padding: '14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <div
+            style={{
+              fontSize: '11px',
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}
+          >
             Static Violations
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>
+          <div
+            style={{
+              fontSize: '24px',
+              fontWeight: 700,
+              color: 'var(--text-primary)',
+              marginTop: '4px',
+            }}
+          >
             {staticChecks.length}
           </div>
         </div>
         <div className="card" style={{ margin: 0, padding: '14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <div
+            style={{
+              fontSize: '11px',
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}
+          >
             Probe Violations
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text-primary)', marginTop: '4px' }}>
+          <div
+            style={{
+              fontSize: '24px',
+              fontWeight: 700,
+              color: 'var(--text-primary)',
+              marginTop: '4px',
+            }}
+          >
             {dynamicChecks.length}
           </div>
         </div>
         <div className="card" style={{ margin: 0, padding: '14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <div
+            style={{
+              fontSize: '11px',
+              color: 'var(--text-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}
+          >
             Security Grade
           </div>
           <div
@@ -156,42 +230,109 @@ export const SecurityPanel: React.FC<SecurityPanelProps> = ({ discovery }) => {
                     : 'var(--success)',
             }}
           >
-            {totalFindings > 4 ? 'F' : totalFindings > 2 ? 'D' : totalFindings > 0 ? 'B' : 'A'}
+            {totalFindings > 4
+              ? 'F'
+              : totalFindings > 2
+                ? 'D'
+                : totalFindings > 0
+                  ? 'B'
+                  : 'A'}
           </div>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+      <div
+        style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}
+      >
         {/* Static checks */}
         <div>
-          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: 'var(--text-secondary)',
+              marginBottom: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
             <Shield size={14} style={{ color: 'var(--accent)' }} />
             <span>Static Rule Warnings</span>
           </div>
           {staticChecks.length === 0 ? (
-            <div className="empty-state" style={{ border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)' }}>
+            <div
+              className="empty-state"
+              style={{
+                border: '1px dashed var(--border)',
+                borderRadius: 'var(--radius-sm)',
+              }}
+            >
               <ShieldCheck size={20} style={{ color: 'var(--success)' }} />
               <span>No static violations detected. Excellent!</span>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div
+              style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
+            >
               {staticChecks.map((f: FindingItem) => (
-                <div key={f.id} className="card" style={{ margin: 0, padding: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                    <AlertTriangle size={13} style={{ color: 'var(--warning)' }} />
-                    <span style={{ fontWeight: 600, fontSize: '12px', color: 'var(--text-primary)' }}>
+                <div
+                  key={f.id}
+                  className="card"
+                  style={{ margin: 0, padding: '12px' }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginBottom: '6px',
+                    }}
+                  >
+                    <AlertTriangle
+                      size={13}
+                      style={{ color: 'var(--warning)' }}
+                    />
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        fontSize: '12px',
+                        color: 'var(--text-primary)',
+                      }}
+                    >
                       {f.title}
                     </span>
                   </div>
                   {f.cwe && (
-                    <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--accent-text)', marginBottom: '4px' }}>
+                    <div
+                      style={{
+                        fontSize: '10px',
+                        fontFamily: 'var(--font-mono)',
+                        color: 'var(--accent-text)',
+                        marginBottom: '4px',
+                      }}
+                    >
                       CWE: {f.cwe}
                     </div>
                   )}
-                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                  <p
+                    style={{
+                      fontSize: '12px',
+                      color: 'var(--text-secondary)',
+                      marginBottom: '8px',
+                    }}
+                  >
                     {f.description}
                   </p>
-                  <div style={{ fontSize: '11px', background: 'var(--bg-primary)', padding: '6px 8px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border)' }}>
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      background: 'var(--bg-primary)',
+                      padding: '6px 8px',
+                      borderRadius: 'var(--radius-xs)',
+                      border: '1px solid var(--border)',
+                    }}
+                  >
                     <strong>Remediation:</strong> {f.remediation}
                   </div>
                 </div>
@@ -202,34 +343,94 @@ export const SecurityPanel: React.FC<SecurityPanelProps> = ({ discovery }) => {
 
         {/* Dynamic checks */}
         <div>
-          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: 'var(--text-secondary)',
+              marginBottom: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
             <ShieldAlert size={14} style={{ color: 'var(--error)' }} />
             <span>Dynamic Attack Probe Findings</span>
           </div>
           {dynamicChecks.length === 0 ? (
-            <div className="empty-state" style={{ border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)' }}>
+            <div
+              className="empty-state"
+              style={{
+                border: '1px dashed var(--border)',
+                borderRadius: 'var(--radius-sm)',
+              }}
+            >
               <CheckCircle2 size={20} style={{ color: 'var(--success)' }} />
               <span>No dynamic probe vulnerabilities detected.</span>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div
+              style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}
+            >
               {dynamicChecks.map((f: FindingItem) => (
-                <div key={f.id} className="card" style={{ margin: 0, padding: '12px', borderColor: 'rgba(239, 68, 68, 0.3)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <div
+                  key={f.id}
+                  className="card"
+                  style={{
+                    margin: 0,
+                    padding: '12px',
+                    borderColor: 'rgba(239, 68, 68, 0.3)',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      marginBottom: '6px',
+                    }}
+                  >
                     <XCircle size={13} style={{ color: 'var(--error)' }} />
-                    <span style={{ fontWeight: 600, fontSize: '12px', color: 'var(--error)' }}>
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        fontSize: '12px',
+                        color: 'var(--error)',
+                      }}
+                    >
                       {f.title}
                     </span>
                   </div>
                   {f.cwe && (
-                    <div style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--accent-text)', marginBottom: '4px' }}>
+                    <div
+                      style={{
+                        fontSize: '10px',
+                        fontFamily: 'var(--font-mono)',
+                        color: 'var(--accent-text)',
+                        marginBottom: '4px',
+                      }}
+                    >
                       CWE: {f.cwe}
                     </div>
                   )}
-                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                  <p
+                    style={{
+                      fontSize: '12px',
+                      color: 'var(--text-secondary)',
+                      marginBottom: '8px',
+                    }}
+                  >
                     {f.description}
                   </p>
-                  <div style={{ fontSize: '11px', background: 'var(--bg-primary)', padding: '6px 8px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border)' }}>
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      background: 'var(--bg-primary)',
+                      padding: '6px 8px',
+                      borderRadius: 'var(--radius-xs)',
+                      border: '1px solid var(--border)',
+                    }}
+                  >
                     <strong>Remediation:</strong> {f.remediation}
                   </div>
                 </div>

@@ -13,7 +13,16 @@ export interface UploadFile {
 }
 
 export type BodyMode = 'none' | 'json' | 'text' | 'form-data' | 'urlencoded';
-export type SubTab = 'params' | 'headers' | 'body' | 'uploads' | 'auth' | 'code' | 'replays' | 'env' | 'collections';
+export type SubTab =
+  | 'params'
+  | 'headers'
+  | 'body'
+  | 'uploads'
+  | 'auth'
+  | 'code'
+  | 'replays'
+  | 'env'
+  | 'collections';
 export type ResponseSubTab = 'body' | 'headers' | 'timeline' | 'queries';
 export type AuthType = 'none' | 'bearer' | 'basic' | 'apiKey';
 
@@ -93,7 +102,10 @@ export const requestTesterSlice = createSlice({
     addQueryParam: (state) => {
       state.queryParams.push({ key: '', value: '' });
     },
-    updateQueryParam: (state, action: PayloadAction<{ index: number; key?: string; value?: string }>) => {
+    updateQueryParam: (
+      state,
+      action: PayloadAction<{ index: number; key?: string; value?: string }>,
+    ) => {
       const { index, key, value } = action.payload;
       if (state.queryParams[index]) {
         if (key !== undefined) state.queryParams[index].key = key;
@@ -106,7 +118,10 @@ export const requestTesterSlice = createSlice({
     setPathParams: (state, action: PayloadAction<KeyVal[]>) => {
       state.pathParams = action.payload;
     },
-    updatePathParam: (state, action: PayloadAction<{ index: number; key?: string; value?: string }>) => {
+    updatePathParam: (
+      state,
+      action: PayloadAction<{ index: number; key?: string; value?: string }>,
+    ) => {
       const { index, key, value } = action.payload;
       if (state.pathParams[index]) {
         if (key !== undefined) state.pathParams[index].key = key;
@@ -119,7 +134,10 @@ export const requestTesterSlice = createSlice({
     addHeader: (state) => {
       state.headers.push({ key: '', value: '' });
     },
-    updateHeader: (state, action: PayloadAction<{ index: number; key?: string; value?: string }>) => {
+    updateHeader: (
+      state,
+      action: PayloadAction<{ index: number; key?: string; value?: string }>,
+    ) => {
       const { index, key, value } = action.payload;
       if (state.headers[index]) {
         if (key !== undefined) state.headers[index].key = key;
@@ -141,7 +159,10 @@ export const requestTesterSlice = createSlice({
     addBodyField: (state) => {
       state.bodyFields.push({ key: '', value: '' });
     },
-    updateBodyField: (state, action: PayloadAction<{ index: number; key?: string; value?: string }>) => {
+    updateBodyField: (
+      state,
+      action: PayloadAction<{ index: number; key?: string; value?: string }>,
+    ) => {
       const { index, key, value } = action.payload;
       if (state.bodyFields[index]) {
         if (key !== undefined) state.bodyFields[index].key = key;
@@ -199,16 +220,19 @@ export const requestTesterSlice = createSlice({
     setApiKeyLocation: (state, action: PayloadAction<'header' | 'query'>) => {
       state.apiKeyLocation = action.payload;
     },
-    loadSavedRequest: (state, action: PayloadAction<{
-      method: string;
-      path: string;
-      queryParams?: KeyVal[];
-      pathParams?: KeyVal[];
-      headers?: KeyVal[];
-      bodyMode?: BodyMode;
-      body?: string;
-      bodyFields?: KeyVal[];
-    }>) => {
+    loadSavedRequest: (
+      state,
+      action: PayloadAction<{
+        method: string;
+        path: string;
+        queryParams?: KeyVal[];
+        pathParams?: KeyVal[];
+        headers?: KeyVal[];
+        bodyMode?: BodyMode;
+        body?: string;
+        bodyFields?: KeyVal[];
+      }>,
+    ) => {
       const p = action.payload;
       state.method = p.method;
       state.path = p.path;
