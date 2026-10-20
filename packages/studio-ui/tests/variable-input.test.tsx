@@ -39,4 +39,24 @@ describe('VariableInput component', () => {
     expect(markup).toContain('rows="4"');
     expect(markup).toContain('Sample raw body text</textarea>');
   });
+
+  it('renders password input with disabled or readOnly attributes', () => {
+    const markup = renderToStaticMarkup(
+      <VariableInput
+        type="password"
+        value="secret123"
+        disabled
+        readOnly
+        id="apiKeyField"
+        className="custom-api-input"
+        variables={sampleVariables}
+        onChange={() => {}}
+      />,
+    );
+    expect(markup).toContain('type="password"');
+    expect(markup).toContain('disabled=""');
+    expect(markup).toContain('readOnly=""');
+    expect(markup).toContain('id="apiKeyField"');
+    expect(markup).toContain('class="custom-api-input"');
+  });
 });

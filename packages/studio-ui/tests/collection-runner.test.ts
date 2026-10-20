@@ -372,6 +372,78 @@ describe('Collection Runner & Schema Validation', () => {
         ),
       ).toBe(true);
     });
+    it('handles requests that fail HTTP status or exceed latency thresholds', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({
+          status: 500,
+          body: { error: 'Internal Server Error' },
+          headers: {},
+          duration: 150,
+        }),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      const collection: RequestCollection = {
+        id: 'col-failing',
+        name: 'Failing Suite',
+        requests: [
+          {
+            id: 'req-err',
+            name: 'Error Endpoint',
+            method: 'GET',
+            path: '/api/fail',
+            queryParams: [],
+            pathParams: [],
+            headers: [],
+            bodyMode: 'none',
+            body: '',
+            bodyFields: [],
+          },
+        ],
+      };
+
+      const report = await runCollectionBatch({
+        collection,
+        maxLatencyMs: 50, // lower than duration
+      });
+
+      expect(report.total).toBe(1);
+      expect(report.failed).toBe(1);
+      expect(report.passed).toBe(0);
+      expect(report.results[0].passed).toBe(false);
+      expect(report.results[0].assertions.some((a) => !a.passed)).toBe(true);
+    });
+
+    it('handles network fetch exceptions gracefully', async () => {
+      const mockFetch = vi.fn().mockRejectedValue(new Error('Network offline'));
+      vi.stubGlobal('fetch', mockFetch);
+
+      const collection: RequestCollection = {
+        id: 'col-net-err',
+        name: 'Offline Suite',
+        requests: [
+          {
+            id: 'req-offline',
+            name: 'Offline Endpoint',
+            method: 'GET',
+            path: '/api/timeout',
+            queryParams: [],
+            pathParams: [],
+            headers: [],
+            bodyMode: 'none',
+            body: '',
+            bodyFields: [],
+          },
+        ],
+      };
+
+      const report = await runCollectionBatch({ collection });
+      expect(report.total).toBe(1);
+      expect(report.failed).toBe(1);
+      expect(report.results[0].status).toBe('ERROR');
+      expect(report.results[0].passed).toBe(false);
+    });
   });
 
   describe('generateRunnerMarkdownSummary', () => {
@@ -407,6 +479,53 @@ describe('Collection Runner & Schema Validation', () => {
       expect(md).toContain('`POST`');
       expect(md).toContain('`/api/orders`');
       expect(md).toContain('✅ Passed');
+    });
+
+    it('renders failure summary when tests fail', () => {
+      const failedReport = {
+        id: 'run-fail',
+        timestamp: '2026-10-20T12:00:00.000Z',
+        collectionId: 'col-fail',
+        collectionName: 'Payment Flow',
+        environmentName: 'Staging',
+        total: 2,
+        passed: 1,
+        failed: 1,
+        totalDurationMs: 150,
+        avgDurationMs: 75,
+        results: [
+          {
+            requestId: 'req-pass',
+            requestName: 'Health',
+            method: 'GET',
+            path: '/health',
+            status: 200 as const,
+            duration: 20,
+            passed: true,
+            assertions: [{ name: 'Status 200', passed: true }],
+          },
+          {
+            requestId: 'req-fail',
+            requestName: 'Pay',
+            method: 'POST',
+            path: '/pay',
+            status: 500 as const,
+            duration: 130,
+            passed: false,
+            assertions: [
+              {
+                name: 'Status 2xx',
+                passed: false,
+                message: 'Expected 200 got 500',
+              },
+            ],
+          },
+        ],
+      };
+
+      const md = generateRunnerMarkdownSummary(failedReport);
+      expect(md).toContain('50% (1/2 passed, 1 failed)');
+      expect(md).toContain('❌ Failed');
     });
   });
 });

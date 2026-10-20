@@ -42,15 +42,59 @@ describe('Axiomify Scripting Sandbox', () => {
       createExpectation('test').toBeDefined();
       createExpectation(true).toBeTruthy();
       createExpectation(false).toBeFalsy();
-      createExpectation(50).toBeGreaterThan(40);
-      createExpectation(50).toBeLessThan(60);
-      createExpectation('foo@bar.com').toMatch(/@/);
+      createExpectation(50).toBeGreaterThanOrEqual(50);
+      createExpectation(50).toBeGreaterThanOrEqual(40);
+      createExpectation(50).toBeLessThanOrEqual(50);
+      createExpectation(50).toBeLessThanOrEqual(60);
+      createExpectation({ foo: 'bar' }).toHaveProperty('foo', 'bar');
+      createExpectation({ foo: 'bar' }).not.toHaveProperty('baz');
+      createExpectation({ foo: 'bar' }).toContain('foo');
+      createExpectation(() => {
+        throw new Error('boom');
+      }).toThrow();
+      createExpectation(() => {}).not.toThrow();
     });
 
-    it('throws when expectations fail', () => {
+    it('throws when expectations fail across all matchers', () => {
       expect(() => createExpectation(200).toBe(500)).toThrow();
+      expect(() => createExpectation(200).not.toBe(200)).toThrow();
       expect(() => createExpectation({ a: 1 }).toEqual({ a: 2 })).toThrow();
       expect(() => createExpectation('foo').toContain('bar')).toThrow();
+      expect(() => createExpectation('foo').not.toContain('foo')).toThrow();
+      expect(() => createExpectation(50).toBeGreaterThan(60)).toThrow();
+      expect(() => createExpectation(50).not.toBeGreaterThan(40)).toThrow();
+      expect(() => createExpectation(50).toBeGreaterThanOrEqual(60)).toThrow();
+      expect(() =>
+        createExpectation(50).not.toBeGreaterThanOrEqual(50),
+      ).toThrow();
+      expect(() => createExpectation(50).toBeLessThan(40)).toThrow();
+      expect(() => createExpectation(50).not.toBeLessThan(60)).toThrow();
+      expect(() => createExpectation(50).toBeLessThanOrEqual(40)).toThrow();
+      expect(() => createExpectation(50).not.toBeLessThanOrEqual(50)).toThrow();
+      expect(() => createExpectation(true).toBeFalsy()).toThrow();
+      expect(() => createExpectation(false).toBeTruthy()).toThrow();
+      expect(() => createExpectation(undefined).toBeDefined()).toThrow();
+      expect(() => createExpectation('def').toBeUndefined()).toThrow();
+      expect(() => createExpectation('str').toBeNull()).toThrow();
+      expect(() => createExpectation(null).not.toBeNull()).toThrow();
+      expect(() => createExpectation('x').toBeOneOf(['a', 'b'])).toThrow();
+      expect(() => createExpectation('a').not.toBeOneOf(['a', 'b'])).toThrow();
+      expect(() => createExpectation({ a: 1 }).toHaveProperty('b')).toThrow();
+      expect(() =>
+        createExpectation({ a: 1 }).toHaveProperty('a', 2),
+      ).toThrow();
+      expect(() =>
+        createExpectation({ a: 1 }).not.toHaveProperty('a'),
+      ).toThrow();
+      expect(() => createExpectation('not-a-func').toThrow()).toThrow();
+      expect(() => createExpectation(() => {}).toThrow()).toThrow();
+      expect(() =>
+        createExpectation(() => {
+          throw new Error('err');
+        }).not.toThrow(),
+      ).toThrow();
+      expect(() => createExpectation('hello').toMatch(/xyz/)).toThrow();
+      expect(() => createExpectation('hello').not.toMatch(/ell/)).toThrow();
     });
   });
 
@@ -213,6 +257,110 @@ describe('Axiomify Scripting Sandbox', () => {
         timeoutMs: 1000,
       });
       expect(validResult.success).toBe(true);
+    });
+
+    it('returns immediately with success on empty or blank script', async () => {
+      const res1 = await executeScriptSandbox('', { request: dummyRequest });
+      expect(res1.success).toBe(true);
+      expect(res1.logs).toEqual([]);
+
+      const res2 = await executeScriptSandbox('   \n  \t  ', {
+        request: dummyRequest,
+      });
+      expect(res2.success).toBe(true);
+    });
+
+    it('handles env.unset, env.toObject, and env.get', async () => {
+      const script = `
+        $.env.set('temp', '123');
+        $.env.unset('oldKey');
+        const all = $.env.toObject();
+        $.test('Env state', () => {
+          $.expect($.env.get('temp')).toBe('123');
+          $.expect(all.temp).toBe('123');
+        });
+      `;
+      const result = await executeScriptSandbox(script, {
+        request: dummyRequest,
+        environment: { oldKey: 'remove-me' },
+      });
+      expect(result.success).toBe(true);
+      expect(result.mutatedEnv['temp']).toBe('123');
+      expect(result.mutatedEnv['oldKey']).toBe('');
+    });
+
+    it('handles async tests returning resolved and rejected promises', async () => {
+      const script = `
+        $.test('Async pass', async () => {
+          await new Promise((r) => setTimeout(r, 10));
+          $.expect(1 + 1).toBe(2);
+        });
+
+        $.test('Async fail', async () => {
+          await new Promise((r) => setTimeout(r, 10));
+          $.expect(1 + 1).toBe(3);
+        });
+      `;
+      const result = await executeScriptSandbox(script, {
+        request: dummyRequest,
+      });
+      expect(result.tests).toHaveLength(2);
+      expect(result.tests[0].passed).toBe(true);
+      expect(result.tests[1].passed).toBe(false);
+      expect(result.tests[1].error).toBeDefined();
+    });
+
+    it('parses response from text fallback when response data is undefined', async () => {
+      const script = `
+        $.test('Parses text json', () => {
+          const body = $.response.json();
+          $.expect(body.count).toBe(42);
+        });
+      `;
+      const result = await executeScriptSandbox(script, {
+        request: dummyRequest,
+        response: {
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          responseTime: 10,
+          text: '{"count":42}',
+        },
+      });
+      expect(result.success).toBe(true);
+      expect(result.tests[0].passed).toBe(true);
+    });
+
+    it('handles non-JSON response text safely', async () => {
+      const script = `
+        $.test('Non json body', () => {
+          $.expect($.response.json()).toBeNull();
+          $.expect($.response.text()).toBe('plain text error');
+        });
+      `;
+      const result = await executeScriptSandbox(script, {
+        request: dummyRequest,
+        response: {
+          status: 500,
+          statusText: 'Error',
+          headers: {},
+          responseTime: 10,
+          text: 'plain text error',
+        },
+      });
+      expect(result.success).toBe(true);
+      expect(result.tests[0].passed).toBe(true);
+    });
+
+    it('logs multiple arguments and objects', async () => {
+      const script = `
+        $.log('Hello', { a: 1 }, [1, 2]);
+      `;
+      const result = await executeScriptSandbox(script, {
+        request: dummyRequest,
+      });
+      expect(result.logs[0]).toContain('Hello');
+      expect(result.logs[0]).toContain('{"a":1}');
     });
   });
 });

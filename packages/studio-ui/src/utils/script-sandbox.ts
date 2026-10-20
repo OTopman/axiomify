@@ -285,6 +285,8 @@ export async function executeScriptSandbox(
       }
     : undefined;
 
+  const pendingPromises: Promise<any>[] = [];
+
   // Build the Axiomify scope object
   const axiomify = {
     request: requestClone,
@@ -307,7 +309,25 @@ export async function executeScriptSandbox(
       try {
         const res = fn();
         if (res && typeof (res as any).then === 'function') {
-          // If the test function returns a promise
+          pendingPromises.push(
+            (res as Promise<void>)
+              .then(() => {
+                tests.push({
+                  name,
+                  passed: true,
+                  durationMs: Date.now() - testStart,
+                });
+              })
+              .catch((err: any) => {
+                tests.push({
+                  name,
+                  passed: false,
+                  error: err?.message || String(err),
+                  durationMs: Date.now() - testStart,
+                });
+              }),
+          );
+          return;
         }
         tests.push({
           name,
@@ -405,14 +425,12 @@ export async function executeScriptSandbox(
     const runner = new Function('axiomify', '$', 'pm', wrappedCode);
 
     // Timeout guard promise
-    const executionPromise = new Promise<void>((resolve, reject) => {
-      try {
-        runner.call(undefined, axiomify, $, pm, shadowValues);
-        resolve();
-      } catch (err) {
-        reject(err);
+    const executionPromise = (async () => {
+      runner.call(undefined, axiomify, $, pm, shadowValues);
+      if (pendingPromises.length > 0) {
+        await Promise.all(pendingPromises);
       }
-    });
+    })();
 
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(
