@@ -231,24 +231,16 @@ export interface SandboxContextOptions {
 /**
  * Execute user-provided script in an isolated context.
  */
-export async function executeScriptSandbox(
+/**
+ * Internal sandbox logic executed either in a Web Worker or in-process.
+ */
+async function runSandboxInternal(
   script: string,
   options: SandboxContextOptions,
 ): Promise<ScriptExecutionResult> {
   const startTime = Date.now();
   const logs: string[] = [];
   const tests: TestAssertion[] = [];
-  const timeoutMs = options.timeoutMs ?? 1500;
-
-  if (!script || !script.trim()) {
-    return {
-      success: true,
-      tests: [],
-      mutatedEnv: {},
-      logs: [],
-      durationMs: 0,
-    };
-  }
 
   // Clone environment to track mutations
   const envMap: Record<string, string> = { ...(options.environment || {}) };
@@ -259,7 +251,10 @@ export async function executeScriptSandbox(
     url: options.request.url,
     method: options.request.method,
     headers: { ...options.request.headers },
-    body: options.request.body,
+    body:
+      typeof options.request.body === 'object' && options.request.body !== null
+        ? JSON.parse(JSON.stringify(options.request.body))
+        : options.request.body,
     params: { ...options.request.params },
   };
 
@@ -417,30 +412,17 @@ export async function executeScriptSandbox(
 
     const wrappedCode = `
       "use strict";
-      return (function(${shadowArgs}) {
+      return (async function(${shadowArgs}) {
         ${script}
       }).apply(undefined, arguments[3]);
     `;
 
     const runner = new Function('axiomify', '$', 'pm', wrappedCode);
 
-    // Timeout guard promise
-    const executionPromise = (async () => {
-      runner.call(undefined, axiomify, $, pm, shadowValues);
-      if (pendingPromises.length > 0) {
-        await Promise.all(pendingPromises);
-      }
-    })();
-
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(
-        () =>
-          reject(new Error(`Script execution timed out after ${timeoutMs}ms`)),
-        timeoutMs,
-      );
-    });
-
-    await Promise.race([executionPromise, timeoutPromise]);
+    await runner.call(undefined, axiomify, $, pm, shadowValues);
+    if (pendingPromises.length > 0) {
+      await Promise.all(pendingPromises);
+    }
   } catch (err: any) {
     scriptError = err?.message || String(err);
   }
@@ -458,6 +440,158 @@ export async function executeScriptSandbox(
     error: scriptError,
     durationMs,
   };
+}
+
+/**
+ * Execute user-provided script in an isolated context.
+ * In browser environments supporting Web Workers, scripts run on a background thread
+ * so that synchronous infinite loops can be safely terminated via worker.terminate().
+ */
+export async function executeScriptSandbox(
+  script: string,
+  options: SandboxContextOptions,
+): Promise<ScriptExecutionResult> {
+  const timeoutMs = options.timeoutMs ?? 1500;
+
+  if (!script || !script.trim()) {
+    return {
+      success: true,
+      tests: [],
+      mutatedEnv: {},
+      logs: [],
+      durationMs: 0,
+    };
+  }
+
+  // If in browser environment supporting Web Workers, execute off the UI thread
+  // to prevent synchronous execution from blocking the event loop or freezing the tab.
+  if (
+    typeof Worker !== 'undefined' &&
+    typeof Blob !== 'undefined' &&
+    typeof URL !== 'undefined' &&
+    typeof URL.createObjectURL === 'function'
+  ) {
+    return new Promise<ScriptExecutionResult>((resolve) => {
+      let worker: Worker | null = null;
+      let timer: any = null;
+      let blobUrl = '';
+
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        if (worker) {
+          worker.terminate();
+          worker = null;
+        }
+        if (blobUrl) {
+          URL.revokeObjectURL(blobUrl);
+        }
+      };
+
+      try {
+        const workerScript = `
+          ${createExpectation.toString()}
+          ${runSandboxInternal.toString()}
+
+          self.onmessage = async function(e) {
+            try {
+              const res = await runSandboxInternal(e.data.script, e.data.options);
+              self.postMessage({ type: 'result', result: res });
+            } catch (err) {
+              self.postMessage({ type: 'error', error: err?.message || String(err) });
+            }
+          };
+        `;
+
+        const blob = new Blob([workerScript], {
+          type: 'application/javascript',
+        });
+        blobUrl = URL.createObjectURL(blob);
+        worker = new Worker(blobUrl);
+
+        timer = setTimeout(() => {
+          cleanup();
+          resolve({
+            success: false,
+            tests: [],
+            mutatedRequest: options.request,
+            mutatedEnv: {},
+            logs: [],
+            error: `Script execution timed out after ${timeoutMs}ms`,
+            durationMs: timeoutMs,
+          });
+        }, timeoutMs);
+
+        worker.onmessage = (e: MessageEvent) => {
+          cleanup();
+          if (e.data?.type === 'result') {
+            resolve(e.data.result);
+          } else {
+            resolve({
+              success: false,
+              tests: [],
+              mutatedRequest: options.request,
+              mutatedEnv: {},
+              logs: [],
+              error: e.data?.error || 'Worker script execution error',
+              durationMs: 0,
+            });
+          }
+        };
+
+        worker.onerror = (err: ErrorEvent) => {
+          cleanup();
+          resolve({
+            success: false,
+            tests: [],
+            mutatedRequest: options.request,
+            mutatedEnv: {},
+            logs: [],
+            error: err.message || 'Worker runtime error',
+            durationMs: 0,
+          });
+        };
+
+        worker.postMessage({ script, options });
+      } catch {
+        cleanup();
+        resolve(executeInProcess(script, options, timeoutMs));
+      }
+    });
+  }
+
+  // Fallback for Node.js / SSR / non-Worker environments
+  return executeInProcess(script, options, timeoutMs);
+}
+
+async function executeInProcess(
+  script: string,
+  options: SandboxContextOptions,
+  timeoutMs: number,
+): Promise<ScriptExecutionResult> {
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(
+      () =>
+        reject(new Error(`Script execution timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+  });
+
+  try {
+    return await Promise.race([
+      runSandboxInternal(script, options),
+      timeoutPromise,
+    ]);
+  } catch (err: any) {
+    return {
+      success: false,
+      tests: [],
+      mutatedRequest: options.request,
+      mutatedEnv: {},
+      logs: [],
+      error: err?.message || String(err),
+      durationMs: timeoutMs,
+    };
+  }
 }
 
 /**

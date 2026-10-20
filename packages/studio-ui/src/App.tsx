@@ -297,7 +297,7 @@ export function App() {
 
     const connectLiveWs = () => {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/__studio/live?token=${encodeURIComponent(token)}`;
+      const wsUrl = `${protocol}//${window.location.host}/__studio/ws?token=${encodeURIComponent(token)}`;
 
       try {
         const ws = new WebSocket(wsUrl);

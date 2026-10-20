@@ -362,5 +362,23 @@ describe('Axiomify Scripting Sandbox', () => {
       expect(result.logs[0]).toContain('Hello');
       expect(result.logs[0]).toContain('{"a":1}');
     });
+
+    it('supports top-level await in scripts and awaits pending asynchronous tests', async () => {
+      const script = `
+        await new Promise((r) => setTimeout(r, 10));
+        $.env.set('asyncKey', 'completed');
+        $.test('Async test in top-level await script', async () => {
+          await new Promise((r) => setTimeout(r, 10));
+          $.expect($.env.get('asyncKey')).toBe('completed');
+        });
+      `;
+      const result = await executeScriptSandbox(script, {
+        request: dummyRequest,
+      });
+      expect(result.success).toBe(true);
+      expect(result.mutatedEnv['asyncKey']).toBe('completed');
+      expect(result.tests).toHaveLength(1);
+      expect(result.tests[0].passed).toBe(true);
+    });
   });
 });

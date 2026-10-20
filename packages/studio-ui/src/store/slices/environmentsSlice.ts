@@ -100,6 +100,55 @@ export const environmentsSlice = createSlice({
       );
       saveRequestEnvironments(state.environments);
     },
+    mergeEnvironmentVariables: (
+      state,
+      action: PayloadAction<Record<string, string>>,
+    ) => {
+      const updates = action.payload;
+      if (!updates || Object.keys(updates).length === 0) return;
+
+      if (state.environments.length === 0) {
+        const newEnv: RequestEnvironment = {
+          id: createStudioId('environment'),
+          name: 'Default',
+          variables: [],
+        };
+        state.environments.push(newEnv);
+        state.selectedEnvironmentId = newEnv.id;
+        state.environmentVariables = [];
+      } else if (!state.selectedEnvironmentId) {
+        state.selectedEnvironmentId = state.environments[0].id;
+        state.environmentVariables = [
+          ...(state.environments[0].variables || []),
+        ];
+      }
+
+      for (const [key, value] of Object.entries(updates)) {
+        if (!key.trim()) continue;
+        const existingIdx = state.environmentVariables.findIndex(
+          (v) => v.key === key,
+        );
+        if (value === '') {
+          if (existingIdx !== -1) {
+            state.environmentVariables.splice(existingIdx, 1);
+          }
+        } else {
+          if (existingIdx !== -1) {
+            state.environmentVariables[existingIdx].value = value;
+          } else {
+            state.environmentVariables.push({ key, value });
+          }
+        }
+      }
+
+      const cleaned = state.environmentVariables.filter((v) => v.key.trim());
+      state.environments = state.environments.map((env) =>
+        env.id === state.selectedEnvironmentId
+          ? { ...env, variables: cleaned }
+          : env,
+      );
+      saveRequestEnvironments(state.environments);
+    },
   },
 });
 
@@ -112,6 +161,7 @@ export const {
   updateVariable,
   removeVariable,
   saveCurrentEnvironment,
+  mergeEnvironmentVariables,
 } = environmentsSlice.actions;
 
 export default environmentsSlice.reducer;

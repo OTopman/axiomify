@@ -1,6 +1,7 @@
 import Editor from '@monaco-editor/react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useAppSelector } from '../store/hooks';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { mergeEnvironmentVariables } from '../store/slices/environmentsSlice';
 import { DiscoveryData } from '../types';
 import { apiFetch } from '../utils/api';
 import {
@@ -225,6 +226,7 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
   const [newRequestName, setNewRequestName] = useState('');
 
   // Redux Environments
+  const dispatch = useAppDispatch();
   const { environments, selectedEnvironmentId } = useAppSelector(
     (state) => state.environments,
   );
@@ -786,6 +788,13 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
       if (preResult.logs.length > 0) {
         accumulatedLogs.push(...preResult.logs);
       }
+
+      if (
+        preResult.mutatedEnv &&
+        Object.keys(preResult.mutatedEnv).length > 0
+      ) {
+        dispatch(mergeEnvironmentVariables(preResult.mutatedEnv));
+      }
     } else {
       setPreRequestResults(null);
     }
@@ -856,6 +865,13 @@ export const RequestBuilder: React.FC<RequestBuilderProps> = ({
           logs: [...accumulatedLogs, ...testResult.logs],
           error: testResult.error,
         });
+
+        if (
+          testResult.mutatedEnv &&
+          Object.keys(testResult.mutatedEnv).length > 0
+        ) {
+          dispatch(mergeEnvironmentVariables(testResult.mutatedEnv));
+        }
 
         // Automatically switch to tests tab if assertions were evaluated or error occurred
         if (

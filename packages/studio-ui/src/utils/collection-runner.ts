@@ -484,6 +484,7 @@ export async function executeSingleRunnerRequest(
     }
 
     if (testResult.mutatedEnv) {
+      Object.assign(activeEnvMap, testResult.mutatedEnv);
       Object.assign(accumulatedMutatedEnv, testResult.mutatedEnv);
     }
     if (testResult.logs.length > 0) {
