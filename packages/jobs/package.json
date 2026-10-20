@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/jobs",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "description": "Distributed Job Scheduler, Worker, and Saga Coordinator for Axiomify.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -23,7 +23,7 @@
     "@axiomify/core": "^7.0.0"
   },
   "devDependencies": {
-    "@axiomify/core": "^7.0.0",
+    "@axiomify/core": "^7.1.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.2"
   },

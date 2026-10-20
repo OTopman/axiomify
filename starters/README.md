@@ -4,11 +4,12 @@ Starter kits are small, deployable reference applications. Unlike the broad
 `examples/` showcase, each starter has one production shape and documents the
 operational choices it makes.
 
-| Starter | Use it for | Includes |
-| --- | --- | --- |
-| [REST API](./rest-api) | A secure JSON service | versioned routes, Zod contracts, request IDs, security middleware, rate limiting, tests, Docker |
+| Starter                            | Use it for                     | Includes                                                                                        |
+| ---------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------- |
+| [REST API](./rest-api)             | A secure JSON service          | versioned routes, Zod contracts, request IDs, security middleware, rate limiting, tests, Docker |
+| [Serverless API](./serverless-api) | A Fetch-compatible API handler | standard `Request`/`Response`, bounded body reads, Zod contracts, inject tests                  |
 
 Copy a starter into a new repository, replace the sample domain logic, and pin
 all `@axiomify/*` dependencies to the same released version. Contributions for
-SaaS, real-time, and serverless starters should follow the recipe guidelines in
+SaaS and real-time starters should follow the recipe guidelines in
 [`docs/recipes`](../docs/recipes/README.md).

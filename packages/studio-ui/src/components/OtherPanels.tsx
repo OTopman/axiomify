@@ -1,3 +1,32 @@
+import {
+  Activity,
+  AlertCircle,
+  AlertTriangle,
+  Anchor,
+  Award,
+  BarChart2,
+  Bot,
+  Box,
+  Check,
+  CheckCircle2,
+  Compass,
+  Copy,
+  Download,
+  Eye,
+  FileCode,
+  FileText,
+  Flame,
+  Heart,
+  Home,
+  Layers,
+  Map as MapIcon,
+  Radio,
+  Send,
+  Shield,
+  Sparkles,
+  TrendingDown,
+  User
+} from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { DiscoveryData } from '../types';
 import { apiFetch, getToken } from '../utils/api';
@@ -27,7 +56,7 @@ export const SchemasPanel: React.FC<{ discovery: DiscoveryData }> = ({
           </div>
         </div>
         <div className="empty-state">
-          <div className="empty-state-icon">📐</div>
+          <FileCode size={36} style={{ marginBottom: '12px', color: 'var(--text-muted)' }} />
           <div className="empty-state-message">
             No schemas found — add Zod schemas to your routes
           </div>
@@ -114,7 +143,7 @@ export const SchemasPanel: React.FC<{ discovery: DiscoveryData }> = ({
 // ==========================================
 export const OpenApiPanel: React.FC<{
   discovery: DiscoveryData;
-  onRefresh: () => void;
+  onRefresh?: () => void;
 }> = ({ discovery, onRefresh }) => {
   const [syncing, setSyncing] = useState(false);
   const [showRawJson, setShowRawJson] = useState(false);
@@ -131,7 +160,7 @@ export const OpenApiPanel: React.FC<{
       const data = await res.json();
       if (data.success) {
         alert('Successfully synced OpenAPI specification to openapi.json.');
-        onRefresh();
+        onRefresh?.();
       } else {
         alert('Error syncing spec: ' + data.message);
       }
@@ -237,9 +266,12 @@ export const OpenApiPanel: React.FC<{
                   fontWeight: 600,
                   fontSize: '14px',
                   color: 'var(--warning)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
                 }}
               >
-                ⚠️ OpenAPI Spec Drift Detected
+                <AlertTriangle size={15} /> OpenAPI Spec Drift Detected
               </div>
               <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
                 The local{' '}
@@ -299,9 +331,12 @@ export const OpenApiPanel: React.FC<{
               fontWeight: 600,
               fontSize: '14px',
               color: 'var(--success)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
             }}
           >
-            ✅ OpenAPI Spec Synced
+            <CheckCircle2 size={16} /> OpenAPI Spec Synced
           </div>
           <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
             The local{' '}
@@ -329,19 +364,68 @@ export const OpenApiPanel: React.FC<{
   const specPaths = spec ? spec.paths || {} : {};
 
   return (
-    <div>
-      <div className="panel-header">
-        <div className="panel-title">OpenAPI Viewer</div>
-        <div className="panel-subtitle">
-          Generated OpenAPI 3.1 specification
+    <div className="panel-modern-layout">
+      <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="panel-title">OpenAPI Specification</div>
+            <span className="nav-badge" style={{ fontSize: '10px', padding: '2px 6px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent)', borderColor: 'rgba(99, 102, 241, 0.3)' }}>
+              v{spec?.info?.version || '3.1.0'}
+            </span>
+            <span className="nav-badge" style={{ fontSize: '10px', padding: '2px 6px' }}>
+              OAS 3.1
+            </span>
+          </div>
+          <div className="panel-subtitle">
+            {spec?.info?.description || 'Auto-generated contract documentation inferred from route Zod schemas'}
+          </div>
         </div>
+
+        {spec && Object.keys(specPaths).length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* View mode toggle */}
+            <div style={{ display: 'flex', background: 'var(--bg-secondary)', padding: '2px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+              <button
+                className={`pill-btn ${!showRawJson ? 'active' : ''}`}
+                style={{ fontSize: '11px', padding: '4px 10px', background: !showRawJson ? 'var(--bg-primary)' : 'transparent', border: 'none', color: !showRawJson ? 'var(--accent)' : 'var(--text-secondary)', cursor: 'pointer', borderRadius: '3px', fontWeight: !showRawJson ? 600 : 400 }}
+                onClick={() => setShowRawJson(false)}
+              >
+                Explorer
+              </button>
+              <button
+                className={`pill-btn ${showRawJson ? 'active' : ''}`}
+                style={{ fontSize: '11px', padding: '4px 10px', background: showRawJson ? 'var(--bg-primary)' : 'transparent', border: 'none', color: showRawJson ? 'var(--accent)' : 'var(--text-secondary)', cursor: 'pointer', borderRadius: '3px', fontWeight: showRawJson ? 600 : 400 }}
+                onClick={() => setShowRawJson(true)}
+              >
+                Raw JSON
+              </button>
+            </div>
+
+            <button
+              className="btn btn-secondary"
+              style={{ margin: 0, padding: '5px 10px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+              onClick={handleCopySpec}
+              title="Copy raw specification JSON"
+            >
+              <Copy size={12} /> Copy JSON
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ margin: 0, padding: '5px 10px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+              onClick={handleDownloadSpec}
+              title="Download openapi.json"
+            >
+              <Download size={12} /> Export Spec
+            </button>
+          </div>
+        )}
       </div>
 
       {renderDriftCard()}
 
       {!spec || Object.keys(specPaths).length === 0 ? (
         <div className="empty-state">
-          <div className="empty-state-icon">📄</div>
+          <FileText size={36} style={{ marginBottom: '12px', color: 'var(--text-muted)' }} />
           <div className="empty-state-message">
             OpenAPI spec not available or has no paths. Install
             @axiomify/openapi to enable.
@@ -349,43 +433,12 @@ export const OpenApiPanel: React.FC<{
         </div>
       ) : (
         <div>
-          <div
-            style={{
-              marginBottom: '16px',
-              display: 'flex',
-              gap: '12px',
-              justifyContent: 'flex-end',
-            }}
-          >
-            <button
-              className="btn btn-secondary"
-              style={{ margin: 0 }}
-              onClick={() => setShowRawJson(!showRawJson)}
-            >
-              {showRawJson ? 'Hide Raw JSON' : 'Toggle Raw JSON'}
-            </button>
-            <button
-              className="btn btn-secondary"
-              style={{ margin: 0 }}
-              onClick={handleCopySpec}
-            >
-              Copy JSON
-            </button>
-            <button
-              className="btn btn-secondary"
-              style={{ margin: 0 }}
-              onClick={handleDownloadSpec}
-            >
-              Download Spec
-            </button>
-          </div>
-
           {showRawJson && (
             <div style={{ marginBottom: '24px', textAlign: 'left' }}>
-              <div className="schema-section-label">Raw OpenAPI Spec</div>
+              <div className="schema-section-label">Raw OpenAPI Spec (JSON)</div>
               <pre
                 className="schema-json"
-                style={{ maxHeight: '50vh', overflowY: 'auto' }}
+                style={{ maxHeight: '60vh', overflowY: 'auto' }}
               >
                 {JSON.stringify(spec, null, 2)}
               </pre>
@@ -682,7 +735,7 @@ export const ServicesPanel: React.FC<{ discovery: DiscoveryData }> = ({
 
       {filtered.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-state-icon">🧩</div>
+          <Layers size={36} style={{ marginBottom: '12px', color: 'var(--text-muted)' }} />
           <div className="empty-state-message">
             No services found in the DI container.
           </div>
@@ -810,8 +863,8 @@ export const HooksPanel: React.FC<{ discovery: DiscoveryData }> = ({
 
   const [selectedHookName, setSelectedHookName] = useState<string>(
     hooks.find((h) => hookSequence.includes(h.type || h.name || ''))?.type ||
-      hooks[0]?.type ||
-      'onRequest',
+    hooks[0]?.type ||
+    'onRequest',
   );
 
   const selectedHook = hooks.find(
@@ -1058,11 +1111,7 @@ export const HooksPanel: React.FC<{ discovery: DiscoveryData }> = ({
                         gap: '8px',
                       }}
                     >
-                      <span
-                        style={{ color: 'var(--accent)', fontSize: '14px' }}
-                      >
-                        ⚓
-                      </span>
+                      <Anchor size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
                       <span
                         style={{
                           fontFamily: 'var(--font-mono)',
@@ -1205,7 +1254,7 @@ export const HealthPanel: React.FC<{ discovery: DiscoveryData }> = ({
           </div>
         </div>
         <div className="empty-state">
-          <div className="empty-state-icon">❤️</div>
+          <Heart size={36} style={{ marginBottom: '12px', color: 'var(--text-muted)' }} />
           <div className="empty-state-message">
             Health diagnostics report not available.
           </div>
@@ -1220,10 +1269,10 @@ export const HealthPanel: React.FC<{ discovery: DiscoveryData }> = ({
   const score =
     totalChecks > 0
       ? Math.round(
-          (((summary.passes || 0) + (summary.warnings || 0) * 0.5) /
-            totalChecks) *
-            100,
-        )
+        (((summary.passes || 0) + (summary.warnings || 0) * 0.5) /
+          totalChecks) *
+        100,
+      )
       : 100;
 
   const radius = 40;
@@ -1444,12 +1493,14 @@ export const HealthPanel: React.FC<{ discovery: DiscoveryData }> = ({
                     setOpenFindings((prev) => ({ ...prev, [idx]: !isOpen }))
                   }
                 >
-                  <span className="finding-card-status-icon">
-                    {f.severity === 'fail'
-                      ? '❌'
-                      : f.severity === 'warn'
-                        ? '⚠️'
-                        : '✅'}
+                  <span className="finding-card-status-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                    {f.severity === 'fail' ? (
+                      <AlertCircle size={14} style={{ color: 'var(--error)' }} />
+                    ) : f.severity === 'warn' ? (
+                      <AlertTriangle size={14} style={{ color: 'var(--warning)' }} />
+                    ) : (
+                      <CheckCircle2 size={14} style={{ color: 'var(--success)' }} />
+                    )}
                   </span>
                   <span className="finding-card-title">{f.message}</span>
                   <span className="finding-card-area">{f.area}</span>
@@ -1502,7 +1553,7 @@ export const ConfigPanel: React.FC<{ discovery: DiscoveryData }> = ({
       if (res.ok) {
         setStats(await res.json());
       }
-    } catch {}
+    } catch { }
   };
 
   const fetchConfig = async () => {
@@ -1511,7 +1562,7 @@ export const ConfigPanel: React.FC<{ discovery: DiscoveryData }> = ({
       if (res.ok) {
         setConfigData(await res.json());
       }
-    } catch {}
+    } catch { }
   };
 
   const getStatusColor = (val: number) => {
@@ -1545,7 +1596,9 @@ export const ConfigPanel: React.FC<{ discovery: DiscoveryData }> = ({
       >
         {/* Framework Meta */}
         <div className="tester-section">
-          <div className="tester-section-title">📦 Application Info</div>
+          <div className="tester-section-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Box size={14} /> Application Info
+          </div>
           <div
             style={{
               display: 'flex',
@@ -1696,8 +1749,9 @@ export const ConfigPanel: React.FC<{ discovery: DiscoveryData }> = ({
 // ==========================================
 // 7. ERRORS + EVENTS PANELS
 // ==========================================
-export const ErrorsPanel: React.FC = () => {
+export const ErrorsPanel: React.FC<{ discovery?: DiscoveryData }> = () => {
   const [data, setData] = useState<any | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -1715,19 +1769,38 @@ export const ErrorsPanel: React.FC = () => {
 
   const errors = data?.errors || [];
   return (
-    <div>
-      <div className="panel-header">
-        <div className="panel-title">Error Observatory</div>
-        <div className="panel-subtitle">
-          Recent application failures, with sensitive text redacted before
-          Studio stores it
+    <div className="panel-modern-layout">
+      <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="panel-title">Error & Panic Observatory</div>
+            <span
+              className="nav-badge"
+              style={{
+                fontSize: '10px',
+                padding: '2px 6px',
+                background: errors.length > 0 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                color: errors.length > 0 ? 'var(--error)' : 'var(--success)',
+                borderColor: errors.length > 0 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)',
+              }}
+            >
+              {errors.length === 0 ? 'All Systems Nominal' : `${errors.length} Captured Errors`}
+            </span>
+          </div>
+          <div className="panel-subtitle">
+            Uncaught exceptions, handler rejections, and panics with automatic PII and secrets masking
+          </div>
         </div>
       </div>
+
       {errors.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-state-icon">✅</div>
-          <div className="empty-state-message">
-            No application errors recorded in this Studio session.
+        <div className="empty-state" style={{ padding: '80px 20px' }}>
+          <CheckCircle2 size={36} style={{ marginBottom: '12px', color: 'var(--success)' }} />
+          <div className="empty-state-message" style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+            Zero unhandled exceptions or server panics.
+          </div>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+            Any error thrown by your route handlers will be captured and displayed here in real time.
           </div>
         </div>
       ) : (
@@ -1743,30 +1816,42 @@ export const ErrorsPanel: React.FC = () => {
             <div
               key={error.id}
               className="card"
-              style={{ margin: 0, padding: '14px 16px' }}
+              style={{
+                margin: 0,
+                padding: '16px 18px',
+                borderLeft: '3px solid var(--error)',
+                background: 'var(--bg-secondary)',
+              }}
             >
               <div
                 style={{
                   display: 'flex',
-                  gap: '10px',
+                  gap: '8px',
                   alignItems: 'center',
                   flexWrap: 'wrap',
                 }}
               >
                 <span
-                  className="tag-pill"
                   style={{
-                    background: 'rgba(255, 107, 107, 0.15)',
+                    fontSize: '10.5px',
+                    fontWeight: 700,
+                    padding: '2px 6px',
+                    borderRadius: '3px',
+                    background: 'rgba(239, 68, 68, 0.12)',
                     color: 'var(--error)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    fontFamily: 'var(--font-mono)',
                   }}
                 >
-                  {error.name}
+                  {error.name || 'Error'}
                 </span>
-                <span className={`method-badge method-${error.method}`}>
-                  {error.method}
-                </span>
+                {error.method && (
+                  <span className={`method-badge method-${error.method}`} style={{ fontSize: '9px', padding: '1px 5px' }}>
+                    {error.method}
+                  </span>
+                )}
                 <span
-                  style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}
                 >
                   {error.path}
                 </span>
@@ -1775,30 +1860,55 @@ export const ErrorsPanel: React.FC = () => {
                     marginLeft: 'auto',
                     fontSize: '11px',
                     color: 'var(--text-muted)',
+                    fontFamily: 'var(--font-mono)',
                   }}
                 >
                   {new Date(error.timestamp).toLocaleTimeString()}
                 </span>
               </div>
-              <div style={{ marginTop: '10px', color: 'var(--text-primary)' }}>
+
+              <div style={{ marginTop: '10px', fontSize: '13px', fontWeight: 500, color: 'var(--text-primary)', lineHeight: 1.4 }}>
                 {error.message}
               </div>
+
               {error.stack && (
-                <pre
-                  style={{
-                    margin: '10px 0 0',
-                    padding: '10px',
-                    maxHeight: '160px',
-                    overflow: 'auto',
-                    whiteSpace: 'pre-wrap',
-                    fontSize: '11px',
-                    background: 'var(--bg-primary)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-sm)',
-                  }}
-                >
-                  {error.stack}
-                </pre>
+                <div style={{ marginTop: '12px', position: 'relative' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)', fontWeight: 600 }}>
+                      Stack Trace
+                    </span>
+                    <button
+                      className="btn btn-secondary"
+                      style={{ padding: '2px 8px', fontSize: '10px', margin: 0, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      onClick={() => {
+                        navigator.clipboard.writeText(error.stack);
+                        setCopiedId(error.id);
+                        setTimeout(() => setCopiedId(null), 1500);
+                      }}
+                    >
+                      {copiedId === error.id ? <Check size={10} style={{ color: 'var(--success)' }} /> : <Copy size={10} />}
+                      {copiedId === error.id ? 'Copied' : 'Copy Stack'}
+                    </button>
+                  </div>
+                  <pre
+                    style={{
+                      margin: 0,
+                      padding: '10px 12px',
+                      maxHeight: '180px',
+                      overflow: 'auto',
+                      whiteSpace: 'pre-wrap',
+                      fontSize: '11px',
+                      fontFamily: 'var(--font-mono)',
+                      background: 'var(--bg-primary)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-sm)',
+                      color: 'var(--text-secondary)',
+                      lineHeight: '1.5',
+                    }}
+                  >
+                    {error.stack}
+                  </pre>
+                </div>
               )}
             </div>
           ))}
@@ -1839,7 +1949,7 @@ export const EventsPanel: React.FC<{ discovery: DiscoveryData }> = ({
 
       {events.length === 0 && runtimeEvents.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-state-icon">📣</div>
+          <Radio size={36} style={{ marginBottom: '12px', color: 'var(--text-muted)' }} />
           <div className="empty-state-message">
             No registered or emitted events found yet.
           </div>
@@ -1980,30 +2090,30 @@ export const ArchitecturePanel: React.FC<{ discovery: DiscoveryData }> = ({
 
   const outgoingDeps = selectedNode?.dependencies
     ? selectedNode.dependencies.map((depId) => {
-        const found = nodes.find((n) => n.id === depId);
-        if (found) {
-          return {
-            ...found,
-            name: found.name || found.label || found.id,
-            type: found.type || 'unknown',
-          };
-        }
+      const found = nodes.find((n) => n.id === depId);
+      if (found) {
         return {
-          id: depId,
-          name: depId.split(':')[1] || depId,
-          type: 'unknown',
+          ...found,
+          name: found.name || found.label || found.id,
+          type: found.type || 'unknown',
         };
-      })
+      }
+      return {
+        id: depId,
+        name: depId.split(':')[1] || depId,
+        type: 'unknown',
+      };
+    })
     : [];
 
   const incomingDeps = selectedNode
     ? nodes
-        .filter((n) => n.dependencies?.includes(selectedNode.id))
-        .map((n) => ({
-          ...n,
-          name: n.name || n.label || n.id,
-          type: n.type || 'unknown',
-        }))
+      .filter((n) => n.dependencies?.includes(selectedNode.id))
+      .map((n) => ({
+        ...n,
+        name: n.name || n.label || n.id,
+        type: n.type || 'unknown',
+      }))
     : [];
 
   const nodeTypes = Array.from(
@@ -2011,33 +2121,30 @@ export const ArchitecturePanel: React.FC<{ discovery: DiscoveryData }> = ({
   ) as string[];
 
   return (
-    <div>
-      <div className="panel-header">
-        <div className="panel-title">Application Architecture Map</div>
-        <div className="panel-subtitle">
-          Dependency graph nodes mapping registered controllers, layers, and
-          service injections
+    <div className="panel-modern-layout">
+      <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="panel-title">Architecture Dependency Map</div>
+            <span className="nav-badge" style={{ fontSize: '10px', padding: '2px 6px' }}>
+              {nodes.length} Components
+            </span>
+          </div>
+          <div className="panel-subtitle">
+            Component dependency topology mapping registered controllers, services, repositories, and middlewares
+          </div>
         </div>
       </div>
 
       {nodes.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-state-icon">🗺️</div>
+          <MapIcon size={36} style={{ marginBottom: '12px', color: 'var(--text-muted)' }} />
           <div className="empty-state-message">
             Architecture map has no registered injections.
           </div>
         </div>
       ) : (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '320px 1fr',
-            gap: '24px',
-            minHeight: '600px',
-            height: 'auto',
-            textAlign: 'left',
-          }}
-        >
+        <div className="arch-canvas-grid" style={{ textAlign: 'left' }}>
           {/* Master List */}
           <div
             style={{
@@ -2663,7 +2770,7 @@ export const MiddlewaresPanel: React.FC<{
 
       {middlewares.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-state-icon">🛡️</div>
+          <Shield size={36} style={{ marginBottom: '12px', color: 'var(--text-muted)' }} />
           <div className="empty-state-message">
             No middlewares discovered. Add custom plugins to Axiomify to see
             them here.
@@ -3073,7 +3180,7 @@ const AnalyticsChart: React.FC<{
           margin: 0,
         }}
       >
-        <div style={{ marginBottom: '8px', fontSize: '16px' }}>📊</div>
+        <BarChart2 size={24} style={{ marginBottom: '8px', color: 'var(--accent)' }} />
         <div>Gathering live data points...</div>
       </div>
     );
@@ -3359,7 +3466,7 @@ export const AnalyticsPanel: React.FC = () => {
         ),
       });
       setWsData(ws);
-    } catch {}
+    } catch { }
   };
 
   const clearOtlpMetrics = async () => {
@@ -3424,9 +3531,10 @@ export const AnalyticsPanel: React.FC = () => {
           }}
           onClick={() => setSubTab('overview')}
         >
-          👁️ Overview Dashboard
+          <Eye size={13} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '5px' }} /> Overview Dashboard
         </button>
         <button
+          onClick={() => setSubTab('http')}
           style={{
             background:
               subTab === 'http' ? 'var(--bg-secondary)' : 'transparent',
@@ -3449,10 +3557,12 @@ export const AnalyticsPanel: React.FC = () => {
             zIndex: 1,
             outline: 'none',
             transition: 'all var(--transition)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
           }}
-          onClick={() => setSubTab('http')}
         >
-          📈 HTTP Performance
+          <Activity size={13} /> HTTP Performance
         </button>
         <button
           style={{
@@ -3477,10 +3587,13 @@ export const AnalyticsPanel: React.FC = () => {
             zIndex: 1,
             outline: 'none',
             transition: 'all var(--transition)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
           }}
           onClick={() => setSubTab('websocket')}
         >
-          🔌 WebSocket Traffic
+          <Radio size={13} /> WebSocket Traffic
         </button>
         <button
           style={{
@@ -3505,10 +3618,13 @@ export const AnalyticsPanel: React.FC = () => {
             zIndex: 1,
             outline: 'none',
             transition: 'all var(--transition)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
           }}
           onClick={() => setSubTab('otlp')}
         >
-          📡 OTLP Metrics{' '}
+          <Radio size={13} /> OTLP Metrics{' '}
           {otlpMetrics.length > 0 ? `(${otlpMetrics.length})` : ''}
         </button>
       </div>
@@ -3531,7 +3647,7 @@ export const AnalyticsPanel: React.FC = () => {
                 alignItems: 'center',
               }}
             >
-              <span>⚠️</span>
+              <span><AlertTriangle size={15} style={{ color: 'var(--warning)', display: 'inline-block', verticalAlign: 'middle' }} /></span>
               <span>
                 <strong>HTTP Metrics Plugin is inactive.</strong> Enable it in
                 your app to unlock live HTTP throughput/latency graphs.
@@ -3601,14 +3717,14 @@ export const AnalyticsPanel: React.FC = () => {
                       history={history}
                       dataKey="requests"
                       color="var(--accent)"
-                      label="📈 Live HTTP Throughput"
+                      label="Live HTTP Throughput"
                       unit=" reqs"
                     />
                     <AnalyticsChart
                       history={history}
                       dataKey="avgResponseTime"
                       color="var(--warning)"
-                      label="⏱️ Average Latency"
+                      label="Average Latency"
                       unit=" ms"
                     />
                   </>
@@ -3617,7 +3733,7 @@ export const AnalyticsPanel: React.FC = () => {
                   history={history}
                   dataKey="wsClients"
                   color="var(--method-ws)"
-                  label="🔌 Active WebSocket Clients"
+                  label="Active WebSocket Clients"
                   unit=" clients"
                 />
               </div>
@@ -3658,7 +3774,7 @@ export const AnalyticsPanel: React.FC = () => {
                           gap: '6px',
                         }}
                       >
-                        🔥 Most Hit Endpoint
+                        <Flame size={14} style={{ color: 'var(--accent)' }} /> Most Hit Endpoint
                       </div>
                       {metricsData.routesList[0] ? (
                         <div
@@ -3739,7 +3855,7 @@ export const AnalyticsPanel: React.FC = () => {
                           gap: '6px',
                         }}
                       >
-                        ❄️ Least Hit Endpoint
+                        <TrendingDown size={14} style={{ color: 'var(--text-muted)' }} /> Least Hit Endpoint
                       </div>
                       {metricsData.routesList[
                         metricsData.routesList.length - 1
@@ -3853,9 +3969,12 @@ export const AnalyticsPanel: React.FC = () => {
                   fontSize: '20px',
                   fontWeight: 700,
                   marginBottom: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
                 }}
               >
-                📊 Metrics Plugin Inactive
+                <BarChart2 size={20} style={{ color: 'var(--text-muted)' }} /> Metrics Plugin Inactive
               </div>
               <p
                 style={{
@@ -3897,8 +4016,8 @@ useMetrics(app);`}
           ) : (
             <div>
               <div className="tester-section" style={{ marginBottom: '24px' }}>
-                <div className="tester-section-title">
-                  📊 HTTP Route Throughput & Latency
+                <div className="tester-section-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <BarChart2 size={14} /> HTTP Route Throughput & Latency
                 </div>
                 {metricsData.routesList.length === 0 ? (
                   <div
@@ -4077,8 +4196,8 @@ useMetrics(app);`}
               </div>
 
               <div className="tester-section">
-                <div className="tester-section-title">
-                  🔌 Raw Prometheus Data
+                <div className="tester-section-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Activity size={14} /> Raw Prometheus Data
                 </div>
                 <pre
                   style={{
@@ -4150,8 +4269,8 @@ useMetrics(app);`}
               >
                 {/* Active Clients */}
                 <div className="tester-section" style={{ margin: 0 }}>
-                  <div className="tester-section-title">
-                    🔌 Active WebSockets Client List
+                  <div className="tester-section-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Radio size={14} /> Active WebSockets Client List
                   </div>
                   {wsData.clients && wsData.clients.length > 0 ? (
                     <div
@@ -4207,7 +4326,9 @@ useMetrics(app);`}
 
                 {/* Rooms list */}
                 <div className="tester-section" style={{ margin: 0 }}>
-                  <div className="tester-section-title">🏠 Active Rooms</div>
+                  <div className="tester-section-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Home size={14} /> Active Rooms
+                  </div>
                   {wsData.rooms && Object.keys(wsData.rooms).length > 0 ? (
                     <div
                       style={{
@@ -4273,8 +4394,8 @@ useMetrics(app);`}
                 gap: '12px',
               }}
             >
-              <div className="tester-section-title">
-                📡 OpenTelemetry metric datapoints
+              <div className="tester-section-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Radio size={14} /> OpenTelemetry metric datapoints
               </div>
               <button
                 className="btn btn-secondary"
@@ -4390,7 +4511,7 @@ export const PerformancePanel: React.FC = () => {
       if (res.ok) {
         setData(await res.json());
       }
-    } catch {}
+    } catch { }
   };
 
   const clearPerf = async () => {
@@ -4612,10 +4733,13 @@ export const PerformancePanel: React.FC = () => {
             marginBottom: '-9px',
             zIndex: 1,
             outline: 'none',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
           }}
           onClick={() => setActiveSubTab('profiler')}
         >
-          🔥 Execution Profiler
+          <Flame size={13} /> Execution Profiler
         </button>
       </div>
 
@@ -4691,7 +4815,7 @@ export const PerformancePanel: React.FC = () => {
 // ==========================================
 // 12. SDK IMPACT ANALYZER
 // ==========================================
-export const SdkImpactPanel: React.FC = () => {
+export const SdkImpactPanel: React.FC<{ discovery?: DiscoveryData }> = () => {
   const [impacts, setImpacts] = useState<any[]>([]);
   const [sdkFilter, setSdkFilter] = useState('all');
   const [sevFilter, setSevFilter] = useState('all');
@@ -4714,7 +4838,7 @@ export const SdkImpactPanel: React.FC = () => {
             data.impacts?.length > 0 ? 'inline-block' : 'none';
         }
       }
-    } catch {}
+    } catch { }
   };
 
   const handleDismiss = async (id: string) => {
@@ -4724,7 +4848,7 @@ export const SdkImpactPanel: React.FC = () => {
         { method: 'DELETE' },
       );
       if (res.ok) fetchImpacts();
-    } catch {}
+    } catch { }
   };
 
   const handleDismissAll = async () => {
@@ -4734,7 +4858,7 @@ export const SdkImpactPanel: React.FC = () => {
         method: 'DELETE',
       });
       if (res.ok) fetchImpacts();
-    } catch {}
+    } catch { }
   };
 
   const filtered = impacts.filter((it) => {
@@ -5004,7 +5128,7 @@ export const ContractsPanel: React.FC = () => {
 
         const failed = data.results
           ? data.results.filter((c: any) => !c.passed && c.status === 'failed')
-              .length
+            .length
           : 0;
         const badge = document.getElementById('badge-contracts');
         if (badge) {
@@ -5012,7 +5136,7 @@ export const ContractsPanel: React.FC = () => {
           badge.style.display = failed > 0 ? 'inline-flex' : 'none';
         }
       }
-    } catch {}
+    } catch { }
   };
 
   const handleRun = async () => {
@@ -5035,7 +5159,7 @@ export const ContractsPanel: React.FC = () => {
       await apiFetch(`/__studio/api/contracts/toggle-autorun?enable=${val}`, {
         method: 'POST',
       });
-    } catch {}
+    } catch { }
   };
 
   return (
@@ -5217,7 +5341,7 @@ export const QualityPanel: React.FC = () => {
             if (raw) {
               storedTrend = JSON.parse(raw);
             }
-          } catch {}
+          } catch { }
           if (
             storedTrend.length === 0 ||
             storedTrend[storedTrend.length - 1] !== currentScore ||
@@ -5245,7 +5369,7 @@ export const QualityPanel: React.FC = () => {
           setTrend(storedTrend);
         }
       }
-    } catch {}
+    } catch { }
   };
 
   if (!data) {
@@ -5428,7 +5552,9 @@ export const QualityPanel: React.FC = () => {
 
         {/* Quality issues checklists */}
         <div className="tester-section">
-          <div className="tester-section-title">🏆 API Quality Checklist</div>
+          <div className="tester-section-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Award size={14} /> API Quality Checklist
+          </div>
           <div
             style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}
           >
@@ -5455,8 +5581,12 @@ export const QualityPanel: React.FC = () => {
                       paddingBottom: '8px',
                     }}
                   >
-                    <span style={{ fontSize: '16px' }}>
-                      {passed ? '✅' : '⚠️'}
+                    <span style={{ fontSize: '16px', display: 'flex', alignItems: 'center', marginTop: '2px' }}>
+                      {passed ? (
+                        <CheckCircle2 size={16} color="var(--success)" />
+                      ) : (
+                        <AlertTriangle size={16} color="var(--warning)" />
+                      )}
                     </span>
                     <div style={{ flex: 1 }}>
                       <div
@@ -5502,8 +5632,8 @@ export const QualityPanel: React.FC = () => {
 
       {/* Per-Route Quality Report Card */}
       <div className="tester-section" style={{ textAlign: 'left' }}>
-        <div className="tester-section-title" style={{ marginBottom: '12px' }}>
-          🧭 Route-Specific Quality Details
+        <div className="tester-section-title" style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Compass size={14} /> Route-Specific Quality Details
         </div>
         {report.perRoute && report.perRoute.length === 0 ? (
           <div
@@ -5630,9 +5760,15 @@ export const QualityPanel: React.FC = () => {
                         </ul>
                       ) : (
                         <span
-                          style={{ color: 'var(--success)', fontWeight: 500 }}
+                          style={{
+                            color: 'var(--success)',
+                            fontWeight: 500,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
                         >
-                          ✨ Perfect rating
+                          <CheckCircle2 size={13} /> Perfect rating
                         </span>
                       )}
                     </td>
@@ -5709,7 +5845,7 @@ export const AiAssistantPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
           setSelectedProvider(payload.provider || 'gemini');
         }
       }
-    } catch {}
+    } catch { }
   };
 
   const handleSaveSettings = async () => {
@@ -5905,7 +6041,7 @@ export const AiAssistantPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
                     return updated;
                   });
                 }
-              } catch {}
+              } catch { }
             }
           }
         }
@@ -5979,9 +6115,12 @@ export const AiAssistantPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
             fontWeight: 700,
             fontSize: '14px',
             color: 'var(--text-primary)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
           }}
         >
-          🤖 Configure AI Provider
+          <Bot size={15} /> Configure AI Provider
         </div>
 
         <div
@@ -6139,11 +6278,10 @@ export const AiAssistantPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: '16px',
                         flexShrink: 0,
                       }}
                     >
-                      ✨
+                      <Sparkles size={16} style={{ color: 'var(--accent)' }} />
                     </div>
                   )}
                   {isUser ? (
@@ -6195,11 +6333,10 @@ export const AiAssistantPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: '16px',
                         flexShrink: 0,
                       }}
                     >
-                      👤
+                      <User size={16} />
                     </div>
                   )}
                 </div>
@@ -6248,7 +6385,6 @@ export const AiAssistantPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
               style={{
                 height: '60px',
                 width: '60px',
-                fontSize: '18px',
                 background: 'var(--accent)',
                 color: '#fff',
                 borderColor: 'var(--accent)',
@@ -6258,7 +6394,7 @@ export const AiAssistantPanel: React.FC<{ isDark: boolean }> = ({ isDark }) => {
                 margin: 0,
               }}
             >
-              📤
+              <Send size={18} />
             </button>
           </div>
         </div>

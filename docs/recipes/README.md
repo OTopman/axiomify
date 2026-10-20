@@ -10,6 +10,10 @@ to solve a complete application concern, not merely learn an API.
   role checks to one route tree without affecting the rest of the application.
 - [Request-to-job trace continuity](./request-to-job-trace.md) — preserve
   observability context when HTTP work becomes background work.
+- [Validate webhook signatures](./webhook-signature-validation.md) — verify
+  provider signatures over raw request bytes before processing events.
+- [Tenant-scoped routes](./tenant-scoped-routes.md) — scope policy to a route
+  group and carry tenant identity into data access.
 
 ## Contributing a recipe
 

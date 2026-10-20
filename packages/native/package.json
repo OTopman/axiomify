@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/native",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "description": "uWebSockets.js adapter for Axiomify — highest-throughput transport. HTTP, native WebSocket, SSE, graceful shutdown, SO_REUSEPORT clustering.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,7 +20,7 @@
     "test": "vitest run tests --config ../../vitest.config.mts"
   },
   "dependencies": {
-    "@axiomify/core": "^7.0.0"
+    "@axiomify/core": "^7.1.0"
   },
   "peerDependencies": {
     "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#624987739d4da0acb628aaf2a10fc43e7ce27c5c"

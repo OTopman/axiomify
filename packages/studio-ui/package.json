@@ -1,20 +1,24 @@
 {
   "name": "@axiomify/studio-ui",
   "private": true,
-  "version": "7.0.1",
+  "version": "7.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "next dev",
+    "build": "next build && node scripts/copy-dist.mjs",
     "lint": "eslint .",
     "test": "vitest run tests --config ../../vitest.config.mts",
-    "preview": "vite preview"
+    "start": "next start"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.6.0",
+    "@reduxjs/toolkit": "^2.13.0",
+    "lucide-react": "^1.60.0",
+    "next": "^16.4.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "socket.io-client": "^4.7.5",
-    "@monaco-editor/react": "^4.6.0"
+    "react-redux": "^9.3.0",
+    "socket.io-client": "^4.7.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

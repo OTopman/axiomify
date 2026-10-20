@@ -63,6 +63,16 @@ communicated compatibility break.
 contract violations interactively. This is useful for finding coverage gaps,
 but automated tests and the route-surface CI gate remain the release boundary.
 
+## 4. Exercise generated SDK clients against the app
+
+Generated TypeScript SDK clients accept a custom `fetch` implementation. In
+integration tests, bridge that fetch call into `createTestClient(app)` and
+return the injected response as a Fetch `Response`. This verifies the emitted
+method, URL, query, headers, body, and response handling against the same app
+contract without listening on a network port. Keep one test per important
+operation shape (path parameters, query parameters, JSON body, and auth/header
+parameters); the SDK generator test suite includes this pattern.
+
 ## Recommended policy
 
 - Every public mutation route has body and response schemas.

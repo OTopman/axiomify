@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/testing",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "description": "Inject-style testing utilities for Axiomify — no sockets, no ports: build requests, capture responses, assert against route Zod schemas.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,7 +20,7 @@
     "test": "vitest run tests --config ../../vitest.config.mts"
   },
   "dependencies": {
-    "@axiomify/core": "^7.0.0"
+    "@axiomify/core": "^7.1.0"
   },
   "peerDependencies": {
     "zod": ">=3.20 <5"

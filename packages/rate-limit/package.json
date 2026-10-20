@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/rate-limit",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "description": "Sliding-window rate limiting for Axiomify — Redis EVALSHA caching, full ioredis/redis@4 compatibility, MemoryStore for development.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,7 +20,7 @@
     "test": "vitest run tests --config ../../vitest.config.mts"
   },
   "dependencies": {
-    "@axiomify/core": "^7.0.0"
+    "@axiomify/core": "^7.1.0"
   },
   "keywords": [
     "axiomify",

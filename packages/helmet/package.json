@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/helmet",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "description": "Security headers plugin for Axiomify",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,7 +20,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@axiomify/core": "^7.0.0"
+    "@axiomify/core": "^7.1.0"
   },
   "keywords": [
     "axiomify",

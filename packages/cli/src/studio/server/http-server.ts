@@ -46,6 +46,9 @@ const MIME_TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.webp': 'image/webp',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.ttf': 'font/ttf',
 };
 
 const FALLBACK_HTML = `<!DOCTYPE html>
@@ -62,7 +65,7 @@ const FALLBACK_HTML = `<!DOCTYPE html>
 </html>`;
 
 /**
- * A tracked or cached index.html can outlive Vite's content-hashed assets.
+ * A tracked or cached index.html can outlive Vite's or Next.js content-hashed assets.
  * Only serve a production bundle when every local asset referenced by the
  * entry document exists; otherwise Studio shows the actionable fallback page.
  */
@@ -72,7 +75,9 @@ export function validateStudioBundle(directory: string): boolean {
   try {
     const html = readFileSync(indexPath, 'utf8');
     const assetReferences = [
-      ...html.matchAll(/(?:src|href)=["'](\/assets\/[^"']+)["']/g),
+      ...html.matchAll(
+        /(?:src|href)=["']((?:\/assets\/|\/_next\/)[^"']+)["']/g,
+      ),
     ].map((match) => match[1]);
     return (
       assetReferences.length > 0 &&
@@ -312,7 +317,7 @@ export function createStudioServer(options: StudioServerOptions): Server {
 
       // Never return SPA HTML for a missing module, stylesheet, image, or
       // other asset. Browsers reject that response as a strict MIME mismatch.
-      if (pathname.startsWith('/assets/')) {
+      if (pathname.startsWith('/assets/') || pathname.startsWith('/_next/')) {
         res.writeHead(404, {
           'Content-Type': 'text/plain; charset=utf-8',
           'Cache-Control': 'no-store',

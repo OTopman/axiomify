@@ -21,7 +21,7 @@ export class BaseClient {
     this.cache = new LruTtlCache(100, config.cacheTtlMs || 60000);
   }
 
-  protected async request<T = unknown>(req: ClientRequest): Promise<T> {
+  public async request<T = unknown>(req: ClientRequest): Promise<T> {
     // Resolve every request before looking in the cache. Cache entries must
     // never cross an authorization, tenant, locale, or other header boundary.
     const currentReq = await this.interceptors.runRequestInterceptors(req);

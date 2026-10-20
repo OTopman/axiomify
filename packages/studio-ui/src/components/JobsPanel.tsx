@@ -1,4 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import {
+  AlertCircle,
+  Briefcase,
+  CheckCircle2,
+  Clock,
+  Folder,
+  RefreshCw,
+  Search,
+  TrendingUp,
+  Zap,
+} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { DiscoveryData } from '../types';
 import { apiFetch } from '../utils/api';
 
 interface JobItem {
@@ -30,7 +42,7 @@ interface JobsResponse {
   };
 }
 
-export const JobsPanel: React.FC = () => {
+export const JobsPanel: React.FC<{ discovery?: DiscoveryData }> = () => {
   const [data, setData] = useState<JobsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -64,7 +76,7 @@ export const JobsPanel: React.FC = () => {
   if (loading && !data) {
     return (
       <div className="empty-state">
-        <div className="empty-state-icon spinner">⏳</div>
+        <div className="spinner" style={{ width: '24px', height: '24px', borderWidth: '2px', marginBottom: '12px' }} />
         <div className="empty-state-message">
           Loading distributed jobs status...
         </div>
@@ -90,7 +102,7 @@ export const JobsPanel: React.FC = () => {
             background: 'var(--bg-secondary)',
           }}
         >
-          <div className="empty-state-icon">💼</div>
+          <Briefcase size={36} style={{ marginBottom: '12px', color: 'var(--text-muted)' }} />
           <div
             className="empty-state-message"
             style={{
@@ -231,10 +243,13 @@ app.use(jobsModule({
             style={{
               background: 'var(--bg-secondary)',
               border: '1px solid var(--border)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
             }}
             onClick={fetchJobs}
           >
-            🔄 Refresh
+            <RefreshCw size={13} /> Refresh
           </button>
         </div>
       </div>
@@ -259,6 +274,7 @@ app.use(jobsModule({
             overflow: 'hidden',
           }}
         >
+          <Briefcase size={16} style={{ position: 'absolute', top: '16px', right: '16px', color: 'var(--text-muted)', opacity: 0.7 }} />
           <div
             style={{
               fontSize: '12px',
@@ -280,18 +296,6 @@ app.use(jobsModule({
           >
             {stats.total}
           </div>
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '-8px',
-              right: '-8px',
-              fontSize: '64px',
-              opacity: 0.05,
-              userSelect: 'none',
-            }}
-          >
-            💼
-          </div>
         </div>
         <div
           style={{
@@ -303,6 +307,7 @@ app.use(jobsModule({
             overflow: 'hidden',
           }}
         >
+          <Zap size={16} style={{ position: 'absolute', top: '16px', right: '16px', color: 'var(--accent)', opacity: 0.9 }} />
           <div
             style={{
               fontSize: '12px',
@@ -327,22 +332,8 @@ app.use(jobsModule({
           >
             {stats.running}
             {stats.running > 0 && (
-              <span className="spinner" style={{ fontSize: '18px' }}>
-                ⚙️
-              </span>
+              <span className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px' }} />
             )}
-          </div>
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '-8px',
-              right: '-8px',
-              fontSize: '64px',
-              opacity: 0.05,
-              userSelect: 'none',
-            }}
-          >
-            ⚡
           </div>
         </div>
         <div
@@ -355,6 +346,7 @@ app.use(jobsModule({
             overflow: 'hidden',
           }}
         >
+          <Clock size={16} style={{ position: 'absolute', top: '16px', right: '16px', color: 'var(--warning)', opacity: 0.9 }} />
           <div
             style={{
               fontSize: '12px',
@@ -376,18 +368,6 @@ app.use(jobsModule({
           >
             {stats.pending}
           </div>
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '-8px',
-              right: '-8px',
-              fontSize: '64px',
-              opacity: 0.05,
-              userSelect: 'none',
-            }}
-          >
-            ⏳
-          </div>
         </div>
         <div
           style={{
@@ -399,6 +379,7 @@ app.use(jobsModule({
             overflow: 'hidden',
           }}
         >
+          <CheckCircle2 size={16} style={{ position: 'absolute', top: '16px', right: '16px', color: 'var(--success)', opacity: 0.9 }} />
           <div
             style={{
               fontSize: '12px',
@@ -420,18 +401,6 @@ app.use(jobsModule({
           >
             {stats.completed}
           </div>
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '-8px',
-              right: '-8px',
-              fontSize: '64px',
-              opacity: 0.05,
-              userSelect: 'none',
-            }}
-          >
-            ✅
-          </div>
         </div>
         <div
           style={{
@@ -449,6 +418,7 @@ app.use(jobsModule({
             overflow: 'hidden',
           }}
         >
+          <AlertCircle size={16} style={{ position: 'absolute', top: '16px', right: '16px', color: 'var(--error)', opacity: 0.9 }} />
           <div
             style={{
               fontSize: '12px',
@@ -471,18 +441,6 @@ app.use(jobsModule({
           >
             {stats.failed}
           </div>
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '-8px',
-              right: '-8px',
-              fontSize: '64px',
-              opacity: stats.failed > 0 ? 0.08 : 0.05,
-              userSelect: 'none',
-            }}
-          >
-            ❌
-          </div>
         </div>
         <div
           style={{
@@ -494,6 +452,7 @@ app.use(jobsModule({
             overflow: 'hidden',
           }}
         >
+          <TrendingUp size={16} style={{ position: 'absolute', top: '16px', right: '16px', color: 'var(--success)', opacity: 0.9 }} />
           <div
             style={{
               fontSize: '12px',
@@ -519,18 +478,6 @@ app.use(jobsModule({
             }}
           >
             {stats.successRate}%
-          </div>
-          <div
-            style={{
-              position: 'absolute',
-              bottom: '-8px',
-              right: '-8px',
-              fontSize: '64px',
-              opacity: 0.05,
-              userSelect: 'none',
-            }}
-          >
-            📈
           </div>
         </div>
       </div>
@@ -597,7 +544,7 @@ app.use(jobsModule({
               color: 'var(--text-secondary)',
             }}
           >
-            <div style={{ fontSize: '32px', marginBottom: '8px' }}>📂</div>
+            <Folder size={32} style={{ marginBottom: '8px', color: 'var(--text-muted)' }} />
             <div>No matching jobs found in queue.</div>
           </div>
         ) : (
@@ -761,10 +708,16 @@ app.use(jobsModule({
                     >
                       <button
                         className="btn"
-                        style={{ padding: '4px 8px', fontSize: '12px' }}
+                        style={{
+                          padding: '4px 8px',
+                          fontSize: '12px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
                         onClick={() => setSelectedJob(job)}
                       >
-                        🔍 Inspect
+                        <Search size={12} /> Inspect
                       </button>
                       {job.status === 'failed' && (
                         <button
@@ -775,12 +728,15 @@ app.use(jobsModule({
                             background: 'rgba(239, 68, 68, 0.1)',
                             color: 'var(--error)',
                             border: '1px solid var(--error)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
                           }}
                           onClick={() => {
                             setSelectedJob(job);
                           }}
                         >
-                          ⚠️ View Error
+                          <AlertCircle size={12} /> View Error
                         </button>
                       )}
                     </div>

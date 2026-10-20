@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/openapi",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "description": "OpenAPI 3.0.3 generator + Swagger UI for Axiomify — Zod-v4-native via `z.toJSONSchema()`, 100% Operation Object coverage.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,7 +20,7 @@
     "test": "vitest run tests --config ../../vitest.config.mts"
   },
   "dependencies": {
-    "@axiomify/core": "^7.0.0",
+    "@axiomify/core": "^7.1.0",
     "zod-to-json-schema": "3.25.2"
   },
   "keywords": [

@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/logger",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "description": "Structured request/response logging for Axiomify with recursive PII masking.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,7 +20,7 @@
     "test": "vitest run tests --config ../../vitest.config.mts"
   },
   "dependencies": {
-    "@axiomify/core": "^7.0.0",
+    "@axiomify/core": "^7.1.0",
     "picocolors": "^1.1.1",
     "maskify-ts": "^4.0.0",
     "reflect-metadata": "^0.2.0"

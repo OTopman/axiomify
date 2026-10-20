@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/ws",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "description": "Native pub/sub room utility for @axiomify/native — O(1) broadcast, presence tracking, and typed rooms powered by uWebSockets.js topics. Not a wrapper for the ws npm package.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,8 +20,8 @@
     "test": "vitest run tests --config ../../vitest.config.mts"
   },
   "dependencies": {
-    "@axiomify/core": "^7.0.0",
-    "@axiomify/native": "^7.0.0"
+    "@axiomify/core": "^7.1.0",
+    "@axiomify/native": "^7.1.0"
   },
   "peerDependencies": {
     "uWebSockets.js": "git+https://github.com/uNetworking/uWebSockets.js.git#624987739d4da0acb628aaf2a10fc43e7ce27c5c"
