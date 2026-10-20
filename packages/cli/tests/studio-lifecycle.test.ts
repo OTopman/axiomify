@@ -7,10 +7,28 @@ const mocks = vi.hoisted(() => {
     config: { httpRouteCount: 1, wsRouteCount: 0, hookCount: 0 },
     schemas: [],
   };
+  const wsServer = {
+    broadcast: vi.fn(),
+    close: vi.fn(),
+    handleUpgrade: vi.fn(),
+  };
+  let capturedUpgradeListener: ((req: any, socket: any) => void) | undefined;
+  const server = {
+    on: vi.fn((event: string, handler: (req: any, socket: any) => void) => {
+      if (event === 'upgrade') {
+        capturedUpgradeListener = handler;
+      }
+      return server;
+    }),
+    close: vi.fn(),
+  };
   return {
     app,
     reloadedApp,
     discovery,
+    wsServer,
+    server,
+    getUpgradeListener: () => capturedUpgradeListener,
     setAppBaseUrl: vi.fn(),
     instrumentEventRecording: vi.fn(),
     instrumentErrorObservatory: vi.fn(),
@@ -74,13 +92,21 @@ vi.mock('../src/studio/server/router', () => ({
 }));
 vi.mock('../src/studio/server/ws-server', () => ({
   StudioWsServer: class StudioWsServer {
-    broadcast = vi.fn();
-    close = vi.fn();
-    handleUpgrade = vi.fn();
+    broadcast = mocks.wsServer.broadcast;
+    close = mocks.wsServer.close;
+    handleUpgrade = mocks.wsServer.handleUpgrade;
   },
 }));
 vi.mock('../src/studio/server/http-server', () => ({
-  createStudioServer: vi.fn(() => ({ on: vi.fn(), close: vi.fn() })),
+  createStudioServer: vi.fn((options: any) => {
+    if (options?.onReady) {
+      options.onReady(
+        options.port ?? 4399,
+        `http://localhost:${options.port ?? 4399}`,
+      );
+    }
+    return mocks.server;
+  }),
 }));
 vi.mock('../src/studio/sync', () => ({
   StudioSyncEngine: class StudioSyncEngine {
@@ -124,5 +150,72 @@ describe('Studio lifecycle', () => {
     expect(mocks.instrumentEventRecording).toHaveBeenCalledWith(
       mocks.reloadedApp,
     );
+  });
+
+  it('handles WebSocket upgrades for /__studio/ws and /__studio/live with valid token', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(process, 'once').mockImplementation(() => process);
+
+    await startStudio('src/app.ts', {
+      port: 4400,
+      open: false,
+    });
+
+    const upgradeListener = mocks.getUpgradeListener();
+    expect(upgradeListener).toBeDefined();
+
+    const token = process.env.AXIOMIFY_STUDIO_TOKEN;
+    expect(token).toBeTruthy();
+
+    // 1. Valid upgrade on /__studio/ws
+    const wsReq = {
+      url: `/__studio/ws?token=${token}`,
+      headers: { host: 'localhost:4400' },
+    };
+    const wsSocket = { write: vi.fn(), destroy: vi.fn() };
+    upgradeListener!(wsReq, wsSocket);
+    expect(mocks.wsServer.handleUpgrade).toHaveBeenCalledWith(wsReq, wsSocket);
+
+    // 2. Valid upgrade on /__studio/live
+    const liveReq = {
+      url: `/__studio/live?token=${token}`,
+      headers: { host: 'localhost:4400' },
+    };
+    const liveSocket = { write: vi.fn(), destroy: vi.fn() };
+    upgradeListener!(liveReq, liveSocket);
+    expect(mocks.wsServer.handleUpgrade).toHaveBeenCalledWith(
+      liveReq,
+      liveSocket,
+    );
+
+    // 3. Unauthorized upgrade with invalid token
+    const unauthReq = {
+      url: '/__studio/ws?token=invalid-token',
+      headers: { host: 'localhost:4400' },
+    };
+    const unauthSocket = { write: vi.fn(), destroy: vi.fn() };
+    upgradeListener!(unauthReq, unauthSocket);
+    expect(unauthSocket.write).toHaveBeenCalledWith(
+      'HTTP/1.1 401 Unauthorized\r\n\r\n',
+    );
+    expect(unauthSocket.destroy).toHaveBeenCalled();
+
+    // 4. Non-matching path destroys socket
+    const otherReq = {
+      url: '/some-other-path',
+      headers: { host: 'localhost:4400' },
+    };
+    const otherSocket = { write: vi.fn(), destroy: vi.fn() };
+    upgradeListener!(otherReq, otherSocket);
+    expect(otherSocket.destroy).toHaveBeenCalled();
+
+    // 5. Default url ('/') and default host ('localhost') when omitted
+    const defaultReq = {
+      url: undefined,
+      headers: {},
+    };
+    const defaultSocket = { write: vi.fn(), destroy: vi.fn() };
+    upgradeListener!(defaultReq, defaultSocket);
+    expect(defaultSocket.destroy).toHaveBeenCalled();
   });
 });
