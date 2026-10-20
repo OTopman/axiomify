@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/vault",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "description": "Secure Environment Management & Vault Engine for Axiomify.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -28,7 +28,7 @@
     "@axiomify/core": "^7.0.0"
   },
   "devDependencies": {
-    "@axiomify/core": "^7.0.0",
+    "@axiomify/core": "^7.1.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.2"
   },

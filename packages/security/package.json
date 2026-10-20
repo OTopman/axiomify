@@ -1,6 +1,6 @@
 {
   "name": "@axiomify/security",
-  "version": "7.0.1",
+  "version": "7.1.0",
   "description": "Request-level defence in depth for Axiomify — XSS sanitisation, HPP normalisation, prototype-pollution + null-byte filtering, bot UA detection.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -20,7 +20,7 @@
     "test": "vitest run tests --config ../../vitest.config.mts"
   },
   "dependencies": {
-    "@axiomify/core": "^7.0.0"
+    "@axiomify/core": "^7.1.0"
   },
   "keywords": [
     "axiomify",
