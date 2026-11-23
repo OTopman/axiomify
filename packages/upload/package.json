@@ -24,7 +24,7 @@
     "@axiomify/core": "^7.2.0"
   },
   "devDependencies": {
-    "@types/busboy": "1.5.4"
+    "@types/busboy": "1.5.5"
   },
   "keywords": [
     "axiomify",
